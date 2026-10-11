@@ -20,7 +20,7 @@
 ## Verification
 
 - [x] Test state-transition table via Rust core and verify ordering, icon labels, and validation at the React/Tauri command seam.
-- [ ] Native user exercised priority, status, 60% progress, completion/reopen and app restart with persisted SQLite and screenshot. **Still unverified:** manually switching the sorting dropdown and observing the ordered groups in native WebView; see [QA report](../../../docs/qa/native-acceptance-2026-10-12.md).
+- [x] Native QA confirmed priority, status, 60% progress, completion/reopen, sorting selection and app restart. The hidden WebDriver test used a scoped DOM select-event fallback rather than OS mouse selection; sorted multiple-item ordering remains covered by Rust/React tests. [Automated QA evidence](../../../docs/qa/native-webdriver-results-2026-10-12.md).
 - [x] Automated tests pass: 13 React tests; 11 Rust core integration tests; TypeScript typecheck; Clippy with `-D warnings`; rustfmt; native unsigned debug `.app` build.
 - [x] Native app launched against synthetic data on macOS and created schema v2 with both ordering indexes, without accessing private user data.
 - [x] Document two-axis Standards/Spec review at `docs/reviews/ticket-02.md` (manual review without independent subagents). Native GUI verification and Ticket 01 dependency remain open.
@@ -56,3 +56,7 @@
 - User selected status and priority through real native GUI. Stored `status=in_progress`, `priority=very_high`, `progress=60`, with Completed→In Progress recorded as 100→60; still present after native quit/restart.
 - Native sorting dropdown change still lacks manual evidence. Independent Standards/Spec review has not been completed; Copilot review requests failed due quota. See [QA report](../../../docs/qa/native-acceptance-2026-10-12.md).
 - User reports severe desktop lag, tracked in [Issue 19](19-native-interaction-lag.md) for a measured future fix before Ticket 17/18 acceptance.
+
+## Automated native QA — 2026-10-12
+
+- Native E2E via embedded WKWebView WebDriverIO **passed twice**: priority Very High, In Progress/Completed/reopened 60%, Newest/Priority sort choices. Hidden WebDriver select required a scoped DOM input/change fallback, but real Rust IPC and SQLite results were asserted. See [native WebDriver evidence](../../../docs/qa/native-webdriver-results-2026-10-12.md). Independent review is still open.

@@ -31,3 +31,11 @@
 ## Reviewer guidance
 
 Use `git diff e4c728c...b799cce` for Ticket 01; `git diff b799cce...bc8ac50` for Ticket 02; `git diff bc8ac50...c083c7d` for Ticket 03. Compare both documented Standards and the ticket's Spec, and report findings separately.
+
+## Later autonomous QA resolution (2026-10-12)
+
+The original manual test's missing Progress Note is a **historical observation**, not evidence that the app cannot persist notes. The new [native WKWebView WebDriverIO harness](native-webdriver-e2e.md) ran **twice** using new synthetic SQLite databases, with both native app sessions passing and a note of exactly `Native acceptance passed` found in the actual `progress_entries` rows. The original manual test was not overwritten or reinterpreted; its cause remains unknown.
+
+Automation included a test-driver workaround: a hidden native `select` did not respond to WebDriver's `selectByAttribute`, so the runner dispatched a scoped input/change event inside Tasknotes' own WKWebView and verified Rust/SQLite effects. No unrestricted OS-level input was used. See [results](native-webdriver-results-2026-10-12.md).
+
+**The user should not be required to repeat manual CRUD/progress/restart testing.** Performance Bug #19 and independent Standards/Spec code review remain pending. No PR has been merged.

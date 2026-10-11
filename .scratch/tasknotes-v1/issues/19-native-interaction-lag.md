@@ -43,3 +43,7 @@
 ## Comments
 
 - No root-cause hypothesis is accepted without a failing repro; do not "fix" by guessing or silently disabling user-requested UX features.
+
+## Automated native test evidence (2026-10-12)
+
+An embedded WKWebView WebDriverIO harness independently passed two end-to-end runs (the first Task workflow took 1.1s in one run and 3.6s in the second; restart view checks took 270ms and 259ms, respectively), both with a **hidden test window** and one synthetic task. These are **test-run durations**, not measured human input latency or visible UI frame pacing. The user's reported severe lag remains **UNRESOLVED** and requires direct symptom-specific measurement under visible native usage and comparable debug/release conditions. Do not close this bug based on functional QA success.
