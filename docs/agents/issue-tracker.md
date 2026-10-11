@@ -8,7 +8,8 @@ Tasknotes records specs and implementation tickets as versioned Markdown under `
 - Feature spec: `.scratch/<feature-slug>/spec.md`.
 - One issue per file: `.scratch/<feature-slug>/issues/<NN>-<slug>.md`.
 - Assign numbers in dependency order, starting at 01.
-- Each issue includes a `Blocked by:` field and a `Status:` field using `docs/agents/triage-labels.md`.
+- Each issue includes a `Blocked by:` field and a `Status:` triage role using `docs/agents/triage-labels.md`.
+- An independent `Implementation:` field tracks not started / in progress / blocked / completed, so triage role and execution progress are never confused.
 - Use a `## Comments` section for additional decisions and discussion when needed.
 
 ## Skill operations
@@ -17,7 +18,7 @@ Tasknotes records specs and implementation tickets as versioned Markdown under `
 - **Publish issue:** create a numbered issue file; never collapse separate vertical slices into a single file.
 - **Fetch:** read the referenced file(s) and their explicit blockers.
 - **Select work:** choose a ready ticket whose blockers are finished, rather than jumping ahead.
-- **Close:** record acceptance-test evidence and the completed status in the corresponding issue.
+- **Close:** record acceptance-test evidence and set `Implementation: completed`; keep the `Status:` triage vocabulary consistent.
 
 ## Wayfinder compatibility
 

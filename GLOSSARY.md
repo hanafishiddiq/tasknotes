@@ -14,11 +14,11 @@ An organizational collection of tasks. A task can be kept in the default Inbox w
 The default list for tasks that have not been organized into another list.
 
 **Ready**:
-A task that is not currently being worked on and is not completed.
-_Avoid_: Not Started, Pending.
+A Task that has not started in its present work cycle.
+_Avoid_: Paused, Pending.
 
 **In Progress**:
-A task actively being worked on.
+A Task that has been started but is not yet Completed, including when temporarily inactive.
 
 **Completed**:
 A task marked finished; its progress is 100%.

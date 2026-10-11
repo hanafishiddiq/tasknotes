@@ -1,7 +1,7 @@
 # Tasknotes — Accepted product decisions
 
 Date: 2026-10-11
-Stage: planning / grilling, not implementation.
+Stage: planning approved, specification and tickets published; implementation not started.
 
 ## Core experience
 
@@ -80,10 +80,10 @@ Stage: planning / grilling, not implementation.
 - **Q47 accepted:** Local AI access is configured explicitly for trusted local clients; subsequent authorized CRUD does not require per-operation confirmation, except previously agreed high-risk bulk operations. No network-exposed service in v1.
 - **Q48 accepted:** Test at the shared Rust application-core interface, CLI/MCP process contracts, and real macOS Tauri end-to-end level. Include privacy, optimistic concurrency, backup/recovery, performance, and accessibility.
 - **Q49 accepted:** Proposed 18 vertical tickets and the dependency graph in `docs/planning/TICKETS-PROPOSAL.md` are approved in principle. Publishing final issue files waits until the remaining task-state semantics are settled.
-- **Q46 needs confirmation:** Moving a Task from In Progress (60%) to Ready was merely a hypothetical *manual* action, never an automatic pause or inactivity policy. **Revised recommendation:** A started Task remains In Progress at its stored percentage when work pauses; Ready means not yet started; no Paused status is added. The exact handling of an explicit user request to reset a started Task to Ready still needs approval. Do not silently convert the question into an accepted decision.
+- **Q46 accepted:** Ready means a Task that has not started; once work begins, the Task remains In Progress with its saved progress even during inactivity or a temporary pause. Neither inactivity nor closing/reopening Tasknotes automatically moves it to Ready. Do not add a Paused work status. Any explicit future "start over" operation must be deliberate and preserve historical Progress Entries; no implicit reset or data loss is authorized.
 
-## Remaining implementation-level details
+## Planning completion and implementation constraints
 
-- Backup restore while UI/AI clients are running; startup recovery on interrupted writes.
-- Concrete keyboard shortcut defaults, autoplay fallback, and performance benchmark protocol can be resolved and verified inside the relevant implementation ticket, subject to the agreed acceptance criteria.
-- No application implementation is authorized during planning.
+**All product questions Q1–Q49 are resolved and the 18-ticket plan is approved.** The canonical implementation specification and ticket graph are published under `.scratch/tasknotes-v1/`. The ticket-level implementation choices (e.g. exact shortcuts, audio fallback, restore locking, and benchmark harness) may be resolved in their own implementation tickets without inventing new product requirements.
+
+Planning completion does **not** mean the application is implemented. The user requested planning first; start implementation only upon a subsequent explicit instruction to enter the implementation phase.

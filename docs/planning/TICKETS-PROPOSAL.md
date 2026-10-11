@@ -1,13 +1,13 @@
-# Tasknotes v1 — Tracer-Bullet Ticket Proposal
+# Tasknotes v1 — Approved Tracer-Bullet Ticket Plan
 
-**Status:** APPROVED BREAKDOWN (Q49), pending final Q46 domain decision before issue publication.
-**Source:** `docs/planning/SPEC-DRAFT.md` and accepted Q1–Q45 decisions.
-**Publish after approval:** one ticket per `.scratch/tasknotes-v1/issues/<NN>-<slug>.md`.
-**Default ticket state after approval:** `ready-for-agent`; blocker edges determine what is actually ready to start.
+**Status:** APPROVED and PUBLISHED — Q46–Q49 accepted; implementation not started.
+**Source:** [Approved specification](../../.scratch/tasknotes-v1/spec.md) and accepted Q1–Q49 decisions.
+**Canonical tickets:** [Individual ticket files](../../.scratch/tasknotes-v1/issues/) under `.scratch/tasknotes-v1/issues/<NN>-<slug>.md`.
+**Tracker label:** `ready-for-agent` for each fully specified ticket; blocker edges determine which ones are unblocked. **No work has started.**
 
 Matt Pocock `/to-tickets` expects independently demonstrable **vertical slices** with explicit blocking edges. Each ticket below must ship its own test(s) across the meaningful user-visible interface, not merely add a data table or a React component.
 
-## Proposed tickets
+## Approved ticket summary
 
 ### 01 — First Task on a local desktop
 
@@ -128,6 +128,6 @@ The graph favors user-visible behaviors instead of building a large abstract `da
 - **Q47:** Explicit local AI trust configuration accepted.
 - **Q48:** Rust core, CLI/MCP subprocess, and real macOS Tauri E2E test seams accepted.
 - **Q49:** Ticket granularity (18) and blocker graph accepted as proposed.
-- **Q46:** Still needs an explicit choice about the meaning of Ready after a Task has begun. The recommendation is to keep partially completed Tasks in In Progress while paused or inactive, without automatically changing status or progress.
+- **Q46:** Accepted: Ready is for not-yet-started Tasks; started, unfinished Tasks remain In Progress even when idle or temporarily paused. Never reset status or progress automatically.
 
-After Q46 is resolved, publish the final spec and numbered individual tickets under the configured local Markdown tracker and finish planning. Do not implement the application within this planning phase.
+The canonical spec and 18 individual implementation tickets are published. **Planning is complete; application implementation awaits a new explicit instruction.**

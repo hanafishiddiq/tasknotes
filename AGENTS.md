@@ -1,6 +1,6 @@
 # Engineering instructions
 
-Tasknotes is in **planning**. Until the user approves completion of `/grilling` and the resulting specification, change documentation and tooling only: do not implement app features.
+Tasknotes **completed planning** on 2026-10-11. The approved specification and 18 implementation tickets are under `.scratch/tasknotes-v1/`. **No application source code has been implemented yet.** An explicit instruction to enter the implementation phase is required before starting feature work; after that, implement one unblocked ticket at a time using the Matt Pocock flow.
 
 ## Agent skills
 
@@ -29,7 +29,7 @@ Apply `/codebase-design`: concentrate behavior behind deep modules with small, e
 ## Invariants
 
 - Keep Task Work Status (In Progress / Ready / Completed) distinct from reversible Removed disposition.
-- For active items, maintain In Progress → Ready → Completed as the fixed display group order.
+- For active items, maintain In Progress → Ready → Completed as the fixed display group order. A started Task remains In Progress while idle; Ready is for not-yet-started work.
 - Desktop UI, CLI, and MCP must share the same application-level invariants and write operations.
 - AI-facing interfaces must never disclose notes marked Exclude from AI.
 - Use revision checks and transactions to protect against concurrent edits.

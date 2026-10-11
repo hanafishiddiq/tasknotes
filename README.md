@@ -2,7 +2,7 @@
 
 A local-first macOS desktop app for tasks and notes, with a machine-friendly interface for trusted AI tools.
 
-> **Project stage: planning.** No application code has been implemented yet.
+> **Project stage: planning completed, implementation not started.** Approved product spec and 18 tickets are published; no app code exists yet.
 
 ## Agreed direction
 
@@ -22,7 +22,7 @@ Follow the locally installed Matt Pocock skill workflow: **grill-with-docs → t
 
 See [planning decisions](docs/planning/DECISIONS.md) and [domain terms](GLOSSARY.md).
 
-Current review artifacts: [specification draft](docs/planning/SPEC-DRAFT.md) and [tracer-bullet ticket proposal](docs/planning/TICKETS-PROPOSAL.md). These are **drafts, not implementation authorizations**.
+**Planning complete:** [Approved v1 specification](.scratch/tasknotes-v1/spec.md) · [18 implementation tickets](.scratch/tasknotes-v1/README.md) · [Architectural decisions](docs/adr/). No application code has been written; start the implementation phase only after a new explicit request.
 
 ## Privacy
 
