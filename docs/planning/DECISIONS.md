@@ -75,11 +75,15 @@ Stage: planning / grilling, not implementation.
 - **Q44:** Closing the window quits by default; optional menu-bar mode keeps the app alive. Global shortcut is user-configurable if it conflicts with existing shortcuts.
 - **Q45:** Benchmark 50,000 Tasks and 10,000 Notes on the target Mac, aiming for search p95 <250 ms and scrolling close to 60 FPS. Measure and report results instead of claiming performance without evidence.
 
-## Open details awaiting specification sign-off
+## Round 6 — Partial acceptance (2026-10-11)
 
-- Test seams and integration-test boundaries for Rust core, UI, CLI, and MCP.
-- Whether manually pausing an In Progress Task back to Ready should preserve nonzero progress (recommended: yes).
-- Local AI onboarding/explicit trust configuration and guarantees under arbitrary filesystem access.
+- **Q47 accepted:** Local AI access is configured explicitly for trusted local clients; subsequent authorized CRUD does not require per-operation confirmation, except previously agreed high-risk bulk operations. No network-exposed service in v1.
+- **Q48 accepted:** Test at the shared Rust application-core interface, CLI/MCP process contracts, and real macOS Tauri end-to-end level. Include privacy, optimistic concurrency, backup/recovery, performance, and accessibility.
+- **Q49 accepted:** Proposed 18 vertical tickets and the dependency graph in `docs/planning/TICKETS-PROPOSAL.md` are approved in principle. Publishing final issue files waits until the remaining task-state semantics are settled.
+- **Q46 needs confirmation:** Moving a Task from In Progress (60%) to Ready was merely a hypothetical *manual* action, never an automatic pause or inactivity policy. **Revised recommendation:** A started Task remains In Progress at its stored percentage when work pauses; Ready means not yet started; no Paused status is added. The exact handling of an explicit user request to reset a started Task to Ready still needs approval. Do not silently convert the question into an accepted decision.
+
+## Remaining implementation-level details
+
 - Backup restore while UI/AI clients are running; startup recovery on interrupted writes.
-- Concrete keyboard shortcut defaults, audio fallback when autoplay cannot begin, and performance measurement protocol.
-- Confirm ticket scope and blocking edges before publishing `/to-tickets` files. No implementation is authorized during planning.
+- Concrete keyboard shortcut defaults, autoplay fallback, and performance benchmark protocol can be resolved and verified inside the relevant implementation ticket, subject to the agreed acceptance criteria.
+- No application implementation is authorized during planning.

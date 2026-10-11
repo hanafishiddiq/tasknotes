@@ -1,6 +1,6 @@
 # Tasknotes v1 — Tracer-Bullet Ticket Proposal
 
-**Status:** DRAFT, not published to the official local tracker.
+**Status:** APPROVED BREAKDOWN (Q49), pending final Q46 domain decision before issue publication.
 **Source:** `docs/planning/SPEC-DRAFT.md` and accepted Q1–Q45 decisions.
 **Publish after approval:** one ticket per `.scratch/tasknotes-v1/issues/<NN>-<slug>.md`.
 **Default ticket state after approval:** `ready-for-agent`; blocker edges determine what is actually ready to start.
@@ -123,11 +123,11 @@ Matt Pocock `/to-tickets` expects independently demonstrable **vertical slices**
 
 The graph favors user-visible behaviors instead of building a large abstract `database` layer, then `backend` layer, then `frontend` layer. Every slice has an end-to-end acceptance path.
 
-## Questions to sign off before publication
+## Sign-off record and publication gate
 
-1. **Granularity:** Are 18 small, demoable tickets an acceptable first-release breakdown, or should specific tickets be merged/split?
-2. **Dependencies:** Does the proposed blocker graph match which capabilities must exist first?
-3. **Test seams:** Are the shared Rust core, CLI/MCP subprocess contracts, and real macOS Tauri E2E tests the correct verification seams?
-4. **Remaining policy:** May we adopt the recommendations listed in the specification's Further Notes, especially preserving partial progress when marking a Task Ready and requiring deliberate local AI trust setup?
+- **Q47:** Explicit local AI trust configuration accepted.
+- **Q48:** Rust core, CLI/MCP subprocess, and real macOS Tauri E2E test seams accepted.
+- **Q49:** Ticket granularity (18) and blocker graph accepted as proposed.
+- **Q46:** Still needs an explicit choice about the meaning of Ready after a Task has begun. The recommendation is to keep partially completed Tasks in In Progress while paused or inactive, without automatically changing status or progress.
 
-Only after affirmative review, publish the final spec and individual tickets under the configured local Markdown tracker, then finish planning. Do not implement the application within this planning phase.
+After Q46 is resolved, publish the final spec and numbered individual tickets under the configured local Markdown tracker and finish planning. Do not implement the application within this planning phase.

@@ -1,6 +1,6 @@
 # Tasknotes — Specification Draft
 
-**Status:** DRAFT / awaiting user review of test seams and ticket breakdown.
+**Status:** DRAFT / test seams and ticket structure approved; Q46 status semantics pending confirmation.
 **Date:** 2026-10-11
 **Source of truth:** `docs/planning/DECISIONS.md`, `GLOSSARY.md`, and accepted ADRs.
 **Destination after approval:** `.scratch/tasknotes-v1/spec.md` using the configured local Markdown issue tracker.
@@ -132,7 +132,7 @@ The desktop experience combines a minimal list of Tasks, an independent rich-tex
 
 ## Testing Decisions
 
-**Proposed test seams for user approval:**
+**Approved test seams (Q48):**
 1. **Primary: shared application-core interface** against an isolated temporary SQLite database. Exercise the same operations, invariants, privacy filtering, and error behavior that every adapter must observe.
 2. **Adapter contracts:** run the CLI and stdio MCP adapters as separate processes against controlled temporary data, validating JSON envelopes, cursor paging, revisions, error codes, and Exclude from AI behavior.
 3. **Desktop end-to-end:** exercise core capture, edit, sort, Notes, Removed/restore, keyboard accessibility, and failure states in the real macOS Tauri shell.
@@ -163,12 +163,12 @@ Prefer high-seam behavioral tests over tests of private helpers or the exact dir
 
 ## Further Notes / Proposed Clarifications
 
-These are **recommendations awaiting sign-off**, not silently accepted product decisions:
+Q47–Q49 have been accepted. Q46 remains an open domain decision; do not treat its proposed resolution as authorized.
 
-1. When manually moving a partially completed In Progress Task back to Ready, preserve its percentage (a paused task) but do not treat progress as actively running until changed again.
-2. AI integration is explicitly configured by the user for trusted local clients; CLI/MCP is not exposed over a network port. OS-level arbitrary same-user process access is outside the security guarantee.
-3. Restore requires coordination so simultaneously running UI/CLI/MCP clients cannot continue writing stale database state.
-4. Source-code modules and library picks should be decided within the approved ticket that first needs them; avoid adding hypothetical adapter layers or redundant state managers now.
+1. **Q46 pending:** Pausing work or leaving a Task untouched does not automatically change In Progress to Ready or erase progress. Recommended: once begun, it stays In Progress unless completed or explicitly reset. Whether a manual reset back to Ready should be allowed—and whether it also resets progress—must be confirmed.
+2. **Q47 accepted:** AI integration is explicitly configured by the user for trusted local clients; CLI/MCP is not exposed over a network port. OS-level arbitrary same-user process access is outside the security guarantee.
+3. **Test obligation (Q48):** Restore requires coordination so simultaneously running UI/CLI/MCP clients cannot continue writing stale database state.
+4. Source-code modules and library picks should be decided within the relevant ticket that first needs them; avoid adding hypothetical adapter layers or redundant state managers now.
 5. No external audio is shipped until a license-and-asset review and playback quality check passes.
 
 ### Official technical references
