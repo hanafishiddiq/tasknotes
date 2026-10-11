@@ -6,24 +6,24 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** review — implementation and automated checks passed; native GUI click/type acceptance still requires manual verification.
+**Implementation:** review — native GUI Task creation/edit/restart and automated checks verified 2026-10-12; independent code review and merge remain pending.
 
 ## Acceptance criteria
 
 - [x] Launching Tasknotes on the target Mac opens a working Tauri desktop window without any sign-in or network dependency. **Evidence:** native ARM64 debug .app bundle launched, Tasknotes window enumerated by macOS, and synthetic app-data directory initialized SQLite schema v1.
-- [ ] Creating a Task in the UI stores a stable ID, Ready status, 0% progress, and Medium priority through the Rust application core. **Automated seams pass:** React/Tauri command contract + Rust/SQLite core; **actual native window interaction not yet verified**.
-- [ ] Editing a Task title/description and restarting the application preserves exactly one updated Task in SQLite. **Automated seams pass:** UI command contract and core reopen/persist test; **native clicked editor-to-restart path not yet verified**.
+- [x] Creating a Task in the UI stores a stable ID, Ready status, 0% progress, and Medium priority through the Rust application core. **Evidence:** actual native GUI Task created 2026-10-12, persisted in isolated SQLite, then edited; default invariants covered by Rust tests.
+- [x] Editing a Task title/description and restarting the application preserves exactly one updated Task in SQLite. **Evidence:** user native GUI edits confirmed via read-only SQLite, actual macOS process quit/reopen, and native UI screenshot showing edited Task still present.
 - [x] A fresh local database is migrated automatically, while invalid Task data produces an actionable error and does not leave a half-written record. **Evidence:** synthetic native startup schema v1, Rust invalid write + newer-schema negative controls.
 - [x] The first list/query path is bounded and supports pagination or bounded result windows; it does not load every Task into the UI. **Evidence:** Rust cursor pagination test with cap 100; initial UI page 50 and explicit Load More test.
 
 ## Verification
 
-- [ ] Perform manual Tauri GUI create/edit/restart using the built `Tasknotes.app` (macOS accessibility inspection could not expose native WebView input elements; no clicked native E2E result is claimed).
+- [x] User manually exercised Tauri GUI create/edit/restart on 2026-10-12. Read-only SQLite plus native UI screenshot verified the saved Task persisted across an actual process restart.
 - [x] Rust core integration tests on isolated temporary SQLite.
 - [x] React UI tests via the Tauri command seam.
 - [x] Native app launch and schema migration in isolated app-data directory.
 - [x] Relevant automated tests pass (5 React UI tests + 5 Rust core integration tests), TypeScript typecheck, release frontend build, Rust Clippy -D warnings, Rust formatting, native unsigned debug bundle.
-- [x] Apply the two-axis `/code-review` checklist against `main`; see `docs/reviews/ticket-01.md`. Native GUI acceptance remains open, so Ticket 01 is **in review**, not complete.
+- [x] Manual two-axis Standards/Spec review recorded in `docs/reviews/ticket-01.md`. **Independent** code review is still pending (Copilot reviewer quota exhausted), so Ticket 01 is **in review**, not complete.
 
 ## Delivery guardrails
 
@@ -42,3 +42,8 @@
 - **Data safety:** all synthetic fixture data stayed outside Git; no personal Notes/Tasks, secrets, or generated databases staged.
 - **Automated suites:** `pnpm typecheck`; `pnpm test`; `pnpm build`; `cargo test --manifest-path crates/tasknotes-core/Cargo.toml`; `cargo clippy --manifest-path crates/tasknotes-core/Cargo.toml --all-targets -- -D warnings`; both Rust format checks; native Tauri debug bundle build.
 - **Limitation:** the macOS accessibility adapter did not expose WebView fields for the requested native click/type smoke. Do not mark Ticket 01 completed until a manual macOS create→edit→quit/relaunch→verify test is recorded. Other unblocked tickets remain blocked pending this acceptance.
+
+## Native acceptance update — 2026-10-12
+
+- Direct user GUI creation and editing verified in isolated SQLite, then separately after macOS Tasknotes process quit/reopen with a screenshot. See [native QA report](../../../docs/qa/native-acceptance-2026-10-12.md).
+- Code review still needs a genuinely independent reviewer; initial Copilot review could not run (quota reached). The reported UI lag is tracked as a **future performance bug** in [Issue 19](19-native-interaction-lag.md), blocking performance/release quality but not silently extending this ticket.

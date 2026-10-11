@@ -47,3 +47,9 @@
 - **UI:** Next Step and dated notes live in the expanded task editor. Percentage and note/Next Step can be saved atomically; note-only or Next Step-only entries work. Invalid/stale revisions keep draft text visible, history read failures expose retry, and multi-page history avoids loading entire logs.
 - **Native:** ARM64 unsigned `Tasknotes.app` built (~31 MB), started with `TASKNOTES_DEV_DATA_DIR` set to an isolated synthetic temporary directory, and verified SQLite v3, task.next_step, progress_entries, index, zero personal records.
 - **Gate:** Ticket 01 and Ticket 02 are still in Draft PRs. This ticket must remain stacked and unmerged; native GUI click/type/quit/reopen acceptance is still outstanding.
+
+## Follow-up native QA (2026-10-12)
+
+- User's actual native GUI operations persisted task title/description, priority Very High, progress 60%, Next Step and Completed→In Progress (60%) transition. Quit/restart and UI screenshot confirmed retention.
+- **Progress Note remains unverified:** SQLite contains three history events with empty `note` fields even though the user replied they finished the test; do not infer the cause or mark note-entry acceptance complete. See [native QA evidence](../../../docs/qa/native-acceptance-2026-10-12.md).
+- **UX performance bug:** user reports severe lag; tracked in [Bug 19](19-native-interaction-lag.md). Ticket 03 remains in review.

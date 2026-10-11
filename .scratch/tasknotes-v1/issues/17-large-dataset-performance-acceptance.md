@@ -16,6 +16,10 @@
 - [ ] Verify UI/CLI/MCP paging and memory do not load all 60,000 records into a single process result or UI render.
 - [ ] Identify and address measured regressions, or explicitly report unmet acceptance targets rather than claiming benchmark success.
 
+## Incoming performance defect gate
+
+- The user reported severe native GUI lag with only one synthetic Task on 2026-10-12. See [Bug 19](19-native-interaction-lag.md). Reproduce and measure it before asserting performance readiness. Do not mark this ticket complete while the bug is unresolved.
+
 ## Verification
 
 - [ ] Commit a repeatable synthetic benchmark harness and review the measured profile and result summary.
