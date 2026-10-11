@@ -47,3 +47,7 @@
 
 - Direct user GUI creation and editing verified in isolated SQLite, then separately after macOS Tasknotes process quit/reopen with a screenshot. See [native QA report](../../../docs/qa/native-acceptance-2026-10-12.md).
 - Code review still needs a genuinely independent reviewer; initial Copilot review could not run (quota reached). The reported UI lag is tracked as a **future performance bug** in [Issue 19](19-native-interaction-lag.md), blocking performance/release quality but not silently extending this ticket.
+
+## Automated native QA — 2026-10-12
+
+- Native E2E via embedded WKWebView WebDriverIO **passed twice** without user clicking: created Task, edited title/description and reopened a separate native process on the same synthetic SQLite database. See [native WebDriver evidence](../../../docs/qa/native-webdriver-results-2026-10-12.md). The independent Standards/Spec review gate is still open; ticket remains Review.

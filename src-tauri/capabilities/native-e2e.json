@@ -1,0 +1,11 @@
+{
+  "identifier": "native-e2e",
+  "description": "Test-only embedded macOS WebDriver; never loaded in release",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "wdio-webdriver:default",
+    "wdio:default"
+  ]
+}

@@ -10,7 +10,7 @@
 
 ## Acceptance criteria
 
-- [ ] A Task exposes editable progress 0–100%, Next Step, and dated progress notes without leaving the expanded Task. **React/Tauri command-contract tests pass; actual native GUI click/type remains unverified.**
+- [x] A Task exposes editable progress 0–100%, Next Step, and dated progress notes without leaving the expanded Task. **Evidence:** two native WKWebView WebDriverIO runs drove the real UI and asserted actual Rust/SQLite persistence of the note and step.
 - [x] Every substantive progress/status change creates an append-only dated Progress Entry; earlier history remains readable. **Evidence:** Rust tests for status/progress updates, note-only updates, recent history, paging, and immutable snapshots.
 - [x] Completing a Task forces 100%, while an explicit reopen restores its previous incomplete percentage and returns to In Progress. **Evidence:** 0/1/99/100 transition table and prior incomplete progress tests.
 - [x] Temporarily inactive Tasks retain In Progress status, progress, Next Step and history across application restarts. **Evidence:** Rust core reopen persistence and React Tauri-command contract remount tests.
@@ -19,7 +19,7 @@
 ## Verification
 
 - [x] Run core behavior tests for 0/1/99/100 transitions, reopen and history, plus React desktop-command persistence/reload tests.
-- [ ] Perform actual native GUI entry/edit/restart workflow (macOS WebView controls still inaccessible through the existing automation).
+- [x] Native UI entry/edit and app process restart through embedded WKWebView WebDriverIO, with read-only SQLite acceptance across two separate app processes. Dropdown selection uses the documented hidden-window fallback.
 - [x] Relevant automated tests passed: 19 React, 20 Rust integration; TypeScript, Rust core Clippy, Tauri Clippy, Rust formatting, production frontend build, macOS unsigned app build, and isolated native SQLite schema v3 startup.
 - [x] Two-axis Standards/Spec review documented in `docs/reviews/ticket-03.md`; no independent subagent approval claimed. Manual native GUI acceptance and parent dependency remain open.
 
@@ -53,3 +53,7 @@
 - User's actual native GUI operations persisted task title/description, priority Very High, progress 60%, Next Step and Completed→In Progress (60%) transition. Quit/restart and UI screenshot confirmed retention.
 - **Progress Note remains unverified:** SQLite contains three history events with empty `note` fields even though the user replied they finished the test; do not infer the cause or mark note-entry acceptance complete. See [native QA evidence](../../../docs/qa/native-acceptance-2026-10-12.md).
 - **UX performance bug:** user reports severe lag; tracked in [Bug 19](19-native-interaction-lag.md). Ticket 03 remains in review.
+
+## Automated native QA — 2026-10-12
+
+- Native E2E via embedded WKWebView WebDriverIO **passed twice** and SQLite confirms the exact dated Progress Note `Native acceptance passed`, Next Step, four append-only entries and persistence after a separate app process relaunch. The manual 2026-10-12 test had an absent note; the automated test demonstrates that this field can be saved but does not prove why that prior attempt omitted it. See [native WebDriver evidence](../../../docs/qa/native-webdriver-results-2026-10-12.md). Independent review is still pending; ticket remains Review.

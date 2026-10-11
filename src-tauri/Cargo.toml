@@ -14,6 +14,10 @@ edition = "2024"
 name = "tasknotes_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+# Opt-in only. Refused by the source code in release mode.
+native-e2e = ["dep:tauri-plugin-wdio-webdriver", "dep:tauri-plugin-wdio"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -22,6 +26,10 @@ tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tasknotes-core = { path = "../crates/tasknotes-core" }
+# Test-only embedded macOS WebDriver; never a default dependency.
+tauri-plugin-wdio-webdriver = { version = "=1.5.0", optional = true }
+# Execute API and active-window hints are scoped to the same opt-in QA build.
+tauri-plugin-wdio = { version = "=1.5.0", optional = true }
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

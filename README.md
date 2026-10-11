@@ -33,6 +33,18 @@ pnpm tauri dev
 
 The application uses a local SQLite file inside the OS-managed Tauri application-data directory (bundle identifier `store.adamaja.tasknotes`). **Do not store personal Task data in the repository.** The initial Task list fetches no more than 50 Tasks and exposes a Load More button for pagination.
 
+### Native UI acceptance (automated)
+
+On a macOS development machine, you can test real native Tasknotes behavior without manual clicking:
+
+```bash
+pnpm qa:native:build   # one-time debug QA build; optional native WebDriver
+pnpm qa:native         # two separate app processes, synthetic SQLite, exact results
+pnpm tauri build --debug --bundles app --no-sign --ci   # restores ordinary desktop app
+```
+
+See [native WebDriver QA results](docs/qa/native-webdriver-results-2026-10-12.md) and [safety/limitations](docs/qa/native-webdriver-e2e.md). **Never ship or use the QA WebDriver build on a personal Tasknotes database.** The native QA build requires its own private synthetic TMPDIR path; the normal release build refuses the QA feature.
+
 ### Development tests
 
 ```bash
