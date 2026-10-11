@@ -645,3 +645,223 @@ textarea:focus-visible {
   margin-top: 17px;
   min-width: 140px;
 }
+
+/* Ticket 02 — status/priority indicators and compact inline controls */
+.task-group {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.task-group + .task-group {
+  margin-top: 19px;
+}
+.task-group-heading {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  color: #7975a8;
+  padding: 3px 2px 5px;
+}
+.task-group-heading h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 750;
+}
+.task-group-heading span {
+  font-size: 10px;
+  background: #f3f1fc;
+  border-radius: 7px;
+  padding: 3px 7px;
+  color: #77718c;
+}
+.task-group:has(.status-pill--completed) .task-group-heading {
+  color: #589b7f;
+}
+.task-group:has(.status-pill--ready) .task-group-heading {
+  color: #7c8399;
+}
+.status-pill,
+.priority-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.status-color--in_progress {
+  color: #736bd1;
+}
+.status-color--ready {
+  color: #a5a6bd;
+}
+.status-color--completed {
+  color: #52a07d;
+}
+.status-pill--in_progress {
+  background: #efedff;
+  color: #5548a9;
+}
+.status-pill--ready {
+  background: #f1f2f8;
+  color: #606b80;
+}
+.status-pill--completed {
+  background: #eaf7f0;
+  color: #2e7854;
+}
+.priority-pill--very_low {
+  background: #f2f3f6;
+  color: #5c6575;
+}
+.priority-pill--low {
+  background: #ecf4ff;
+  color: #326ba9;
+}
+.priority-pill--medium {
+  background: #fbf5de;
+  color: #7b601d;
+}
+.priority-pill--high {
+  background: #fff0e6;
+  color: #984a21;
+}
+.priority-pill--very_high {
+  background: #ffedf0;
+  color: #a82d49;
+}
+.progress-readout {
+  font-size: 11px;
+  color: #8a8da5;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  min-width: 30px;
+  text-align: right;
+}
+.sort-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #9294a8;
+  font-size: 11px;
+  font-weight: 600;
+}
+.sort-control select,
+.task-controls select,
+.task-controls input {
+  border: 1px solid #e7e6f1;
+  background: #fff;
+  color: #56536e;
+  border-radius: 8px;
+  padding: 8px 9px;
+  font-size: 12px;
+  min-width: 0;
+}
+.sort-control select {
+  min-height: 34px;
+}
+.task-controls {
+  border-top: 1px solid #edeef5;
+  margin-top: 17px;
+  padding-top: 16px;
+  display: grid;
+  gap: 11px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.task-controls label {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 7px;
+  min-width: 0;
+}
+.task-controls select,
+.task-controls input {
+  width: 100%;
+  min-height: 38px;
+}
+.task-controls button {
+  grid-column: 3;
+  justify-self: end;
+}
+.button-secondary {
+  color: #655bc0;
+  background: #eeeafd;
+}
+.button-secondary:hover:not(:disabled) {
+  background: #e0daf8;
+}
+.metadata-hint {
+  font-size: 11px;
+  color: #a77a51;
+  margin: 9px 0 0;
+}
+@media (max-width: 1120px) {
+  .task-row-meta {
+    gap: 5px;
+  }
+  .status-pill,
+  .priority-pill {
+    padding: 4px 6px;
+  }
+}
+@media (max-width: 860px) {
+  .task-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .task-controls button {
+    grid-column: 2;
+  }
+  .sort-control {
+    font-size: 0;
+  }
+  .sort-control select {
+    font-size: 12px;
+  }
+  .priority-pill {
+    font-size: 10px;
+  }
+}
+@media (max-width: 610px) {
+  .status-pill {
+    display: none;
+  }
+  .task-controls {
+    grid-template-columns: 1fr;
+  }
+  .task-controls button {
+    grid-column: 1;
+    justify-self: stretch;
+  }
+}
+
+.text-button {
+  border: 0;
+  padding: 3px 5px;
+  margin-left: 5px;
+  background: transparent;
+  color: #7164bd;
+  font-size: 11px;
+  font-weight: 650;
+  text-decoration: underline;
+}
+.error-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+@media (max-width: 700px) {
+  /* Preserve priority visibility on narrow screens: never communicate the
+     chosen level solely through a hidden desktop badge or its color. */
+  .priority-pill {
+    display: inline-flex;
+    font-size: 9px;
+    padding: 4px 5px;
+  }
+  .task-row {
+    gap: 6px;
+    padding: 12px 9px;
+  }
+  .task-row-meta {
+    gap: 4px;
+  }
+}

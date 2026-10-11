@@ -1,4 +1,6 @@
-use tasknotes_core::tasks::{CreateTask, Task, TaskPage, TaskStore, UpdateTask};
+use tasknotes_core::tasks::{
+    ChangeTask, CreateTask, SortMode, Task, TaskPage, TaskStore, UpdateTask,
+};
 use tauri::{Manager, State};
 
 #[tauri::command]
@@ -6,9 +8,10 @@ fn list_tasks(
     store: State<'_, TaskStore>,
     limit: u32,
     cursor: Option<String>,
+    sort: Option<SortMode>,
 ) -> Result<TaskPage, String> {
     store
-        .list_tasks(limit, cursor.as_deref())
+        .list_tasks_sorted(limit, cursor.as_deref(), sort.unwrap_or_default())
         .map_err(|error| error.to_string())
 }
 
@@ -20,6 +23,11 @@ fn create_task(store: State<'_, TaskStore>, input: CreateTask) -> Result<Task, S
 #[tauri::command]
 fn update_task(store: State<'_, TaskStore>, input: UpdateTask) -> Result<Task, String> {
     store.update_task(input).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn change_task(store: State<'_, TaskStore>, input: ChangeTask) -> Result<Task, String> {
+    store.change_task(input).map_err(|error| error.to_string())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -41,7 +49,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             list_tasks,
             create_task,
-            update_task
+            update_task,
+            change_task
         ])
         .run(tauri::generate_context!())
         .expect("Unable to launch Tasknotes");
