@@ -22,6 +22,8 @@ Follow the locally installed Matt Pocock skill workflow: **grill-with-docs → t
 
 See [planning decisions](docs/planning/DECISIONS.md) and [domain terms](GLOSSARY.md).
 
+Current review artifacts: [specification draft](docs/planning/SPEC-DRAFT.md) and [tracer-bullet ticket proposal](docs/planning/TICKETS-PROPOSAL.md). These are **drafts, not implementation authorizations**.
+
 ## Privacy
 
 This repository is public, **but user tasks, notes, SQLite databases, backups, private exports, secrets, and ambient audio assets with unverified redistribution rights must never be committed**. Never use real personal content in fixtures or screenshots. Development samples must be synthetic.

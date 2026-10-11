@@ -38,3 +38,18 @@ A standalone editable document that can optionally be linked to a task.
 
 **Exclude from AI**:
 A note-level privacy control that prevents access to that note via AI-facing interfaces.
+
+**Progress Entry**:
+An immutable dated record of a Task's progress update or work-status transition.
+
+**Next Step**:
+The next intended action recorded against a Task to help a person or AI resume work.
+
+**Note Link**:
+A reversible association between a Task and a Note; removing the association does not remove either entity.
+
+**Folder**:
+A category that organizes Notes independently from Task Lists.
+
+**Audit Entry**:
+An immutable dated record that an official Tasknotes interface made or attempted a consequential change.

@@ -53,9 +53,33 @@ Stage: planning / grilling, not implementation.
 - Default interaction audio ON at 12% and ambient audio ON at 8%. Each can be muted and adjusted independently; persisted per-device settings retain volume preferences.
 - Markdown is the canonical notes storage format; rich-text/WYSIWYG interaction is an editor presentation layer with stable format round-tripping.
 
-## Still to resolve after Round 4
 
-- Onboarding behavior, navigational UX, and layout variants.
-- Removed parent-child semantics, task history editing, and privacy-preserving AI search/export.
-- Audio persistence, pause behavior, playback permissions, and asset-license acceptance.
-- First implementation acceptance targets, error-recovery expectations, and public release criteria.
+## Round 5 — Accepted (2026-10-11)
+
+### Desktop UX
+- **Q33:** Default landing view is All Tasks. Sidebar shows Inbox, Lists, Notes, Removed, and Settings. Empty states invite creation without fabricated sample tasks.
+- **Q34:** At most one Task expands inline at a time; details can be edited without leaving the list. Preserve scroll position and keep transitions light.
+- **Q35:** Setting progress to 100% completes the Task; increasing a Ready Task to 1–99% switches it to In Progress; lowering a Completed Task below 100% reopens it. Preserve prior in-progress percentage when manually reopening as agreed in Round 4.
+- **Q36:** Removing a List hides child Tasks without separately removing them. Restoring the List does not restore any child that was independently Removed.
+- **Q37:** Task–Note links are many-to-many; unlinking never destroys either entity.
+
+### Priority, search, AI access
+- **Q38:** Priority design uses Very Low = grey, Low = blue, Medium = yellow, High = orange, Very High = red, with symbols/labels in addition to color. Medium is the default.
+- **Q39:** Global Search covers Task title, description, progress notes, and Note content. Filters: work status, priority, List, tags. Removed items are omitted from normal search unless explicitly included.
+- **Q40:** AI-facing output uses versioned structured JSON with `schema_version`, `items`, `next_cursor`, revision metadata, and stable error codes; default page size is 50.
+- **Q41:** Change history is append-only. Individual AI CRUD works directly, while high-risk bulk mutations require a preview and confirmation mechanism.
+
+### Backup, sound, system integration and performance
+- **Q42:** Local automatic backup retention is 7 daily / 4 weekly / 3 monthly snapshots. Restore validates the snapshot before applying changes.
+- **Q43:** Ambient audio must run offline using third-party assets only after the license and suitability are verified. Provide instant mute and benchmark playback, CPU and minimized-window behavior.
+- **Q44:** Closing the window quits by default; optional menu-bar mode keeps the app alive. Global shortcut is user-configurable if it conflicts with existing shortcuts.
+- **Q45:** Benchmark 50,000 Tasks and 10,000 Notes on the target Mac, aiming for search p95 <250 ms and scrolling close to 60 FPS. Measure and report results instead of claiming performance without evidence.
+
+## Open details awaiting specification sign-off
+
+- Test seams and integration-test boundaries for Rust core, UI, CLI, and MCP.
+- Whether manually pausing an In Progress Task back to Ready should preserve nonzero progress (recommended: yes).
+- Local AI onboarding/explicit trust configuration and guarantees under arbitrary filesystem access.
+- Backup restore while UI/AI clients are running; startup recovery on interrupted writes.
+- Concrete keyboard shortcut defaults, audio fallback when autoplay cannot begin, and performance measurement protocol.
+- Confirm ticket scope and blocking edges before publishing `/to-tickets` files. No implementation is authorized during planning.
