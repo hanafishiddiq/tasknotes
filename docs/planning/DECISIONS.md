@@ -41,11 +41,21 @@ Stage: planning / grilling, not implementation.
 - Follow Matt Pocock skill workflow: grill-with-docs → to-spec → to-tickets → implement/TDD → code-review.
 - Repository publication must contain only generic code and planning material, never real task/note data, backups or secrets.
 
-## Still to resolve in grilling
+## Round 4 — Accepted (2026-10-11)
 
-- Exact AI interface contract, authorization model, concurrency semantics and audit retention.
-- Task/notes interaction details, default views and first-run/empty-state design.
-- Status transition edge cases and how progress-history entries interact with editing.
-- Settings and asset packaging, audio consent and macOS permissions/shortcuts.
-- Setup-matt-pocock-skills instruction-file choice (AGENTS.md vs CLAUDE.md) and final setup scaffolding.
-- Acceptance criteria and testing thresholds before to-spec/to-tickets.
+- Use `AGENTS.md` as the repository's main engineering instruction file.
+- Configure `/setup-matt-pocock-skills` with local Markdown tracking, canonical triage labels (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`), one root glossary, and root ADRs.
+- Keep the public GitHub repository **without a source-code license for now**; public visibility is not an open-source grant.
+- All official AI and desktop adapters use the same Rust application core. CLI/MCP support structured operations, filters, pagination and consistent JSON results; no always-running localhost HTTP service in v1.
+- Exclude from AI protects both data and metadata at official AI interfaces; explicitly **not** a guarantee against software with arbitrary filesystem/shell access.
+- Every edit must handle concurrent changes using a revision token and optimistic concurrency; stale writes fail clearly rather than silently overwriting.
+- Completing a task sets 100%; reopening restores the last in-progress percentage, and changes are recorded in progress history.
+- Default interaction audio ON at 12% and ambient audio ON at 8%. Each can be muted and adjusted independently; persisted per-device settings retain volume preferences.
+- Markdown is the canonical notes storage format; rich-text/WYSIWYG interaction is an editor presentation layer with stable format round-tripping.
+
+## Still to resolve after Round 4
+
+- Onboarding behavior, navigational UX, and layout variants.
+- Removed parent-child semantics, task history editing, and privacy-preserving AI search/export.
+- Audio persistence, pause behavior, playback permissions, and asset-license acceptance.
+- First implementation acceptance targets, error-recovery expectations, and public release criteria.
