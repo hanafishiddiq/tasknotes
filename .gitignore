@@ -1,0 +1,47 @@
+# OS / local editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Secrets and credentials
+.env
+.env.*
+!.env.example
+.secrets/
+*.pem
+*.key
+*.p12
+*.p8
+credentials.json
+
+# User-generated content and local storage: never commit
+data/
+user-data/
+backups/
+exports/
+attachments/
+local-assets/
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.db3
+*.db3-*
+*.log
+
+# Build/dependency outputs
+node_modules/
+dist/
+build/
+target/
+src-tauri/target/
+coverage/
+*.tsbuildinfo
+
+# Local packaging/output
+*.dmg
+*.app/
+*.pkg
