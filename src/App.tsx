@@ -3,7 +3,7 @@ import {
   ArrowRight, CheckCircle2, ChevronDown, Clock3,
   Inbox, LoaderCircle, LockKeyhole, Plus, Sparkles,
 } from "lucide-react";
-import { taskApi, type Task, type SortMode, type TaskChange } from "./lib/task-api";
+import { taskApi, type Task, type SortMode, type TaskChange, type ProgressDraft } from "./lib/task-api";
 import { STATUS_ORDER, STATUS_VIEW } from "./lib/task-visuals";
 import TaskRow from "./components/TaskRow";
 import "./App.css";
@@ -109,16 +109,12 @@ export default function App() {
     }
   }
 
-  async function changeTask(task: Task, change: TaskChange) {
+  async function commitTaskMutation(task: Task, mutate: () => Promise<Task>) {
     if (savingId) return;
     setSavingId(task.id);
     setError(null);
     try {
-      const updated = await taskApi.change({
-        id: task.id,
-        expectedRevision: task.revision,
-        ...change,
-      });
+      const updated = await mutate();
       setTasks((current) => current.map((item) => item.id === updated.id ? updated : item));
       // The mutation already succeeded; a failed refresh is not a failed save.
       try {
@@ -136,6 +132,22 @@ export default function App() {
     } finally {
       setSavingId(null);
     }
+  }
+
+  async function changeTask(task: Task, change: TaskChange) {
+    await commitTaskMutation(task, () => taskApi.change({
+      id: task.id,
+      expectedRevision: task.revision,
+      ...change,
+    }));
+  }
+
+  async function recordProgress(task: Task, update: ProgressDraft) {
+    await commitTaskMutation(task, () => taskApi.recordProgress({
+      id: task.id,
+      expectedRevision: task.revision,
+      ...update,
+    }));
   }
 
   function changeSort(nextSort: SortMode) {
@@ -309,6 +321,7 @@ export default function App() {
                           onToggle={() => setExpandedId((current) => current === task.id ? null : task.id)}
                           onSave={(nextTitle, nextDescription) => updateTask(task, nextTitle, nextDescription)}
                           onChange={(change) => changeTask(task, change)}
+                          onRecordProgress={(update) => recordProgress(task, update)}
                         />
                       ))}
                     </section>

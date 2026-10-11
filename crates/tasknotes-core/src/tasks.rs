@@ -26,6 +26,16 @@ pub enum TaskError {
     InvalidCursor,
     #[error("Task not found")]
     NotFound,
+    #[error("Progress update must change a field or include a non-empty note")]
+    EmptyProgressUpdate,
+    #[error("Next Step cannot exceed 4,000 characters")]
+    NextStepTooLong,
+    #[error("Progress note cannot exceed 10,000 characters")]
+    ProgressNoteTooLong,
+    #[error("History page size must be between 1 and 50")]
+    InvalidHistoryPageSize,
+    #[error("History cursor is invalid")]
+    InvalidHistoryCursor,
     #[error("Task changes must specify status, priority, or progress")]
     EmptyChange,
     #[error("Progress must be between 0 and 100")]
@@ -131,6 +141,7 @@ pub struct Task {
     pub status: WorkStatus,
     pub priority: Priority,
     pub progress: u8,
+    pub next_step: String,
     pub revision: i64,
     pub created_at: i64,
     pub updated_at: i64,
@@ -177,6 +188,40 @@ pub struct ChangeTask {
     pub status: Option<WorkStatus>,
     pub priority: Option<Priority>,
     pub progress: Option<u8>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecordProgress {
+    pub id: String,
+    pub expected_revision: i64,
+    pub status: Option<WorkStatus>,
+    pub progress: Option<u8>,
+    /// None leaves the field intact. Some("") explicitly clears the field.
+    pub next_step: Option<String>,
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProgressEntry {
+    pub sequence: i64,
+    pub id: String,
+    pub task_id: String,
+    pub previous_status: WorkStatus,
+    pub status: WorkStatus,
+    pub previous_progress: u8,
+    pub progress: u8,
+    pub note: String,
+    pub next_step: String,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProgressHistoryPage {
+    pub items: Vec<ProgressEntry>,
+    pub next_cursor: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -229,14 +274,14 @@ fn read_task(row: &Row<'_>) -> rusqlite::Result<Task> {
         status: WorkStatus::from_sql(&status).ok_or_else(|| invalid_db_text(3, status))?,
         priority: Priority::from_sql(&priority).ok_or_else(|| invalid_db_text(4, priority))?,
         progress: row.get(5)?,
+        next_step: row.get(9)?,
         revision: row.get(6)?,
         created_at: row.get(7)?,
         updated_at: row.get(8)?,
     })
 }
 
-const COLUMNS: &str =
-    "id, title, description, status, priority, progress, revision, created_at, updated_at";
+const COLUMNS: &str = "id, title, description, status, priority, progress, revision, created_at, updated_at, next_step";
 
 impl TaskStore {
     /// Opens an on-disk database and applies transactional, forward-only migrations.
@@ -248,7 +293,7 @@ impl TaskStore {
         let mut connection = Connection::open(path)?;
         connection.busy_timeout(Duration::from_secs(5))?;
         let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        if version > 2 {
+        if version > 3 {
             return Err(TaskError::UnsupportedSchema(version));
         }
 
@@ -295,6 +340,27 @@ impl TaskStore {
             )?;
             migration.commit()?;
         }
+        if version < 3 {
+            let migration = connection.transaction()?;
+            migration.execute_batch(
+                "ALTER TABLE tasks ADD COLUMN next_step TEXT NOT NULL DEFAULT '';
+                 CREATE TABLE progress_entries (
+                    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id TEXT NOT NULL UNIQUE,
+                    task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE RESTRICT,
+                    previous_status TEXT NOT NULL CHECK(previous_status IN ('ready', 'in_progress', 'completed')),
+                    status TEXT NOT NULL CHECK(status IN ('ready', 'in_progress', 'completed')),
+                    previous_progress INTEGER NOT NULL CHECK(previous_progress BETWEEN 0 AND 100),
+                    progress INTEGER NOT NULL CHECK(progress BETWEEN 0 AND 100),
+                    note TEXT NOT NULL DEFAULT '',
+                    next_step TEXT NOT NULL DEFAULT '',
+                    created_at INTEGER NOT NULL
+                 );
+                 CREATE INDEX progress_entries_task_sequence ON progress_entries(task_id, sequence DESC);
+                 PRAGMA user_version = 3;",
+            )?;
+            migration.commit()?;
+        }
         Ok(Self {
             path: path.to_path_buf(),
         })
@@ -317,14 +383,15 @@ impl TaskStore {
             status: WorkStatus::Ready,
             priority: Priority::Medium,
             progress: 0,
+            next_step: String::new(),
             revision: 1,
             created_at: now,
             updated_at: now,
         };
         self.connect()?.execute(
             "INSERT INTO tasks
-             (id, title, description, status, priority, progress, revision, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+             (id, title, description, status, priority, progress, revision, created_at, updated_at, next_step)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 task.id,
                 task.title,
@@ -334,7 +401,8 @@ impl TaskStore {
                 task.progress,
                 task.revision,
                 task.created_at,
-                task.updated_at
+                task.updated_at,
+                task.next_step
             ],
         )?;
         Ok(task)
@@ -386,8 +454,49 @@ impl TaskStore {
     /// Ready means not yet started. An in-progress Task does not become Ready when
     /// its percentage drops to zero; resetting previously started work is not implicit.
     pub fn change_task(&self, input: ChangeTask) -> Result<Task, TaskError> {
-        if input.status.is_none() && input.priority.is_none() && input.progress.is_none() {
-            return Err(TaskError::EmptyChange);
+        self.apply_task_change(input, None, None)
+    }
+
+    /// Record a dated update to a Task's progress and/or Next Step; a note can
+    /// stand alone so the user can log work without changing the percentage.
+    pub fn record_progress(&self, input: RecordProgress) -> Result<Task, TaskError> {
+        self.apply_task_change(
+            ChangeTask {
+                id: input.id,
+                expected_revision: input.expected_revision,
+                status: input.status,
+                progress: input.progress,
+                priority: None,
+            },
+            input.next_step,
+            input.note,
+        )
+    }
+
+    fn apply_task_change(
+        &self,
+        input: ChangeTask,
+        next_step: Option<String>,
+        note: Option<String>,
+    ) -> Result<Task, TaskError> {
+        let note = note.unwrap_or_default();
+        if note.chars().count() > 10_000 {
+            return Err(TaskError::ProgressNoteTooLong);
+        }
+        let note = note.trim().to_owned();
+        if next_step
+            .as_ref()
+            .is_some_and(|value| value.chars().count() > 4_000)
+        {
+            return Err(TaskError::NextStepTooLong);
+        }
+        if input.status.is_none()
+            && input.priority.is_none()
+            && input.progress.is_none()
+            && next_step.is_none()
+            && note.is_empty()
+        {
+            return Err(TaskError::EmptyProgressUpdate);
         }
         if input.progress.is_some_and(|progress| progress > 100) {
             return Err(TaskError::InvalidProgress);
@@ -399,7 +508,7 @@ impl TaskStore {
             format!("SELECT {COLUMNS}, previous_incomplete_progress FROM tasks WHERE id = ?1");
         let current = transaction
             .query_row(&sql, params![input.id], |row| {
-                Ok((read_task(row)?, row.get::<_, u8>(9)?))
+                Ok((read_task(row)?, row.get::<_, u8>(10)?))
             })
             .optional()?;
         let (before, mut previous_incomplete) = current.ok_or(TaskError::NotFound)?;
@@ -455,14 +564,25 @@ impl TaskStore {
             previous_incomplete = next_progress;
         }
         let next_priority = input.priority.unwrap_or(before.priority);
+        let new_next_step = next_step
+            .map(|value| value.trim().to_owned())
+            .unwrap_or_else(|| before.next_step.clone());
+        let substantive = next_status != before.status
+            || next_progress != before.progress
+            || new_next_step != before.next_step
+            || !note.is_empty();
+        if !substantive && next_priority == before.priority {
+            return Err(TaskError::EmptyProgressUpdate);
+        }
         let now = current_millis()?;
         let sql = format!(
             "UPDATE tasks SET
                 status = ?1, priority = ?2, progress = ?3,
                 previous_incomplete_progress = ?4,
+                next_step = ?5,
                 revision = revision + 1,
-                updated_at = max(updated_at + 1, ?5)
-             WHERE id = ?6 AND revision = ?7
+                updated_at = max(updated_at + 1, ?6)
+             WHERE id = ?7 AND revision = ?8
              RETURNING {COLUMNS}"
         );
         let updated = transaction.query_row(
@@ -472,14 +592,92 @@ impl TaskStore {
                 next_priority.as_sql(),
                 next_progress,
                 previous_incomplete,
+                new_next_step,
                 now,
                 input.id,
                 input.expected_revision
             ],
             read_task,
         )?;
+        if substantive {
+            transaction.execute(
+                "INSERT INTO progress_entries
+                  (id, task_id, previous_status, status, previous_progress, progress,
+                   note, next_step, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![
+                    Uuid::new_v4().to_string(),
+                    updated.id,
+                    before.status.as_sql(),
+                    updated.status.as_sql(),
+                    before.progress,
+                    updated.progress,
+                    note,
+                    updated.next_step,
+                    updated.updated_at
+                ],
+            )?;
+        }
         transaction.commit()?;
         Ok(updated)
+    }
+
+    /// Recent Progress Entries in reverse write order. The sequence is an
+    /// append-only cursor, so entries written in the same millisecond do not
+    /// reorder or disappear when moving between pages.
+    pub fn list_progress_entries(
+        &self,
+        task_id: &str,
+        limit: u32,
+        before: Option<i64>,
+    ) -> Result<ProgressHistoryPage, TaskError> {
+        if !(1..=50).contains(&limit) {
+            return Err(TaskError::InvalidHistoryPageSize);
+        }
+        if before.is_some_and(|cursor| cursor <= 0) {
+            return Err(TaskError::InvalidHistoryCursor);
+        }
+        let conn = self.connect()?;
+        if !conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM tasks WHERE id = ?1)",
+            params![task_id],
+            |row| row.get::<_, bool>(0),
+        )? {
+            return Err(TaskError::NotFound);
+        }
+        let mut statement = conn.prepare(
+            "SELECT sequence, id, task_id, previous_status, status,
+                    previous_progress, progress, note, next_step, created_at
+             FROM progress_entries
+             WHERE task_id = ?1 AND (?2 IS NULL OR sequence < ?2)
+             ORDER BY sequence DESC LIMIT ?3",
+        )?;
+        let mut rows = statement.query(params![task_id, before, i64::from(limit) + 1])?;
+        let mut items = Vec::with_capacity(limit as usize + 1);
+        while let Some(row) = rows.next()? {
+            let prev: String = row.get(3)?;
+            let next: String = row.get(4)?;
+            items.push(ProgressEntry {
+                sequence: row.get(0)?,
+                id: row.get(1)?,
+                task_id: row.get(2)?,
+                previous_status: WorkStatus::from_sql(&prev)
+                    .ok_or_else(|| invalid_db_text(3, prev))?,
+                status: WorkStatus::from_sql(&next).ok_or_else(|| invalid_db_text(4, next))?,
+                previous_progress: row.get(5)?,
+                progress: row.get(6)?,
+                note: row.get(7)?,
+                next_step: row.get(8)?,
+                created_at: row.get(9)?,
+            });
+        }
+        let next_cursor = if items.len() > limit as usize {
+            items.pop();
+            items.last().map(|entry| entry.sequence)
+        } else {
+            None
+        };
+        Ok(ProgressHistoryPage { items, next_cursor })
     }
 
     /// Backwards-compatible default: work status is always the outer sort key,

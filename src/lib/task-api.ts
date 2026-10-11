@@ -11,6 +11,7 @@ export interface Task {
   status: WorkStatus;
   priority: Priority;
   progress: number;
+  nextStep: string;
   revision: number;
   createdAt: number;
   updatedAt: number;
@@ -42,15 +43,52 @@ export type ChangeTaskInput = TaskChange & {
   expectedRevision: number;
 };
 
+export interface ProgressDraft {
+  status?: WorkStatus;
+  progress?: number;
+  nextStep?: string;
+  note?: string;
+}
+
+export type RecordProgressInput = ProgressDraft & {
+  id: string;
+  expectedRevision: number;
+};
+
+export interface ProgressEntry {
+  sequence: number;
+  id: string;
+  taskId: string;
+  previousStatus: WorkStatus;
+  status: WorkStatus;
+  previousProgress: number;
+  progress: number;
+  note: string;
+  nextStep: string;
+  createdAt: number;
+}
+
+export interface ProgressHistoryPage {
+  items: ProgressEntry[];
+  nextCursor: number | null;
+}
+
 export const TASK_PAGE_SIZE = 50;
+export const HISTORY_PAGE_SIZE = 10;
 
 // The desktop talks only to the Tauri command seam. Business rules live in Rust.
 export const taskApi = {
-  list(cursor: string | null = null, sort: SortMode = "priority"): Promise<TaskPage> {
+  list(
+    cursor: string | null = null,
+    sort: SortMode = "priority",
+  ): Promise<TaskPage> {
     // Omit the default for compatibility with the first Ticket's command contract.
-    return invoke("list_tasks", sort === "priority"
-      ? { limit: TASK_PAGE_SIZE, cursor }
-      : { limit: TASK_PAGE_SIZE, cursor, sort });
+    return invoke(
+      "list_tasks",
+      sort === "priority"
+        ? { limit: TASK_PAGE_SIZE, cursor }
+        : { limit: TASK_PAGE_SIZE, cursor, sort },
+    );
   },
 
   create(input: TaskDraft): Promise<Task> {
@@ -63,5 +101,20 @@ export const taskApi = {
 
   change(input: ChangeTaskInput): Promise<Task> {
     return invoke("change_task", { input });
+  },
+
+  recordProgress(input: RecordProgressInput): Promise<Task> {
+    return invoke("record_progress", { input });
+  },
+
+  history(
+    taskId: string,
+    before: number | null = null,
+  ): Promise<ProgressHistoryPage> {
+    return invoke("list_progress_entries", {
+      taskId,
+      limit: HISTORY_PAGE_SIZE,
+      before,
+    });
   },
 };

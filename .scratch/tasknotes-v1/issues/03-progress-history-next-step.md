@@ -6,21 +6,22 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** not started — requires an explicit phase-transition instruction.
+**Implementation:** review — feature and automated acceptance implemented; native GUI interaction remains unverified, and parent Tickets 01–02 are still in review.
 
 ## Acceptance criteria
 
-- [ ] A Task exposes editable progress 0–100%, Next Step, and dated progress notes without leaving the expanded Task.
-- [ ] Every substantive progress/status change creates an append-only dated Progress Entry; earlier history remains readable.
-- [ ] Completing a Task forces 100%, while an explicit reopen restores its previous incomplete percentage and returns to In Progress.
-- [ ] Temporarily inactive Tasks retain In Progress status, progress, Next Step and history across application restarts.
-- [ ] Invalid percentages or updates that conflict with current status do not corrupt stored values or history.
+- [ ] A Task exposes editable progress 0–100%, Next Step, and dated progress notes without leaving the expanded Task. **React/Tauri command-contract tests pass; actual native GUI click/type remains unverified.**
+- [x] Every substantive progress/status change creates an append-only dated Progress Entry; earlier history remains readable. **Evidence:** Rust tests for status/progress updates, note-only updates, recent history, paging, and immutable snapshots.
+- [x] Completing a Task forces 100%, while an explicit reopen restores its previous incomplete percentage and returns to In Progress. **Evidence:** 0/1/99/100 transition table and prior incomplete progress tests.
+- [x] Temporarily inactive Tasks retain In Progress status, progress, Next Step and history across application restarts. **Evidence:** Rust core reopen persistence and React Tauri-command contract remount tests.
+- [x] Invalid percentages or updates that conflict with current status do not corrupt stored values or history. **Evidence:** invalid inputs, optimistic revision conflict, oversized text rejection, and SQLite synthetic journal-failure rollback test.
 
 ## Verification
 
-- [ ] Run core behavior tests for 0/1/99/100 transitions, reopen and history, plus one desktop persistence scenario.
-- [ ] Relevant tests pass and evidence is recorded here.
-- [ ] Run `/code-review` and address findings before marking complete.
+- [x] Run core behavior tests for 0/1/99/100 transitions, reopen and history, plus React desktop-command persistence/reload tests.
+- [ ] Perform actual native GUI entry/edit/restart workflow (macOS WebView controls still inaccessible through the existing automation).
+- [x] Relevant automated tests passed: 19 React, 20 Rust integration; TypeScript, Rust core Clippy, Tauri Clippy, Rust formatting, production frontend build, macOS unsigned app build, and isolated native SQLite schema v3 startup.
+- [x] Two-axis Standards/Spec review documented in `docs/reviews/ticket-03.md`; no independent subagent approval claimed. Manual native GUI acceptance and parent dependency remain open.
 
 ## Delivery guardrails
 
@@ -31,3 +32,18 @@
 - This is an implementation ticket, not proof that implementation has begun.
 
 ## Comments
+
+## Dependency handling
+
+- Work is stacked above `feat/ticket-02-status-priority-order`, with PR base Ticket 02, not `main`.
+- Native GUI interaction/restart acceptance of parent tickets remains unverified; do not claim parent completion or merge this ticket to main.
+
+## Evidence — 2026-10-11
+
+- **RED→GREEN:** missing `RecordProgress`/history API produced the expected red Rust tests; then they passed after the v3 migration and shared atomic mutation implementation. UI Next Step/Progress History tests failed first and later passed. Oversized whitespace note validation and simulated history-write failure were tested as negative controls.
+- **Rust core:** `record_progress` and all pre-existing `change_task` writes route through one transaction so Task revision/progress and append-only event cannot diverge. Previous status/progress, new status/progress, note, Next Step snapshot, and timestamp are persisted; priority-only edits do not produce fake Progress Entries.
+- **Pagination:** recent history loads only on expansion, with 10 entries by default. SQLite enforces limit 1–50 and keyset cursor by monotonically increasing sequence; timestamps are displayed in the local UI.
+- **Migration:** v2→v3 preserves existing Tasks, revision, title, description, status, priority, and previous incomplete progress. v1→v2→v3 also passes. Old application binaries reject the newer schema, so obtain a safe backup before deployment.
+- **UI:** Next Step and dated notes live in the expanded task editor. Percentage and note/Next Step can be saved atomically; note-only or Next Step-only entries work. Invalid/stale revisions keep draft text visible, history read failures expose retry, and multi-page history avoids loading entire logs.
+- **Native:** ARM64 unsigned `Tasknotes.app` built (~31 MB), started with `TASKNOTES_DEV_DATA_DIR` set to an isolated synthetic temporary directory, and verified SQLite v3, task.next_step, progress_entries, index, zero personal records.
+- **Gate:** Ticket 01 and Ticket 02 are still in Draft PRs. This ticket must remain stacked and unmerged; native GUI click/type/quit/reopen acceptance is still outstanding.

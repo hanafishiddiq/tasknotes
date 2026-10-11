@@ -2,7 +2,7 @@
 
 A local-first macOS desktop app for tasks and notes, with a machine-friendly interface for trusted AI tools.
 
-> **Project stage:** Ticket 01 is implemented on the dedicated feature branch. The remaining 17 tickets are not implemented.
+> **Project stage:** Tickets 01–03 are implemented on stacked feature branches and awaiting native GUI acceptance. The other 15 tickets have not started.
 
 ## Agreed direction
 
@@ -22,7 +22,7 @@ Follow the locally installed Matt Pocock skill workflow: **grill-with-docs → t
 
 ## Ticket 01: run the desktop preview
 
-The first vertical slice implements **create, list, expand/edit and persistent local Tasks**. Every new Task starts in **Ready**, at **Medium** priority and **0%** progress. Later tickets add status/priority editing, Notes, search, ambient audio and AI integrations.
+The first vertical slice implements **create, list, expand/edit and persistent local Tasks**. Every new Task starts in **Ready**, at **Medium** priority and **0%** progress. Subsequent stacked Tickets 02–03 add three work statuses, five priorities, fixed ordering, 0–100% progress, Next Step and dated Progress Entries. Notes, global search, ambient audio and AI integrations remain future tickets.
 
 Required: macOS with Xcode Command Line Tools, Node.js, pnpm, and Rust (`cargo` available in PATH).
 
@@ -44,11 +44,13 @@ cargo fmt --manifest-path crates/tasknotes-core/Cargo.toml --all -- --check
 pnpm tauri build --debug --bundles app --no-sign --ci
 ```
 
+The current development branch uses SQLite **schema v3**: a Task keeps its editable Next Step, while dated Progress Entries live in an indexed, append-only table loaded lazily in pages. The migration is forward-only; **back up the database before upgrading** because older Ticket 01/02 binaries reject newer schemas.
+
 For an isolated debug run against synthetic data, create a temporary directory and set `TASKNOTES_DEV_DATA_DIR` before starting `pnpm tauri dev` or the debug app binary. This override exists **only in debug builds**; release builds always use the standard private app-data directory. Keep database, backups and generated logs out of the public repository.
 
 See [planning decisions](docs/planning/DECISIONS.md) and [domain terms](GLOSSARY.md).
 
-**Planning complete:** [Approved v1 specification](.scratch/tasknotes-v1/spec.md) · [18 implementation tickets](.scratch/tasknotes-v1/README.md) · [Architectural decisions](docs/adr/). Ticket 01 is the only authorized implementation so far.
+**Planning complete:** [Approved v1 specification](.scratch/tasknotes-v1/spec.md) · [18 implementation tickets](.scratch/tasknotes-v1/README.md) · [Architectural decisions](docs/adr/). Tickets 01, 02 and 03 were separately authorized. None of their Draft PRs has been merged to `main`.
 
 ## Privacy
 
@@ -56,4 +58,4 @@ This repository is public, **but user tasks, notes, SQLite databases, backups, p
 
 ## Scope
 
-Ticket 01 supplies an executable macOS desktop preview and minimal persistent Task CRUD. The remaining approved capabilities are scheduled in Tickets 02–18 and are intentionally not claimed as implemented.
+Tickets 01–03 supply a macOS desktop preview, persistent Task CRUD, status/priority sorting, Next Step, and append-only progress history. Tickets 04–18 remain unimplemented. The native WebView manual create/edit/restart acceptance criterion has not been verified; review the Draft PRs before merging.
