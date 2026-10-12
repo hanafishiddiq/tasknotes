@@ -11,6 +11,26 @@ export const phasePlan=()=>LABELS.map(label=>({label,mode:label[0]}));
 // QA app only: scoped keyboard entrypoint when WebKit AX does not expose buttons.
 export const isQaStartShortcut=event=>event.code==="Enter"&&event.ctrlKey&&event.shiftKey&&
   !event.metaKey&&!event.altKey&&!event.repeat;
+export function isTrustedWheelEvent(event){
+  return event?.type==="wheel"&&event.isTrusted===true;
+}
+export function validPhysicalPhase(record){
+  return (record?.mode==="A"||record?.mode==="B")&&
+    record.focusLost===false&&record.timedOut===false&&
+    record.rAFSamples>=12&&record.wheelEvents>=35&&
+    record.trustedWheelEvents>=35&&record.trustedWheelEvents===record.wheelEvents&&
+    record.travelPx>=600&&
+    (record.mode==="A"?record.transitions?.run>0:record.transitions?.run===0);
+}
+export function comparablePhysicalPhases(phases){
+  if(!Array.isArray(phases)||phases.length!==4||
+    !LABELS.every((label,i)=>phases[i]?.phase===label))return false;
+  const wheel=phases.map(p=>p.trustedWheelEvents);
+  const travel=phases.map(p=>p.travelPx);
+  return Math.min(...wheel)>0&&Math.min(...travel)>0&&
+    Math.max(...wheel)/Math.min(...wheel)<=2.5&&
+    Math.max(...travel)/Math.min(...travel)<=2.5;
+}
 export function phaseMode(name){
   if(!LABELS.includes(name))throw Error("Unsupported QA phase");
   return name[0];
@@ -64,11 +84,16 @@ async function init(){
     '<p role="status" id="issue19-hover-status">Preparing synthetic Tasks…</p>',
     '<button type="button" id="issue19-hover-start" disabled>',
     'Start one A–B–B–A trace</button>',
-    '<p>QA shortcut: Ctrl+Shift+Enter (while this window is focused)</p>',
+    '<button type="button" id="issue19-physical-start" disabled>',
+    'Start REAL trackpad A–B–B–A</button>',
+    '<p>For REAL mode, keep pointer over Task cards and scroll up/down ',
+    'with trackpad throughout each labelled 6s phase. Do not switch apps.</p>',
+    '<p>QA shortcut: Ctrl+Shift+Enter (scripted mode, focused window)</p>',
     '<p id="issue19-hover-results"></p>'
   ].join("");
   document.body.append(control);
-  const button=control.querySelector("button");
+  const button=control.querySelector("#issue19-hover-start");
+  const physicalButton=control.querySelector("#issue19-physical-start");
   const status=control.querySelector("#issue19-hover-status");
   const results=control.querySelector("#issue19-hover-results");
   const label=s=>{status.textContent=s;document.title="Issue19 Hover QA — "+s.slice(0,76)};
@@ -101,16 +126,19 @@ async function init(){
     check(document.scrollingElement.scrollHeight>innerHeight+500,"page not scrollable");
     setVariant(document,"A");
     button.disabled=false;
-    label("Ready • attach Safari Inspector, then press Start once");
+    physicalButton.disabled=false;
+    label("Ready • attach Safari Inspector; choose scripted or REAL trackpad test");
   }
 
-  async function phase(name){
+  async function phase(name,inputMethod){
     const mode=name[0];
+    const isPhysical=inputMethod==="physical";
     document.querySelectorAll(".issue19-force-hover").forEach(e=>e.classList.remove("issue19-force-hover"));
     setVariant(document,mode);
     window.scrollTo({top:0,behavior:"instant"});
-    await wait(350);
-    let count=0,wheel=0,moved=0,focusLost=false,timedOut=false;
+    await wait(isPhysical?2000:350);
+    if(isPhysical)label("REAL "+name+": SCROLL NOW with trackpad for 6 seconds");
+    let count=0,wheel=0,trustedWheel=0,moved=0,focusLost=false,timedOut=false;
     const frameGaps=[],events={run:0,start:0,end:0,cancel:0},properties={};
     let lastFrame=null,rafId=null,live=true,lastHover=null;
     function frame(now){
@@ -126,7 +154,10 @@ async function init(){
     }
     const names=["transitionrun","transitionstart","transitionend","transitioncancel"];
     names.forEach(n=>document.addEventListener(n,onTransition,true));
-    const onWheel=()=>wheel++;
+    const onWheel=event=>{
+      wheel++;
+      if(isTrustedWheelEvent(event))trustedWheel++;
+    };
     let beforeY=window.scrollY;
     const onScroll=()=>{moved+=Math.abs(window.scrollY-beforeY);beforeY=window.scrollY};
     window.addEventListener("wheel",onWheel,{passive:true});
@@ -142,6 +173,7 @@ async function init(){
     const start=marker("BEGIN");
     let timer;
     await new Promise(resolve=>{
+      const phaseStart=performance.now();
       const max=setTimeout(()=>{
         timedOut=true;
         clearInterval(timer);resolve();
@@ -150,6 +182,14 @@ async function init(){
         if(document.visibilityState!=="visible"||!document.hasFocus()){
           focusLost=true;
           clearInterval(timer);clearTimeout(max);resolve();return;
+        }
+        if(isPhysical){
+          // Only trusted hardware-origin wheel events can move the page.
+          // Do not synthesize any wheel input or JS scroll during this phase.
+          if(performance.now()-phaseStart>=6000){
+            clearInterval(timer);clearTimeout(max);resolve();
+          }
+          return;
         }
         const delta=count<TICKS/2?26:-26;
         window.dispatchEvent(new WheelEvent("wheel",{
@@ -180,15 +220,16 @@ async function init(){
     window.removeEventListener("scroll",onScroll);
     lastHover?.classList.remove("issue19-force-hover");
     const record={
-      phase:name,mode,start,end,ticks:count,
-      wheelEvents:wheel,travelPx:Math.round(moved),
-      focusLost,timedOut,
+      phase:name,mode,inputMethod,start,end,ticks:count,
+      wheelEvents:wheel,trustedWheelEvents:trustedWheel,
+      travelPx:Math.round(moved),focusLost,timedOut,
       rAFSamples:frameGaps.length,
       rAFP50Ms:percentile(frameGaps,.50),
       rAFP95Ms:percentile(frameGaps,.95),
       transitions:events,transitionProperties:properties
     };
-    record.valid=(!focusLost&&!timedOut&&count===TICKS&&
+    record.valid=isPhysical?validPhysicalPhase(record):
+      (!focusLost&&!timedOut&&count===TICKS&&
       frameGaps.length>=12&&moved>200&&
       (mode==="A"?events.run>0:events.run===0));
     console.info("[ISSUE19-HOVER-PHASE]",JSON.stringify(record));
@@ -207,45 +248,55 @@ async function init(){
     }});
   }
 
-  async function execute(){
+  async function execute(inputMethod="scripted"){
     if(busy)return;
-    busy=true;button.disabled=true;
-    const output={schema:1,startedAt:Date.now(),phases:[],valid:false};
+    if(inputMethod!=="scripted"&&inputMethod!=="physical")throw Error("Unsupported QA input mode");
+    busy=true;button.disabled=true;physicalButton.disabled=true;
+    const output={schema:1,inputMethod,startedAt:Date.now(),phases:[],valid:false};
     try{
       try{await win.show();await win.setFocus()}catch{}
       check(document.visibilityState==="visible"&&document.hasFocus(),
         "native window must be visible and focused");
-      label("Starting single Safari trace in 3 seconds…");
+      label(inputMethod==="physical"
+        ?"REAL trackpad: place pointer over Task cards; starting in 3 seconds…"
+        :"Starting single Safari scripted trace in 3 seconds…");
       await wait(3000);
       console.profile("ISSUE19_HOVER_ABBA");
       try{
         for(const name of LABELS){
-          label("Phase "+name+" running…");
-          const result=await phase(name);
+          label(inputMethod==="physical"
+            ?"REAL "+name+": prepare 2s, then scroll up/down for 6s"
+            :"Scripted phase "+name+" running…");
+          const result=await phase(name,inputMethod);
           output.phases.push(result);
           if(!result.valid){label("INCONCLUSIVE: phase "+name);break}
-          await wait(250);
+          await wait(inputMethod==="physical"?800:250);
         }
       }finally{console.profileEnd("ISSUE19_HOVER_ABBA")}
-      output.valid=output.phases.length===4&&output.phases.every(p=>p.valid);
+      output.inputComparable=inputMethod!=="physical"||
+        comparablePhysicalPhases(output.phases);
+      output.valid=output.phases.length===4&&output.phases.every(p=>p.valid)&&
+        output.inputComparable;
       output.completedAt=Date.now();
       await persist(output);
       results.textContent=output.valid
-        ?"4/4 phases valid. Export ONE Safari timeline."
-        :"INCONCLUSIVE. No performance claim.";
-      label(output.valid?"Completed A–B–B–A: export one Safari trace":"INCONCLUSIVE: focus or events");
+        ?"4/4 "+inputMethod+" phases valid. Export ONE Safari timeline."
+        :"INCONCLUSIVE: focus, trusted input or unequal wheel workload.";
+      label(output.valid?"Completed "+inputMethod+" A–B–B–A: export Safari trace"
+        :"INCONCLUSIVE: focus, input, transitions or workload");
     }catch(e){
       output.error=String(e?.message||e).slice(0,175);
       try{await persist(output)}catch{}
       console.error("[ISSUE19-HOVER-QA-ERROR]",output.error);
       label("INCONCLUSIVE: "+output.error);
     }finally{
-      busy=false;button.disabled=false;
+      busy=false;button.disabled=false;physicalButton.disabled=false;
       document.documentElement.dataset.issue19HoverVariant="A";
       document.querySelectorAll(".issue19-force-hover").forEach(e=>e.classList.remove("issue19-force-hover"));
     }
   }
-  button.addEventListener("click",()=>void execute());
+  button.addEventListener("click",()=>void execute("scripted"));
+  physicalButton.addEventListener("click",()=>void execute("physical"));
   window.addEventListener("keydown",event=>{
     if(!button.disabled&&isQaStartShortcut(event)){
       event.preventDefault();

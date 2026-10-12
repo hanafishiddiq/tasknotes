@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {phasePlan,phaseMode,setVariant,percentile,isQaStartShortcut} from "./issue19-hover-ab.mjs";
+import {phasePlan,phaseMode,setVariant,percentile,isQaStartShortcut,isTrustedWheelEvent,validPhysicalPhase,comparablePhysicalPhases} from "./issue19-hover-ab.mjs";
 
 function fakeDocument(){
   const card={className:"task-card"};
@@ -14,6 +14,36 @@ function fakeDocument(){
   })};
   return doc;
 }
+
+
+test("trusted trackpad gate never counts scripted WheelEvent objects",()=>{
+  assert.equal(isTrustedWheelEvent({type:"wheel",isTrusted:true}),true);
+  assert.equal(isTrustedWheelEvent({type:"wheel",isTrusted:false}),false);
+  assert.equal(isTrustedWheelEvent({type:"scroll",isTrusted:true}),false);
+  assert.equal(isTrustedWheelEvent(null),false);
+});
+test("physical-scroll phase requires real wheel input, focus, travel and expected card transitions",()=>{
+  const p={mode:"A",focusLost:false,timedOut:false,rAFSamples:40,
+    wheelEvents:65,trustedWheelEvents:65,travelPx:1200,transitions:{run:25}};
+  assert.equal(validPhysicalPhase(p),true);
+  assert.equal(validPhysicalPhase({...p,mode:"B",transitions:{run:0}}),true);
+  assert.equal(validPhysicalPhase({...p,trustedWheelEvents:0}),false);
+  assert.equal(validPhysicalPhase({...p,wheelEvents:70}),false);
+  assert.equal(validPhysicalPhase({...p,focusLost:true}),false);
+  assert.equal(validPhysicalPhase({...p,travelPx:150}),false);
+  assert.equal(validPhysicalPhase({...p,rAFSamples:5}),false);
+  assert.equal(validPhysicalPhase({...p,mode:"B"}),false);
+});
+test("four physical phases must have comparable real wheel workload",()=>{
+  const phases=[{phase:"A1",trustedWheelEvents:60,travelPx:1100},
+    {phase:"B1",trustedWheelEvents:70,travelPx:1200},
+    {phase:"B2",trustedWheelEvents:65,travelPx:1150},
+    {phase:"A2",trustedWheelEvents:61,travelPx:1200}];
+  assert.equal(comparablePhysicalPhases(phases),true);
+  assert.equal(comparablePhysicalPhases(phases.map((p,i)=>i===1?{...p,trustedWheelEvents:200}:p)),false);
+  assert.equal(comparablePhysicalPhases(phases.map((p,i)=>i===2?{...p,travelPx:4500}:p)),false);
+  assert.equal(comparablePhysicalPhases(phases.slice(1)),false);
+});
 
 test("opt-in QA shortcut starts only on scoped Ctrl+Shift+Enter",()=>{
   const base={code:"Enter",ctrlKey:true,shiftKey:true,metaKey:false,altKey:false,repeat:false};
