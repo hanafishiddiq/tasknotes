@@ -43,6 +43,7 @@
 ## Comments
 
 - No root-cause hypothesis is accepted without a failing repro; do not "fix" by guessing or silently disabling user-requested UX features.
+- **Lightweight recheck (2026-10-12, source `f15e838`, existing QA edits preserved):** `uv run --no-project python scripts/qa/report-issue19-hover-ab.py` read the isolated 32-Task fixture and confirmed two invalid runs, each with zero phases and a foreground/focus error. No new valid A/B evidence exists in this fixture. Two process snapshots found no Tasknotes executable running, so no live Tasknotes performance diagnosis was possible in this check. Current source still has 150-ms card border/shadow transitions (`src/App.css`); the application task-loading effect depends on load attempt and sort, with no scroll handler or polling loop found in `src/App.tsx`/`src/main.tsx`. Existing WebKit and compositor reports remain the evidence; hover causality and physical scroll FPS remain unverified. Next useful measurement is the already prepared focus-valid compositor A/B, not another full build or repetition of debug/release comparisons. Product code and personal task data were unchanged.
 
 ## Automated native test evidence (2026-10-12)
 
@@ -96,3 +97,19 @@ An embedded WKWebView WebDriverIO harness independently passed two end-to-end ru
 - The trace includes 44 screenshot samples during scroll (33 unique hashes), roughly 9.69 **Inspector screenshot samples per second** — not measured physical FPS. It includes a rendering-frame instrument label but **zero serialized rendering-frame records**; no dropped-frame total can be claimed.
 - **Next correct test:** target a *synthetic-QA-only* `.task-card` hover-transition-disable A/B with the same scrolling conditions. Compare compositor p95, number of expensive composite events and transition event counts in Web Inspector. Do not disable all animations globally or ship a CSS patch without a verified improvement.
 - **Status:** OPEN / High; no production fix, no live Task data change.
+
+## Native hover-transition A/B prototype — awaiting Inspector trace (2026-10-12)
+
+- A reversible **synthetic-only** native Tasknotes app, **Tasknotes Issue19 Hover A B QA**, now switches **A1/B1/B2/A2** within the same Tauri WebView. B disables only animated `.task-card` border-color/box-shadow transitions; visual hover styling is unchanged. It automatically scrolls and simulates fixed-point hover changes so one Safari Inspector recording can measure all four modes.
+- QA-only bundle ID `store.adamaja.tasknotes.issue19hoverab`, private temporary SQLite with 32 synthetic Tasks, no WebDriver, and no production `src/App.css` changes. A visible Start control and timing markers are present; app screenshot and initial fixture validated.
+- Native pilot auto-run while another app was foreground was **INCONCLUSIVE** (focus check correctly rejected it; zero phases). This is not a performance pass or fail. The final app waits for the Start button after Web Inspector attaches.
+- 3 Node logic tests, 4 Python Safari comparator tests and original Inspector parser tests pass. The one-variable prototype and [one-recording runbook](../../../docs/prototypes/issue19-hover-transition-ab-result.md) are published separately from the user's raw 99MB Safari export.
+- **Next gate:** one new, focus-valid phase-marked Safari Timelines export, compare compositing p95 and expensive composite events in A vs B. No CSS production fix/Issue resolution until both criteria show at least 30% improvement and independent review.
+
+### Follow-up: foreground-only QA limitations (2026-10-12)
+
+The isolated hover A–B–B–A prototype was rebuilt with a unit-tested QA-only shortcut and a generated opt-in autorun configuration. The agent could start and activate the named QA application but could not obtain `document.hasFocus()`; a scoped keypress was denied by Mac input safety restrictions. Two synthetic runs are stored with `valid=false`, zero phases and the explicit error `native window must be visible and focused`. These results do **not** measure any CSS/compositor improvement. A new human-attached Safari Inspector trace with four valid phases remains the next gate. Do not change production CSS, merge, or close this issue.
+
+## Focus-valid Safari Inspector A–B–B–A — final scripted-scroll result (2026-10-12)
+
+Human-provided latest `localhost-recording2.json` (250,304,955 bytes; SHA-256 `6a68b54d43177dba0bba05311d41b288f336b031159a5c61bb9daf3babda8e46`) successfully parsed using the newly TDD-verified bounded 256 MiB trace budget. All four QA phases are valid/focused, 200 *scripted* wheel events and 4,810px movement each; card transition runs A 828 vs B 0. Safari composite p95 mean A **3.024ms** vs B **2.049ms**, reduction 32.3%, but compositor events >16.7ms are **zero in both A and B**. rAF p95 mean A **120.5ms** vs B **121.0ms**. Thus the predeclared two-part >=30% criterion fails: **not a qualifying solution**. In contrast, the earlier human physical wheel trace had 13/44 expensive composite records and p95 28.97ms; the automated baseline did **not** reproduce the actual high-cost event pattern. Synthetic WheelEvent and `scrollBy` do not represent a native trusted macOS trackpad input sequence. Do not apply a normal Tasknotes CSS patch or close the issue based on this result. See [numerical trace analysis](../../../docs/qa/issue19-hover-ab-safari-comparison-2026-10-12.md). Next diagnostic gate: real trusted wheel A-B-B-A with focus and input validity, plus slow baseline compositor reproduction and independent review.
