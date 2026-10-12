@@ -1,8 +1,15 @@
 import unittest
 
-from compare_issue19_hover_inspector import trace_phases,summarize
+from compare_issue19_hover_inspector import trace_phases,summarize,trace_within_size_limit
 
 class HoverTraceComparisonTests(unittest.TestCase):
+    def test_accepts_large_but_bounded_inspector_export(self):
+        # No fixture bytes / user trace needed; 256 MiB is the fixed memory-safety ceiling.
+        self.assertTrue(trace_within_size_limit(250_304_955))
+        self.assertTrue(trace_within_size_limit(256 * 1024 * 1024))
+        self.assertFalse(trace_within_size_limit(256 * 1024 * 1024 + 1))
+        self.assertFalse(trace_within_size_limit(0))
+
     def fixture(self):
         records=[]
         for number,label in enumerate(("A1","B1","B2","A2")):
@@ -43,6 +50,16 @@ class HoverTraceComparisonTests(unittest.TestCase):
         self.assertEqual(profile["pairedMean"]["p95ReductionPercent"],79.2)
         self.assertEqual(profile["pairedMean"]["slowReductionPercent"],100)
         self.assertTrue(profile["pairedMean"]["candidate"])
+
+    def test_fast_baseline_is_not_a_performance_fix_candidate(self):
+        records=self.fixture()
+        for row in records:
+            if row.get("eventType")=="composite":
+                row["endTime"]=row["startTime"]+(.010 if row["startTime"] < 8 or row["startTime"] > 20 else .003)
+        result=summarize(records,trace_phases(records))
+        self.assertGreater(result["pairedMean"]["p95ReductionPercent"],30)
+        self.assertFalse(result["pairedMean"]["baselineExpensiveCompositingPresent"])
+        self.assertFalse(result["pairedMean"]["candidate"])
 
     def test_no_improvement_never_falsely_claims_candidate(self):
         records=self.fixture()

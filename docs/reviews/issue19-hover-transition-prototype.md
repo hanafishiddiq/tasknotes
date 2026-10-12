@@ -18,9 +18,9 @@
 
 - **PASS:** The test asks a precise question: do hover border/shadow transition events contribute substantially to observed compositing spikes?
 - **PASS:** Prototype preserves the original design in A and static hover appearance in B, modifying just animation.
-- **PENDING:** Valid focus-preserved native A1-B1-B2-A2 run with observed transition events present in A and absent in B.
-- **PENDING:** A new Safari Web Inspector timeline with all eight phase markers and at least five compositor records per phase. Inspect both compositor p95 and expensive-composite count per active scroll-second with identical Inspector settings.
-- **PENDING:** Physical display smoothness; Browser rAF and Inspector screenshot samples are not measured delivered display FPS.
+- **PASS (synthetic scope):** One valid, focus-preserved native A1-B1-B2-A2 run; QA card transition runs A=828, B=0; identical 200 scripted wheel events and 4,810px movement per phase.
+- **PASS (measurement), FAIL (candidate):** New Safari Inspector trace contains all eight markers, 60–65 compositor records per phase, p95 reduction 32.3%, but zero >16.7ms composites in both modes. This does not meet the two-part 30% threshold or reproduce the physical-scrolling baseline.
+- **PENDING:** Trusted physical wheel reproduction and display smoothness; synthetic WheelEvent/scrollBy, rAF and Inspector screenshot samples are not delivered display FPS.
 - **BLOCKED:** No performance CSS production patch until measured A/B result passes both predefined >=30% criteria, and no Issue #19 resolution or merge without independent review.
 
-**Review verdict:** Scope/safety verified; prototype is ready for ONE Safari Inspector capture. The hover-CSS hypothesis remains unproven and the user's reported lag remains unresolved.
+**Review verdict (updated):** Scope/safety and one successful synthetic capture verified. **Do not implement production CSS change:** the current trace lacks slow compositor events even at baseline and rAF timing is unchanged. Independent reviewer approval remains outstanding. User-reported lag remains unresolved; next target is trusted physical wheel input. See [recorded analysis](../qa/issue19-hover-ab-safari-comparison-2026-10-12.md).

@@ -17,6 +17,11 @@ from pathlib import Path
 
 MARK = re.compile(r"^ISSUE19_HOVER_(A1|B1|B2|A2)_(BEGIN|END)$")
 LABELS = ("A1","B1","B2","A2")
+MAX_TRACE_BYTES = 256 * 1024 * 1024  # 256 MiB, bounded; real export is ~250.3 MB
+
+
+def trace_within_size_limit(size: int) -> bool:
+    return 0 < size <= MAX_TRACE_BYTES
 
 
 def percentile(items: list[float], q: float) -> float | None:
@@ -104,7 +109,8 @@ def summarize(records: list[dict], phases: list[dict]) -> dict:
             "A_slowPerSecond":round(a_slow,3),"B_slowPerSecond":round(b_slow,3),
             "p95ReductionPercent":round(p95_reduction*100,1),
             "slowReductionPercent":round(slow_reduction*100,1),
-            "candidate":p95_reduction>=.30 and slow_reduction>=.30,
+            "baselineExpensiveCompositingPresent":a_slow>0,
+            "candidate":a_slow>0 and p95_reduction>=.30 and slow_reduction>=.30,
         }
     out["limitations"]=[
         "A/B is synthetic timer-driven scroll plus a forced hover-like class, not physical trackpad.",
@@ -122,8 +128,8 @@ def main():
     if not args.trace.is_file() or args.trace.suffix.lower()!=".json":
         parser.error("Explicit existing Safari .json export required")
     size=args.trace.stat().st_size
-    if size>250_000_000:
-        parser.error("Refusing trace larger than 250MB")
+    if not trace_within_size_limit(size):
+        parser.error("Refusing empty trace or trace larger than 256 MiB")
     raw=args.trace.read_bytes()
     try:
         import orjson

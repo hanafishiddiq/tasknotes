@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-12
 **Branch:** prototype/issue19-hover-transition-ab, stacked on the Safari Inspector analysis.
-**State:** Native QA app and reproducible harness ready. **Compositor A/B trace PENDING; no Tasknotes fix.**
+**State (updated 2026-10-12):** Focus-valid Inspector A–B–B–A completed; **not qualified as a scrolling fix**. See [numeric-only result](../qa/issue19-hover-ab-safari-comparison-2026-10-12.md). Issue #19 OPEN.
 
 ## Question and evidence
 
@@ -28,7 +28,7 @@ The overlay contains **Start one A–B–B–A trace**. One click runs four iden
 - **PASS:** Three Node tests cover A–B–B–A ordering, CSS mode switching and percentile math.
 - **PASS:** Four Python tests cover Inspector phase parsing, no-improvement rejection and refusal of absent/duplicate markers. The original unmarked Safari export was correctly rejected as inconclusive, not treated as an A/B result.
 - **PASS:** The prototype safely rejected the initial automatic background execution as **INCONCLUSIVE** because the QA window was not focused. No data from that attempt is counted as a performance measurement.
-- **PENDING:** A four-phase foreground trial and a new Safari Inspector recording. Therefore no compositor delta or production improvement can be reported yet.
+- **SUPERSEDED:** At the initial prototype checkpoint, a foreground trial and Inspector recording were pending. The later valid run and its negative acceptance verdict appear in the final update below.
 
 ## One Safari recording, not four
 
@@ -47,7 +47,7 @@ Only if both mean compositor p95 and the number of composites over 16.7 ms per s
 
 This prototype does not change src/App.css, the Tasknotes production app, the user's Task DB, or ChatGrid. The script/QA frontend remain test-only; raw Safari recordings remain on the Mac. After the experiment, restore the ordinary raw debug app through the standard normal Tauri build if that executable path is used.
 
-**Decision:** PENDING, not fixed; Issue #19 stays OPEN/High. Do not merge or claim a performance cure without the corresponding Inspector recording and independent review.
+**Decision (updated):** One valid scripted-scroll Inspector A–B–B–A is now analyzed; the predeclared acceptance gate fails. Issue #19 stays OPEN/High. Do not merge or claim a performance cure.
 
 ## Follow-up: scoped keyboard and foreground QA attempts (2026-10-12)
 
