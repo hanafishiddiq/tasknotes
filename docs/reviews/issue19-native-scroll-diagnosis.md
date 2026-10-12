@@ -32,3 +32,10 @@
 **Scope:** Tasknotes local macOS toolchain and reproducible test evidence; existing feature PRs #1–#4 remain Draft.
 
 **Verdict:** Ready for a *stacked Draft diagnosis PR* that records the red repro, no more. Continue the Matt Pocock `/diagnosing-bugs` loop with authorized normal-build frame presentation measurement before modifying product UI. Independent code review remains a separate outstanding gate.
+
+## Independent WKWebView test seam (additional review)
+
+- A Swift/AppKit/WKWebView synthetic-only comparator was added, independent of Tasknotes, with a directly runnable red-capable shell command and explicit exit statuses (0 green / 1 red / 2 inconclusive). It validates focus and 60-Hz native CADisplayLink before trusting rAF measurements.
+- Actual invocation produced **RED**: native display-link p95 16.8 ms /279, focused WebKit rAF p95 120 ms /39. This backs a WKWebView-level reproduction without presuming physical output FPS or proposing a product-code fix.
+- One-off ScreenCaptureKit and SDK26.5 comparisons were **invalid/inconclusive**, respectively; neither may be presented as a fix. Never capture unrelated windows or install privileged profiling software in this diagnostic branch.
+- Keep PR diagnostic Draft and Issue #19 open. Only independently reviewed, test-proven production fixes should advance acceptance.

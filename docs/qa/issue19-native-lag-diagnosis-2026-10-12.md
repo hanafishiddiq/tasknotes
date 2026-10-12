@@ -103,3 +103,46 @@ The performance bug remains **High, unresolved**, blocking Ticket 17's final per
 ## Safety and cleanup
 
 The QA-only Rust capability contains `core:window:allow-show` and `core:window:allow-set-focus`; the normal Tauri app does not load these permissions or the embedded WebDriver. One isolated diagnostic process was stopped, and its TMPDIR SQLite directory was removed. The ordinary debug `Tasknotes.app` must be rebuilt after the profiling build and verified to be driver-free. Do not ship the QA binary.
+
+## Independent focused Apple WKWebView reproducer (verified 2026-10-12)
+
+**Tight red-capable native command** (run from the repo root on macOS):
+
+```bash
+scripts/qa/run-minimal-wkwebview-frame-probe.sh
+# Exit 1: confirmed slow WKWebView callback; exit 0: under diagnostic threshold;
+# Exit 2: inconclusive (lost foreground focus / insufficient samples / native display abnormal).
+```
+
+This runner compiles [a standalone synthetic Swift/AppKit + WKWebView probe](../../scripts/qa/minimal-wkwebview-frame-probe.swift) into a private temporary directory. It uses *only* AppKit, WebKit and QuartzCore public APIs: no Tauri, React, WebDriver, SQLite, private WebKit APIs, screen capture, network or user data. It verifies that the independent window had focus and native display link is receiving display ticks, and prints only numeric timings. Temporary build files are automatically removed.
+
+**Actually executed, reproduced RED twice** (two separate synthetic windows, using the same source and no product-code changes):
+
+```text
+[Tasknotes WK QA] Native display link: 279 samples, p95=16.8ms, screen=60Hz
+[Tasknotes WK QA] Focused independent WKWebView: 39 samples, rAF p95=120ms, validFocus=True
+RED: independent WKWebView rAF p95 violates 50ms experimental threshold; Issue #19 remains unresolved
+INDEPENDENT_WKVIEW_TEST_EXIT=1
+
+# Independent repeat (new native window):
+# Native display link: 273 samples, p95=16.9ms, screen=60Hz
+# Focused independent WKWebView: 39 samples, rAF p95=120ms, validFocus=True
+# RED; REPEAT_EXIT=1
+```
+
+The test is a small native 60-Hz versus WebKit timing differential; its 50-ms threshold remains **diagnostic**, not a release product FPS SLO. A 120-ms `requestAnimationFrame` callback interval **is not itself physical display FPS**, so do not claim Tasknotes is proven to render at 8 FPS solely from this value.
+
+**Additional controlled tests of alternatives (all on the synthetic Swift app):**
+
+- Native macOS public `NSScreen.displayLink` callback typically p95 **~16.7–18.6 ms**, confirming display-link delivery near 60 Hz in matched runs.
+- A focused standalone WKWebView without Tauri/React showed rAF p95 **~109–123 ms** in several runs, including synthetic scrolling.
+- A small continuously visible CSS animation did not improve callbacks (focused idle rAF p95 **117 ms**).
+- A test-only `ProcessInfo.beginActivity(.userInitiated)` did **not** demonstrate improvement; focus differed partway through that comparison, so the result is not conclusive.
+- Normal AC-power read-only API status: macOS Low Power Mode, Reduce Motion and Reduce Transparency **false**. No global setting was changed.
+- The same independent app **loses focus intermittently** when driven remotely. When `document.visibilityState=hidden` / `NSApp.isActive=false`, a JS `setInterval(16ms)` may be throttled to about **1,000 ms per tick**. This is a separate foreground/background confounder and must **not** be confused with the focused scrolling symptom. Focus-gated 10-tick tests completed with timer p95 ~20–21 ms, while callback frame gaps remained high, albeit over short samples.
+- ScreenCaptureKit permission was preflighted and an experimental capture restricted to the probe's own synthetic window. In both a second capture process and a single native process, the act of capture disturbed timer execution/focus, so **no valid physical presentation-FPS measurement** was obtained. No images/video were recorded or committed. Capture experiments remain unvalidated, ignored scratch code only.
+- Compilation against macOS 26.5 SDK as an A/B variant did not complete within a 90-second bound; **no SDK-version comparison result** exists. The isolated compiler was stopped; no system preference was changed.
+
+**Supported narrowing:** The problematic WKWebView callback cadence reproduces independently of Tasknotes and across an empty DOM; neither a React/SQLite nor CSS optimization is currently supported as a fix. The strongest suspect is WKWebView/frame-scheduler behavior in this macOS environment, but compositor presentation and physical user-visible FPS remain unmeasured. Issue #19 stays **OPEN / High**.
+
+**Next correct seam:** A matched release-versus-debug comparison on a truly foreground, non-WebDriver Tasknotes app, with equivalent synthetic scrolling workload, followed by macOS/WebKit compositor profiling where permitted. [ChatGrid/Astra performance source comparison](issue19-chatgrid-astra-scroll-comparison-2026-10-12.md) found that ChatGrid fixed a custom `requestAnimationFrame`/`setTimeout` race and global animation suppression that Tasknotes does not contain; both currently use Wry 0.57.0. Therefore reusing Astra's old patch directly is not a supported solution. Profile the WKWebView/UI process and compare. `xctrace` remains unavailable with the installed Command Line Tools. Do not modify macOS preferences, install Xcode, use private WebKit APIs or ship a high-CPU workaround without separately authorized and measured evidence.
