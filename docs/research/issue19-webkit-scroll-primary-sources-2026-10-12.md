@@ -148,3 +148,13 @@ A narrowly scoped, throwaway *instrumentation* demo could answer this question w
 - **PENDING — Actual Web Inspector trace:** Safari was not open, and the Mac connector cannot control Safari's browser Develop menu. App-scoped keyboard shortcuts are refused as unsafe unscoped input; no private `_inspector` API was invoked, no developer menu settings were silently changed, and no trace was fabricated.
 - **Exact next UI gate:** Enable Safari developer features through **Safari → Settings → Advanced** (if needed), then **Develop → [This Mac] → Tasknotes Issue19 Inspector QA**. Record **Timelines → Frames** while scrolling the synthetic list, export the trace and analyze JS/layout/paint timing. This is a one-time developer-inspector action, not repeating Task CRUD acceptance.
 - **Evidence/runbook:** [Inspector QA native gate](../qa/issue19-safari-web-inspector-gate-2026-10-12.md). Bug #19 remains **OPEN / High**; no lag fix or visual FPS evidence is claimed.
+
+
+## 7. Actual Inspector trace received — results and next gate (2026-10-12)
+
+- The user successfully opened Safari's Develop-menu target `localhost` under **Tasknotes Issue19 Inspector QA** and exported the Inspector timeline. The newest Downloads JSON was analyzed through an explicit, read-only numeric-only parser.
+- Actual scrolling interval: **396 wheel input events over 4.533 s**, with **600 CSS transition events**. The largest directly measured per-operation work was compositing: **44 composites, p95 28.97 ms, 13 over 16.7 ms**. Wheel-event JS dispatch p95 ~0.03 ms, style and layout p95 under 0.25 ms.
+- A specific hypothesis now merits a narrow test: Task-card hover `border-color`/`box-shadow` transitions in `src/App.css`. Compositing close to transition events (100 ms) averaged 17.0 ms, versus 4.7 ms without nearby transitions. Correlation is not causation; WKWebView scheduling still requires separate interpretation.
+- The export contained 93 Inspector screenshot samples but **no serialized rendering-frame records**, despite the rendering-frame instrument being selected. Screenshots are sampling metadata, **not measured delivered physical frames per second**.
+- **Updated priority:** perform a scoped synthetic-QA CSS hover-transition A/B with comparable Web Inspector traces; reject or implement the smallest change based on measured compositing improvement. Preserve accessible hover affordances and reduced-motion expectations. Do **not** roll out a generic animation-off rule or assume this fully fixes the user's macOS/WebKit lag.
+- [Full grounded analysis, original trace hash and repeatable numeric parser](../qa/issue19-safari-inspector-trace-analysis-2026-10-12.md). Bug #19 remains OPEN / High; no product-code modification or independent reviewer approval.
