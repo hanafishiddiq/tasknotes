@@ -96,3 +96,11 @@ An embedded WKWebView WebDriverIO harness independently passed two end-to-end ru
 - The trace includes 44 screenshot samples during scroll (33 unique hashes), roughly 9.69 **Inspector screenshot samples per second** — not measured physical FPS. It includes a rendering-frame instrument label but **zero serialized rendering-frame records**; no dropped-frame total can be claimed.
 - **Next correct test:** target a *synthetic-QA-only* `.task-card` hover-transition-disable A/B with the same scrolling conditions. Compare compositor p95, number of expensive composite events and transition event counts in Web Inspector. Do not disable all animations globally or ship a CSS patch without a verified improvement.
 - **Status:** OPEN / High; no production fix, no live Task data change.
+
+## Native hover-transition A/B prototype — awaiting Inspector trace (2026-10-12)
+
+- A reversible **synthetic-only** native Tasknotes app, **Tasknotes Issue19 Hover A B QA**, now switches **A1/B1/B2/A2** within the same Tauri WebView. B disables only animated `.task-card` border-color/box-shadow transitions; visual hover styling is unchanged. It automatically scrolls and simulates fixed-point hover changes so one Safari Inspector recording can measure all four modes.
+- QA-only bundle ID `store.adamaja.tasknotes.issue19hoverab`, private temporary SQLite with 32 synthetic Tasks, no WebDriver, and no production `src/App.css` changes. A visible Start control and timing markers are present; app screenshot and initial fixture validated.
+- Native pilot auto-run while another app was foreground was **INCONCLUSIVE** (focus check correctly rejected it; zero phases). This is not a performance pass or fail. The final app waits for the Start button after Web Inspector attaches.
+- 3 Node logic tests, 4 Python Safari comparator tests and original Inspector parser tests pass. The one-variable prototype and [one-recording runbook](../../../docs/prototypes/issue19-hover-transition-ab-result.md) are published separately from the user's raw 99MB Safari export.
+- **Next gate:** one new, focus-valid phase-marked Safari Timelines export, compare compositing p95 and expensive composite events in A vs B. No CSS production fix/Issue resolution until both criteria show at least 30% improvement and independent review.
