@@ -1,0 +1,10 @@
+{
+  "identifier": "issue19-bench",
+  "description": "QA-only synthetic release/debug window focus for issue19; never enabled in normal builds",
+  "windows": ["main"],
+  "permissions": [
+    "core:window:allow-show",
+    "core:window:allow-set-focus",
+    "core:window:allow-is-focused"
+  ]
+}
