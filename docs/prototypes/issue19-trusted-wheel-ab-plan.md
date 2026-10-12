@@ -18,6 +18,14 @@ Do **not** change production UI or build a second renderer. Add a separate **Sta
 - **RED prerequisite:** For a change to count as a candidate fix for the reported bug, the physical A baseline must itself show *nonzero composites above 16.7ms*. Only then apply the already predeclared >=30% improvements in both compositor p95 and slow-composite events/sec. rAF and Inspector screenshots are not delivered physical FPS.
 - Keep raw Safari export, screenshots and user data outside Git; use only QA's synthetic SQLite. No backgroundThrottling changes, WebKit private APIs, global input injection or user-facing production CSS patch.
 
+## Pre-trace evidence binding (2026-10-13 QA hardening)
+
+Source correction: `Event.isTrusted` establishes user-agent generation rather than proof of physical hardware; a human physically performing the trackpad action remains part of the test protocol. Source: https://developer.mozilla.org/en-US/docs/Web/API/Event/isTrusted.
+
+Before treating an exported Safari timeline as physical-wheel evidence, the numeric comparator must also read the latest **QA-only** SQLite metrics row in **read-only mode**, verify `inputMethod=physical`, all four valid/focused/comparable phases, and compare the Inspector's phase windows, wheel counts and CSS transitions against the stored QA measurements. Reject an older scripted trace, mismatched export, missing markers, invalid QA run, or missing per-phase samples as **INCONCLUSIVE**, not as a performance failure. Check that the exported file timestamp is after the QA trial.
+
+Preserve the current script's numeric-only synthetic analysis for historical experiments. Make the stricter check opt-in through `--require-physical-qa` and mandate this flag for the physical experiment. No raw screenshot/DOM/private Task data will be copied or committed. For a CSS candidate, also require expensive composites in **both** A1 and A2 baselines before evaluating the unchanged 30% criteria. Run TDD before implementation.
+
 ## Execution phases and acceptance
 
 1. **TDD:** Extract a small pure input/gate helper; test that untrusted events are rejected, physical validity enforces focus/distance/event thresholds, synthetic mode still behaves the same. Tests must fail before helper implementation.

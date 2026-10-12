@@ -120,10 +120,116 @@ def summarize(records: list[dict], phases: list[dict]) -> dict:
     return out
 
 
+
+def verify_physical_qa(result: dict, run: dict) -> dict:
+    """Bind the Inspector summary to the latest isolated QA measurement.
+
+    isTrusted proves browser-side generation, NOT physical hardware origin.
+    That last assertion comes from the human-operated test protocol.
+    """
+    if (run.get("inputMethod") != "physical"
+            or run.get("valid") is not True
+            or run.get("inputComparable") is not True
+            or not isinstance(run.get("completedAt"), (int, float))):
+        raise ValueError("INCONCLUSIVE: latest QA run is not a completed valid physical-input run")
+    expected = result.get("phases")
+    actual = run.get("phases")
+    if not isinstance(expected, list) or not isinstance(actual, list) or len(expected) != 4 or len(actual) != 4:
+        raise ValueError("INCONCLUSIVE: expected exactly four Inspector and QA phases")
+    wheels = []
+    distances = []
+    for label, inspector, qa in zip(LABELS, expected, actual):
+        mode = label[0]
+        if (inspector.get("label") != label or inspector.get("mode") != mode
+                or qa.get("phase") != label or qa.get("mode") != mode):
+            raise ValueError("INCONCLUSIVE: phase identity/order differs between Inspector and QA")
+        count = qa.get("trustedWheelEvents")
+        if (qa.get("valid") is not True or qa.get("focusLost") is not False
+                or qa.get("timedOut") is not False
+                or not isinstance(count, int) or count < 35
+                or qa.get("wheelEvents") != count
+                or not isinstance(qa.get("travelPx"), (int, float)) or qa["travelPx"] < 600
+                or not isinstance(qa.get("rAFSamples"), int) or qa["rAFSamples"] < 12):
+            raise ValueError("INCONCLUSIVE: QA physical phase lacks focus/trusted-wheel/travel validity")
+        css_runs = qa.get("transitions", {}).get("run")
+        inspected_runs = inspector.get("transitionRuns")
+        if not isinstance(css_runs, int) or not isinstance(inspected_runs, int) or (
+            (css_runs <= 0 or inspected_runs <= 0) if mode == "A" else
+            (css_runs != 0 or inspected_runs != 0)
+        ):
+            raise ValueError("INCONCLUSIVE: A/B transition events do not match QA CSS variant")
+        inspector_wheels = inspector.get("syntheticWheelEvents")
+        if (not isinstance(inspector_wheels, int) or inspector_wheels < 20
+                or abs(inspector_wheels - count) > max(5, count * 0.20)):
+            raise ValueError("INCONCLUSIVE: Inspector wheel count does not match this QA phase")
+        start = qa.get("start", {}).get("pageSeconds")
+        end = qa.get("end", {}).get("pageSeconds")
+        duration = inspector.get("durationSeconds")
+        if (not isinstance(start, (int, float)) or not isinstance(end, (int, float))
+                or not isinstance(duration, (int, float)) or end <= start
+                or not 5 <= duration <= 9 or abs((end-start)-duration) > 1.5):
+            raise ValueError("INCONCLUSIVE: Inspector phase timing does not match the QA run")
+        if inspector.get("compositeCount", 0) < 5:
+            raise ValueError("INCONCLUSIVE: too few Inspector compositing operations")
+        wheels.append(count)
+        distances.append(qa["travelPx"])
+    if (max(wheels)/min(wheels) > 2.5 or max(distances)/min(distances) > 2.5):
+        raise ValueError("INCONCLUSIVE: physical wheel workload differs too much between phases")
+    paired = result.get("pairedMean")
+    if not isinstance(paired, dict):
+        raise ValueError("INCONCLUSIVE: absent Inspector compositor summary")
+    # Both untouched A windows must reproduce the high-cost symptom.
+    red_baseline = all(result["phases"][i].get("compositeSlowOver16_7", 0) > 0 for i in (0, 3))
+    return {
+        "qaTrustedWheelVerified": True,
+        "baselineRepeatedSlowComposites": red_baseline,
+        "candidate": red_baseline and paired.get("candidate") is True,
+        "physicalHardwareProvenByIsTrusted": False,
+    }
+
+
+def latest_qa_run(marker: Path) -> dict:
+    """Read only the pre-existing synthetic QA Task DB, never user Tasks."""
+    import sqlite3
+    import tempfile
+    if not marker.is_file() or marker.is_symlink():
+        raise ValueError("INCONCLUSIVE: missing synthetic QA data marker")
+    try:
+        folder = Path(marker.read_text().strip()).resolve(strict=True)
+    except (OSError, ValueError) as exc:
+        raise ValueError("INCONCLUSIVE: invalid QA data directory") from exc
+    if (folder.is_symlink() or folder.parent != Path(tempfile.gettempdir()).resolve()
+            or not folder.name.startswith("tasknotes-hover-ab.")):
+        raise ValueError("INCONCLUSIVE: refusing non-QA data directory")
+    db = folder / "tasknotes.db"
+    if not db.is_file() or db.is_symlink():
+        raise ValueError("INCONCLUSIVE: missing or non-regular QA database")
+    with sqlite3.connect(db.as_uri()+"?mode=ro", uri=True) as conn:
+        if conn.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+            raise ValueError("INCONCLUSIVE: QA database integrity check failed")
+        titles = [row[0] for row in conn.execute("SELECT title FROM tasks")]
+        prefix = "__ISSUE19_HOVER_QA__"
+        if len(titles) != 32 or any(not title.startswith(prefix) for title in titles):
+            raise ValueError("INCONCLUSIVE: refusing data not exclusively in the QA fixture")
+        metrics = conn.execute(
+            "SELECT description FROM tasks WHERE title=?", (prefix+"METRICS",)
+        ).fetchall()
+        if len(metrics) != 1:
+            raise ValueError("INCONCLUSIVE: expected exactly one synthetic QA metrics row")
+        data = json.loads(metrics[0][0])
+    runs = data.get("runs")
+    if not isinstance(runs, list) or not runs:
+        raise ValueError("INCONCLUSIVE: no completed QA trial recorded")
+    return runs[-1]
+
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("trace",type=Path)
     parser.add_argument("--output",type=Path)
+    parser.add_argument("--require-physical-qa",action="store_true",
+        help="Bind this Inspector export to the latest valid real-wheel QA SQLite run")
     args=parser.parse_args()
     if not args.trace.is_file() or args.trace.suffix.lower()!=".json":
         parser.error("Explicit existing Safari .json export required")
@@ -146,6 +252,26 @@ def main():
     if any(p["compositeCount"]<5 or p["syntheticWheelEvents"]<20
            for p in result["phases"]):
         raise ValueError("INCONCLUSIVE: insufficient wheel/composite events in one or more phases")
+    # Without a verified physical-input QA run, a numeric win is not a fix candidate.
+    result["pairedMean"]["numericCandidate"] = result["pairedMean"]["candidate"]
+    result["pairedMean"]["candidate"] = False
+    result["qaBinding"] = {"qaTrustedWheelVerified":False}
+    if args.require_physical_qa:
+        run=latest_qa_run(Path("src-tauri/target/.issue19-hover-data-dir"))
+        if not isinstance(run.get("completedAt"), (int, float)):
+            raise ValueError("INCONCLUSIVE: QA run has no completion timestamp")
+        if args.trace.stat().st_mtime*1000 < run["completedAt"]-5000:
+            raise ValueError("INCONCLUSIVE: Inspector export predates the latest QA trial")
+        # Numeric method uses the original prospective thresholds; the QA gate
+        # additionally insists that both A repetitions reproduce the symptom.
+        result["pairedMean"]["candidate"] = result["pairedMean"]["numericCandidate"]
+        binding=verify_physical_qa(result,run)
+        result["qaBinding"]=binding
+        result["pairedMean"]["candidate"]=binding["candidate"]
+        result["limitations"][0] = (
+            "QA accepted trusted browser wheel events with human-operated trackpad protocol; "
+            "Event.isTrusted alone does not prove physical hardware origin."
+        )
     result["sourceSha256"]=hashlib.sha256(raw).hexdigest()
     result["sourceBytes"]=size
     serialized=json.dumps(result,indent=2,sort_keys=True)+"\n"

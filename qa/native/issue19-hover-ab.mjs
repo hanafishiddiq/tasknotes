@@ -1,4 +1,4 @@
-/* Issue #19 synthetic-only Tasknotes hover-transition A/B.
+/* Issue #19 synthetic-fixture Tasknotes hover-transition A/B.
  * Native React/Tauri/SQLite app unchanged; JS injected into QA frontend copy.
  * The baseline keeps original .task-card transitions; B disables only those.
  * Mark all four phases in one WebKit Timeline via console.timeStamp/profile.
@@ -184,7 +184,8 @@ async function init(){
           clearInterval(timer);clearTimeout(max);resolve();return;
         }
         if(isPhysical){
-          // Only trusted hardware-origin wheel events can move the page.
+          // Browser-generated trusted wheel events are required; hardware origin
+          // itself is established only by the human-controlled test protocol.
           // Do not synthesize any wheel input or JS scroll during this phase.
           if(performance.now()-phaseStart>=6000){
             clearInterval(timer);clearTimeout(max);resolve();

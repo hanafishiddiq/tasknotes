@@ -23,12 +23,15 @@ cd ~/Desktop/Rumah/Playground/tasknotes
 python3 scripts/qa/report-issue19-hover-ab.py
 python3 scripts/qa/compare_issue19_hover_inspector.py \
   "$HOME/Downloads/<exact-new-recording>.json" \
+  --require-physical-qa \
   --output src-tauri/target/.issue19-trusted-wheel-inspector-numeric.json
 ```
 
 Validate latest `inputMethod=physical`, four focus-valid phases, >=35 real trusted wheel events, >=600px travel and >=12 rAF samples per phase, A transition runs >0 and B zero, and workload ratio <=2.5x. A valid Inspector capture must contain eight named phase markers, >=20 wheel events and >=5 composites per phase.
 
-**Performance decision gate:** A must first reproduce **nonzero expensive composite events >16.7ms**. Only then can B become a candidate if both paired compositor p95 and expensive-composite events/sec decrease by >=30%. The Inspector is not a direct physical GPU frame-present counter; user-perceived native smoothness must still be verified separately. Do not merge/close #19 on metrics alone.
+**Evidence-binding gate (updated 2026-10-13):** The required `--require-physical-qa` flag reads **only** the synthetic QA SQLite metrics, rejects any latest run not marked `physical` and valid, and cross-checks all four Inspector phase durations, real-wheel event counts and CSS transitions. It also rejects a Safari export older than the latest QA run. For this check, `Event.isTrusted` means **user-agent generated**, not an independent proof of the hardware source; a person must actually perform the trackpad scrolling ([MDN](https://developer.mozilla.org/en-US/docs/Web/API/Event/isTrusted)). An old synthetic recording is explicitly rejected, not used as a substitute.
+
+**Performance decision gate:** A1 and A2 must **both** reproduce at least one expensive composite event >16.7ms. Only then can B become a candidate if both paired compositor p95 and expensive-composite events/sec decrease by >=30%. The Inspector is not a direct physical GPU frame-present counter; user-perceived native smoothness must still be verified separately. Do not merge/close #19 on metrics alone.
 
 ## QA guardrails and reproducibility
 
