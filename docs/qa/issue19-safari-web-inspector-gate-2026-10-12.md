@@ -1,7 +1,7 @@
 # Issue #19 — Safari Web Inspector native QA gate
 
 **Date:** 2026-10-12
-**Status:** **Native inspectable QA app built and launched. Inspector rendering trace not yet captured.**
+**Status:** **Inspector-ready QA built; trace subsequently exported by the user and analyzed.** This document preserves the historical pre-capture gate.
 **Branch:** `research/issue19-webkit-scroll-sources` (research/diagnostics only).
 
 ## Exact target prepared
@@ -54,3 +54,7 @@ The QA build overwrites the raw `target/debug/tasknotes` executable as a standar
 - Installed Wry 0.57.0 source, Cargo registry `src/wkwebview/mod.rs`, ~537–549, and `src/lib.rs`, default devtools in debug ~867–875.
 
 **Gate outcome:** Inspector-ready synthetic target **PASS**; actual **Web Inspector trace PENDING** (unavailable through approved browser/macOS UI controls). **Issue #19 remains OPEN / High, no performance fix made.**
+
+## Follow-up: Inspector trace successfully received and analyzed (2026-10-12)
+
+The previous **trace PENDING** gate has since been satisfied by the user's latest Safari JSON export from Downloads. The recording was valid (14.073 s, 396 wheel events). [Quantitative Web Inspector analysis](issue19-safari-inspector-trace-analysis-2026-10-12.md) identifies expensive compositing events and a testable association with Task-card CSS hover transitions. **No physical FPS or specific root-cause fix is claimed.** The full 99 MB export stays local and outside Git.
