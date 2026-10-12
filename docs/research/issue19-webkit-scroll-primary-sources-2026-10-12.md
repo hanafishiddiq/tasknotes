@@ -139,3 +139,12 @@ A narrowly scoped, throwaway *instrumentation* demo could answer this question w
 
 **Research file:** `docs/research/issue19-webkit-scroll-primary-sources-2026-10-12.md`
 **Primary provenance:** source links and exact installed crate names/lines above; local project QA measurements are historical empirical context, not claims made by Apple/Tauri.
+
+
+## 6. Execution result — Safari Inspector QA gate (2026-10-12)
+
+- **PASS — QA target:** A normal Tasknotes debug app was built and opened under the separate identifier `store.adamaja.tasknotes.issue19inspector`, with default-only Tauri capabilities and an isolated temporary SQLite database containing exactly 31 synthetic Tasks. Verified native window screenshot and SQLite schema/integrity; the user's normal app remains separate.
+- **PASS — Inspectable path in source:** Installed Wry 0.57.0 sets `devtools=true` for debug WebView attributes, then applies Apple's public `WKWebView.setInspectable(true)` in its macOS initialization. No extra plugin is needed for the QA app.
+- **PENDING — Actual Web Inspector trace:** Safari was not open, and the Mac connector cannot control Safari's browser Develop menu. App-scoped keyboard shortcuts are refused as unsafe unscoped input; no private `_inspector` API was invoked, no developer menu settings were silently changed, and no trace was fabricated.
+- **Exact next UI gate:** Enable Safari developer features through **Safari → Settings → Advanced** (if needed), then **Develop → [This Mac] → Tasknotes Issue19 Inspector QA**. Record **Timelines → Frames** while scrolling the synthetic list, export the trace and analyze JS/layout/paint timing. This is a one-time developer-inspector action, not repeating Task CRUD acceptance.
+- **Evidence/runbook:** [Inspector QA native gate](../qa/issue19-safari-web-inspector-gate-2026-10-12.md). Bug #19 remains **OPEN / High**; no lag fix or visual FPS evidence is claimed.
