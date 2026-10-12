@@ -17,6 +17,8 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [features]
 # Opt-in only. Refused by the source code in release mode.
 native-e2e = ["dep:tauri-plugin-wdio-webdriver", "dep:tauri-plugin-wdio"]
+# Explicit QA-only use of the Tauri multi-WebView API (same Wry binary for both modes).
+issue19-placement-qa = ["tauri/unstable"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

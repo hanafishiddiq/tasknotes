@@ -4,6 +4,9 @@ use tasknotes_core::tasks::{
 };
 use tauri::{Manager, State};
 
+#[cfg(feature = "issue19-placement-qa")]
+mod issue19_placement_qa;
+
 #[tauri::command]
 fn list_tasks(
     store: State<'_, TaskStore>,
@@ -81,6 +84,8 @@ pub fn run() {
     };
     builder
         .setup(|app| {
+            #[cfg(feature = "issue19-placement-qa")]
+            issue19_placement_qa::assert_qa_identity(app);
             // Data is private to this macOS user, never kept in the public source repository.
             let app_data_dir = app.path().app_data_dir()?;
             // A debug-only override keeps synthetic smoke tests separate from personal data.
@@ -91,6 +96,8 @@ pub fn run() {
                 .unwrap_or(app_data_dir);
             let store = TaskStore::open(&app_data_dir.join("tasknotes.db"))?;
             app.manage(store);
+            #[cfg(feature = "issue19-placement-qa")]
+            issue19_placement_qa::create_qa_window(app)?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
