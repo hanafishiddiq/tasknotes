@@ -41,8 +41,9 @@ def report(path: Path) -> int:
     print("Synthetic QA only: checked", len(names), "Tasks, stored runs", len(runs))
     for number, item in enumerate(runs):
         phases = item.get("phases", [])
-        print("Run", number, "valid=", item.get("valid"), "phases=", len(phases),
-              "error=", item.get("error"))
+        print("Run", number, "inputMethod=", item.get("inputMethod", "scripted"),
+              "valid=", item.get("valid"), "inputComparable=",item.get("inputComparable"),
+              "phases=", len(phases), "error=", item.get("error"))
         for phase in phases:
             print(
                 " ",phase.get("phase"),"mode=",phase.get("mode"),
@@ -50,6 +51,8 @@ def report(path: Path) -> int:
                 "rAF p95ms=",phase.get("rAFP95Ms"),
                 "rAF samples=",phase.get("rAFSamples"),
                 "CSS transition runs=",phase.get("transitions",{}).get("run"),
+                "wheel=",phase.get("wheelEvents"),
+                "trustedWheel=",phase.get("trustedWheelEvents"),
                 "travelPx=",phase.get("travelPx"),
             )
         if not item.get("valid"):
@@ -64,7 +67,7 @@ def report(path: Path) -> int:
         a_p95 = statistics.mean(p["rAFP95Ms"] for p in a)
         b_p95 = statistics.mean(p["rAFP95Ms"] for p in b)
         print(f"  rAF callback p95 A={a_p95:.2f}ms B={b_p95:.2f}ms")
-        print("  COMPOSITING VERDICT PENDING: a Safari Inspector trace with phase markers is required.")
+        print("  Compositing must be evaluated separately from the matching Safari Inspector export.")
     return 0
 
 
