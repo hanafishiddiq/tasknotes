@@ -55,3 +55,29 @@ Two complete E2E repetitions passed, each launching and stopping two separate Ta
 **Security boundary:** the test driver is behind the opt-in `native-e2e` Rust feature, with release-build `compile_error!`, synthetic TMPDIR checks, hidden QA window and localhost-only listener. The normal `pnpm build` did not bundle the QA guest integration. After QA, use `pnpm tauri build --debug --bundles app --no-sign --ci` to restore the *normal* desktop .app at the standard debug bundle path.
 
 See [automated run evidence](native-webdriver-results-2026-10-12.md). No production signing or independent code review was performed by these tests.
+
+## Scroll performance diagnosis (Issue #19)
+
+The separately authorized, stacked diagnosis branch `fix/issue-19-native-lag-diagnosis` adds an **opt-in, test-only native scroll benchmark**. It is separate from the passing functional E2E suite:
+
+```bash
+pnpm qa:perf:build
+PERF_SPEC=qa/native/perf-scroll.spec.ts pnpm qa:perf
+# Intentionally RED while the scroll bug is unresolved (p95 diagnostic gate <50 ms).
+# Restore the ordinary Tasknotes.app after QA:
+pnpm tauri build --debug --bundles app --no-sign --ci
+```
+
+This compares 1 Task, 30 Tasks, 30 Tasks with visual effects disabled *in the synthetic WKWebView only*, and a blank scrollable native WKWebView. It samples `requestAnimationFrame` intervals, **not physical screen FPS**. The embedded driver's W3C wheel implementation sends scoped `WheelEvent` / `window.scrollBy` commands; it is not a physical Mac trackpad gesture.
+
+The user reported that scrolling feels like ~10–20 FPS. The native QA red test reproduced about 117–121 ms p95 frame callbacks even on a blank scrolling page; neither removing CSS effects, launching the executable from the app bundle, nor disabling the official Tauri background-throttling policy in a QA-only A/B trial provided a stable improvement. **These findings do not prove the root cause in the ordinary, uninstrumented app.** See [full diagnosis](issue19-native-lag-diagnosis-2026-10-12.md). Bug #19 remains open.
+
+## Independent WebKit frame timing cross-check
+
+To separate Tasknotes' render pipeline from macOS WKWebView scheduling, run the native independent Swift/AppKit/WebKit comparator:
+
+```bash
+scripts/qa/run-minimal-wkwebview-frame-probe.sh
+```
+
+It uses synthetic HTML, no WebDriver, Tauri, React, database or screen capture and returns 1 for measured frame-callback RED, 0 for GREEN, 2 for INCONCLUSIVE. The 50-ms rAF p95 threshold is **diagnostic**; this command cannot itself measure physical display FPS. See [Issue 19 investigation](issue19-native-lag-diagnosis-2026-10-12.md).

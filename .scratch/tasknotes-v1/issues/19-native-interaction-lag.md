@@ -8,9 +8,9 @@
 
 **Status:** needs-triage
 
-**Implementation:** not started — symptom captured; diagnosis and fix not yet authorized as a separate implementation ticket.
+**Implementation:** diagnosis in progress on a separate branch; measured WKWebView scroll reproduction exists. Product code fix has **not** been implemented or validated.
 
-**Severity:** High — user-visible desktop responsiveness, reported as "masih sangat ngelag".
+**Severity:** High — user-visible scrolling responsiveness, described by the user as feeling approximately 10–20 FPS on 2026-10-12. This is a subjective estimate, not a measured FPS result.
 
 **Blocked by:** None for reproducing/diagnosing; implementation should avoid unreviewed changes to open feature PRs.
 
@@ -18,11 +18,11 @@
 
 ## Observed evidence
 
-- The user reports Tasknotes is **very laggy** during actual native application usage, including with a synthetic database containing **one Task**. Exact delayed interaction(s) are not yet pinned down.
+- **User clarification (2026-10-12):** severe lag is specifically **during scrolling**; it feels like a heavy 3D game at **10–20 FPS**. This is a user-observed estimate, not measured frame rate. The user experienced it during native Tasknotes usage with a synthetic database containing one Task.
 - Target machine: arm64 Mac, macOS 27.0.1, 16 GiB RAM; debug unsigned Tauri v2 / WebKit build at `c083c7d`, about 31 MiB app bundle.
 - Isolated test SQLite schema v3 showed 1 Task / 3 Progress Entries; startup, shutdown and reopen persisted data. The existence of the bug is the user's direct report of poor responsiveness, **not** an objective latency measurement yet.
 - Idle sampling showed the Tasknotes binary close to 0% CPU at that moment. This does **not** rule out UI thread stalls, WebKit render delays, input latency, background machine load, or debug-build effects.
-- No measured median/p95 input latency, FPS, CPU profile during lag, or reproduction command has been captured; do not assert a root cause.
+- **Update:** A native, red-capable scroll-specific WKWebView benchmark has measured rAF callback frame intervals in synthetic tests. It is **not** physical GPU FPS or a verified root-cause diagnosis. See [detailed Issue #19 QA checkpoint](../../../docs/qa/issue19-native-lag-diagnosis-2026-10-12.md).
 - macOS accessibility introspection exposes the native window but not the embedded WebView's input controls. Unscoped mouse coordinate injection was refused by the desktop controller. Do not bypass its permission limits.
 
 ## Next diagnostic steps — use /diagnosing-bugs
@@ -37,7 +37,7 @@
 
 ## Information still needed
 
-- Which action(s) feel slow, and approximately how long (typing, scrolling, opening details, saving progress, launch)?
+- **Resolved:** The dominant symptom is scrolling, perceived as roughly 10–20 FPS. **Need to measure:** actual scroll callback/frame cadence, whether continuous scroll vs trackpad inertia matters, and whether it persists when Tasknotes is truly foreground.
 - Whether lag is constant or intermittent, and whether other Mac apps are sluggish at the same time.
 
 ## Comments
@@ -47,3 +47,22 @@
 ## Automated native test evidence (2026-10-12)
 
 An embedded WKWebView WebDriverIO harness independently passed two end-to-end runs (the first Task workflow took 1.1s in one run and 3.6s in the second; restart view checks took 270ms and 259ms, respectively), both with a **hidden test window** and one synthetic task. These are **test-run durations**, not measured human input latency or visible UI frame pacing. The user's reported severe lag remains **UNRESOLVED** and requires direct symptom-specific measurement under visible native usage and comparable debug/release conditions. Do not close this bug based on functional QA success.
+
+## Scroll-specific diagnostic evidence (2026-10-12)
+
+- **Actual user symptom:** Scrolling Tasknotes feels around 10–20 FPS (subjective estimate).
+- **Red-capable benchmark:** `qa/native/perf-scroll.spec.ts`, 160 W3C wheel actions (embedded driver uses scoped `window.scrollBy`), fails 50-ms diagnostic frame-callback threshold without synthetic slowdown. No personal data is used.
+- **Measured high-sample p95 rAF callback intervals:** 1 Task 117 ms (35 samples); 30 Tasks 121 ms (35); 30 without costly visual effects 120 ms (33); scrolling blank HTML with Tasknotes DOM and CSS removed 119 ms (36). These are **not screen FPS measurements**.
+- **Rejected test-only mitigations:** Launching via bundled `.app` binary rather than raw executable and setting Tauri `backgroundThrottling: disabled` did not materially improve frame callbacks. The throttling change was reverted; do not ship it.
+- **Inference bound:** Measurements constrain the embedded macOS WKWebView/QA environment, not conclusively the same physical-scroll bottleneck in the ordinary uninstrumented app. No grounded Tasknotes React/CSS/SQLite fix can be claimed yet.
+- **Safety:** Debug-only native WebDriver, synthetic temporary SQLite, no host-wide input injection, ordinary .app restored after QA. Independent code review/merges remain outstanding.
+
+**Next eligible step:** Profile focused normal/release Tasknotes scrolling or native Core Animation presentation (using authorized instrumentation) and compare against this red test before changing product behavior. **Cross-project evidence:** [ChatGrid/Astra source comparison](../../../docs/qa/issue19-chatgrid-astra-scroll-comparison-2026-10-12.md) confirms the historical ChatGrid fix removed a custom `requestAnimationFrame`/`setTimeout` race and blanket animation overrides, which are absent from Tasknotes. Both use Wry 0.57.0. A matched release-vs-debug comparison is higher-value than copying the ChatGrid patch. **Environment blocker:** the Mac only has Xcode Command Line Tools, so `xcrun xctrace` is unavailable for Core Animation profiling; do not install full Xcode or bypass screen permissions without authorization. This issue stays open as High severity and blocks final performance/release acceptance.
+
+## Standalone WebKit verification (2026-10-12)
+
+- **Verified, agent-runnable independent RED:** `scripts/qa/run-minimal-wkwebview-frame-probe.sh` exited 1 **twice** using separate synthetic native windows, each with focused Apple WKWebView rAF callback p95 **120 ms (39 samples)** against NSScreen native CADisplayLink p95 **16.8–16.9 ms (279 and 273 samples)** on a 60-Hz screen. No Tauri/React/SQLite/WebDriver or user data in this comparator.
+- The strict runner distinguishes real RED (exit 1), GREEN (exit 0), and **INCONCLUSIVE** (exit 2, e.g., lost focus or unstable native display). It compiles a synthetic Swift AppKit/WebKit probe inside a temporary test directory.
+- Normal macOS power/accessibility settings (Low Power Mode, Reduce Motion/Transparency) were **off**. A test-only CSS animation and public `ProcessInfo.userInitiated` assertion showed **no supported benefit**; foreground focus differences limit the ProcessInfo comparison.
+- **Critical limitation:** rAF is not the same as physical screen FPS. Own-window ScreenCaptureKit attempts interfered with timer scheduling and are not valid performance results. The user's perceived 10–20 FPS scrolling remains the authoritative symptom. No product fix or verified root-cause patch exists yet.
+- Details and safe commands: [native diagnosis](../../../docs/qa/issue19-native-lag-diagnosis-2026-10-12.md). **Status remains needs-triage / High**, blocks release-quality and performance tickets.

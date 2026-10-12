@@ -12,7 +12,9 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.node.json --noEmit",
     "qa:native:build": "VITE_NATIVE_E2E=1 tauri build --debug --features native-e2e --config src-tauri/tauri.native-e2e.conf.json --bundles app --no-sign --ci",
-    "qa:native": "node scripts/qa/run-native-wdio.mjs"
+    "qa:native": "node scripts/qa/run-native-wdio.mjs",
+    "qa:perf:build": "VITE_NATIVE_E2E=1 tauri build --debug --features native-e2e --config src-tauri/tauri.native-perf.conf.json --bundles app --no-sign --ci",
+    "qa:perf": "node scripts/qa/run-native-perf.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
