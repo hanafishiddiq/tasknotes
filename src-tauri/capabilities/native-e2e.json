@@ -6,6 +6,8 @@
   ],
   "permissions": [
     "wdio-webdriver:default",
-    "wdio:default"
+    "wdio:default",
+    "core:window:allow-show",
+    "core:window:allow-set-focus"
   ]
 }

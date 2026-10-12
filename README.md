@@ -43,7 +43,9 @@ pnpm qa:native         # two separate app processes, synthetic SQLite, exact res
 pnpm tauri build --debug --bundles app --no-sign --ci   # restores ordinary desktop app
 ```
 
-See [native WebDriver QA results](docs/qa/native-webdriver-results-2026-10-12.md) and [safety/limitations](docs/qa/native-webdriver-e2e.md). **Never ship or use the QA WebDriver build on a personal Tasknotes database.** The native QA build requires its own private synthetic TMPDIR path; the normal release build refuses the QA feature.
+See [native WebDriver QA results](docs/qa/native-webdriver-results-2026-10-12.md) and [safety/limitations](docs/qa/native-webdriver-e2e.md).
+
+**Lag diagnosis:** [Issue #19 scroll-specific measurements](docs/qa/issue19-native-lag-diagnosis-2026-10-12.md). The user-reported native scrolling lag remains unresolved; no speculative UI fix was merged. **Never ship or use the QA WebDriver build on a personal Tasknotes database.** The native QA build requires its own private synthetic TMPDIR path; the normal release build refuses the QA feature.
 
 ### Development tests
 
