@@ -8,6 +8,9 @@ const METRICS=PREFIX+"METRICS";
 const LABELS=Object.freeze(["A1","B1","B2","A2"]);
 const TICKS=200;
 export const phasePlan=()=>LABELS.map(label=>({label,mode:label[0]}));
+// QA app only: scoped keyboard entrypoint when WebKit AX does not expose buttons.
+export const isQaStartShortcut=event=>event.code==="Enter"&&event.ctrlKey&&event.shiftKey&&
+  !event.metaKey&&!event.altKey&&!event.repeat;
 export function phaseMode(name){
   if(!LABELS.includes(name))throw Error("Unsupported QA phase");
   return name[0];
@@ -61,6 +64,7 @@ async function init(){
     '<p role="status" id="issue19-hover-status">Preparing synthetic Tasks…</p>',
     '<button type="button" id="issue19-hover-start" disabled>',
     'Start one A–B–B–A trace</button>',
+    '<p>QA shortcut: Ctrl+Shift+Enter (while this window is focused)</p>',
     '<p id="issue19-hover-results"></p>'
   ].join("");
   document.body.append(control);
@@ -242,6 +246,12 @@ async function init(){
     }
   }
   button.addEventListener("click",()=>void execute());
+  window.addEventListener("keydown",event=>{
+    if(!button.disabled&&isQaStartShortcut(event)){
+      event.preventDefault();
+      void execute();
+    }
+  });
   await fixture();
   if(new URLSearchParams(location.search).get("issue19-autorun")==="1"){
     // Exercise one end-to-end QA pass autonomously; invalid focus is rejected

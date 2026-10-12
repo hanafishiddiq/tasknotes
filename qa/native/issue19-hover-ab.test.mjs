@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {phasePlan,phaseMode,setVariant,percentile} from "./issue19-hover-ab.mjs";
+import {phasePlan,phaseMode,setVariant,percentile,isQaStartShortcut} from "./issue19-hover-ab.mjs";
 
 function fakeDocument(){
   const card={className:"task-card"};
@@ -14,6 +14,15 @@ function fakeDocument(){
   })};
   return doc;
 }
+
+test("opt-in QA shortcut starts only on scoped Ctrl+Shift+Enter",()=>{
+  const base={code:"Enter",ctrlKey:true,shiftKey:true,metaKey:false,altKey:false,repeat:false};
+  assert.equal(isQaStartShortcut(base),true);
+  assert.equal(isQaStartShortcut({...base,code:"Space"}),false);
+  assert.equal(isQaStartShortcut({...base,ctrlKey:false}),false);
+  assert.equal(isQaStartShortcut({...base,metaKey:true}),false);
+  assert.equal(isQaStartShortcut({...base,repeat:true}),false);
+});
 
 test("one-variable A-B-B-A plan with precisely two variants",()=>{
   assert.deepEqual(phasePlan(),[

@@ -43,6 +43,7 @@
 ## Comments
 
 - No root-cause hypothesis is accepted without a failing repro; do not "fix" by guessing or silently disabling user-requested UX features.
+- **Lightweight recheck (2026-10-12, source `f15e838`, existing QA edits preserved):** `uv run --no-project python scripts/qa/report-issue19-hover-ab.py` read the isolated 32-Task fixture and confirmed two invalid runs, each with zero phases and a foreground/focus error. No new valid A/B evidence exists in this fixture. Two process snapshots found no Tasknotes executable running, so no live Tasknotes performance diagnosis was possible in this check. Current source still has 150-ms card border/shadow transitions (`src/App.css`); the application task-loading effect depends on load attempt and sort, with no scroll handler or polling loop found in `src/App.tsx`/`src/main.tsx`. Existing WebKit and compositor reports remain the evidence; hover causality and physical scroll FPS remain unverified. Next useful measurement is the already prepared focus-valid compositor A/B, not another full build or repetition of debug/release comparisons. Product code and personal task data were unchanged.
 
 ## Automated native test evidence (2026-10-12)
 
@@ -104,3 +105,7 @@ An embedded WKWebView WebDriverIO harness independently passed two end-to-end ru
 - Native pilot auto-run while another app was foreground was **INCONCLUSIVE** (focus check correctly rejected it; zero phases). This is not a performance pass or fail. The final app waits for the Start button after Web Inspector attaches.
 - 3 Node logic tests, 4 Python Safari comparator tests and original Inspector parser tests pass. The one-variable prototype and [one-recording runbook](../../../docs/prototypes/issue19-hover-transition-ab-result.md) are published separately from the user's raw 99MB Safari export.
 - **Next gate:** one new, focus-valid phase-marked Safari Timelines export, compare compositing p95 and expensive composite events in A vs B. No CSS production fix/Issue resolution until both criteria show at least 30% improvement and independent review.
+
+### Follow-up: foreground-only QA limitations (2026-10-12)
+
+The isolated hover A–B–B–A prototype was rebuilt with a unit-tested QA-only shortcut and a generated opt-in autorun configuration. The agent could start and activate the named QA application but could not obtain `document.hasFocus()`; a scoped keypress was denied by Mac input safety restrictions. Two synthetic runs are stored with `valid=false`, zero phases and the explicit error `native window must be visible and focused`. These results do **not** measure any CSS/compositor improvement. A new human-attached Safari Inspector trace with four valid phases remains the next gate. Do not change production CSS, merge, or close this issue.

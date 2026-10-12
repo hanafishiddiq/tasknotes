@@ -48,3 +48,12 @@ Only if both mean compositor p95 and the number of composites over 16.7 ms per s
 This prototype does not change src/App.css, the Tasknotes production app, the user's Task DB, or ChatGrid. The script/QA frontend remain test-only; raw Safari recordings remain on the Mac. After the experiment, restore the ordinary raw debug app through the standard normal Tauri build if that executable path is used.
 
 **Decision:** PENDING, not fixed; Issue #19 stays OPEN/High. Do not merge or claim a performance cure without the corresponding Inspector recording and independent review.
+
+## Follow-up: scoped keyboard and foreground QA attempts (2026-10-12)
+
+- A **QA-only** `Ctrl+Shift+Enter` shortcut was added to the isolated copied frontend; the logic is unit-tested (4/4 Node tests passing), but an agent-triggered native keystroke was explicitly refused as unscoped Mac input. No access-control workaround was attempted.
+- A temporary **ignored QA build configuration** enabled the pre-existing opt-in `issue19-autorun=1` path. The agent activated the named Tasknotes QA application via a permitted tool, but the WKWebView still reported that it was **not foreground/focused**. Both stored synthetic attempts contain **zero valid A/B phases** and error `native window must be visible and focused`. The second attempt has no compositor or rAF comparison data.
+- Accessibility inspection showed the QA `AXWindow` with `focused=false` after activation. This observation does not diagnose whether native app, WebView first-responder, or agent focus restrictions caused the mismatch.
+- The rejected runs are **INCONCLUSIVE**, not negative evidence about the hover hypothesis. No valid compositor data has been collected, and Issue #19 must remain OPEN/High.
+- Next: attach Safari Timelines to the **interactive** QA app, physically foreground Tasknotes, click its **Start one A–B–B–A trace** button once, then export one phase-marked timeline. The keyboard shortcut is optional; it was not end-to-end verified. Never force OS keyboard/mouse input or browser focus.
+- After the pilot, restore the normal interactive QA bundle (`node scripts/qa/prepare-issue19-hover-ab.mjs` followed by the Tauri QA build); generated autorun configuration is not part of the tracked source.
