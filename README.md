@@ -2,7 +2,7 @@
 
 A local-first macOS desktop app for tasks and notes, with a machine-friendly interface for trusted AI tools.
 
-> **Project stage:** Tickets 01–03 are implemented on stacked feature branches and awaiting native GUI acceptance. The other 15 tickets have not started.
+> **Project stage (2026-10-13):** Tickets 01–03 are implemented on stacked Draft PRs; direct native CRUD and two WKWebView/SQLite E2E repetitions have passed, but independent review, a manual OS sorting-picker path and merge authorization remain open. The other 15 tickets have not started.
 
 ## Agreed direction
 
