@@ -4,7 +4,7 @@ import {
   LoaderCircle, LockKeyhole, Plus, Sparkles,
 } from "lucide-react";
 import {
-  taskApi, type Task, type TaskList, type TaskView,
+  taskApi, TASK_PAGE_SIZE, type Task, type TaskList, type TaskView,
   type SortMode, type TaskChange, type ProgressDraft,
 } from "./lib/task-api";
 import { STATUS_ORDER, STATUS_VIEW } from "./lib/task-visuals";
@@ -29,6 +29,8 @@ export default function App() {
   const [listError, setListError] = useState<string | null>(null);
   const [sort, setSort] = useState<SortMode>("priority");
   const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [currentPageCursor, setCurrentPageCursor] = useState<string | null>(null);
+  const [previousPageCursors, setPreviousPageCursors] = useState<(string | null)[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [refreshError, setRefreshError] = useState(false);
@@ -48,6 +50,8 @@ export default function App() {
       .then((page) => {
         if (!active) return;
         setTasks(page.items);
+        setCurrentPageCursor(null);
+        setPreviousPageCursors([]);
         setNextCursor(page.nextCursor);
         setLoadError(false);
         setRefreshError(false);
@@ -76,12 +80,18 @@ export default function App() {
     return () => { active = false; };
   }, []);
 
+  function resetTaskPages() {
+    setCurrentPageCursor(null);
+    setPreviousPageCursors([]);
+  }
+
   function navigate(next: TaskView) {
     if (busyList || creating || savingId || loadingMore) return;
     if (next.kind === view.kind &&
         (next.kind !== "list" || (view.kind === "list" && next.listId === view.listId))) return;
     setTasks([]);
     setNextCursor(null);
+    resetTaskPages();
     setExpandedId(null);
     setLoading(true);
     setLoadError(false);
@@ -106,6 +116,7 @@ export default function App() {
       // This is a successful mutation, not a user navigation. busyList is still true.
       setTasks([]);
       setNextCursor(null);
+      resetTaskPages();
       setExpandedId(null);
       setLoading(true);
       setLoadError(false);
@@ -122,7 +133,7 @@ export default function App() {
     }
   }
 
-  async function renameList(list: TaskList, name: string) {
+  async function renameList(list: TaskList, name: string): Promise<boolean> {
     setBusyList(true);
     setError(null);
     try {
@@ -131,8 +142,13 @@ export default function App() {
       try { await refreshLists(); } catch (reason) {
         setError("List renamed, but the sidebar could not refresh: " + errorMessage(reason));
       }
-    } catch (reason) { setError(errorMessage(reason)); }
-    finally { setBusyList(false); }
+      return true;
+    } catch (reason) {
+      setError(errorMessage(reason));
+      return false;
+    } finally {
+      setBusyList(false);
+    }
   }
 
   async function setListRemoved(list: TaskList, removed: boolean) {
@@ -146,6 +162,7 @@ export default function App() {
       if (removed && view.kind === "list" && view.listId === list.id) {
         setTasks([]);
         setNextCursor(null);
+        resetTaskPages();
         setLoading(true);
         setView({ kind: "all" });
       } else {
@@ -177,6 +194,7 @@ export default function App() {
     setLoadError(false);
     setRefreshError(false);
     setLoading(true);
+    resetTaskPages();
     setLoadAttempt((attempt) => attempt + 1);
   }
 
@@ -197,11 +215,16 @@ export default function App() {
       try {
         const page = await taskApi.list(null, sort, view);
         setTasks(page.items);
+        setCurrentPageCursor(null);
+        setPreviousPageCursors([]);
         setNextCursor(page.nextCursor);
         setRefreshError(false);
       } catch (reason) {
-        setTasks((current) => [...current, created]);
+        setTasks((current) =>
+          [created, ...current.filter((item) => item.id !== created.id)].slice(0, TASK_PAGE_SIZE),
+        );
         setNextCursor(null);
+        resetTaskPages();
         setRefreshError(true);
         setError("Task created, but the ordered list could not refresh: " + errorMessage(reason));
       }
@@ -242,10 +265,13 @@ export default function App() {
       try {
         const page = await taskApi.list(null, sort, view);
         setTasks(page.items);
+        setCurrentPageCursor(null);
+        setPreviousPageCursors([]);
         setNextCursor(page.nextCursor);
         setRefreshError(false);
       } catch (reason) {
         setNextCursor(null);
+        resetTaskPages();
         setRefreshError(true);
         setError("Change saved, but the ordered list could not refresh: " + errorMessage(reason));
       }
@@ -290,19 +316,39 @@ export default function App() {
     setRefreshError(false);
     setLoading(true);
     setNextCursor(null);
+    resetTaskPages();
     setSort(nextSort);
   }
 
-  async function loadMore() {
+  async function nextTaskPage() {
     if (!nextCursor || loadingMore || creating || savingId) return;
     setLoadingMore(true);
     setError(null);
     try {
       const page = await taskApi.list(nextCursor, sort, view);
-      setTasks((current) => {
-        const knownIds = new Set(current.map((task) => task.id));
-        return [...current, ...page.items.filter((task) => !knownIds.has(task.id))];
-      });
+      setPreviousPageCursors((existing) => [...existing, currentPageCursor]);
+      setCurrentPageCursor(nextCursor);
+      setTasks(page.items);
+      setExpandedId(null);
+      setNextCursor(page.nextCursor);
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  async function previousTaskPage() {
+    if (previousPageCursors.length === 0 || loadingMore || creating || savingId) return;
+    const previous = previousPageCursors[previousPageCursors.length - 1];
+    setLoadingMore(true);
+    setError(null);
+    try {
+      const page = await taskApi.list(previous, sort, view);
+      setPreviousPageCursors((existing) => existing.slice(0, -1));
+      setCurrentPageCursor(previous);
+      setTasks(page.items);
+      setExpandedId(null);
       setNextCursor(page.nextCursor);
     } catch (reason) {
       setError(errorMessage(reason));
@@ -420,7 +466,7 @@ export default function App() {
                 <p>The local database couldn't be opened. Nothing has been changed; check the message above and try again.</p>
                 <button className="button button-more retry-button" type="button" onClick={retryFirstLoad}>Try again</button>
               </div>
-            ) : tasks.length === 0 ? (
+            ) : tasks.length === 0 && previousPageCursors.length === 0 ? (
               <div className="empty-state">
                 <div className="empty-icon"><CheckCircle2 size={31} strokeWidth={1.4} aria-hidden="true" /></div>
                 <h3>Your list is clear</h3>
@@ -457,11 +503,24 @@ export default function App() {
                     </section>
                   );
                 })}
-                {nextCursor && (
-                  <button className="button button-more" type="button" disabled={loadingMore || Boolean(savingId) || creating} onClick={loadMore}>
-                    {loadingMore ? "Loading..." : "Load more tasks"}
-                    {loadingMore && <LoaderCircle className="spin" size={16} />}
-                  </button>
+                {(previousPageCursors.length > 0 || nextCursor) && (
+                  <div className="task-page-navigation" aria-label="Task pages">
+                    {previousPageCursors.length > 0 && (
+                      <button className="button button-more" type="button"
+                        disabled={loadingMore || Boolean(savingId) || creating}
+                        onClick={() => void previousTaskPage()}>
+                        Previous page
+                      </button>
+                    )}
+                    {nextCursor && (
+                      <button className="button button-more" type="button"
+                        disabled={loadingMore || Boolean(savingId) || creating}
+                        onClick={() => void nextTaskPage()}>
+                        {loadingMore ? "Loading..." : "Next page"}
+                        {loadingMore && <LoaderCircle className="spin" size={16} />}
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             )}

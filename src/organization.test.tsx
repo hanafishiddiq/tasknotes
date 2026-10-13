@@ -177,7 +177,7 @@ describe("Inbox, Lists, and Task metadata", () => {
     });
     render(<App />);
     expect(await screen.findByRole("article", { name: "Prepare launch" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Load more tasks" }));
+    await user.click(screen.getByRole("button", { name: "Next page" }));
     await waitFor(() => expect(resolvePage).toBeDefined());
     // A later List response must not leak into the next scope.
     expect(screen.getByRole("button", { name: "Inbox" })).toBeDisabled();
@@ -202,6 +202,61 @@ describe("Inbox, Lists, and Task metadata", () => {
     await user.click(screen.getByRole("button", { name: "Add list" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("A List with this name already exists");
     expect(input).toHaveValue("Already taken");
+  });
+
+  it("preserves the List rename draft when the core rejects a stale revision", async () => {
+    const user = userEvent.setup();
+    lists = [{ id: "list-1", name: "Project", revision: 1, createdAt: 1, updatedAt: 1, removed: false }];
+    const previous = call.getMockImplementation()!;
+    call.mockImplementation(async (command, args) => {
+      if (command === "rename_list") throw new Error("Revision conflict");
+      return previous(command, args);
+    });
+    render(<App />);
+    await screen.findByRole("button", { name: "Project" });
+    await user.click(screen.getByRole("button", { name: "Rename Project" }));
+    const draft = screen.getByRole("textbox", { name: "Rename list" });
+    await user.clear(draft);
+    await user.type(draft, "Updated Project");
+    await user.click(screen.getByRole("button", { name: "Save list name" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Revision conflict");
+    expect(screen.getByRole("textbox", { name: "Rename list" })).toHaveValue("Updated Project");
+  });
+
+  it("renders at most 50 Tasks per List page with reversible Next and Previous navigation", async () => {
+    const user = userEvent.setup();
+    const data = Array.from({ length: 120 }, (_, i) => ({
+      ...base, id: "page-" + i, title: "Item " + i,
+    }));
+    call.mockImplementation(async (command, args) => {
+      if (command === "list_lists") return { items: [], nextCursor: null };
+      if (command !== "list_tasks") throw new Error("Unexpected native command " + command);
+      const request = (args ?? {}) as { cursor: string | null };
+      if (request.cursor === null) return { items: data.slice(0, 50), nextCursor: "cursor-50" };
+      if (request.cursor === "cursor-50") return { items: data.slice(50, 100), nextCursor: "cursor-100" };
+      if (request.cursor === "cursor-100") return { items: data.slice(100, 120), nextCursor: null };
+      throw new Error("Invalid test cursor");
+    });
+    render(<App />);
+    expect(await screen.findByRole("article", { name: "Item 0" })).toBeInTheDocument();
+    expect(screen.getAllByRole("article")).toHaveLength(50);
+
+    await user.click(screen.getByRole("button", { name: "Next page" }));
+    expect(await screen.findByRole("article", { name: "Item 50" })).toBeInTheDocument();
+    expect(screen.getAllByRole("article")).toHaveLength(50);
+    expect(screen.queryByRole("article", { name: "Item 0" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Next page" }));
+    expect(await screen.findByRole("article", { name: "Item 100" })).toBeInTheDocument();
+    expect(screen.getAllByRole("article")).toHaveLength(20);
+
+    await user.click(screen.getByRole("button", { name: "Previous page" }));
+    expect(await screen.findByRole("article", { name: "Item 50" })).toBeInTheDocument();
+    expect(screen.getAllByRole("article")).toHaveLength(50);
+
+    await user.click(screen.getByRole("button", { name: "Previous page" }));
+    expect(await screen.findByRole("article", { name: "Item 0" })).toBeInTheDocument();
+    expect(screen.getAllByRole("article")).toHaveLength(50);
   });
 
   it("shows an upcoming local date without marking it overdue", async () => {

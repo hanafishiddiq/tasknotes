@@ -1148,3 +1148,12 @@ button.nav-item--active:hover:not(:disabled) {
 .sidebar-list-error { margin: 0 8px 10px; font-size: 11px; color: #a64050; line-height: 1.4; }
 
 .deadline-pill--upcoming { background: #edf7f5; color: #28685d; }
+
+/* Only one bounded page is present in the Task list DOM. */
+.task-page-navigation {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 8px 0 4px;
+}

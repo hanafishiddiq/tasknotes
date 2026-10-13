@@ -36,3 +36,18 @@ The existing Tasknotes v3 has local Tasks, status/priority/progress/history, but
 ### Stop conditions
 
 If a fundamental product choice is NOT covered by Q1–Q49, ask a single question instead of inventing it. If a test seam cannot observe the required behavior, do not declare acceptance from mocks. Preserve owner-running ordinary Tasknotes process, installed bundle and current data. Do not modify Issue19 QA or other repos.
+
+## Review correction: bounded visible List pages
+
+On 2026-10-13, the first source review found a genuine acceptance risk: although Rust SQL was keyset-bounded, the React "Load more" button kept *appending* every page indefinitely. Ticket 04 asks for a bounded viewport. Before claiming that criterion complete:
+
+1. Write a failing React test using the existing public Tauri list contract with 120 synthetic Tasks in 50/50/20 pages. Assert a 50-card maximum after **every** navigation and recoverable previous-page navigation.
+2. Replace append-only list paging with one-page-at-a-time 50-item **Next page / Previous page** navigation. Preserve view/sort-bound cursors, prevent cross-view async contamination, and reset paging after any mutation/sort or List change. Avoid virtualizer dependency (dynamic-row virtualization belongs to Ticket 14).
+3. Re-run existing tests, update expectation and user-visible button copy, then run all frontend/Rust checks and annotate acceptance evidence. This is a feature source correction, not a production rollout or an excuse to reopen Issue19 QA.
+
+This step follows the original approved React/Tauri seam and occurs before any further Ticket 04 PR review/merge.
+
+
+### Bounded visible pages — execution result
+
+New React test RED with a 120-Task synthetic three-page Tauri result, then GREEN with one visible page (50/50/20) and reversible Previous/Next navigation. This does not replace native UI/manual acceptance. Date and List core logic were unaffected. Final source checks are recorded in the canonical QA report.

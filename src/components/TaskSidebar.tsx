@@ -15,7 +15,7 @@ interface TaskSidebarProps {
   busy: boolean;
   onNavigate: (view: TaskView) => void;
   onCreateList: (name: string) => Promise<boolean>;
-  onRenameList: (list: TaskList, name: string) => Promise<void>;
+  onRenameList: (list: TaskList, name: string) => Promise<boolean>;
   onRemoveList: (list: TaskList) => Promise<void>;
   onRestoreList: (list: TaskList) => Promise<void>;
   onLoadMoreLists: () => Promise<void>;
@@ -40,8 +40,7 @@ export default function TaskSidebar({
   async function rename(event: FormEvent<HTMLFormElement>, list: TaskList) {
     event.preventDefault();
     if (busy || !renameDraft.trim()) return;
-    await onRenameList(list, renameDraft);
-    setRenaming(null);
+    if (await onRenameList(list, renameDraft)) setRenaming(null);
   }
 
   return (

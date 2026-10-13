@@ -135,10 +135,10 @@ describe("Tasknotes desktop", () => {
     expect(await screen.findByText("First task")).toBeInTheDocument();
     expect(screen.queryByText("Second task")).not.toBeInTheDocument();
     expect(invokeMock).toHaveBeenCalledWith("list_tasks", { limit: 50, cursor: null });
-    await user.click(screen.getByRole("button", { name: "Load more tasks" }));
+    await user.click(screen.getByRole("button", { name: "Next page" }));
     expect(await screen.findByText("Second task")).toBeInTheDocument();
     expect(invokeMock).toHaveBeenCalledWith("list_tasks", { limit: 50, cursor: "cursor-2" });
-    expect(screen.queryByRole("button", { name: "Load more tasks" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Next page" })).not.toBeInTheDocument();
   });
 
   it("never calls a failed first load an empty list and lets the user retry", async () => {
