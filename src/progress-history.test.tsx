@@ -22,6 +22,9 @@ const firstTask: Task = {
   priority: "high",
   progress: 25,
   nextStep: "Review initial QA",
+  listId: null,
+  dueDate: null,
+  tags: [],
   revision: 2,
   createdAt: 123400000,
   updatedAt: 123400000,
@@ -47,6 +50,7 @@ beforeEach(() => {
   ];
   invokeMock.mockReset();
   invokeMock.mockImplementation(async (command, args) => {
+    if (command === "list_lists") return { items: [], nextCursor: null };
     if (command === "list_tasks") return { items: [task], nextCursor: null };
     if (command === "list_progress_entries") {
       return { items: [...entries], nextCursor: null };
@@ -224,7 +228,8 @@ describe("Next Step and Progress Entries", () => {
       createdAt: 123400000 + index,
     }));
     invokeMock.mockImplementation(async (command, args) => {
-      if (command === "list_tasks") return { items: [task], nextCursor: null };
+      if (command === "list_lists") return { items: [], nextCursor: null };
+    if (command === "list_tasks") return { items: [task], nextCursor: null };
       if (command === "list_progress_entries") {
         const before = (args as { before: number | null }).before;
         return before === null
@@ -271,7 +276,8 @@ describe("Next Step and Progress Entries", () => {
 
   it("retains unsaved notes and Next Step on a rejected revision", async () => {
     invokeMock.mockImplementation(async (command) => {
-      if (command === "list_tasks") return { items: [task], nextCursor: null };
+      if (command === "list_lists") return { items: [], nextCursor: null };
+    if (command === "list_tasks") return { items: [task], nextCursor: null };
       if (command === "list_progress_entries")
         return { items: [], nextCursor: null };
       if (command === "record_progress") throw Error("Revision conflict");
@@ -304,7 +310,8 @@ describe("Next Step and Progress Entries", () => {
   it("shows a retry action if local history cannot be loaded", async () => {
     let reads = 0;
     invokeMock.mockImplementation(async (command) => {
-      if (command === "list_tasks") return { items: [task], nextCursor: null };
+      if (command === "list_lists") return { items: [], nextCursor: null };
+    if (command === "list_tasks") return { items: [task], nextCursor: null };
       if (command === "list_progress_entries") {
         reads += 1;
         if (reads === 1) throw Error("History temporarily unavailable");

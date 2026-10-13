@@ -16,6 +16,9 @@ type SavedTask = {
   priority: "medium";
   progress: number;
   nextStep: string;
+  listId?: string | null;
+  dueDate?: string | null;
+  tags?: string[];
   revision: number;
   createdAt: number;
   updatedAt: number;
@@ -28,6 +31,7 @@ beforeEach(() => {
   invokeMock.mockReset();
   invokeMock.mockImplementation(async (command, args) => {
     const data = args as Record<string, unknown> | undefined;
+    if (command === "list_lists") return { items: [], nextCursor: null };
     if (command === "list_tasks") {
       return { items: [...saved], nextCursor: null };
     }
@@ -157,7 +161,8 @@ describe("Tasknotes desktop", () => {
 
   it("keeps errors visible without pretending failed writes succeeded", async () => {
     invokeMock.mockImplementation(async (command) => {
-      if (command === "list_tasks") return { items: [], nextCursor: null };
+      if (command === "list_lists") return { items: [], nextCursor: null };
+    if (command === "list_tasks") return { items: [], nextCursor: null };
       throw new Error("Storage unavailable");
     });
     const user = userEvent.setup();
@@ -174,7 +179,8 @@ describe("Tasknotes desktop", () => {
   it("keeps a successful create when sorted refresh fails and allows reloading", async () => {
     let listReads = 0;
     invokeMock.mockImplementation(async (command, args) => {
-      if (command === "list_tasks") {
+      if (command === "list_lists") return { items: [], nextCursor: null };
+    if (command === "list_tasks") {
         listReads++;
         if (listReads === 2) throw new Error("Temporary read error");
         return { items: [...saved], nextCursor: null };

@@ -1,11 +1,16 @@
 import { useEffect, useState, type FormEvent } from "react";
 import {
   ArrowRight, CheckCircle2, ChevronDown, Clock3,
-  Inbox, LoaderCircle, LockKeyhole, Plus, Sparkles,
+  LoaderCircle, LockKeyhole, Plus, Sparkles,
 } from "lucide-react";
-import { taskApi, type Task, type SortMode, type TaskChange, type ProgressDraft } from "./lib/task-api";
+import {
+  taskApi, type Task, type TaskList, type TaskView,
+  type SortMode, type TaskChange, type ProgressDraft,
+} from "./lib/task-api";
 import { STATUS_ORDER, STATUS_VIEW } from "./lib/task-visuals";
 import TaskRow from "./components/TaskRow";
+import TaskSidebar from "./components/TaskSidebar";
+import { localCalendarDay } from "./lib/deadlines";
 import "./App.css";
 
 function errorMessage(error: unknown): string {
@@ -16,6 +21,12 @@ function errorMessage(error: unknown): string {
 
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [view, setView] = useState<TaskView>({ kind: "all" });
+  const [lists, setLists] = useState<TaskList[]>([]);
+  const [listCursor, setListCursor] = useState<string | null>(null);
+  const [busyList, setBusyList] = useState(false);
+  const [loadingLists, setLoadingLists] = useState(false);
+  const [listError, setListError] = useState<string | null>(null);
   const [sort, setSort] = useState<SortMode>("priority");
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -33,7 +44,7 @@ export default function App() {
   useEffect(() => {
     let active = true;
     taskApi
-      .list(null, sort)
+      .list(null, sort, view)
       .then((page) => {
         if (!active) return;
         setTasks(page.items);
@@ -51,7 +62,115 @@ export default function App() {
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, [loadAttempt, sort]);
+  }, [loadAttempt, sort, view]);
+
+  useEffect(() => {
+    let active = true;
+    taskApi.lists().then((page) => {
+      if (!active) return;
+      setLists(page.items);
+      setListCursor(page.nextCursor);
+    }).catch((reason) => {
+      if (active) setListError("Could not load Lists: " + errorMessage(reason));
+    });
+    return () => { active = false; };
+  }, []);
+
+  function navigate(next: TaskView) {
+    if (busyList || creating || savingId || loadingMore) return;
+    if (next.kind === view.kind &&
+        (next.kind !== "list" || (view.kind === "list" && next.listId === view.listId))) return;
+    setTasks([]);
+    setNextCursor(null);
+    setExpandedId(null);
+    setLoading(true);
+    setLoadError(false);
+    setError(null);
+    setView(next);
+  }
+
+  async function refreshLists() {
+    const page = await taskApi.lists();
+    setLists(page.items);
+    setListCursor(page.nextCursor);
+    setListError(null);
+  }
+
+  async function createList(name: string): Promise<boolean> {
+    if (busyList) return false;
+    setBusyList(true);
+    setError(null);
+    try {
+      const created = await taskApi.createList(name);
+      setLists((before) => [created, ...before]);
+      // This is a successful mutation, not a user navigation. busyList is still true.
+      setTasks([]);
+      setNextCursor(null);
+      setExpandedId(null);
+      setLoading(true);
+      setLoadError(false);
+      setView({ kind: "list", listId: created.id });
+      try { await refreshLists(); } catch (reason) {
+        setError("List created, but the sidebar could not refresh: " + errorMessage(reason));
+      }
+      return true;
+    } catch (reason) {
+      setError(errorMessage(reason));
+      return false;
+    } finally {
+      setBusyList(false);
+    }
+  }
+
+  async function renameList(list: TaskList, name: string) {
+    setBusyList(true);
+    setError(null);
+    try {
+      const updated = await taskApi.renameList({ id: list.id, expectedRevision: list.revision, name });
+      setLists((all) => all.map((item) => item.id === list.id ? updated : item));
+      try { await refreshLists(); } catch (reason) {
+        setError("List renamed, but the sidebar could not refresh: " + errorMessage(reason));
+      }
+    } catch (reason) { setError(errorMessage(reason)); }
+    finally { setBusyList(false); }
+  }
+
+  async function setListRemoved(list: TaskList, removed: boolean) {
+    setBusyList(true);
+    setError(null);
+    try {
+      const updated = await taskApi.setListRemoved({
+        id: list.id, expectedRevision: list.revision, removed,
+      });
+      setLists((all) => all.map((item) => item.id === list.id ? updated : item));
+      if (removed && view.kind === "list" && view.listId === list.id) {
+        setTasks([]);
+        setNextCursor(null);
+        setLoading(true);
+        setView({ kind: "all" });
+      } else {
+        retryFirstLoad();
+      }
+      try { await refreshLists(); } catch (reason) {
+        setError("List updated, but the sidebar could not refresh: " + errorMessage(reason));
+      }
+    } catch (reason) { setError(errorMessage(reason)); }
+    finally { setBusyList(false); }
+  }
+
+  async function loadMoreLists() {
+    if (!listCursor || loadingLists) return;
+    setLoadingLists(true);
+    try {
+      const page = await taskApi.lists(listCursor);
+      setLists((current) => {
+        const seen = new Set(current.map((list) => list.id));
+        return [...current, ...page.items.filter((list) => !seen.has(list.id))];
+      });
+      setListCursor(page.nextCursor);
+    } catch (reason) { setError(errorMessage(reason)); }
+    finally { setLoadingLists(false); }
+  }
 
   function retryFirstLoad() {
     setError(null);
@@ -67,13 +186,16 @@ export default function App() {
     setCreating(true);
     setError(null);
     try {
-      const created = await taskApi.create({ title, description });
+      const created = await taskApi.create(
+        { title, description },
+        view.kind === "list" ? view.listId : undefined,
+      );
       // Clear only after the actual write succeeds; retry must not create a
       // duplicate if the subsequent read fails.
       setTitle("");
       setDescription("");
       try {
-        const page = await taskApi.list(null, sort);
+        const page = await taskApi.list(null, sort, view);
         setTasks(page.items);
         setNextCursor(page.nextCursor);
         setRefreshError(false);
@@ -118,7 +240,7 @@ export default function App() {
       setTasks((current) => current.map((item) => item.id === updated.id ? updated : item));
       // The mutation already succeeded; a failed refresh is not a failed save.
       try {
-        const page = await taskApi.list(null, sort);
+        const page = await taskApi.list(null, sort, view);
         setTasks(page.items);
         setNextCursor(page.nextCursor);
         setRefreshError(false);
@@ -150,6 +272,18 @@ export default function App() {
     }));
   }
 
+  async function moveTask(task: Task, listId: string | null) {
+    await commitTaskMutation(task, () => taskApi.move({
+      id: task.id, expectedRevision: task.revision, listId,
+    }));
+  }
+
+  async function updateDetails(task: Task, tags: string[], dueDate: string | null) {
+    await commitTaskMutation(task, () => taskApi.details({
+      id: task.id, expectedRevision: task.revision, tags, dueDate,
+    }));
+  }
+
   function changeSort(nextSort: SortMode) {
     if (sort === nextSort) return;
     setError(null);
@@ -164,7 +298,7 @@ export default function App() {
     setLoadingMore(true);
     setError(null);
     try {
-      const page = await taskApi.list(nextCursor, sort);
+      const page = await taskApi.list(nextCursor, sort, view);
       setTasks((current) => {
         const knownIds = new Set(current.map((task) => task.id));
         return [...current, ...page.items.filter((task) => !knownIds.has(task.id))];
@@ -182,41 +316,33 @@ export default function App() {
     items: tasks.filter((task) => task.status === status),
   })).filter((group) => group.items.length > 0);
 
+  const pageTitle = view.kind === "all" ? "All tasks"
+    : view.kind === "inbox" ? "Inbox"
+    : lists.find((list) => list.id === view.listId)?.name ?? "List";
+  const today = localCalendarDay();
+
   return (
     <div className="app-shell">
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-mark"><CheckCircle2 size={22} strokeWidth={2.3} /></div>
-          <div><strong>tasknotes</strong><span>Make room for progress.</span></div>
-        </div>
-
-        <div className="sidebar-section-title">WORKSPACE</div>
-        <nav aria-label="Workspace">
-          <div className="nav-item nav-item--active" aria-current="page">
-            <Inbox size={18} strokeWidth={1.8} aria-hidden="true" />
-            <span>All tasks</span>
-            <span className="nav-count">{tasks.length}{nextCursor ? "+" : ""}</span>
-          </div>
-        </nav>
-
-        <div className="sidebar-spacer" />
-        <div className="local-note">
-          <span className="local-note-icon"><LockKeyhole size={15} /></span>
-          <div><strong>Private by design</strong><span>Your tasks live on this Mac.</span></div>
-        </div>
-        <span className="sidebar-version">TASKNOTES · EARLY PREVIEW</span>
-      </aside>
+      <TaskSidebar
+        view={view} lists={lists} shownCount={tasks.length} hasMoreTasks={Boolean(nextCursor)}
+        listError={listError}
+        hasMoreLists={Boolean(listCursor)} busy={busyList || creating || Boolean(savingId) || loadingMore}
+        onNavigate={navigate} onCreateList={createList} onRenameList={renameList}
+        onRemoveList={(list) => setListRemoved(list, true)}
+        onRestoreList={(list) => setListRemoved(list, false)}
+        onLoadMoreLists={loadMoreLists}
+      />
 
       <main className="main-view">
         <header className="top-bar">
-          <div className="top-location"><span>Workspace</span><ChevronDown size={14} className="breadcrumb-icon" /><strong>All tasks</strong></div>
+          <div className="top-location"><span>Workspace</span><ChevronDown size={14} className="breadcrumb-icon" /><strong>{pageTitle}</strong></div>
           <span className="local-badge"><span /> Local storage</span>
         </header>
 
         <div className="content-wrap">
           <div className="hero-intro">
             <span className="eyebrow"><Sparkles size={14} aria-hidden="true" /> YOUR SPACE TO FOCUS</span>
-            <h1>All tasks</h1>
+            <h1>{pageTitle}</h1>
             <p>A quieter place to keep track of what matters.</p>
           </div>
 
@@ -322,6 +448,10 @@ export default function App() {
                           onSave={(nextTitle, nextDescription) => updateTask(task, nextTitle, nextDescription)}
                           onChange={(change) => changeTask(task, change)}
                           onRecordProgress={(update) => recordProgress(task, update)}
+                          lists={lists.filter((list) => !list.removed)}
+                          today={today}
+                          onMove={(listId) => moveTask(task, listId)}
+                          onUpdateDetails={(tags, dueDate) => updateDetails(task, tags, dueDate)}
                         />
                       ))}
                     </section>
