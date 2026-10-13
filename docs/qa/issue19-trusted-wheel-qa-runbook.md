@@ -2,6 +2,12 @@
 
 **Date:** 2026-10-12. **Status:** QA build and unit tests PASS; physical wheel and new Inspector trace **NOT RUN**. Only synthetic Tasks in `Tasknotes Issue19 Hover A B QA` are used. No normal Tasknotes data or CSS is modified.
 
+## Current use of this runbook — 2026-10-13
+
+The owner now reports **ordinary Tasknotes is smooth; Issue19 QA is not**. This physical-capture procedure remains available for further QA diagnosis; it is not a demand to repeat the old capture just to use the accepted ordinary build. First read [the normal-versus-QA findings](issue19-normal-vs-qa-2026-10-13.md).
+
+The current runner builds and launches only `src-tauri/target/issue19-hover-native/debug/bundle/macos/Tasknotes Issue19 Hover A B QA.app`. It no longer overwrites the normal `src-tauri/target/debug/tasknotes` path. A cold isolated build is needed once; `--reuse-bundle` deliberately refuses an old app in the shared output directory. Use the dedicated runner, not a hand-written build command with the default Cargo target.
+
 ## What changed from the first experiment?
 
 The prior button **Start one A–B–B–A trace** still runs the original synthetic-wheel mode and is not sufficient for the user-reported physical scrolling lag.
