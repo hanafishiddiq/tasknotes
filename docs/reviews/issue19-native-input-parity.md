@@ -14,7 +14,7 @@ Spec sources: `.scratch/tasknotes-v1/issues/19-native-interaction-lag.md`, the o
 
 **PASS, scope/privacy:** no changes to product React/CSS, Rust core/runtime/config or dependencies. Personal Task data and raw Inspector recordings were not accessed/copied into Git. Existing untracked `MEMORY.md` remains untouched. Diagnostic code is stored under `scripts/qa/experiments`, not loaded by Tasknotes or CI.
 
-**LIMIT, experimental helper:** the final Swift helper compiled but its native Start interaction was not verified; prior auto-start pilots proved only native event delivery before focus loss. It has a bounded timeout and labels synthetic input explicitly. Its startup-wide rAF data are not phase/presentation measurements. No speculative helper functionality is imported into the shipping application. A blocked visibility adjustment was not applied.
+**LIMIT, experimental helper:** the Swift helper compiled and later completed one native Start trial after window visibility changed: 240 trusted synthetic wheel events, 3840px travel and focus retained. Earlier pilots and the later pacing control lost focus. It has a bounded timeout and labels synthetic input explicitly. Its startup-wide rAF data are not phase/presentation measurements. No speculative helper functionality is imported into the shipping application. A blocked visibility adjustment was not applied.
 
 Standards verdict: no remaining hard violation identified in this scoped self-review; experimental/native-performance and independent-review limits remain explicit. Native isolated build/remote CI evidence is recorded separately when complete.
 
@@ -24,8 +24,12 @@ Standards verdict: no remaining hard violation identified in this scoped self-re
 
 **PASS, demonstrated defect only:** shared raw debug output really contained the QA binary instead of the ordinary app. The runner fix prevents this specific collision. It is not presented as the cause or cure of physical scrolling lag.
 
-**PARTIAL, native diagnosis:** direct in-process AppKit scroll dispatch reached the synthetic WebView's browser wheel/default scroll path. All full performance pilots were invalidated by foreground/visibility loss, and the scoped native Start path did not produce a valid trial. No actual GPU-present FPS, physical trackpad attestation or valid clean-versus-instrumented visual comparison resulted. Tool restrictions were not bypassed.
+**PARTIAL, native diagnosis:** direct in-process AppKit scroll dispatch reached the synthetic WebView's browser wheel/default scroll path. A native Start trial eventually completed with focus retained. However, the subsequent no-capture input-pacing control was invalidated by focus loss before completion, so the visual-sampler prerequisite remains unmet. No actual GPU-present FPS, physical trackpad attestation or valid clean-versus-instrumented visual comparison resulted. Tool restrictions were not bypassed.
 
 **OPEN:** QA visual root cause, workload-wide product performance gates and independent review. The owner's accepted ordinary build must be preserved; no merge/release is authorized. The historical physical-capture runbook is not automatically reimposed as a prerequisite to using it.
 
 Spec verdict: narrow build-isolation correction and evidence reconciliation meet their tested scope; original end-to-end diagnostic/physical-performance requirements remain incomplete at a real native-observation boundary. Do not describe this as all scrolling fixed.
+
+## Completed build and regression verification
+
+The dedicated native bundle built and the actual runner launched it; own-window startup showed Ready with 32 synthetic Tasks. The ordinary app hash is unchanged; the shared raw output was restored from that verified ordinary executable without launching it or accessing data. Both push/PR CI runs at `c0b2bd3` passed all 69 tests, typecheck/build/format/clippy. The final helper instrumentation compiled but its pacing trial was correctly inconclusive. Capture permission preflight succeeded; a visual sampler was not built atop the invalid pacing result. All exact values and limits are in the linked normal-versus-QA report. This is not independent review or a physical-lag fix.

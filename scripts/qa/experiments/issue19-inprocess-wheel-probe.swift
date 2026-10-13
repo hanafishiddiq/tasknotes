@@ -13,6 +13,8 @@ final class Probe: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     var count = 0
     var lostFocus = false
     var dispatchMs: [Double] = []
+    var inputBeganAt: CFTimeInterval = 0
+    var inputEndedAt: CFTimeInterval = 0
     var responderName = ""
     var started = false
     var startButton: NSButton!
@@ -66,6 +68,7 @@ final class Probe: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(webView)
         NSApp.activate(ignoringOtherApps: true)
+        inputBeganAt = CACurrentMediaTime()
         timer = Timer(timeInterval: 1.0/60.0, repeats: true) { _ in self.tick() }
         RunLoop.main.add(timer!, forMode: .common)
     }
@@ -96,6 +99,7 @@ final class Probe: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     }
 
     func finish() {
+        inputEndedAt = CACurrentMediaTime()
         DispatchQueue.main.asyncAfter(deadline: .now()+0.8) {
             self.webView.evaluateJavaScript("JSON.stringify({...qa,documentFocus:document.hasFocus(),visibility:document.visibilityState})") { value, error in
                 guard let text = value as? String, let data = text.data(using:.utf8),
@@ -105,6 +109,12 @@ final class Probe: NSObject, NSApplicationDelegate, WKNavigationDelegate {
                 let gaps = (report.removeValue(forKey:"raf") as? [Double] ?? []).sorted()
                 report["rAFSamples"] = gaps.count
                 report["rAFP95Ms"] = gaps.isEmpty ? -1 : gaps[Int(ceil(Double(gaps.count)*0.95))-1]
+                let elapsed = self.inputEndedAt - self.inputBeganAt
+                let costs = self.dispatchMs.sorted()
+                report["inputElapsedSeconds"] = elapsed
+                report["nativeDispatchTotalMs"] = costs.reduce(0,+)
+                report["nativeDispatchP95Ms"] = costs.isEmpty ? -1 : costs[Int(ceil(Double(costs.count)*0.95))-1]
+                report["inputPacingValid"] = !self.lostFocus && self.count == 240 && elapsed >= 3.5 && elapsed <= 6.0
                 report["nativeEventsSent"] = self.count
                 report["nativeFocusLost"] = self.lostFocus
                 report["ownResponderClass"] = self.responderName

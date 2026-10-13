@@ -8,7 +8,7 @@ Date: 2026-10-13. Base `c8dc03f8f6f57eed75e9834798e574c7f27dcb84`. Branch `test/
 | --- | --- |
 | Is ordinary Tasknotes still visibly lagging for the owner? | Owner explicitly reports ordinary **Tasknotes is now smooth**, while **Issue19 still lags**. This is qualitative native acceptance of the current ordinary build, not an agent-measured FPS result. |
 | Was the difference caused by a different production React/CSS patch? | **No difference in the embedded application assets**: the same compressed blobs exist in both actual binaries and decompress to the same current dist files. This does not match their data, native settings or Inspector state. |
-| Is the remaining QA lag's cause fixed/proven? | **No.** A new in-process native-input seam delivered browser wheel events and real scroll movement, but its performance trials lost foreground visibility. No valid matched visual-performance result exists. |
+| Is the remaining QA lag's cause fixed/proven? | **No.** A later native-Start trial completed 240 events with focus retained, but the subsequent no-capture input-pacing control lost focus before completion. No valid matched visual-performance result exists. |
 
 Do not require the owner to repeat the previous physical Safari export merely because the separate diagnostic app remains slow. Preserve the ordinary-app acceptance report and investigate the remaining QA-specific problem separately. Release-quality performance across the approved workload and independent review are still unverified; no merge/release is authorized.
 
@@ -64,7 +64,23 @@ These demonstrate that native events reach the browser's default scrolling path.
 
 A native Start button was then added to avoid the inaccessible WebView controls. The helper compiled and displayed Ready, but scoped app activation timed out, and subsequent accessibility inspection did not expose its off-screen window/button. A proposed test-window visibility adjustment was blocked by the tool safety gate and **was not applied**; source readback confirmed no floating-window or all-spaces setting. That path stopped; no focus/input/security bypass was attempted.
 
-The final compiled but interaction-unverified helper is archived under `scripts/qa/experiments/issue19-inprocess-wheel-probe.swift`, not loaded by Tasknotes or CI. Do not treat its rAF samples (which include startup/idle) as phase-timed or physical FPS. No native performance PASS, physical trace, capture video or screen FPS is claimed from these pilots.
+The compiled experimental helper is archived under `scripts/qa/experiments/issue19-inprocess-wheel-probe.swift`, not loaded by Tasknotes or CI. Do not treat its rAF samples (which include startup/idle) as phase-timed or physical FPS. No native performance PASS, physical trace, capture video or screen FPS is claimed from these pilots.
+
+### Later environment-qualified retry: native Start succeeded
+
+After isolated QA startup, Mac observation newly reported both Tasknotes windows on-screen. Named activation produced a focused Ready screenshot. This changed condition justified one retry with the unchanged native helper, without the blocked visibility adjustment. Its native Start button was now accessible and the permitted semantic AXPress succeeded:
+
+```text
+nativeEventsSent=240; trusted=240; travel=3840px; scrollEvents=164
+nativeFocusLost=false; documentFocus=true; visibility=visible
+nativeInputSeamValid=true; physicalHardware=false; exit=0
+```
+
+This supersedes the earlier absence of a working native Start interaction. It proves complete synthetic native-input delivery, not hardware input or visual FPS. Startup-inclusive rAF data are not performance acceptance evidence.
+
+Before constructing a visual sampler, read-only `CGPreflightScreenCaptureAccess()` returned true. Actual input elapsed time and already collected native-dispatch costs were then added to the helper, with a prospective input-pacing prerequisite of 3.5–6 seconds for 240 events at 60 Hz. The no-capture control failed before completion: focus switched away after 8/240 events, elapsed 0.569s, 128px travel, native dispatch p95 0.923ms. The document was hidden and ChatGrid was frontmost. This partial run proves neither normal pacing nor a slow-dispatch cause.
+
+The planned visual sampler was consequently **not implemented or run**. Capture permission is available; sustained focus/visibility for matched input/presentation trials remains intermittent. No permission request, global input, forced-focus policy or floating/all-spaces change. The final helper with the extra metrics compiled successfully and remains experimental only.
 
 ## 4. Research and decision
 
@@ -74,8 +90,13 @@ Therefore sparse rAF or an instrumented app's lag cannot invalidate the owner's 
 
 ## 5. Remaining boundary
 
-To diagnose the separate QA visual lag further requires a reliably visible, focus-valid native test window and a matched visual-presentation comparison, or a permitted noninterfering native measurement facility. Repeating old scripted traces, lowering performance thresholds or relabelling synthetic input as physical will not supply that evidence. The current tools did not sustain that valid native comparison. The ordinary app remains the owner-accepted build; the remaining QA/root-cause and independent-review gates stay open.
+To diagnose the separate QA visual lag further requires a reliably visible, focus-valid native test window and a matched visual-presentation comparison, or a permitted noninterfering native measurement facility. Repeating old scripted traces, lowering performance thresholds or relabelling synthetic input as physical will not supply that evidence. The tools completed one focus-valid event-delivery trial, but could not sustain the next pacing prerequisite; a matched visual comparison is still absent. The ordinary app remains the owner-accepted build; the remaining QA/root-cause and independent-review gates stay open.
 
 ## Final checkpoint
 
-Pending native build, source-scope readback and remote CI; update only from their actual results. Keep Draft.
+- **Isolated native build PASS:** cold unsigned debug build completed in 12m34s. Bundle ID `store.adamaja.tasknotes.issue19hoverab`, under `src-tauri/target/issue19-hover-native/debug/bundle/macos/`. Native executable SHA256 `b866badfd7f2af4f1502a313949b79c676257be4b352a77d152204ae787df455`.
+- **Actual runner/startup PASS:** the updated `--reuse-bundle` runner launched the isolated app; an own-window screenshot after named activation showed Ready and 32 synthetic Tasks. No hover/physical trial was started. This was a bounded smoke instance; no screenshot was committed.
+- **Ordinary build preserved:** its hash remains `6055b42deec803fe3ae34a67c145a0bf58c4a21690fe0f8a105f2a865bbb54ae`. The shared raw executable was restored atomically from that exact ordinary bundle after checking its expected old QA hash and absence of a running raw process. Raw and ordinary now match. No ordinary rebuild/launch or personal-data access. The old agent-owned QA process was stopped; the ordinary app was left running.
+- **Source-scope PASS:** no product React/CSS, Rust/core/runtime/config or dependency diff against `c8dc03f`.
+- **CI PASS at implementation `c0b2bd3adc87eaed71df5b2ea9305f3b53120b3c`:** push `38349400228` and PR `38349450561`, frontend + core, four green jobs. Actual logs: **8 Node + 22 Python + 19 React + 20 Rust = 69 passing tests**, plus typecheck, build, Rust formatting and clippy.
+- **Draft PR #12**, stacked on PR #11. The final diagnostic-metrics/evidence follow-up has its own CI readback. Review remains self-review; no merge or release. QA visual/root-cause and workload-wide physical-performance gates are still open.
