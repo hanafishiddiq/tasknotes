@@ -6,15 +6,23 @@
 
 **Reported:** 2026-10-12 by the user during the first real native GUI acceptance of Tickets 01–03.
 
-**Status:** needs-triage
+**Status:** wontfix
 
-**Implementation:** ordinary Tasknotes is now owner-reported smooth (2026-10-13); the separate Issue19 QA app still lags. Embedded application JS/CSS are identical. A QA build-output collision is corrected on `test/issue19-native-input-parity`; the remaining QA visual lag and its root cause are not resolved. No product-code scrolling fix is claimed.
+**Implementation:** closed as current ordinary-app symptom (2026-10-13) by explicit owner confirmation; no product-code root cause or shipping fix demonstrated. Further QA-only lag experiments intentionally deferred.
 
-**Severity:** High — user-visible scrolling responsiveness, described by the user as feeling approximately 10–20 FPS on 2026-10-12. This is a subjective estimate, not a measured FPS result.
+**Severity:** Historical High on 2026-10-12. Owner reports ordinary Tasknotes smooth on 2026-10-13; the original 10–20 FPS estimate was subjective, not measured physical FPS.
 
-**Blocked by:** None for reproducing/diagnosing; implementation should avoid unreviewed changes to open feature PRs.
+**Blocked by:** N/A for this triage disposition; reopen on a new reproducible issue in the ordinary app.
 
-**Blocks acceptance:** Ticket 17 performance verification and Ticket 18 macOS release-quality verification. The lag must be reproduced, measured, addressed and re-tested before claiming a production-ready macOS app.
+**Blocks acceptance:** No current ordinary-app lag claim is established. Ticket 17 large-dataset performance and Ticket 18 release verification **remain independent, unpassed gates**; this disposition waives neither.
+
+## Triage disposition — 2026-10-13 (supersedes earlier to-do lists)
+
+The owner has directly confirmed that **ordinary Tasknotes is smooth** and questioned continued work on an instrumented Issue19 test application. That owner-visible acceptance is the correct answer to the current product-symptom question. Under the project's five canonical triage roles, **wontfix** denotes the deliberate choice to stop investigating QA-only lag, **not** a claim that the original problem's root cause was found and patched. No production Tasknotes source change or deployment is attributed as a performance fix.
+
+The diagnostic scripts, historic failed A/B traces and **uncommitted, unstaged QA experiments in the preexisting development worktree** are preserved for provenance; they are **not active work** and must not be merged to fix smooth ordinary Tasknotes. Reopen this bug if lag is experienced again in the actual ordinary app with a reproducible input/foreground workload. Without recurrence, continuing to perfect the laggy QA app would be work on a diagnostic tool, not the product outcome.
+
+Importantly this ticket is **not** proof of 60 FPS on the planned 50,000 Task/10,000 Note workload, and is **not** macOS release approval. Tickets 17/18 keep all their independent acceptance gates. [Current product/QA distinction and closure evidence](../../../docs/qa/issue19-owner-accepted-disposition-2026-10-13.md).
 
 ## Latest owner acceptance and diagnostic separation — 2026-10-13
 
