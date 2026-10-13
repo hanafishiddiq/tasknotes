@@ -1,0 +1,48 @@
+use tasknotes_core::tasks::{CreateTask, Task, TaskPage, TaskStore, UpdateTask};
+use tauri::{Manager, State};
+
+#[tauri::command]
+fn list_tasks(
+    store: State<'_, TaskStore>,
+    limit: u32,
+    cursor: Option<String>,
+) -> Result<TaskPage, String> {
+    store
+        .list_tasks(limit, cursor.as_deref())
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn create_task(store: State<'_, TaskStore>, input: CreateTask) -> Result<Task, String> {
+    store.create_task(input).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn update_task(store: State<'_, TaskStore>, input: UpdateTask) -> Result<Task, String> {
+    store.update_task(input).map_err(|error| error.to_string())
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .setup(|app| {
+            // Data is private to this macOS user, never kept in the public source repository.
+            let app_data_dir = app.path().app_data_dir()?;
+            // A debug-only override keeps synthetic smoke tests separate from personal data.
+            // The release build always uses the OS-managed private application directory.
+            #[cfg(debug_assertions)]
+            let app_data_dir = std::env::var_os("TASKNOTES_DEV_DATA_DIR")
+                .map(std::path::PathBuf::from)
+                .unwrap_or(app_data_dir);
+            let store = TaskStore::open(&app_data_dir.join("tasknotes.db"))?;
+            app.manage(store);
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            list_tasks,
+            create_task,
+            update_task
+        ])
+        .run(tauri::generate_context!())
+        .expect("Unable to launch Tasknotes");
+}
