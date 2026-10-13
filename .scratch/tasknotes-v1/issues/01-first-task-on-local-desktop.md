@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** review — native GUI Task creation/edit/restart and automated checks verified 2026-10-12; independent code review and merge remain pending.
+**Implementation:** completed — feature PR #1 merged to `main` at `b6d35c12bdc154a29e7385f842899ec41cb20b19` on 2026-10-13 after independent AI Standards/Spec review accepted in the owner-authorized source-only integration; no app deployment or personal SQLite migration performed.
 
 ## Acceptance criteria
 
@@ -47,3 +47,21 @@
 
 - Direct user GUI creation and editing verified in isolated SQLite, then separately after macOS Tasknotes process quit/reopen with a screenshot. See [native QA report](../../../docs/qa/native-acceptance-2026-10-12.md).
 - Code review still needs a genuinely independent reviewer; initial Copilot review could not run (quota reached). The reported UI lag is tracked as a **future performance bug** in [Issue 19](19-native-interaction-lag.md), blocking performance/release quality but not silently extending this ticket.
+
+## Automated native QA — 2026-10-12
+
+- Native E2E via embedded WKWebView WebDriverIO **passed twice** without user clicking: created Task, edited title/description and reopened a separate native process on the same synthetic SQLite database. See [native WebDriver evidence](../../../docs/qa/native-webdriver-results-2026-10-12.md). The independent Standards/Spec review gate is still open; ticket remains Review.
+
+## Acceptance reconciliation — 2026-10-13
+
+Manual native Task creation/edit/reopen and two independent native WebDriver application-process runs passed on 2026-10-12. All listed acceptance behavior has actual evidence; the earlier pre-QA reviewer note saying native clicks were not witnessed is a historical snapshot. Independent review remains unavailable (Copilot quota exhausted), so **Implementation stays review** and no parent/merge gate is waived. See [joint evidence matrix](../../../docs/qa/tickets-01-03-acceptance-reconciliation-2026-10-13.md). No native QA rerun, production data access, merge or release was performed.
+
+## 2026-10-13 independent AI two-axis review
+
+Separate Standards agent: no hard violation. Separate Spec agent claimed static Ready/Medium badges blocked Ticket 01, but exact first-ticket scope only supports Ready/Medium defaults; dynamic badges are implemented in Ticket 02. The independent factual cross-check rejected the claimed blocker. See [six independent AI Standards/Spec source reviews and separate factual adjudication](../../../docs/reviews/tickets-01-03-independent-2026-10-13.md). This is **independent AI code review**, not a GitHub authenticated human APPROVED decision. No production code edit, personal DB action, merge or release; **Implementation remains review** pending owner sign-off, review policy and parent dependencies.
+
+## Source integration completed — 2026-10-13
+
+Ticket 01 (First Task on desktop) reached the required dependency and code-review frontier. The owner answered **“lanjutkan”** immediately after a direct request to accept independent AI review and authorize the sequential **source-only PR #1 → #2 → #3** merges. GitHub confirms PR #1 merged; reviewed head/tree equality was checked at each step; branch checks and the final `main` CI passed. See [post-merge verification](../../../docs/qa/tickets-01-03-postmerge-2026-10-13.md) and [independent AI evidence](../../../docs/reviews/tickets-01-03-independent-2026-10-13.md).
+
+This is **feature implementation completion**, not deployment or release approval. The remaining macOS OS-picker QA limitation, forward-only SQLite migration backup, and large-dataset performance/release gates remain documented separately in future tickets. Earlier sections saying “merge pending” are historical and superseded by this dated status.

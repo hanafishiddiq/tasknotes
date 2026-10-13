@@ -25,3 +25,11 @@
 - **Out of scope:** 5-priority editing, statuses beyond initial Ready, Notes, AI CLI/MCP, ambient sounds, search/indexing, full 50k/10k performance acceptance (Tickets 02–18).
 
 **Review conclusion:** code and automated acceptance ready for PR; keep Ticket 01 in **review** until the single native manual E2E criterion is verified. Do not merge until acceptance review and CI are green.
+
+## 2026-10-13 evidence correction (not independent review)
+
+The original open native-click/restart finding has been superseded by direct manual native evidence and two real WKWebView/SQLite create→edit→second-process verify runs. The implementing assistant reviewed the Standards and Spec axes again; **independent review was not obtained** because the Copilot reviewer returned a quota-exhausted comment. See [acceptance report](../qa/tickets-01-03-acceptance-reconciliation-2026-10-13.md). The Draft PR remains unmerged and the ticket stays in review.
+
+## 2026-10-13 independent AI two-axis review
+
+Two read-only, separate external AI agents reviewed the **pinned original feature diff** on Standards and Spec axes. See [source reports and evidence checks](tickets-01-03-independent-2026-10-13.md), including the independent factual correction of a false Spec blocker or stale native-evidence statement. This does **not** constitute an authenticated GitHub human approval and does not authorize merging.
