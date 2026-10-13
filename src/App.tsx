@@ -1,18 +1,11 @@
 import { useEffect, useState, type FormEvent } from "react";
 import {
-  ArrowRight,
-  CheckCircle2,
-  ChevronDown,
-  ChevronUp,
-  Circle,
-  Clock3,
-  Inbox,
-  LoaderCircle,
-  LockKeyhole,
-  Plus,
-  Sparkles,
+  ArrowRight, CheckCircle2, ChevronDown, Clock3,
+  Inbox, LoaderCircle, LockKeyhole, Plus, Sparkles,
 } from "lucide-react";
-import { taskApi, type Task } from "./lib/task-api";
+import { taskApi, type Task, type SortMode, type TaskChange } from "./lib/task-api";
+import { STATUS_ORDER, STATUS_VIEW } from "./lib/task-visuals";
+import TaskRow from "./components/TaskRow";
 import "./App.css";
 
 function errorMessage(error: unknown): string {
@@ -21,112 +14,13 @@ function errorMessage(error: unknown): string {
   return "Something went wrong. Please try again.";
 }
 
-const dateFormatter = new Intl.DateTimeFormat("en", {
-  month: "short",
-  day: "numeric",
-});
-
-interface TaskRowProps {
-  task: Task;
-  expanded: boolean;
-  saving: boolean;
-  onToggle: () => void;
-  onSave: (title: string, description: string) => Promise<void>;
-}
-
-function TaskRow({ task, expanded, saving, onToggle, onSave }: TaskRowProps) {
-  const [draftTitle, setDraftTitle] = useState(task.title);
-  const [draftDescription, setDraftDescription] = useState(task.description);
-
-  function toggle() {
-    if (!expanded) {
-      setDraftTitle(task.title);
-      setDraftDescription(task.description);
-    }
-    onToggle();
-  }
-
-  async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!draftTitle.trim() || saving) return;
-    await onSave(draftTitle, draftDescription);
-  }
-
-  return (
-    <article className={`task-card ${expanded ? "task-card--expanded" : ""}`} aria-label={task.title}>
-      <div className="task-row">
-        <span className="task-circle" aria-hidden="true"><Circle size={18} strokeWidth={1.8} /></span>
-        <button
-          className="task-open"
-          type="button"
-          onClick={toggle}
-          aria-label={`${expanded ? "Close" : "Open"} ${task.title}`}
-          aria-expanded={expanded}
-        >
-          <span className="task-row-title">{task.title}</span>
-          <span className="task-row-subtitle">
-            {task.description
-              ? <span className="task-summary">{task.description}</span>
-              : <span>Created {dateFormatter.format(new Date(task.createdAt))}</span>}
-          </span>
-        </button>
-        <div className="task-row-meta" aria-label="Task details summary">
-          <span className="status-pill"><span className="status-dot" />Ready</span>
-          <span className="priority-pill">Medium</span>
-          <button
-            className="expand-icon"
-            type="button"
-            onClick={toggle}
-            aria-label={`${expanded ? "Collapse" : "Expand"} task details`}
-          >
-            {expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-          </button>
-        </div>
-      </div>
-
-      {expanded && (
-        <section role="region" aria-label="Task details" className="task-editor">
-          <form onSubmit={save}>
-            <label htmlFor={`title-${task.id}`}>Title</label>
-            <input
-              id={`title-${task.id}`}
-              aria-label="Edit title"
-              value={draftTitle}
-              onChange={(event) => setDraftTitle(event.target.value)}
-              maxLength={200}
-              required
-              disabled={saving}
-            />
-            <label htmlFor={`description-${task.id}`}>Description</label>
-            <textarea
-              id={`description-${task.id}`}
-              aria-label="Edit description"
-              value={draftDescription}
-              onChange={(event) => setDraftDescription(event.target.value)}
-              rows={3}
-              maxLength={20000}
-              placeholder="Add a little more context..."
-              disabled={saving}
-            />
-            <div className="editor-actions">
-              <span className="editor-note"><LockKeyhole size={13} aria-hidden="true" /> Saved only on this Mac</span>
-              <button className="button button-primary button-small" type="submit" disabled={!draftTitle.trim() || saving}>
-                {saving && <LoaderCircle className="spin" size={15} aria-hidden="true" />}
-                {saving ? "Saving..." : "Save changes"}
-              </button>
-            </div>
-          </form>
-        </section>
-      )}
-    </article>
-  );
-}
-
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [sort, setSort] = useState<SortMode>("priority");
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [refreshError, setRefreshError] = useState(false);
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -139,12 +33,14 @@ export default function App() {
   useEffect(() => {
     let active = true;
     taskApi
-      .list()
+      .list(null, sort)
       .then((page) => {
         if (!active) return;
         setTasks(page.items);
         setNextCursor(page.nextCursor);
         setLoadError(false);
+        setRefreshError(false);
+        setError(null);
       })
       .catch((reason) => {
         if (!active) return;
@@ -155,25 +51,38 @@ export default function App() {
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, [loadAttempt]);
+  }, [loadAttempt, sort]);
 
   function retryFirstLoad() {
     setError(null);
     setLoadError(false);
+    setRefreshError(false);
     setLoading(true);
     setLoadAttempt((attempt) => attempt + 1);
   }
 
   async function createTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!title.trim() || creating || loading || loadError) return;
+    if (!title.trim() || creating || savingId || loading || loadError) return;
     setCreating(true);
     setError(null);
     try {
-      const task = await taskApi.create({ title, description });
-      setTasks((current) => [task, ...current]);
+      const created = await taskApi.create({ title, description });
+      // Clear only after the actual write succeeds; retry must not create a
+      // duplicate if the subsequent read fails.
       setTitle("");
       setDescription("");
+      try {
+        const page = await taskApi.list(null, sort);
+        setTasks(page.items);
+        setNextCursor(page.nextCursor);
+        setRefreshError(false);
+      } catch (reason) {
+        setTasks((current) => [...current, created]);
+        setNextCursor(null);
+        setRefreshError(true);
+        setError("Task created, but the ordered list could not refresh: " + errorMessage(reason));
+      }
     } catch (reason) {
       setError(errorMessage(reason));
     } finally {
@@ -200,12 +109,50 @@ export default function App() {
     }
   }
 
+  async function changeTask(task: Task, change: TaskChange) {
+    if (savingId) return;
+    setSavingId(task.id);
+    setError(null);
+    try {
+      const updated = await taskApi.change({
+        id: task.id,
+        expectedRevision: task.revision,
+        ...change,
+      });
+      setTasks((current) => current.map((item) => item.id === updated.id ? updated : item));
+      // The mutation already succeeded; a failed refresh is not a failed save.
+      try {
+        const page = await taskApi.list(null, sort);
+        setTasks(page.items);
+        setNextCursor(page.nextCursor);
+        setRefreshError(false);
+      } catch (reason) {
+        setNextCursor(null);
+        setRefreshError(true);
+        setError("Change saved, but the ordered list could not refresh: " + errorMessage(reason));
+      }
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  function changeSort(nextSort: SortMode) {
+    if (sort === nextSort) return;
+    setError(null);
+    setRefreshError(false);
+    setLoading(true);
+    setNextCursor(null);
+    setSort(nextSort);
+  }
+
   async function loadMore() {
-    if (!nextCursor || loadingMore) return;
+    if (!nextCursor || loadingMore || creating || savingId) return;
     setLoadingMore(true);
     setError(null);
     try {
-      const page = await taskApi.list(nextCursor);
+      const page = await taskApi.list(nextCursor, sort);
       setTasks((current) => {
         const knownIds = new Set(current.map((task) => task.id));
         return [...current, ...page.items.filter((task) => !knownIds.has(task.id))];
@@ -217,6 +164,11 @@ export default function App() {
       setLoadingMore(false);
     }
   }
+
+  const groups = STATUS_ORDER.map((status) => ({
+    status,
+    items: tasks.filter((task) => task.status === status),
+  })).filter((group) => group.items.length > 0);
 
   return (
     <div className="app-shell">
@@ -274,7 +226,7 @@ export default function App() {
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
                 maxLength={200}
-                disabled={creating || loading || loadError}
+                disabled={creating || Boolean(savingId) || loading || loadError}
                 required
               />
               <label className="sr-only" htmlFor="new-task-desc">Description (optional)</label>
@@ -286,11 +238,11 @@ export default function App() {
                 onChange={(event) => setDescription(event.target.value)}
                 rows={2}
                 maxLength={20000}
-                disabled={creating || loading || loadError}
+                disabled={creating || Boolean(savingId) || loading || loadError}
               />
               <div className="composer-footer">
                 <span className="composer-hint"><Clock3 size={14} aria-hidden="true" /> Ready to work on later</span>
-                <button className="button button-primary" type="submit" disabled={!title.trim() || creating || loading || loadError}>
+                <button className="button button-primary" type="submit" disabled={!title.trim() || creating || Boolean(savingId) || loading || loadError}>
                   {creating ? <LoaderCircle className="spin" size={16} /> : <Plus size={16} />}
                   {creating ? "Adding..." : "Add task"}
                 </button>
@@ -298,12 +250,27 @@ export default function App() {
             </form>
           </section>
 
-          {error && <div role="alert" className="error-banner">{error}</div>}
+          {error && <div role="alert" className="error-banner">
+            <span>{error}</span>
+            {refreshError && <button className="button button-secondary button-small" type="button" onClick={retryFirstLoad}>Refresh list</button>}
+          </div>}
 
           <section className="task-section" aria-label="Your tasks">
             <div className="list-heading">
               <div><h2>Your tasks</h2><p>{tasks.length}{nextCursor ? "+" : ""} currently shown</p></div>
-              <span className="section-indicator"><span /> Ready</span>
+              <label className="sort-control" htmlFor="task-sort">
+                Sort within groups
+                <select
+                  id="task-sort"
+                  aria-label="Sort tasks"
+                  value={sort}
+                  disabled={loading || loadingMore || Boolean(savingId)}
+                  onChange={(event) => changeSort(event.target.value as SortMode)}
+                >
+                  <option value="priority">Highest priority</option>
+                  <option value="newest">Newest first</option>
+                </select>
+              </label>
             </div>
 
             {loading ? (
@@ -324,18 +291,31 @@ export default function App() {
               </div>
             ) : (
               <div className="task-list">
-                {tasks.map((task) => (
-                  <TaskRow
-                    key={task.id}
-                    task={task}
-                    expanded={expandedId === task.id}
-                    saving={savingId === task.id}
-                    onToggle={() => setExpandedId((current) => current === task.id ? null : task.id)}
-                    onSave={(nextTitle, nextDescription) => updateTask(task, nextTitle, nextDescription)}
-                  />
-                ))}
+                {groups.map(({ status, items }) => {
+                  const GroupIcon = STATUS_VIEW[status].icon;
+                  return (
+                    <section className="task-group" key={status} aria-label={`${STATUS_VIEW[status].label} tasks`}>
+                      <div className="task-group-heading">
+                        <GroupIcon size={16} aria-hidden="true" />
+                        <h3>{STATUS_VIEW[status].label}</h3>
+                        <span>{items.length}{nextCursor ? "+" : ""}</span>
+                      </div>
+                      {items.map((task) => (
+                        <TaskRow
+                          key={task.id}
+                          task={task}
+                          expanded={expandedId === task.id}
+                          saving={savingId === task.id}
+                          onToggle={() => setExpandedId((current) => current === task.id ? null : task.id)}
+                          onSave={(nextTitle, nextDescription) => updateTask(task, nextTitle, nextDescription)}
+                          onChange={(change) => changeTask(task, change)}
+                        />
+                      ))}
+                    </section>
+                  );
+                })}
                 {nextCursor && (
-                  <button className="button button-more" type="button" disabled={loadingMore} onClick={loadMore}>
+                  <button className="button button-more" type="button" disabled={loadingMore || Boolean(savingId) || creating} onClick={loadMore}>
                     {loadingMore ? "Loading..." : "Load more tasks"}
                     {loadingMore && <LoaderCircle className="spin" size={16} />}
                   </button>

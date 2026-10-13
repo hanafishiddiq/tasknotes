@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use rusqlite::{Connection, OptionalExtension, Row, params, types::Type};
+use rusqlite::{Connection, OptionalExtension, Row, TransactionBehavior, params, types::Type};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
@@ -26,6 +26,12 @@ pub enum TaskError {
     InvalidCursor,
     #[error("Task not found")]
     NotFound,
+    #[error("Task changes must specify status, priority, or progress")]
+    EmptyChange,
+    #[error("Progress must be between 0 and 100")]
+    InvalidProgress,
+    #[error("Invalid work status/progress transition: {0}")]
+    InvalidTransition(&'static str),
     #[error("Revision conflict: the Task has changed; reload before saving")]
     RevisionConflict,
     #[error("Unsupported database schema version {0}; refusing to modify a newer database")]
@@ -53,6 +59,14 @@ impl WorkStatus {
             "in_progress" => Some(Self::InProgress),
             "completed" => Some(Self::Completed),
             _ => None,
+        }
+    }
+
+    fn rank(self) -> i64 {
+        match self {
+            Self::InProgress => 0,
+            Self::Ready => 1,
+            Self::Completed => 2,
         }
     }
 
@@ -84,6 +98,16 @@ impl Priority {
             "high" => Some(Self::High),
             "very_high" => Some(Self::VeryHigh),
             _ => None,
+        }
+    }
+
+    fn rank(self) -> i64 {
+        match self {
+            Self::VeryLow => 1,
+            Self::Low => 2,
+            Self::Medium => 3,
+            Self::High => 4,
+            Self::VeryHigh => 5,
         }
     }
 
@@ -126,6 +150,33 @@ pub struct UpdateTask {
     pub title: String,
     pub description: String,
     pub expected_revision: i64,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SortMode {
+    #[default]
+    Priority,
+    Newest,
+}
+
+impl SortMode {
+    fn as_cursor(self) -> &'static str {
+        match self {
+            Self::Priority => "priority",
+            Self::Newest => "newest",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangeTask {
+    pub id: String,
+    pub expected_revision: i64,
+    pub status: Option<WorkStatus>,
+    pub priority: Option<Priority>,
+    pub progress: Option<u8>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -197,16 +248,17 @@ impl TaskStore {
         let mut connection = Connection::open(path)?;
         connection.busy_timeout(Duration::from_secs(5))?;
         let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        if version > 1 {
+        if version > 2 {
             return Err(TaskError::UnsupportedSchema(version));
         }
 
         connection.pragma_update(None, "foreign_keys", true)?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
-        if version == 0 {
+        if version < 2 {
             let migration = connection.transaction()?;
-            migration.execute_batch(
-                "CREATE TABLE IF NOT EXISTS tasks (
+            if version == 0 {
+                migration.execute_batch(
+                    "CREATE TABLE IF NOT EXISTS tasks (
                     id TEXT PRIMARY KEY NOT NULL,
                     title TEXT NOT NULL CHECK (length(trim(title)) > 0),
                     description TEXT NOT NULL DEFAULT '',
@@ -222,6 +274,24 @@ impl TaskStore {
                 CREATE INDEX IF NOT EXISTS tasks_created_order
                   ON tasks(created_at DESC, id DESC);
                 PRAGMA user_version = 1;",
+                )?;
+            }
+            migration.execute_batch(
+                "ALTER TABLE tasks ADD COLUMN previous_incomplete_progress
+                 INTEGER NOT NULL DEFAULT 0 CHECK (previous_incomplete_progress BETWEEN 0 AND 99);
+                 UPDATE tasks SET previous_incomplete_progress = progress
+                   WHERE status = 'in_progress' AND progress BETWEEN 0 AND 99;
+                 CREATE INDEX IF NOT EXISTS tasks_status_priority_order ON tasks (
+                     CASE status WHEN 'in_progress' THEN 0 WHEN 'ready' THEN 1 ELSE 2 END ASC,
+                     CASE priority WHEN 'very_high' THEN 5 WHEN 'high' THEN 4
+                       WHEN 'medium' THEN 3 WHEN 'low' THEN 2 ELSE 1 END DESC,
+                     created_at DESC, id DESC
+                 );
+                 CREATE INDEX IF NOT EXISTS tasks_status_newest_order ON tasks (
+                     CASE status WHEN 'in_progress' THEN 0 WHEN 'ready' THEN 1 ELSE 2 END ASC,
+                     created_at DESC, id DESC
+                 );
+                 PRAGMA user_version = 2;",
             )?;
             migration.commit()?;
         }
@@ -310,30 +380,208 @@ impl TaskStore {
         }
     }
 
-    /// Cursor pagination is bounded to 100 records to protect desktop and future AI callers.
+    /// Applies a status, priority, or percentage change atomically under the same
+    /// optimistic revision rules used by ordinary Task editing.
+    ///
+    /// Ready means not yet started. An in-progress Task does not become Ready when
+    /// its percentage drops to zero; resetting previously started work is not implicit.
+    pub fn change_task(&self, input: ChangeTask) -> Result<Task, TaskError> {
+        if input.status.is_none() && input.priority.is_none() && input.progress.is_none() {
+            return Err(TaskError::EmptyChange);
+        }
+        if input.progress.is_some_and(|progress| progress > 100) {
+            return Err(TaskError::InvalidProgress);
+        }
+
+        let mut conn = self.connect()?;
+        let transaction = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let sql =
+            format!("SELECT {COLUMNS}, previous_incomplete_progress FROM tasks WHERE id = ?1");
+        let current = transaction
+            .query_row(&sql, params![input.id], |row| {
+                Ok((read_task(row)?, row.get::<_, u8>(9)?))
+            })
+            .optional()?;
+        let (before, mut previous_incomplete) = current.ok_or(TaskError::NotFound)?;
+        if before.revision != input.expected_revision {
+            return Err(TaskError::RevisionConflict);
+        }
+
+        let mut next_status = before.status;
+        let mut next_progress = before.progress;
+        if let Some(progress) = input.progress {
+            next_progress = progress;
+            next_status = if progress == 100 {
+                WorkStatus::Completed
+            } else if progress == 0 && before.status == WorkStatus::Ready {
+                WorkStatus::Ready
+            } else {
+                WorkStatus::InProgress
+            };
+        }
+        if let Some(status) = input.status {
+            match status {
+                WorkStatus::Ready => {
+                    if before.status != WorkStatus::Ready || next_progress != 0 {
+                        return Err(TaskError::InvalidTransition(
+                            "Ready is only available for work that has not started",
+                        ));
+                    }
+                    next_status = WorkStatus::Ready;
+                }
+                WorkStatus::InProgress => {
+                    if next_progress == 100 && input.progress.is_some() {
+                        return Err(TaskError::InvalidTransition(
+                            "In Progress cannot have 100% completion",
+                        ));
+                    }
+                    if before.status == WorkStatus::Completed && input.progress.is_none() {
+                        next_progress = previous_incomplete;
+                    }
+                    next_status = WorkStatus::InProgress;
+                }
+                WorkStatus::Completed => {
+                    if input.progress.is_some_and(|progress| progress != 100) {
+                        return Err(TaskError::InvalidTransition(
+                            "Completed requires progress of 100%",
+                        ));
+                    }
+                    next_status = WorkStatus::Completed;
+                    next_progress = 100;
+                }
+            }
+        }
+        if next_progress < 100 {
+            previous_incomplete = next_progress;
+        }
+        let next_priority = input.priority.unwrap_or(before.priority);
+        let now = current_millis()?;
+        let sql = format!(
+            "UPDATE tasks SET
+                status = ?1, priority = ?2, progress = ?3,
+                previous_incomplete_progress = ?4,
+                revision = revision + 1,
+                updated_at = max(updated_at + 1, ?5)
+             WHERE id = ?6 AND revision = ?7
+             RETURNING {COLUMNS}"
+        );
+        let updated = transaction.query_row(
+            &sql,
+            params![
+                next_status.as_sql(),
+                next_priority.as_sql(),
+                next_progress,
+                previous_incomplete,
+                now,
+                input.id,
+                input.expected_revision
+            ],
+            read_task,
+        )?;
+        transaction.commit()?;
+        Ok(updated)
+    }
+
+    /// Backwards-compatible default: work status is always the outer sort key,
+    /// then highest priority, newest creation time, and stable UUID tie breaker.
     pub fn list_tasks(&self, limit: u32, cursor: Option<&str>) -> Result<TaskPage, TaskError> {
+        self.list_tasks_sorted(limit, cursor, SortMode::Priority)
+    }
+
+    /// Keyset pages retain the fixed work-status grouping under either secondary
+    /// sort. Cursors are tied to their sort mode and validated before querying.
+    pub fn list_tasks_sorted(
+        &self,
+        limit: u32,
+        cursor: Option<&str>,
+        sort: SortMode,
+    ) -> Result<TaskPage, TaskError> {
         if !(1..=100).contains(&limit) {
             return Err(TaskError::InvalidPageSize);
         }
 
-        let (after_time, after_id): (Option<i64>, Option<String>) = match cursor {
-            None => (None, None),
-            Some(cursor) => {
-                let (time, id) = cursor.split_once(':').ok_or(TaskError::InvalidCursor)?;
-                let time: i64 = time.parse().map_err(|_| TaskError::InvalidCursor)?;
-                Uuid::parse_str(id).map_err(|_| TaskError::InvalidCursor)?;
-                (Some(time), Some(id.to_owned()))
+        let (after_status, after_priority, after_time, after_id) = match cursor {
+            None => (None, None, None, None),
+            Some(value) => {
+                let fields: Vec<_> = value.split('|').collect();
+                if fields.len() != 6 || fields[0] != "v2" || fields[1] != sort.as_cursor() {
+                    return Err(TaskError::InvalidCursor);
+                }
+                let status = fields[2]
+                    .parse::<i64>()
+                    .map_err(|_| TaskError::InvalidCursor)?;
+                let priority = fields[3]
+                    .parse::<i64>()
+                    .map_err(|_| TaskError::InvalidCursor)?;
+                let timestamp = fields[4]
+                    .parse::<i64>()
+                    .map_err(|_| TaskError::InvalidCursor)?;
+                if !(0..=2).contains(&status)
+                    || (sort == SortMode::Priority && !(1..=5).contains(&priority))
+                    || (sort == SortMode::Newest && priority != 0)
+                    || timestamp < 0
+                    || Uuid::parse_str(fields[5]).is_err()
+                {
+                    return Err(TaskError::InvalidCursor);
+                }
+                (
+                    Some(status),
+                    Some(priority),
+                    Some(timestamp),
+                    Some(fields[5].to_owned()),
+                )
             }
         };
 
-        let conn = self.connect()?;
+        const STATUS_RANK: &str =
+            "CASE status WHEN 'in_progress' THEN 0 WHEN 'ready' THEN 1 ELSE 2 END";
+        const PRIORITY_RANK: &str = "CASE priority WHEN 'very_high' THEN 5 WHEN 'high' THEN 4 WHEN 'medium' THEN 3 WHEN 'low' THEN 2 ELSE 1 END";
+        let priority_expr = if sort == SortMode::Priority {
+            PRIORITY_RANK
+        } else {
+            "0"
+        };
+
+        let (cursor_filter, secondary_order) = match sort {
+            SortMode::Priority => (
+                "(?1 IS NULL
+                   OR status_rank > ?1
+                   OR (status_rank = ?1 AND priority_rank < ?2)
+                   OR (status_rank = ?1 AND priority_rank = ?2 AND created_at < ?3)
+                   OR (status_rank = ?1 AND priority_rank = ?2
+                       AND created_at = ?3 AND id < ?4))",
+                "priority_rank DESC, ",
+            ),
+            SortMode::Newest => (
+                "(?1 IS NULL
+                   OR status_rank > ?1
+                   OR (status_rank = ?1 AND created_at < ?3)
+                   OR (status_rank = ?1 AND created_at = ?3 AND id < ?4))",
+                "",
+            ),
+        };
+        // Do not add a constant priority_rank sort key in Newest mode: doing so
+        // forces SQLite to build a temporary B-tree instead of using the index.
         let sql = format!(
-            "SELECT {COLUMNS} FROM tasks
-             WHERE (?1 IS NULL OR created_at < ?1 OR (created_at = ?1 AND id < ?2))
-             ORDER BY created_at DESC, id DESC LIMIT ?3"
+            "WITH ranked AS (
+                SELECT {COLUMNS}, {STATUS_RANK} AS status_rank,
+                    {priority_expr} AS priority_rank
+                FROM tasks
+             )
+             SELECT {COLUMNS} FROM ranked
+             WHERE {cursor_filter}
+             ORDER BY status_rank ASC, {secondary_order}created_at DESC, id DESC
+             LIMIT ?5"
         );
-        let mut statement = conn.prepare(&sql)?;
-        let mut rows = statement.query(params![after_time, after_id, i64::from(limit) + 1])?;
+        let conn = self.connect()?;
+        let mut stmt = conn.prepare(&sql)?;
+        let mut rows = stmt.query(params![
+            after_status,
+            after_priority,
+            after_time,
+            after_id,
+            i64::from(limit) + 1
+        ])?;
         let mut items = Vec::with_capacity(limit as usize + 1);
         while let Some(row) = rows.next()? {
             items.push(read_task(row)?);
@@ -341,13 +589,24 @@ impl TaskStore {
 
         let next_cursor = if items.len() > limit as usize {
             items.pop();
-            items
-                .last()
-                .map(|task| format!("{}:{}", task.created_at, task.id))
+            items.last().map(|task| {
+                let priority = if sort == SortMode::Priority {
+                    task.priority.rank()
+                } else {
+                    0
+                };
+                format!(
+                    "v2|{}|{}|{}|{}|{}",
+                    sort.as_cursor(),
+                    task.status.rank(),
+                    priority,
+                    task.created_at,
+                    task.id,
+                )
+            })
         } else {
             None
         };
-
         Ok(TaskPage { items, next_cursor })
     }
 }

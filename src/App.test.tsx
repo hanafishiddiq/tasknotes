@@ -168,4 +168,38 @@ describe("Tasknotes desktop", () => {
     expect(screen.getByText("Your list is clear")).toBeInTheDocument();
     expect(screen.queryByText("Couldn't load your tasks")).not.toBeInTheDocument();
   });
+
+  it("keeps a successful create when sorted refresh fails and allows reloading", async () => {
+    let listReads = 0;
+    invokeMock.mockImplementation(async (command, args) => {
+      if (command === "list_tasks") {
+        listReads++;
+        if (listReads === 2) throw new Error("Temporary read error");
+        return { items: [...saved], nextCursor: null };
+      }
+      if (command === "create_task") {
+        const input = (args as { input: { title: string; description: string } }).input;
+        const created: SavedTask = {
+          id: "once", title: input.title, description: input.description,
+          status: "ready", priority: "medium", progress: 0, revision: 1,
+          createdAt: 123, updatedAt: 123,
+        };
+        saved.push(created);
+        return created;
+      }
+      throw new Error("Unexpected command: " + command);
+    });
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("Your list is clear");
+    await user.type(screen.getByRole("textbox", { name: "Task title" }), "One time only");
+    await user.click(screen.getByRole("button", { name: "Add task" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Task created");
+    expect(screen.getByRole("textbox", { name: "Task title" })).toHaveValue("");
+    expect(saved).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "Refresh list" }));
+    expect(await screen.findByRole("article", { name: "One time only" })).toBeInTheDocument();
+    expect(saved).toHaveLength(1);
+  });
+
 });
