@@ -8,13 +8,21 @@
 
 **Status:** needs-triage
 
-**Implementation:** diagnosis in progress on a separate branch; measured WKWebView scroll reproduction exists. Product code fix has **not** been implemented or validated.
+**Implementation:** ordinary Tasknotes is now owner-reported smooth (2026-10-13); the separate Issue19 QA app still lags. Embedded application JS/CSS are identical. A QA build-output collision is corrected on `test/issue19-native-input-parity`; the remaining QA visual lag and its root cause are not resolved. No product-code scrolling fix is claimed.
 
 **Severity:** High — user-visible scrolling responsiveness, described by the user as feeling approximately 10–20 FPS on 2026-10-12. This is a subjective estimate, not a measured FPS result.
 
 **Blocked by:** None for reproducing/diagnosing; implementation should avoid unreviewed changes to open feature PRs.
 
 **Blocks acceptance:** Ticket 17 performance verification and Ticket 18 macOS release-quality verification. The lag must be reproduced, measured, addressed and re-tested before claiming a production-ready macOS app.
+
+## Latest owner acceptance and diagnostic separation — 2026-10-13
+
+The owner explicitly reports **ordinary Tasknotes is smooth now**, while **Issue19 QA still lags**. Preserve this qualitative native acceptance. Do not relabel the ordinary app as currently broken solely because a diagnostic rAF test or separately instrumented QA app is slow.
+
+Read [ordinary versus QA evidence](../../../docs/qa/issue19-normal-vs-qa-2026-10-13.md) before any further experiment. The actual ordinary and QA binaries embed byte-identical application JS/CSS. However, the common raw `target/debug/tasknotes` executable had been replaced by the QA build: it did not match the ordinary `.app`. The hover QA runner now uses its own Cargo target and fails closed rather than reusing a legacy shared-output bundle. This is an artifact-isolation fix, **not a proven explanation of the QA scrolling lag**.
+
+A new strictly in-process AppKit input seam delivered trusted browser wheel events and scroll movement without JavaScript scrolling, but every performance pilot lost foreground visibility. They remain **INCONCLUSIVE**, not physical or performance acceptance evidence. No OS input injection or visibility restriction bypass. Workload-wide Ticket 17/18 performance gates and independent review remain open. The older research and measurements below are historical, not a reason to discard the owner's newer ordinary-app report.
 
 ## Observed evidence
 

@@ -3,17 +3,22 @@
 # --reuse-bundle skips rebuilding the already verified QA app.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-APP="$(pwd)/src-tauri/target/debug/bundle/macos/Tasknotes Issue19 Hover A B QA.app"
+# Never replace target/debug/tasknotes or any ordinary Tasknotes.app build.
+QA_TARGET="$(pwd)/src-tauri/target/issue19-hover-native"
+APP="$QA_TARGET/debug/bundle/macos/Tasknotes Issue19 Hover A B QA.app"
 if [ "$#" -eq 0 ]; then
   node scripts/qa/prepare-issue19-hover-ab.mjs
-  PATH="$HOME/.cargo/bin:$PATH" CARGO_BUILD_JOBS=3 pnpm tauri build --debug \
+  PATH="$HOME/.cargo/bin:$PATH" CARGO_TARGET_DIR="$QA_TARGET" CARGO_BUILD_JOBS=3 pnpm tauri build --debug \
     --bundles app --no-sign --ci \
     --config src-tauri/target/issue19-hover-ab/hover-ab.conf.json
 elif [ "$1" != "--reuse-bundle" ]; then
   echo "Usage: bash scripts/qa/run-issue19-hover-ab.sh [--reuse-bundle]" >&2
   exit 2
 fi
-test -d "$APP"
+if [ ! -d "$APP" ]; then
+  echo "Missing isolated QA bundle; run bash scripts/qa/run-issue19-hover-ab.sh without --reuse-bundle first." >&2
+  exit 2
+fi
 BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP/Contents/Info.plist")"
 test "$BUNDLE_ID" = "store.adamaja.tasknotes.issue19hoverab"
 DIR="$(python3 - <<'PY'
