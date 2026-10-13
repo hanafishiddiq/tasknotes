@@ -17,7 +17,7 @@
 
 ## Incoming defects
 
-- **Bug 19 — Native UI lag**: [issue](issues/19-native-interaction-lag.md), high priority, `needs-triage`. Must be diagnosed and resolved before Ticket 17's performance gate and Ticket 18's release-quality sign-off. This incoming bug is **not** a silently added v1 feature requirement; the approved product plan still has 18 feature tickets.
+- **Bug 19 — historic native UI lag**: [issue](issues/19-native-interaction-lag.md), **`wontfix`/current ordinary-app symptom closed as no longer reproduced by owner on 2026-10-13**. Only the QA diagnostic app remains laggy; stop that separate investigation. No source-level scrolling fix or cause is claimed. Tickets **17 and 18 still require their own measured performance and release acceptance**. This bug is not an extra v1 feature ticket.
 - **Native GUI acceptance report**: [2026-10-12 evidence](../../docs/qa/native-acceptance-2026-10-12.md).
 
 ## Dependency graph
