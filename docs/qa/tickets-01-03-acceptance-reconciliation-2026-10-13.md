@@ -54,3 +54,6 @@ Executed in a **separate clean source worktree**, initially based on Ticket 03; 
 - Older Tickets 01–03 generated SQLite schema versions v1→v2→v3, which are forward-only; a recoverable backup is a separate pre-release requirement, not a change attempted here.
 
 **Disposition:** acceptance evidence reconciled, no need for repeated end-user basic CRUD QA; keep Draft, preserve scope, obtain independent review/merge decisions when available.
+## Follow-up: independent AI review — 2026-10-13
+
+Six read-only independent-AI reviewer outputs (two separate axes per Ticket), plus independent factual adjudication, are archived under [the new review report](../reviews/tickets-01-03-independent-2026-10-13.md). No confirmed blocking code defect survives fact-checking. **GitHub authenticated approval and owner merge permission remain open**; all three Tickets remain `Implementation: review`, with the OS-level picker limitation unchanged. Previous sections reflect the time when only exhausted Copilot review requests were available; they are preserved for chronology.

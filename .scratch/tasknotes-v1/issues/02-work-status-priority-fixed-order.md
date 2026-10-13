@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** review — native GUI priority/status/progress/reopen verified; sorting toggle acceptance and independent review remain pending; stacked merge blocked by Ticket 01.
+**Implementation:** review — native status/priority/progress/reopen and app-level sorting tests verified; independent AI two-axis review completed 2026-10-13. Manual OS picker, authenticated review and merge remain pending; Ticket 01 dependency still blocks integration.
 
 ## Acceptance criteria
 
@@ -64,3 +64,7 @@
 ## Acceptance reconciliation — 2026-10-13
 
 The owner manually tested status/priority/completion/reopen, and WKWebView automation twice tested sorting via scoped DOM change events. This validates React/Tauri/Rust behavior, but **does not establish a manual OS-level dropdown picker journey**. Independent review and Ticket 01 acceptance/merge dependencies remain open; **Implementation stays review**. See [joint evidence matrix](../../../docs/qa/tickets-01-03-acceptance-reconciliation-2026-10-13.md). No native QA rerun, production data access, merge or release was performed.
+
+## 2026-10-13 independent AI two-axis review
+
+Standards: no hard violation. Spec: no proven blocking requirement gap. A Ready→Ready 0%-no-op could increment revision at this historical SHA; Ticket 03 subsequently adds EmptyProgressUpdate guard, and no data loss was found. Native OS picker still has no separate human-level selection proof. See [six independent AI Standards/Spec source reviews and separate factual adjudication](../../../docs/reviews/tickets-01-03-independent-2026-10-13.md). This is **independent AI code review**, not a GitHub authenticated human APPROVED decision. No production code edit, personal DB action, merge or release; **Implementation remains review** pending owner sign-off, review policy and parent dependencies.
