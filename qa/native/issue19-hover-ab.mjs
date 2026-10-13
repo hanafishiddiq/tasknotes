@@ -35,6 +35,14 @@ export function phaseMode(name){
   if(!LABELS.includes(name))throw Error("Unsupported QA phase");
   return name[0];
 }
+export function phaseMarkerName(name,side,runId){
+  phaseMode(name);
+  if((side!=="BEGIN"&&side!=="END")||
+    typeof runId!=="string"||!/^[0-9a-f]{32}$/.test(runId)){
+    throw Error("Unsupported QA trial marker");
+  }
+  return "ISSUE19_HOVER_"+name+"_"+side+"_"+runId;
+}
 export function percentile(numbers,quantile){
   if(!numbers.length)return null;
   const a=[...numbers].sort((x,y)=>x-y);
@@ -130,7 +138,7 @@ async function init(){
     label("Ready • attach Safari Inspector; choose scripted or REAL trackpad test");
   }
 
-  async function phase(name,inputMethod){
+  async function phase(name,inputMethod,runId){
     const mode=name[0];
     const isPhysical=inputMethod==="physical";
     document.querySelectorAll(".issue19-force-hover").forEach(e=>e.classList.remove("issue19-force-hover"));
@@ -164,7 +172,7 @@ async function init(){
     window.addEventListener("scroll",onScroll,{passive:true});
     rafId=requestAnimationFrame(frame);
     function marker(suffix){
-      const markerName="ISSUE19_HOVER_"+name+"_"+suffix;
+      const markerName=phaseMarkerName(name,suffix,runId);
       console.timeStamp(markerName);
       window.addEventListener(markerName,()=>{}, {once:true});
       window.dispatchEvent(new Event(markerName));
@@ -255,6 +263,10 @@ async function init(){
     busy=true;button.disabled=true;physicalButton.disabled=true;
     const output={schema:1,inputMethod,startedAt:Date.now(),phases:[],valid:false};
     try{
+      // Non-secret correlation ID; not proof of physical hardware input.
+      const runId=Array.from(crypto.getRandomValues(new Uint8Array(16)),
+        byte=>byte.toString(16).padStart(2,"0")).join("");
+      output.runId=runId;
       try{await win.show();await win.setFocus()}catch{}
       check(document.visibilityState==="visible"&&document.hasFocus(),
         "native window must be visible and focused");
@@ -268,7 +280,7 @@ async function init(){
           label(inputMethod==="physical"
             ?"REAL "+name+": prepare 2s, then scroll up/down for 6s"
             :"Scripted phase "+name+" running…");
-          const result=await phase(name,inputMethod);
+          const result=await phase(name,inputMethod,runId);
           output.phases.push(result);
           if(!result.valid){label("INCONCLUSIVE: phase "+name);break}
           await wait(inputMethod==="physical"?800:250);

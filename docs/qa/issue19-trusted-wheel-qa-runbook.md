@@ -8,6 +8,12 @@ The prior button **Start one A–B–B–A trace** still runs the original synth
 
 New button **Start REAL trackpad A–B–B–A** runs four short *real wheel input* phases. The QA does **not** call `scrollBy` or synthesize `WheelEvent` during these physical phases; only trusted `wheel` events count. It switches hover transition styles A1/B1/B2/A2 within one native window, resetting scroll before each measured interval. A keeps original animations; B disables only card transitions. No production CSS change.
 
+## Exact-trial binding update (2026-10-13)
+
+Use the newly rebuilt QA bundle from `fix/issue19-physical-trace-identity`. Each execution now stores one random, non-secret `runId` and appends it to all eight existing phase markers, for example `ISSUE19_HOVER_A1_BEGIN_<32 lowercase hex digits>`. The strict comparator requires the same ID in every phase and the latest synthetic QA metrics row. Similar counts/timing plus a newer file timestamp are no longer sufficient.
+
+Start a **fresh** Safari recording instead of resuming a previous one; appended runs are intentionally rejected as ambiguous. Existing unidentified recordings remain readable in numeric-only mode, not as physical evidence. No manual ID entry is needed. The measured phase durations, CSS variants, workload gates and performance criteria are unchanged. [Red/green tests, artifact hashes and review](../reviews/issue19-physical-trace-identity.md).
+
 ## Exact capture steps
 
 1. QA app is started on the Mac with `bash scripts/qa/run-issue19-hover-ab.sh --reuse-bundle`. Use **Tasknotes Issue19 Hover A B QA**, not the older inspector-only build.
