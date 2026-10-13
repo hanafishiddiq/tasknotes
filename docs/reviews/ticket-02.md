@@ -31,3 +31,7 @@
 **One-way for storage schema:** the v1→v2 SQLite migration is forward-only; a Ticket 01-era binary rejects schema v2. Before any deployment, preserve a backup and confirm Ticket 01's native acceptance. No deletion of user data occurs as part of this ticket.
 
 **Review conclusion:** automated acceptance and native debug packaging are verified; the remaining items concern manual native GUI validation and the prerequisite parent ticket. Keep Ticket 02 in review and its PR Draft until those gates are cleared.
+
+## 2026-10-13 evidence correction (not independent review)
+
+The old native behavior gap was covered by owner-operated status/priority/reopen and native WDIO sorting through scoped DOM change events; the OS picker itself remains unverified. The implementing assistant reviewed the Standards and Spec axes again; **independent review was not obtained** because the Copilot reviewer returned a quota-exhausted comment. See [acceptance report](../qa/tickets-01-03-acceptance-reconciliation-2026-10-13.md). The Draft PR remains unmerged and the ticket stays in review.

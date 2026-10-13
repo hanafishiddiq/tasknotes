@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** review — feature and automated acceptance implemented; native GUI interaction remains unverified, and parent Tickets 01–02 are still in review.
+**Implementation:** review — native WKWebView automated create/edit/progress-note/Next Step/quit-reopen behavior passed twice; the earlier manual Progress Note omission remains unexplained. Independent review and parent Tickets 01–02 are still open.
 
 ## Acceptance criteria
 
@@ -57,3 +57,7 @@
 ## Automated native QA — 2026-10-12
 
 - Native E2E via embedded WKWebView WebDriverIO **passed twice** and SQLite confirms the exact dated Progress Note `Native acceptance passed`, Next Step, four append-only entries and persistence after a separate app process relaunch. The manual 2026-10-12 test had an absent note; the automated test demonstrates that this field can be saved but does not prove why that prior attempt omitted it. See [native WebDriver evidence](../../../docs/qa/native-webdriver-results-2026-10-12.md). Independent review is still pending; ticket remains Review.
+
+## Acceptance reconciliation — 2026-10-13
+
+The manual 2026-10-12 test did not persist the expected Progress Note; two later WKWebView runs did persist the exact note, Next Step and four immutable entries across a separate app process. This is valid automated native evidence; no claim is made about why the earlier manual note was empty. Independent review and parent dependencies remain open; **Implementation stays review**. See [joint evidence matrix](../../../docs/qa/tickets-01-03-acceptance-reconciliation-2026-10-13.md). No native QA rerun, production data access, merge or release was performed.

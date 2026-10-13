@@ -51,3 +51,7 @@
 ## Automated native QA — 2026-10-12
 
 - Native E2E via embedded WKWebView WebDriverIO **passed twice** without user clicking: created Task, edited title/description and reopened a separate native process on the same synthetic SQLite database. See [native WebDriver evidence](../../../docs/qa/native-webdriver-results-2026-10-12.md). The independent Standards/Spec review gate is still open; ticket remains Review.
+
+## Acceptance reconciliation — 2026-10-13
+
+Manual native Task creation/edit/reopen and two independent native WebDriver application-process runs passed on 2026-10-12. All listed acceptance behavior has actual evidence; the earlier pre-QA reviewer note saying native clicks were not witnessed is a historical snapshot. Independent review remains unavailable (Copilot quota exhausted), so **Implementation stays review** and no parent/merge gate is waived. See [joint evidence matrix](../../../docs/qa/tickets-01-03-acceptance-reconciliation-2026-10-13.md). No native QA rerun, production data access, merge or release was performed.

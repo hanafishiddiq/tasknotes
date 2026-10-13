@@ -34,3 +34,7 @@
 **Blast radius:** Tasknotes local macOS desktop and its SQLite schema only. No Adamaja production repository, hosted service, credentials, network API or third-party audio assets were touched.
 
 **Review conclusion:** Implementation and automated verification are ready for a stacked Draft PR. Ticket 03 stays **in review** until the native WebView acceptance workflow and parent PR dependencies are resolved.
+
+## 2026-10-13 evidence correction (not independent review)
+
+The old native behavior gap is covered by two actual WKWebView/SQLite note/Next Step/history tests across separate app processes. The failed manual note attempt remains unexplained. The implementing assistant reviewed the Standards and Spec axes again; **independent review was not obtained** because the Copilot reviewer returned a quota-exhausted comment. See [acceptance report](../qa/tickets-01-03-acceptance-reconciliation-2026-10-13.md). The Draft PR remains unmerged and the ticket stays in review.

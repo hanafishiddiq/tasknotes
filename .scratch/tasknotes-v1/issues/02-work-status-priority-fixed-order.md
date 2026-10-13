@@ -60,3 +60,7 @@
 ## Automated native QA — 2026-10-12
 
 - Native E2E via embedded WKWebView WebDriverIO **passed twice**: priority Very High, In Progress/Completed/reopened 60%, Newest/Priority sort choices. Hidden WebDriver select required a scoped DOM input/change fallback, but real Rust IPC and SQLite results were asserted. See [native WebDriver evidence](../../../docs/qa/native-webdriver-results-2026-10-12.md). Independent review is still open.
+
+## Acceptance reconciliation — 2026-10-13
+
+The owner manually tested status/priority/completion/reopen, and WKWebView automation twice tested sorting via scoped DOM change events. This validates React/Tauri/Rust behavior, but **does not establish a manual OS-level dropdown picker journey**. Independent review and Ticket 01 acceptance/merge dependencies remain open; **Implementation stays review**. See [joint evidence matrix](../../../docs/qa/tickets-01-03-acceptance-reconciliation-2026-10-13.md). No native QA rerun, production data access, merge or release was performed.
