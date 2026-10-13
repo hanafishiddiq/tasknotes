@@ -6,11 +6,11 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** review — feature and automated acceptance implemented; native GUI interaction remains unverified, and parent Tickets 01–02 are still in review.
+**Implementation:** completed — feature PR #3 merged to `main` at `118e4240389fc7c96addf26241bab8a3dd5356b8` on 2026-10-13 after independent AI Standards/Spec review accepted in the owner-authorized source-only integration; no app deployment or personal SQLite migration performed.
 
 ## Acceptance criteria
 
-- [ ] A Task exposes editable progress 0–100%, Next Step, and dated progress notes without leaving the expanded Task. **React/Tauri command-contract tests pass; actual native GUI click/type remains unverified.**
+- [x] A Task exposes editable progress 0–100%, Next Step, and dated progress notes without leaving the expanded Task. **Evidence:** two native WKWebView WebDriverIO runs drove the real UI and asserted actual Rust/SQLite persistence of the note and step.
 - [x] Every substantive progress/status change creates an append-only dated Progress Entry; earlier history remains readable. **Evidence:** Rust tests for status/progress updates, note-only updates, recent history, paging, and immutable snapshots.
 - [x] Completing a Task forces 100%, while an explicit reopen restores its previous incomplete percentage and returns to In Progress. **Evidence:** 0/1/99/100 transition table and prior incomplete progress tests.
 - [x] Temporarily inactive Tasks retain In Progress status, progress, Next Step and history across application restarts. **Evidence:** Rust core reopen persistence and React Tauri-command contract remount tests.
@@ -19,7 +19,7 @@
 ## Verification
 
 - [x] Run core behavior tests for 0/1/99/100 transitions, reopen and history, plus React desktop-command persistence/reload tests.
-- [ ] Perform actual native GUI entry/edit/restart workflow (macOS WebView controls still inaccessible through the existing automation).
+- [x] Native UI entry/edit and app process restart through embedded WKWebView WebDriverIO, with read-only SQLite acceptance across two separate app processes. Dropdown selection uses the documented hidden-window fallback.
 - [x] Relevant automated tests passed: 19 React, 20 Rust integration; TypeScript, Rust core Clippy, Tauri Clippy, Rust formatting, production frontend build, macOS unsigned app build, and isolated native SQLite schema v3 startup.
 - [x] Two-axis Standards/Spec review documented in `docs/reviews/ticket-03.md`; no independent subagent approval claimed. Manual native GUI acceptance and parent dependency remain open.
 
@@ -53,3 +53,21 @@
 - User's actual native GUI operations persisted task title/description, priority Very High, progress 60%, Next Step and Completed→In Progress (60%) transition. Quit/restart and UI screenshot confirmed retention.
 - **Progress Note remains unverified:** SQLite contains three history events with empty `note` fields even though the user replied they finished the test; do not infer the cause or mark note-entry acceptance complete. See [native QA evidence](../../../docs/qa/native-acceptance-2026-10-12.md).
 - **UX performance bug:** user reports severe lag; tracked in [Bug 19](19-native-interaction-lag.md). Ticket 03 remains in review.
+
+## Automated native QA — 2026-10-12
+
+- Native E2E via embedded WKWebView WebDriverIO **passed twice** and SQLite confirms the exact dated Progress Note `Native acceptance passed`, Next Step, four append-only entries and persistence after a separate app process relaunch. The manual 2026-10-12 test had an absent note; the automated test demonstrates that this field can be saved but does not prove why that prior attempt omitted it. See [native WebDriver evidence](../../../docs/qa/native-webdriver-results-2026-10-12.md). Independent review is still pending; ticket remains Review.
+
+## Acceptance reconciliation — 2026-10-13
+
+The manual 2026-10-12 test did not persist the expected Progress Note; two later WKWebView runs did persist the exact note, Next Step and four immutable entries across a separate app process. This is valid automated native evidence; no claim is made about why the earlier manual note was empty. Independent review and parent dependencies remain open; **Implementation stays review**. See [joint evidence matrix](../../../docs/qa/tickets-01-03-acceptance-reconciliation-2026-10-13.md). No native QA rerun, production data access, merge or release was performed.
+
+## 2026-10-13 independent AI two-axis review
+
+Standards: no hard violation; the unused EmptyChange error variant and percentage-only routing are nonblocking maintenance observations. Spec review incorrectly claimed native Progress Note persistence was unverified; two actual WKWebView E2E passes and a read-only SQLite exact-note assertion already prove it. The original manual note-omission cause remains unknown. See [six independent AI Standards/Spec source reviews and separate factual adjudication](../../../docs/reviews/tickets-01-03-independent-2026-10-13.md). This is **independent AI code review**, not a GitHub authenticated human APPROVED decision. No production code edit, personal DB action, merge or release; **Implementation remains review** pending owner sign-off, review policy and parent dependencies.
+
+## Source integration completed — 2026-10-13
+
+Ticket 03 (Progress history and Next Step) reached the required dependency and code-review frontier. The owner answered **“lanjutkan”** immediately after a direct request to accept independent AI review and authorize the sequential **source-only PR #1 → #2 → #3** merges. GitHub confirms PR #3 merged; reviewed head/tree equality was checked at each step; branch checks and the final `main` CI passed. See [post-merge verification](../../../docs/qa/tickets-01-03-postmerge-2026-10-13.md) and [independent AI evidence](../../../docs/reviews/tickets-01-03-independent-2026-10-13.md).
+
+This is **feature implementation completion**, not deployment or release approval. The remaining macOS OS-picker QA limitation, forward-only SQLite migration backup, and large-dataset performance/release gates remain documented separately in future tickets. Earlier sections saying “merge pending” are historical and superseded by this dated status.

@@ -6,15 +6,19 @@
 
 **Reported:** 2026-10-12 by the user during the first real native GUI acceptance of Tickets 01–03.
 
-**Status:** needs-triage
+**Status:** wontfix
 
-**Implementation:** not started — symptom captured; diagnosis and fix not yet authorized as a separate implementation ticket.
+**Implementation:** historic ordinary-app symptom closed by the owner's 2026-10-13 smoothness report; separate QA-only lag investigation intentionally stopped. No source-level root cause or product fix proven.
 
-**Severity:** High — user-visible desktop responsiveness, reported as "masih sangat ngelag".
+**Severity:** Historical High, reported on 2026-10-12; the owner reports ordinary Tasknotes smooth on 2026-10-13. No hardware FPS benchmark was established.
 
-**Blocked by:** None for reproducing/diagnosing; implementation should avoid unreviewed changes to open feature PRs.
+**Blocked by:** N/A for this deliberate triage disposition; reopen only if an ordinary product symptom recurs.
 
-**Blocks acceptance:** Ticket 17 performance verification and Ticket 18 macOS release-quality verification. The lag must be reproduced, measured, addressed and re-tested before claiming a production-ready macOS app.
+**Blocks acceptance:** No current ordinary-app lag is reported. Tickets 17 (50,000 Task/10,000 Note performance) and 18 (macOS release verification) retain their independent, unpassed acceptance gates; this triage disposition does not certify release performance.
+
+## Triage disposition — 2026-10-13 (supersedes earlier diagnostic steps)
+
+The owner directly confirmed that **ordinary Tasknotes is smooth** and instructed us to stop investigating lag observed only in the separate instrumented **Tasknotes Issue19 QA** app. This `wontfix` classification denotes a deliberate **stop to product-irrelevant QA-only diagnosis**, **not** a claim that a root cause was discovered or patched. Historical negative experiments below are retained for provenance and are no longer active work. Independent scale/release gates remain open. The owner-accepted ordinary app was not replaced, deployed or migrated during source integration. The detailed original disposition was reviewed on [documentation Draft PR #13](https://github.com/hanafishiddiq/tasknotes/pull/13); its underlying experimental QA PR chain must not be merged merely to carry the text.
 
 ## Observed evidence
 

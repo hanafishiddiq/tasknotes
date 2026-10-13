@@ -1,7 +1,7 @@
 # Tasknotes v1 — Local Issue Tracker
 
 **Planning:** COMPLETE (2026-10-11). All Q1–Q49 decisions accepted.
-**Implementation:** Tickets 01–03 have been implemented in stacked Draft PRs, remain under acceptance/review; Tickets 04–18 have not started. The user reported a new native-performance bug (#19).
+**Implementation (2026-10-13):** Tickets **01–03 completed and merged to `main`** after independent AI code reviews and owner-authorized source-only integration; **Tickets 04–18 have not started**. No release/deployment or user SQLite migration occurred. [Merge and acceptance record](../../docs/qa/tickets-01-03-postmerge-2026-10-13.md).
 **Canonical specification:** [spec.md](spec.md).
 **Source of truth for terminology:** [GLOSSARY.md](../../GLOSSARY.md).
 **Architecture decisions:** [docs/adr](../../docs/adr).
@@ -17,7 +17,7 @@
 
 ## Incoming defects
 
-- **Bug 19 — Native UI lag**: [issue](issues/19-native-interaction-lag.md), high priority, `needs-triage`. Must be diagnosed and resolved before Ticket 17's performance gate and Ticket 18's release-quality sign-off. This incoming bug is **not** a silently added v1 feature requirement; the approved product plan still has 18 feature tickets.
+- **Bug 19 — historic native UI lag**: [issue](issues/19-native-interaction-lag.md), triaged `wontfix` because the owner directly reports **ordinary Tasknotes smooth**, while only the separate diagnostic QA app still lags. Root cause was not proven and QA-only testing was stopped. **Ticket 17/18 performance and release gates remain required independently.** It is not an added v1 feature ticket.
 - **Native GUI acceptance report**: [2026-10-12 evidence](../../docs/qa/native-acceptance-2026-10-12.md).
 
 ## Dependency graph
@@ -43,7 +43,7 @@
 | 17 | Performance and synthetic benchmarks | 05, 07, 12, 14 |
 | 18 | macOS release-quality verification | 12, 13, 15, 16, 17 |
 
-**Initially unblocked when implementation begins:** Ticket **01** only. After 01, independent Tickets 02, 04, and 06 can proceed.
+**Current frontier after merging 01→02→03 (2026-10-13):** Tickets **04 (Inbox/Lists/tags/deadlines)** and **06 (Markdown Notes)** are unblocked by Ticket 01 but still **not started**. Tickets 05 and 07 onward still have uncompleted dependencies. Each additional feature requires its own implementation instruction.
 
 ## Privacy and public repository rules
 
