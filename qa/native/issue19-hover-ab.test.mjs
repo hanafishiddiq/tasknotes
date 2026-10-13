@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {phasePlan,phaseMode,setVariant,percentile,isQaStartShortcut,isTrustedWheelEvent,validPhysicalPhase,comparablePhysicalPhases} from "./issue19-hover-ab.mjs";
+import {phaseMarkerName,phasePlan,phaseMode,setVariant,percentile,isQaStartShortcut,isTrustedWheelEvent,validPhysicalPhase,comparablePhysicalPhases} from "./issue19-hover-ab.mjs";
 
 function fakeDocument(){
   const card={className:"task-card"};
@@ -75,4 +75,15 @@ test("nearest-rank statistics and empty samples are deterministic",()=>{
   assert.equal(percentile([50,10,20,15,40],.95),50);
   assert.equal(percentile([50,10,20,15,40],.5),20);
   assert.equal(percentile([],.95),null);
+});
+
+test("native phase marker protocol binds exact trial without changing A-B-B-A labels",()=>{
+  const id="11111111111111111111111111111111";
+  assert.equal(phaseMarkerName("A1","BEGIN",id),
+    "ISSUE19_HOVER_A1_BEGIN_11111111111111111111111111111111");
+  assert.equal(phaseMarkerName("B2","END",id),
+    "ISSUE19_HOVER_B2_END_11111111111111111111111111111111");
+  assert.throws(()=>phaseMarkerName("C1","BEGIN",id),/Unsupported/);
+  assert.throws(()=>phaseMarkerName("A1","START",id),/Unsupported/);
+  assert.throws(()=>phaseMarkerName("A1","BEGIN",""),/Unsupported/);
 });

@@ -8,6 +8,7 @@ screenshot sampling or browser callback intervals with physical screen FPS.
 from __future__ import annotations
 
 import argparse
+from contextlib import closing
 import hashlib
 import json
 import math
@@ -15,7 +16,7 @@ import re
 import statistics
 from pathlib import Path
 
-MARK = re.compile(r"^ISSUE19_HOVER_(A1|B1|B2|A2)_(BEGIN|END)$")
+MARK = re.compile(r"^ISSUE19_HOVER_(A1|B1|B2|A2)_(BEGIN|END)(?:_([0-9a-f]{32}))?$")
 LABELS = ("A1","B1","B2","A2")
 MAX_TRACE_BYTES = 256 * 1024 * 1024  # 256 MiB, bounded; real export is ~250.3 MB
 
@@ -39,6 +40,7 @@ def trace_phases(records: list[dict]) -> list[dict]:
     if Web Inspector does not serialize these events.
     """
     match = {}
+    identities = set()
     for event in records:
         name = event.get("details")
         if not isinstance(name,str):
@@ -48,7 +50,8 @@ def trace_phases(records: list[dict]) -> list[dict]:
             continue
         if not isinstance(event.get("startTime"),(int,float)):
             continue
-        label,side=parsed.groups()
+        label,side,run_id=parsed.groups()
+        identities.add(run_id)
         key=(label,side)
         if key in match:
             raise ValueError("Ambiguous duplicate A/B marker " + label + "-" + side)
@@ -57,6 +60,9 @@ def trace_phases(records: list[dict]) -> list[dict]:
         missing = [f"{label}-{side}" for label in LABELS for side in ("BEGIN","END")
                    if (label,side) not in match]
         raise ValueError("INCONCLUSIVE: Inspector marker events absent: " + ", ".join(missing))
+    if len(identities) != 1:
+        raise ValueError("INCONCLUSIVE: mixed or missing Inspector trial identity")
+    run_id = next(iter(identities))
     phases=[]
     for label in LABELS:
         start=match[(label,"BEGIN")]
@@ -65,6 +71,8 @@ def trace_phases(records: list[dict]) -> list[dict]:
             raise ValueError("INCONCLUSIVE: phase timing interval reversed")
         phases.append({"label":label,"mode":label[0],"start":start,"end":end,
                        "durationSeconds":round(end-start,3)})
+        if run_id is not None:
+            phases[-1]["runId"] = run_id
     if any(a["end"]>=b["start"] for a,b in zip(phases,phases[1:])):
         raise ValueError("INCONCLUSIVE: A-B-B-A phase windows overlap/out of order")
     return phases
@@ -95,6 +103,8 @@ def summarize(records: list[dict], phases: list[dict]) -> dict:
             "transitionRuns":sum(r.get("details")=="transitionrun" for r in transitions),
             "syntheticWheelEvents":len(wheels),
         }
+        if "runId" in phase:
+            sample["runId"] = phase["runId"]
         out["phases"].append(sample)
     bymode = {mode:[p for p in out["phases"] if p["mode"]==mode] for mode in ("A","B")}
     if all(p["compositeP95Ms"] is not None for p in out["phases"]):
@@ -136,6 +146,10 @@ def verify_physical_qa(result: dict, run: dict) -> dict:
     actual = run.get("phases")
     if not isinstance(expected, list) or not isinstance(actual, list) or len(expected) != 4 or len(actual) != 4:
         raise ValueError("INCONCLUSIVE: expected exactly four Inspector and QA phases")
+    run_id = run.get("runId")
+    if (not isinstance(run_id, str) or not re.fullmatch(r"[0-9a-f]{32}", run_id)
+            or any(phase.get("runId") != run_id for phase in expected)):
+        raise ValueError("INCONCLUSIVE: Inspector trial identity does not match the latest QA run")
     wheels = []
     distances = []
     for label, inspector, qa in zip(LABELS, expected, actual):
@@ -204,7 +218,7 @@ def latest_qa_run(marker: Path) -> dict:
     db = folder / "tasknotes.db"
     if not db.is_file() or db.is_symlink():
         raise ValueError("INCONCLUSIVE: missing or non-regular QA database")
-    with sqlite3.connect(db.as_uri()+"?mode=ro", uri=True) as conn:
+    with closing(sqlite3.connect(db.as_uri()+"?mode=ro", uri=True)) as conn:
         if conn.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
             raise ValueError("INCONCLUSIVE: QA database integrity check failed")
         titles = [row[0] for row in conn.execute("SELECT title FROM tasks")]

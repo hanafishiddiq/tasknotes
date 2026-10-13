@@ -1,4 +1,5 @@
 import unittest
+from contextlib import closing
 
 from compare_issue19_hover_inspector import trace_phases,summarize,trace_within_size_limit,verify_physical_qa,latest_qa_run
 
@@ -6,9 +7,11 @@ class HoverTraceComparisonTests(unittest.TestCase):
 
     def valid_physical_pair(self):
         result=summarize(self.fixture(),trace_phases(self.fixture()))
-        run={"inputMethod":"physical","valid":True,"inputComparable":True,
+        run={"runId":"11111111111111111111111111111111",
+             "inputMethod":"physical","valid":True,"inputComparable":True,
              "startedAt":1791810000000,"completedAt":1791810050000,"phases":[]}
         for i,(row,label) in enumerate(zip(result["phases"],("A1","B1","B2","A2"))):
+            row["runId"]=run["runId"]
             row["durationSeconds"]=6.160
             row["syntheticWheelEvents"]=45
             run["phases"].append({
@@ -20,6 +23,30 @@ class HoverTraceComparisonTests(unittest.TestCase):
                 "transitions":{"run":12 if label.startswith("A") else 0},
             })
         return result,run
+
+    def test_all_phase_markers_carry_one_trial_identity(self):
+        run_id = "11111111111111111111111111111111"
+        records = self.fixture()
+        for record in records:
+            if record.get("details", "").startswith("ISSUE19_HOVER_"):
+                record["details"] += "_" + run_id
+        phases = trace_phases(records)
+        self.assertEqual([p.get("runId") for p in phases], [run_id] * 4)
+        self.assertEqual([p.get("runId") for p in summarize(records, phases)["phases"]], [run_id] * 4)
+        for replacement in ("ISSUE19_HOVER_A1_BEGIN",
+                            "ISSUE19_HOVER_A1_BEGIN_22222222222222222222222222222222"):
+            mixed = [dict(r) for r in records]
+            mixed[0]["details"] = replacement
+            with self.subTest(replacement=replacement), self.assertRaisesRegex(ValueError, "trial identity"):
+                trace_phases(mixed)
+
+    def test_physical_qa_rejects_different_trial_with_matching_statistics(self):
+        numeric, run = self.valid_physical_pair()
+        run["runId"] = "22222222222222222222222222222222"
+        for phase in numeric["phases"]:
+            phase["runId"] = "11111111111111111111111111111111"
+        with self.assertRaisesRegex(ValueError, "trial identity"):
+            verify_physical_qa(numeric, run)
 
     def test_physical_qa_binding_accepts_fully_matched_run_as_candidate_only(self):
         numeric,run=self.valid_physical_pair()
@@ -91,7 +118,7 @@ class HoverTraceComparisonTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="tasknotes-hover-ab.",
                                          dir=Path(tempfile.gettempdir()).resolve()) as directory:
             db=Path(directory)/"tasknotes.db"
-            with sqlite3.connect(db) as conn:
+            with closing(sqlite3.connect(db)) as conn, conn:
                 conn.execute("CREATE TABLE tasks(title TEXT, description TEXT)")
                 conn.executemany("INSERT INTO tasks VALUES(?,?)",[
                     (f"__ISSUE19_HOVER_QA__TASK-{i:02d}", "synthetic") for i in range(31)
@@ -104,7 +131,7 @@ class HoverTraceComparisonTests(unittest.TestCase):
                 marker=Path(markers)/"marker"
                 marker.write_text(str(directory))
                 self.assertEqual(latest_qa_run(marker)["inputMethod"],"physical")
-                with sqlite3.connect(db) as conn:
+                with closing(sqlite3.connect(db)) as conn, conn:
                     conn.execute("UPDATE tasks SET title='private data' WHERE title LIKE '%TASK-00'")
                 with self.assertRaisesRegex(ValueError,"INCONCLUSIVE"):
                     latest_qa_run(marker)
