@@ -15,6 +15,7 @@ type SavedTask = {
   status: "ready";
   priority: "medium";
   progress: number;
+  nextStep: string;
   revision: number;
   createdAt: number;
   updatedAt: number;
@@ -39,6 +40,7 @@ beforeEach(() => {
         status: "ready",
         priority: "medium",
         progress: 0,
+        nextStep: "",
         revision: 1,
         createdAt: 123,
         updatedAt: 123,
@@ -87,7 +89,7 @@ describe("Tasknotes desktop", () => {
   it("expands, edits, saves a Task and shows its persisted details", async () => {
     saved = [{
       id: "task-001", title: "Old name", description: "First notes",
-      status: "ready", priority: "medium", progress: 0, revision: 3,
+      status: "ready", priority: "medium", progress: 0, nextStep: "", revision: 3,
       createdAt: 123, updatedAt: 123,
     }];
     const user = userEvent.setup();
@@ -113,7 +115,7 @@ describe("Tasknotes desktop", () => {
   it("keeps the first page bounded and loads more only when requested", async () => {
     const earlier = {
       id: "first", title: "First task", description: "", status: "ready" as const,
-      priority: "medium" as const, progress: 0, revision: 1, createdAt: 123, updatedAt: 123,
+      priority: "medium" as const, progress: 0, nextStep: "", revision: 1, createdAt: 123, updatedAt: 123,
     };
     const later = { ...earlier, id: "second", title: "Second task" };
     invokeMock.mockImplementation(async (command, args) => {
@@ -181,7 +183,7 @@ describe("Tasknotes desktop", () => {
         const input = (args as { input: { title: string; description: string } }).input;
         const created: SavedTask = {
           id: "once", title: input.title, description: input.description,
-          status: "ready", priority: "medium", progress: 0, revision: 1,
+          status: "ready", priority: "medium", progress: 0, nextStep: "", revision: 1,
           createdAt: 123, updatedAt: 123,
         };
         saved.push(created);

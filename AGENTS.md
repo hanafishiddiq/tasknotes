@@ -1,6 +1,6 @@
 # Engineering instructions
 
-Tasknotes **completed planning** on 2026-10-11. The approved specification and 18 implementation tickets are under `.scratch/tasknotes-v1/`. **No application source code has been implemented yet.** An explicit instruction to enter the implementation phase is required before starting feature work; after that, implement one unblocked ticket at a time using the Matt Pocock flow. Ticket 01 was explicitly authorized on 2026-10-11; no other feature ticket is authorized by that instruction.
+Tasknotes **completed planning** on 2026-10-11. The approved specification and 18 implementation tickets are under `.scratch/tasknotes-v1/`. Application implementation is underway in **stacked Draft PRs for Tickets 01–03**, each separately authorized. None is merged to `main`; their native GUI acceptance and dependency gates remain open. Do not mark any blocked ticket complete or merge downstream changes until their parent tickets have passed review. Any additional feature ticket still requires an explicit instruction.
 
 ## Agent skills
 

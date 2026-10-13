@@ -1,5 +1,6 @@
 use tasknotes_core::tasks::{
-    ChangeTask, CreateTask, SortMode, Task, TaskPage, TaskStore, UpdateTask,
+    ChangeTask, CreateTask, ProgressHistoryPage, RecordProgress, SortMode, Task, TaskPage,
+    TaskStore, UpdateTask,
 };
 use tauri::{Manager, State};
 
@@ -30,6 +31,25 @@ fn change_task(store: State<'_, TaskStore>, input: ChangeTask) -> Result<Task, S
     store.change_task(input).map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+fn record_progress(store: State<'_, TaskStore>, input: RecordProgress) -> Result<Task, String> {
+    store
+        .record_progress(input)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn list_progress_entries(
+    store: State<'_, TaskStore>,
+    task_id: String,
+    limit: u32,
+    before: Option<i64>,
+) -> Result<ProgressHistoryPage, String> {
+    store
+        .list_progress_entries(&task_id, limit, before)
+        .map_err(|error| error.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -50,7 +70,9 @@ pub fn run() {
             list_tasks,
             create_task,
             update_task,
-            change_task
+            change_task,
+            record_progress,
+            list_progress_entries
         ])
         .run(tauri::generate_context!())
         .expect("Unable to launch Tasknotes");

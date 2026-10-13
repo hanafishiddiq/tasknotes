@@ -17,6 +17,10 @@
 - [ ] Audit the public repository and release bundle to exclude real Notes/Tasks, local databases, backups, secrets and unlicensed sounds.
 - [ ] Each earlier ticket has completion evidence and a code review; publish an honest release-readiness checklist with any exceptions.
 
+## Incoming performance defect gate
+
+- The user reported severe native GUI lag with only one synthetic Task on 2026-10-12. See [Bug 19](19-native-interaction-lag.md). Reproduce and measure it before asserting performance readiness. Do not mark this ticket complete while the bug is unresolved.
+
 ## Verification
 
 - [ ] Use a reproducible end-to-end release checklist and independent diff review; packaging is not equivalent to notarized public distribution.

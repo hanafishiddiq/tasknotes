@@ -1,7 +1,7 @@
 # Tasknotes v1 — Local Issue Tracker
 
 **Planning:** COMPLETE (2026-10-11). All Q1–Q49 decisions accepted.
-**Implementation:** NOT STARTED — the user has requested planning first; explicit authorization to enter the implementation phase is still required.
+**Implementation:** Tickets 01–03 have been implemented in stacked Draft PRs, remain under acceptance/review; Tickets 04–18 have not started. The user reported a new native-performance bug (#19).
 **Canonical specification:** [spec.md](spec.md).
 **Source of truth for terminology:** [GLOSSARY.md](../../GLOSSARY.md).
 **Architecture decisions:** [docs/adr](../../docs/adr).
@@ -14,6 +14,11 @@
 3. Follow `/implement` with `/tdd` and `/code-review`. Record reproducible evidence and completion in that ticket's Markdown file.
 4. Recompute the frontier from the ticket files; do not bypass blockers or count a status label as completion.
 5. Never mix private runtime data into the public repository. Do not silently change decisions approved in Q1–Q49.
+
+## Incoming defects
+
+- **Bug 19 — Native UI lag**: [issue](issues/19-native-interaction-lag.md), high priority, `needs-triage`. Must be diagnosed and resolved before Ticket 17's performance gate and Ticket 18's release-quality sign-off. This incoming bug is **not** a silently added v1 feature requirement; the approved product plan still has 18 feature tickets.
+- **Native GUI acceptance report**: [2026-10-12 evidence](../../docs/qa/native-acceptance-2026-10-12.md).
 
 ## Dependency graph
 

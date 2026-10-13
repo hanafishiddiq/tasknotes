@@ -865,3 +865,155 @@ textarea:focus-visible {
     gap: 4px;
   }
 }
+
+/* Ticket 03: lightweight progress journaling inside an expanded Task. */
+.progress-note-form {
+  border-top: 1px solid #edebf4;
+  margin-top: 16px;
+  padding-top: 16px;
+  display: grid;
+  grid-template-columns: 1fr 1.3fr;
+  gap: 12px;
+}
+.progress-note-form label {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 7px;
+  color: #676b83;
+  font-size: 11px;
+  font-weight: 700;
+}
+.progress-note-form textarea {
+  display: block;
+  width: 100%;
+  resize: vertical;
+  min-height: 74px;
+  padding: 10px 12px;
+  border: 1px solid #e7e7f0;
+  border-radius: 9px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #30364e;
+  background: white;
+}
+.progress-note-form textarea:focus {
+  border-color: #a69be6;
+  outline: 2px solid #dcd6f7;
+  outline-offset: 1px;
+}
+.progress-note-form textarea::placeholder {
+  color: #9b9caf;
+}
+.progress-history {
+  margin-top: 24px;
+  border-top: 1px solid #edebf4;
+  padding-top: 19px;
+}
+.progress-history-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #7569c0;
+}
+.progress-history-heading h4 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 750;
+}
+.history-hint {
+  margin: 13px 0 0;
+  font-size: 11px;
+  line-height: 1.65;
+  color: #81849b;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+}
+.history-hint button,
+.history-load-more {
+  font-size: 11px;
+  border: 1px solid #e1def2;
+  border-radius: 7px;
+  padding: 7px 11px;
+  color: #6456b3;
+  background: #f8f6ff;
+  font-weight: 650;
+}
+.history-load-more {
+  margin-top: 12px;
+}
+.history-hint button:hover,
+.history-load-more:hover {
+  background: #eee9fc;
+}
+.history-timeline {
+  margin: 15px 0 0 5px;
+  padding: 0 0 0 20px;
+  list-style: none;
+  border-left: 2px solid #e5e1f7;
+  display: grid;
+  gap: 16px;
+}
+.history-entry {
+  position: relative;
+  font-size: 11px;
+  color: #64687f;
+  line-height: 1.55;
+}
+.history-entry::before {
+  content: "";
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  left: -25.5px;
+  top: 3px;
+  background: #9186da;
+  box-shadow: 0 0 0 3px #f3f0ff;
+}
+.history-entry-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 12px;
+  align-items: center;
+}
+.history-entry-date {
+  color: #85899f;
+}
+.history-entry-summary span:not(.history-entry-date) {
+  background: #f4f2fb;
+  border-radius: 5px;
+  padding: 2px 6px;
+  color: #665995;
+  font-variant-numeric: tabular-nums;
+}
+.history-entry-note {
+  margin: 7px 0 0;
+  color: #343a54;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.history-entry-next {
+  margin: 4px 0 0;
+  color: #6c728f;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.history-error {
+  font-size: 11px;
+  margin-top: 10px;
+  color: #a43e52;
+}
+@media (max-width: 760px) {
+  .progress-note-form {
+    grid-template-columns: 1fr;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .progress-history,
+  .history-entry {
+    animation: none !important;
+  }
+}

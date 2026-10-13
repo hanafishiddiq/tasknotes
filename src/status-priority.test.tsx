@@ -14,6 +14,7 @@ const base: Task = {
   status: "ready",
   priority: "medium",
   progress: 0,
+  nextStep: "",
   revision: 1,
   createdAt: 100,
   updatedAt: 100,

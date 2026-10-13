@@ -40,6 +40,8 @@ target/
 src-tauri/target/
 coverage/
 *.tsbuildinfo
+__pycache__/
+*.pyc
 
 # Local packaging/output
 *.dmg
