@@ -624,3 +624,103 @@ fn large_list_pages_are_bounded_without_cross_list_leakage() {
         20
     );
 }
+
+#[test]
+fn v3_to_v4_migration_failure_rolls_back_ddl_and_preserves_task_history() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("migration-fault.db");
+    let id = "00000000-0000-4000-8000-000000000004";
+    let note_id = "00000000-0000-4000-8000-000000000005";
+
+    {
+        let conn = Connection::open(&path).unwrap();
+        conn.execute_batch(&format!(
+            "CREATE TABLE tasks(
+                 id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL,
+                 status TEXT NOT NULL, priority TEXT NOT NULL, progress INTEGER NOT NULL,
+                 revision INTEGER NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+                 previous_incomplete_progress INTEGER NOT NULL, next_step TEXT NOT NULL
+             );
+             CREATE TABLE progress_entries(
+                 sequence INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE NOT NULL,
+                 task_id TEXT NOT NULL REFERENCES tasks(id), previous_status TEXT NOT NULL,
+                 status TEXT NOT NULL, previous_progress INTEGER NOT NULL,
+                 progress INTEGER NOT NULL, note TEXT NOT NULL, next_step TEXT NOT NULL,
+                 created_at INTEGER NOT NULL
+             );
+             INSERT INTO tasks VALUES(
+                 '{id}', 'Preserved Task', 'Before migration', 'in_progress',
+                 'medium', 42, 7, 100, 101, 42, 'Restore carefully'
+             );
+             INSERT INTO progress_entries(id,task_id,previous_status,status,previous_progress,
+                 progress,note,next_step,created_at)
+             VALUES('{note_id}','{id}','ready','in_progress',0,42,
+                 'Immutable Progress Note','Restore carefully',101);
+             -- Deliberate synthetic name collision encountered *after* v4 List DDL
+             -- and ALTER TABLE in the transaction, to prove that partial writes roll back.
+             CREATE TABLE tags(name TEXT PRIMARY KEY);
+             PRAGMA user_version = 3;"
+        )).unwrap();
+    }
+
+    assert!(
+        TaskStore::open(&path).is_err(),
+        "collision must reject the migration"
+    );
+    {
+        let conn = Connection::open(&path).unwrap();
+        let version: i64 = conn
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, 3, "schema version must not advance on failure");
+        let lists_exist: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='lists'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(lists_exist, 0, "the earlier v4 DDL must have rolled back");
+        let mut stmt = conn.prepare("PRAGMA table_info(tasks)").unwrap();
+        let columns = stmt
+            .query_map([], |r| r.get::<_, String>(1))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+        assert!(
+            !columns
+                .iter()
+                .any(|name| name == "list_id" || name == "due_date")
+        );
+        let note: String = conn
+            .query_row(
+                "SELECT note FROM progress_entries WHERE id=?1",
+                [note_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(note, "Immutable Progress Note");
+        let progress: i64 = conn
+            .query_row("SELECT progress FROM tasks WHERE id=?1", [id], |r| r.get(0))
+            .unwrap();
+        assert_eq!(progress, 42);
+        conn.execute("DROP TABLE tags", []).unwrap();
+    }
+
+    let reopened =
+        TaskStore::open(&path).expect("retry should succeed once fixture collision removed");
+    let saved = reopened.get_task(id).unwrap().unwrap();
+    assert_eq!(saved.title, "Preserved Task");
+    assert_eq!(saved.progress, 42);
+    assert_eq!(saved.revision, 7);
+    assert_eq!(saved.list_id, None);
+    assert_eq!(saved.due_date, None);
+    let entries = reopened.list_progress_entries(id, 10, None).unwrap();
+    assert_eq!(entries.items.len(), 1);
+    assert_eq!(entries.items[0].note, "Immutable Progress Note");
+    let final_version: i64 = Connection::open(&path)
+        .unwrap()
+        .pragma_query_value(None, "user_version", |r| r.get(0))
+        .unwrap();
+    assert_eq!(final_version, 4);
+}

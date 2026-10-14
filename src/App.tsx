@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   ArrowRight, CheckCircle2, ChevronDown, Clock3,
   LoaderCircle, LockKeyhole, Plus, Sparkles,
@@ -10,7 +10,7 @@ import {
 import { STATUS_ORDER, STATUS_VIEW } from "./lib/task-visuals";
 import TaskRow from "./components/TaskRow";
 import TaskSidebar from "./components/TaskSidebar";
-import { localCalendarDay } from "./lib/deadlines";
+import { useLocalCalendarDay } from "./lib/use-local-calendar-day";
 import "./App.css";
 
 function errorMessage(error: unknown): string {
@@ -42,13 +42,18 @@ export default function App() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // Ignore stale results from older Task queries after a newer user action.
+  const requestGeneration = useRef(0);
+  const currentQuery = useRef({ sort, view });
 
   useEffect(() => {
+    currentQuery.current = { sort, view };
+    const generation = ++requestGeneration.current;
     let active = true;
     taskApi
       .list(null, sort, view)
       .then((page) => {
-        if (!active) return;
+        if (!active || generation !== requestGeneration.current) return;
         setTasks(page.items);
         setCurrentPageCursor(null);
         setPreviousPageCursors([]);
@@ -58,12 +63,12 @@ export default function App() {
         setError(null);
       })
       .catch((reason) => {
-        if (!active) return;
+        if (!active || generation !== requestGeneration.current) return;
         setLoadError(true);
         setError(errorMessage(reason));
       })
       .finally(() => {
-        if (active) setLoading(false);
+        if (active && generation === requestGeneration.current) setLoading(false);
       });
     return () => { active = false; };
   }, [loadAttempt, sort, view]);
@@ -81,6 +86,7 @@ export default function App() {
   }, []);
 
   function resetTaskPages() {
+    requestGeneration.current += 1;
     setCurrentPageCursor(null);
     setPreviousPageCursors([]);
   }
@@ -96,6 +102,7 @@ export default function App() {
     setLoading(true);
     setLoadError(false);
     setError(null);
+    currentQuery.current = { ...currentQuery.current, view: next };
     setView(next);
   }
 
@@ -120,7 +127,9 @@ export default function App() {
       setExpandedId(null);
       setLoading(true);
       setLoadError(false);
-      setView({ kind: "list", listId: created.id });
+      const newView: TaskView = { kind: "list", listId: created.id };
+      currentQuery.current = { ...currentQuery.current, view: newView };
+      setView(newView);
       try { await refreshLists(); } catch (reason) {
         setError("List created, but the sidebar could not refresh: " + errorMessage(reason));
       }
@@ -164,7 +173,9 @@ export default function App() {
         setNextCursor(null);
         resetTaskPages();
         setLoading(true);
-        setView({ kind: "all" });
+        const newView: TaskView = { kind: "all" };
+        currentQuery.current = { ...currentQuery.current, view: newView };
+        setView(newView);
       } else {
         retryFirstLoad();
       }
@@ -208,18 +219,24 @@ export default function App() {
         { title, description },
         view.kind === "list" ? view.listId : undefined,
       );
+      const generation = ++requestGeneration.current;
+      const { sort: latestSort, view: latestView } = currentQuery.current;
       // Clear only after the actual write succeeds; retry must not create a
       // duplicate if the subsequent read fails.
       setTitle("");
       setDescription("");
       try {
-        const page = await taskApi.list(null, sort, view);
+        const page = await taskApi.list(null, latestSort, latestView);
+        if (generation !== requestGeneration.current) return;
+        setLoading(false);
         setTasks(page.items);
         setCurrentPageCursor(null);
         setPreviousPageCursors([]);
         setNextCursor(page.nextCursor);
         setRefreshError(false);
       } catch (reason) {
+        if (generation !== requestGeneration.current) return;
+        setLoading(false);
         setTasks((current) =>
           [created, ...current.filter((item) => item.id !== created.id)].slice(0, TASK_PAGE_SIZE),
         );
@@ -245,6 +262,7 @@ export default function App() {
         description: nextDescription,
         expectedRevision: task.revision,
       });
+      requestGeneration.current += 1;
       setTasks((current) => current.map((item) => (item.id === updated.id ? updated : item)));
       setExpandedId(null);
     } catch (reason) {
@@ -260,16 +278,22 @@ export default function App() {
     setError(null);
     try {
       const updated = await mutate();
+      const generation = ++requestGeneration.current;
+      const { sort: latestSort, view: latestView } = currentQuery.current;
       setTasks((current) => current.map((item) => item.id === updated.id ? updated : item));
-      // The mutation already succeeded; a failed refresh is not a failed save.
+      // The mutation already succeeded; never let an old page replace its result.
       try {
-        const page = await taskApi.list(null, sort, view);
+        const page = await taskApi.list(null, latestSort, latestView);
+        if (generation !== requestGeneration.current) return;
+        setLoading(false);
         setTasks(page.items);
         setCurrentPageCursor(null);
         setPreviousPageCursors([]);
         setNextCursor(page.nextCursor);
         setRefreshError(false);
       } catch (reason) {
+        if (generation !== requestGeneration.current) return;
+        setLoading(false);
         setNextCursor(null);
         resetTaskPages();
         setRefreshError(true);
@@ -312,6 +336,8 @@ export default function App() {
 
   function changeSort(nextSort: SortMode) {
     if (sort === nextSort) return;
+    currentQuery.current = { ...currentQuery.current, sort: nextSort };
+    requestGeneration.current += 1;
     setError(null);
     setRefreshError(false);
     setLoading(true);
@@ -322,17 +348,19 @@ export default function App() {
 
   async function nextTaskPage() {
     if (!nextCursor || loadingMore || creating || savingId) return;
+    const generation = requestGeneration.current;
     setLoadingMore(true);
     setError(null);
     try {
       const page = await taskApi.list(nextCursor, sort, view);
+      if (generation !== requestGeneration.current) return;
       setPreviousPageCursors((existing) => [...existing, currentPageCursor]);
       setCurrentPageCursor(nextCursor);
       setTasks(page.items);
       setExpandedId(null);
       setNextCursor(page.nextCursor);
     } catch (reason) {
-      setError(errorMessage(reason));
+      if (generation === requestGeneration.current) setError(errorMessage(reason));
     } finally {
       setLoadingMore(false);
     }
@@ -340,18 +368,20 @@ export default function App() {
 
   async function previousTaskPage() {
     if (previousPageCursors.length === 0 || loadingMore || creating || savingId) return;
+    const generation = requestGeneration.current;
     const previous = previousPageCursors[previousPageCursors.length - 1];
     setLoadingMore(true);
     setError(null);
     try {
       const page = await taskApi.list(previous, sort, view);
+      if (generation !== requestGeneration.current) return;
       setPreviousPageCursors((existing) => existing.slice(0, -1));
       setCurrentPageCursor(previous);
       setTasks(page.items);
       setExpandedId(null);
       setNextCursor(page.nextCursor);
     } catch (reason) {
-      setError(errorMessage(reason));
+      if (generation === requestGeneration.current) setError(errorMessage(reason));
     } finally {
       setLoadingMore(false);
     }
@@ -365,7 +395,7 @@ export default function App() {
   const pageTitle = view.kind === "all" ? "All tasks"
     : view.kind === "inbox" ? "Inbox"
     : lists.find((list) => list.id === view.listId)?.name ?? "List";
-  const today = localCalendarDay();
+  const today = useLocalCalendarDay();
 
   return (
     <div className="app-shell">

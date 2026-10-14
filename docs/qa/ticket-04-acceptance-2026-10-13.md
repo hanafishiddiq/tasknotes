@@ -49,3 +49,21 @@ These synthetic test seams demonstrate code behavior, **not real hardware FPS** 
 - **Independent AI reviewer gate BLOCKED:** Two separate read-only AGY calls were attempted against the exact initial PR head (Standards and Spec, prebuilt public-source diff packets); both returned RESOURCE_EXHAUSTED (HTTP 429, insufficient credits) with empty reviewer output. There is no independent reviewer verdict, and neither process should be represented as an approval. A documented, implementing-assistant two-axis review is provided separately and explicitly non-independent. This PR stays Draft and unmerged.
 
 **As of the current handoff:** release/install/live SQLite migration are not authorized. Owner-operated macOS UI click/type/reopen has not been proved by AX, and an independent external Standards/Spec pass is still required before marking this Ticket completed.
+
+
+## Independent reviewer REQUEST CHANGES — 2026-10-14 remediation
+
+The owner supplied the independent reviewer report for Draft PR #16 at head c8be24c440c7b5612e3e47a3d45b01ec84bffc2b. Verdict was **REQUEST CHANGES**, with confirmed Major findings S-01, S-02 and SPEC-01. The implementing agent did not treat the prior green baseline as proof of those untested race/clock scenarios.
+
+- **S-01:** slow Next page replaced a Task saved during the request. Permanent React/Tauri R1 test failed on the old source, then passed after request-generation invalidation. R1b separately proved that an older page no longer replaces a successful List move.
+- **S-02:** create completion refreshed an old sort. R2 failed then passed after using the active query (sort and List scope) and matching its generation. R2b reversed the completion order of two outstanding reads and detected a stuck loading indicator; fixed with current-generation loading completion.
+- **SPEC-01:** R3 held the app at local 23:59:58 and advanced fake time five seconds. Due today failed to become Overdue without a render; a date-only clock hook now refreshes at local midnight and at most every 60 seconds, and on focus/visibility return. R3 and the suspended/resumed R3b with Completed control pass.
+- **Synthetic migration failure injection:** a v3 test DB intentionally conflicts with a later v4 tags table after earlier List and Task ALTER DDL. TaskStore::open returns an error with no v4 schema/version partial writes, preserving the original Task and immutable Progress Note. Removing the synthetic collision allows successful v4 retry and retained data.
+
+**Verified after source fixes:**
+- **36 React/Vitest tests PASS**, TypeScript typecheck PASS, frontend production build PASS.
+- **31 Rust integration tests PASS**, core Rust formatting and strict Clippy PASS.
+- **Full Tauri Clippy -D warnings PASS** with isolated Cargo target. Rebuilt a new **unsigned QA-only** Tasknotes Ticket04 QA.app in src-tauri/target/ticket04-native; the application identifier remained store.adamaja.tasknotes.ticket04qa. New QA executable SHA256: ffad6ea79299f30ff825b117eb0261b5d60a1ee81061d346ca75a5854abe04a6. No desktop install, launch against the user's data, release or owner app restart was done.
+- Independent re-review of the NEW PR head is **still required**. This implementing-agent verification is not an independent approval. Native interactive GUI click/edit/restore/quit-reopen acceptance is **NOT VERIFIED** because compiling a bundle is not an OS-level interaction test. No hardware FPS claim.
+
+See docs/reviews/ticket04-independent-review-remediation-2026-10-14.md and docs/plans/ticket04-review-remediation-2026-10-14.md. The original 2026-10-13 evidence above is historical; this appended section is the latest verified source state. Ticket 04 remains Implementation: review and PR remains Draft/unmerged.

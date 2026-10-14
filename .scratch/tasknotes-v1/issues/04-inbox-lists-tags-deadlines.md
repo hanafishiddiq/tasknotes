@@ -49,3 +49,12 @@ The initial source candidate 286482fb60e04dad8d0628372efc981215882cb2 created Dr
 Current positive tests: **30 Rust integrations**, **30 React**, TypeScript typecheck and frontend production build; strict Tauri and Rust Clippy/fmt previously passed with unchanged native source. See [acceptance report](../../../docs/qa/ticket-04-acceptance-2026-10-13.md) and [non-independent Standards/Spec self-review](../../../docs/reviews/ticket-04.md).
 
 **Blocked gates:** AGY independent Standards and Spec reviewers both returned RESOURCE_EXHAUSTED (no actual review); the isolated native QA app rendered its GUI but WKWebView fields were inaccessible to AX, so actual click/type/reopen was not proven. Ticket stays **Implementation: review**; PR remains Draft and unmerged. Never migrate the owner's live SQLite without separately authorized recoverable backup and deployment.
+
+
+## Independent reviewer follow-up — 2026-10-14
+
+An independent reviewer checked Draft PR #16 at SHA c8be24c440c7b5612e3e47a3d45b01ec84bffc2b and returned **REQUEST CHANGES**: S-01 (old pagination reply overwrites a new Task), S-02 (old sort on create completion), and SPEC-01 (Overdue label does not advance at local midnight).
+
+All three were reproduced as RED React/Tauri tests then fixed to GREEN. Further regression tests cover reverse-order responses, Task move while paging, and resumed app clock changes. The requested migration rollback fault injection passed using synthetic v3 SQLite. See the review response in docs/reviews/ticket04-independent-review-remediation-2026-10-14.md.
+
+**Remaining:** independent re-review of the new SHA and actual macOS native GUI click/edit/restore/restart acceptance. Implementation remains in review; Draft PR stays unmerged. The ordinary user app and database are unchanged.
