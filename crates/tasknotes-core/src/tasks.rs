@@ -6,6 +6,10 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
+pub use crate::organization::{
+    CreateList, List, ListPage, MoveTask, RenameList, SetListRemoved, TaskView, UpdateTaskDetails,
+};
+
 /// One stable interface for desktop commands today and CLI/MCP adapters later.
 #[derive(Debug, Clone)]
 pub struct TaskStore {
@@ -14,6 +18,22 @@ pub struct TaskStore {
 
 #[derive(Debug, Error)]
 pub enum TaskError {
+    #[error("List name cannot be empty or exceed 100 characters")]
+    InvalidListName,
+    #[error("A List with this name already exists")]
+    ListNameConflict,
+    #[error("List not found")]
+    ListNotFound,
+    #[error("List has been removed; restore it before assigning Tasks")]
+    ListRemoved,
+    #[error("This List is already in the requested state")]
+    ListUnchanged,
+    #[error("Invalid List cursor or page size")]
+    InvalidListPage,
+    #[error("Use at most 16 distinct Tags, each 1–40 characters without control characters")]
+    InvalidTags,
+    #[error("Deadline must be a real local calendar date in YYYY-MM-DD format")]
+    InvalidDeadline,
     #[error("Task title cannot be empty")]
     EmptyTitle,
     #[error("Task title must be 200 characters or fewer")]
@@ -142,6 +162,9 @@ pub struct Task {
     pub priority: Priority,
     pub progress: u8,
     pub next_step: String,
+    pub list_id: Option<String>,
+    pub due_date: Option<String>,
+    pub tags: Vec<String>,
     pub revision: i64,
     pub created_at: i64,
     pub updated_at: i64,
@@ -231,7 +254,7 @@ pub struct TaskPage {
     pub next_cursor: Option<String>,
 }
 
-fn current_millis() -> Result<i64, TaskError> {
+pub(crate) fn current_millis() -> Result<i64, TaskError> {
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|_| TaskError::Clock)?
@@ -264,7 +287,7 @@ fn invalid_db_text(index: usize, value: String) -> rusqlite::Error {
     )
 }
 
-fn read_task(row: &Row<'_>) -> rusqlite::Result<Task> {
+pub(crate) fn read_task(row: &Row<'_>) -> rusqlite::Result<Task> {
     let status: String = row.get(3)?;
     let priority: String = row.get(4)?;
     Ok(Task {
@@ -275,13 +298,16 @@ fn read_task(row: &Row<'_>) -> rusqlite::Result<Task> {
         priority: Priority::from_sql(&priority).ok_or_else(|| invalid_db_text(4, priority))?,
         progress: row.get(5)?,
         next_step: row.get(9)?,
+        list_id: row.get(10)?,
+        due_date: row.get(11)?,
+        tags: Vec::new(),
         revision: row.get(6)?,
         created_at: row.get(7)?,
         updated_at: row.get(8)?,
     })
 }
 
-const COLUMNS: &str = "id, title, description, status, priority, progress, revision, created_at, updated_at, next_step";
+pub(crate) const COLUMNS: &str = "id, title, description, status, priority, progress, revision, created_at, updated_at, next_step, list_id, due_date";
 
 impl TaskStore {
     /// Opens an on-disk database and applies transactional, forward-only migrations.
@@ -293,7 +319,7 @@ impl TaskStore {
         let mut connection = Connection::open(path)?;
         connection.busy_timeout(Duration::from_secs(5))?;
         let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        if version > 3 {
+        if version > 4 {
             return Err(TaskError::UnsupportedSchema(version));
         }
 
@@ -361,12 +387,44 @@ impl TaskStore {
             )?;
             migration.commit()?;
         }
+        if version < 4 {
+            let migration = connection.transaction()?;
+            migration.execute_batch(
+                "CREATE TABLE lists (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    name TEXT NOT NULL CHECK(length(trim(name)) BETWEEN 1 AND 100),
+                    revision INTEGER NOT NULL CHECK(revision >= 1),
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    removed_at INTEGER
+                 );
+                 CREATE UNIQUE INDEX lists_active_name ON lists(name COLLATE NOCASE)
+                   WHERE removed_at IS NULL;
+                 CREATE INDEX lists_created_order ON lists(created_at DESC, id DESC);
+                 ALTER TABLE tasks ADD COLUMN list_id TEXT REFERENCES lists(id) ON DELETE RESTRICT;
+                 ALTER TABLE tasks ADD COLUMN due_date TEXT
+                   CHECK(due_date IS NULL OR length(due_date) = 10);
+                 CREATE INDEX tasks_list_created ON tasks(list_id, created_at DESC, id DESC);
+                 CREATE TABLE tags (
+                    name TEXT PRIMARY KEY COLLATE NOCASE NOT NULL
+                      CHECK(length(trim(name)) BETWEEN 1 AND 40)
+                 );
+                 CREATE TABLE task_tags (
+                    task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE RESTRICT,
+                    tag_name TEXT NOT NULL REFERENCES tags(name) ON DELETE RESTRICT,
+                    PRIMARY KEY(task_id, tag_name)
+                 );
+                 CREATE INDEX task_tags_tag_name ON task_tags(tag_name, task_id);
+                 PRAGMA user_version = 4;",
+            )?;
+            migration.commit()?;
+        }
         Ok(Self {
             path: path.to_path_buf(),
         })
     }
 
-    fn connect(&self) -> Result<Connection, TaskError> {
+    pub(crate) fn connect(&self) -> Result<Connection, TaskError> {
         let connection = Connection::open(&self.path)?;
         connection.busy_timeout(Duration::from_secs(5))?;
         connection.pragma_update(None, "foreign_keys", true)?;
@@ -374,8 +432,22 @@ impl TaskStore {
     }
 
     pub fn create_task(&self, input: CreateTask) -> Result<Task, TaskError> {
+        self.create_task_in_list(input, None)
+    }
+
+    /// A Task goes to Inbox when list_id is absent, or directly to an active List.
+    pub fn create_task_in_list(
+        &self,
+        input: CreateTask,
+        list_id: Option<&str>,
+    ) -> Result<Task, TaskError> {
         let (title, description) = validated_text(&input.title, &input.description)?;
         let now = current_millis()?;
+        let mut conn = self.connect()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if let Some(id) = list_id {
+            crate::organization::require_active_list(&tx, id)?;
+        }
         let task = Task {
             id: Uuid::new_v4().to_string(),
             title,
@@ -384,14 +456,18 @@ impl TaskStore {
             priority: Priority::Medium,
             progress: 0,
             next_step: String::new(),
+            list_id: list_id.map(str::to_owned),
+            due_date: None,
+            tags: Vec::new(),
             revision: 1,
             created_at: now,
             updated_at: now,
         };
-        self.connect()?.execute(
+        tx.execute(
             "INSERT INTO tasks
-             (id, title, description, status, priority, progress, revision, created_at, updated_at, next_step)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+             (id, title, description, status, priority, progress, revision, created_at,
+              updated_at, next_step, list_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![
                 task.id,
                 task.title,
@@ -402,16 +478,22 @@ impl TaskStore {
                 task.revision,
                 task.created_at,
                 task.updated_at,
-                task.next_step
+                task.next_step,
+                task.list_id,
             ],
         )?;
+        tx.commit()?;
         Ok(task)
     }
 
     pub fn get_task(&self, id: &str) -> Result<Option<Task>, TaskError> {
         let conn = self.connect()?;
         let sql = format!("SELECT {COLUMNS} FROM tasks WHERE id = ?1");
-        Ok(conn.query_row(&sql, params![id], read_task).optional()?)
+        let mut task = conn.query_row(&sql, params![id], read_task).optional()?;
+        if let Some(ref mut item) = task {
+            crate::organization::hydrate_tags(&conn, std::slice::from_mut(item))?;
+        }
+        Ok(task)
     }
 
     pub fn update_task(&self, input: UpdateTask) -> Result<Task, TaskError> {
@@ -432,7 +514,10 @@ impl TaskStore {
             .optional()?;
 
         match updated {
-            Some(task) => Ok(task),
+            Some(mut task) => {
+                crate::organization::hydrate_tags(&conn, std::slice::from_mut(&mut task))?;
+                Ok(task)
+            }
             None => {
                 let exists: bool = conn.query_row(
                     "SELECT EXISTS(SELECT 1 FROM tasks WHERE id = ?1)",
@@ -508,7 +593,7 @@ impl TaskStore {
             format!("SELECT {COLUMNS}, previous_incomplete_progress FROM tasks WHERE id = ?1");
         let current = transaction
             .query_row(&sql, params![input.id], |row| {
-                Ok((read_task(row)?, row.get::<_, u8>(10)?))
+                Ok((read_task(row)?, row.get::<_, u8>(12)?))
             })
             .optional()?;
         let (before, mut previous_incomplete) = current.ok_or(TaskError::NotFound)?;
@@ -619,6 +704,8 @@ impl TaskStore {
             )?;
         }
         transaction.commit()?;
+        let mut updated = updated;
+        crate::organization::hydrate_tags(&conn, std::slice::from_mut(&mut updated))?;
         Ok(updated)
     }
 
@@ -694,31 +781,49 @@ impl TaskStore {
         cursor: Option<&str>,
         sort: SortMode,
     ) -> Result<TaskPage, TaskError> {
+        self.list_tasks_in_view(limit, cursor, sort, TaskView::All)
+    }
+
+    /// Pagination filters each Inbox/List before taking a bounded page.
+    pub fn list_tasks_in_view(
+        &self,
+        limit: u32,
+        cursor: Option<&str>,
+        sort: SortMode,
+        view: TaskView,
+    ) -> Result<TaskPage, TaskError> {
         if !(1..=100).contains(&limit) {
             return Err(TaskError::InvalidPageSize);
         }
 
+        let scoped = !matches!(view, TaskView::All);
+        let scope_key = view.cursor_key();
         let (after_status, after_priority, after_time, after_id) = match cursor {
             None => (None, None, None, None),
             Some(value) => {
                 let fields: Vec<_> = value.split('|').collect();
-                if fields.len() != 6 || fields[0] != "v2" || fields[1] != sort.as_cursor() {
+                let offset = usize::from(scoped);
+                if fields.len() != 6 + offset
+                    || fields[0] != if scoped { "v3" } else { "v2" }
+                    || fields[1] != sort.as_cursor()
+                    || (scoped && fields[2] != scope_key)
+                {
                     return Err(TaskError::InvalidCursor);
                 }
-                let status = fields[2]
+                let status = fields[2 + offset]
                     .parse::<i64>()
                     .map_err(|_| TaskError::InvalidCursor)?;
-                let priority = fields[3]
+                let priority = fields[3 + offset]
                     .parse::<i64>()
                     .map_err(|_| TaskError::InvalidCursor)?;
-                let timestamp = fields[4]
+                let timestamp = fields[4 + offset]
                     .parse::<i64>()
                     .map_err(|_| TaskError::InvalidCursor)?;
                 if !(0..=2).contains(&status)
                     || (sort == SortMode::Priority && !(1..=5).contains(&priority))
                     || (sort == SortMode::Newest && priority != 0)
                     || timestamp < 0
-                    || Uuid::parse_str(fields[5]).is_err()
+                    || Uuid::parse_str(fields[5 + offset]).is_err()
                 {
                     return Err(TaskError::InvalidCursor);
                 }
@@ -726,7 +831,7 @@ impl TaskStore {
                     Some(status),
                     Some(priority),
                     Some(timestamp),
-                    Some(fields[5].to_owned()),
+                    Some(fields[5 + offset].to_owned()),
                 )
             }
         };
@@ -765,6 +870,11 @@ impl TaskStore {
                 SELECT {COLUMNS}, {STATUS_RANK} AS status_rank,
                     {priority_expr} AS priority_rank
                 FROM tasks
+                WHERE (tasks.list_id IS NULL OR EXISTS (
+                    SELECT 1 FROM lists WHERE lists.id=tasks.list_id AND lists.removed_at IS NULL
+                ))
+                AND (?6 = 'all' OR (?6 = 'inbox' AND tasks.list_id IS NULL)
+                    OR (?6 = 'list' AND tasks.list_id = ?7))
              )
              SELECT {COLUMNS} FROM ranked
              WHERE {cursor_filter}
@@ -772,18 +882,31 @@ impl TaskStore {
              LIMIT ?5"
         );
         let conn = self.connect()?;
+        if let TaskView::List(ref id) = view {
+            crate::organization::require_active_list(&conn, id)?;
+        }
+        let (scope_kind, list_id) = match &view {
+            TaskView::All => ("all", None),
+            TaskView::Inbox => ("inbox", None),
+            TaskView::List(id) => ("list", Some(id.as_str())),
+        };
         let mut stmt = conn.prepare(&sql)?;
         let mut rows = stmt.query(params![
             after_status,
             after_priority,
             after_time,
             after_id,
-            i64::from(limit) + 1
+            i64::from(limit) + 1,
+            scope_kind,
+            list_id,
         ])?;
         let mut items = Vec::with_capacity(limit as usize + 1);
         while let Some(row) = rows.next()? {
             items.push(read_task(row)?);
         }
+        drop(rows);
+        drop(stmt);
+        crate::organization::hydrate_tags(&conn, &mut items)?;
 
         let next_cursor = if items.len() > limit as usize {
             items.pop();
@@ -793,14 +916,26 @@ impl TaskStore {
                 } else {
                     0
                 };
-                format!(
-                    "v2|{}|{}|{}|{}|{}",
-                    sort.as_cursor(),
-                    task.status.rank(),
-                    priority,
-                    task.created_at,
-                    task.id,
-                )
+                if scoped {
+                    format!(
+                        "v3|{}|{}|{}|{}|{}|{}",
+                        sort.as_cursor(),
+                        scope_key,
+                        task.status.rank(),
+                        priority,
+                        task.created_at,
+                        task.id
+                    )
+                } else {
+                    format!(
+                        "v2|{}|{}|{}|{}|{}",
+                        sort.as_cursor(),
+                        task.status.rank(),
+                        priority,
+                        task.created_at,
+                        task.id
+                    )
+                }
             })
         } else {
             None

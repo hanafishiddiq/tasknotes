@@ -16,6 +16,9 @@ type SavedTask = {
   priority: "medium";
   progress: number;
   nextStep: string;
+  listId?: string | null;
+  dueDate?: string | null;
+  tags?: string[];
   revision: number;
   createdAt: number;
   updatedAt: number;
@@ -28,6 +31,7 @@ beforeEach(() => {
   invokeMock.mockReset();
   invokeMock.mockImplementation(async (command, args) => {
     const data = args as Record<string, unknown> | undefined;
+    if (command === "list_lists") return { items: [], nextCursor: null };
     if (command === "list_tasks") {
       return { items: [...saved], nextCursor: null };
     }
@@ -131,10 +135,10 @@ describe("Tasknotes desktop", () => {
     expect(await screen.findByText("First task")).toBeInTheDocument();
     expect(screen.queryByText("Second task")).not.toBeInTheDocument();
     expect(invokeMock).toHaveBeenCalledWith("list_tasks", { limit: 50, cursor: null });
-    await user.click(screen.getByRole("button", { name: "Load more tasks" }));
+    await user.click(screen.getByRole("button", { name: "Next page" }));
     expect(await screen.findByText("Second task")).toBeInTheDocument();
     expect(invokeMock).toHaveBeenCalledWith("list_tasks", { limit: 50, cursor: "cursor-2" });
-    expect(screen.queryByRole("button", { name: "Load more tasks" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Next page" })).not.toBeInTheDocument();
   });
 
   it("never calls a failed first load an empty list and lets the user retry", async () => {
@@ -157,7 +161,8 @@ describe("Tasknotes desktop", () => {
 
   it("keeps errors visible without pretending failed writes succeeded", async () => {
     invokeMock.mockImplementation(async (command) => {
-      if (command === "list_tasks") return { items: [], nextCursor: null };
+      if (command === "list_lists") return { items: [], nextCursor: null };
+    if (command === "list_tasks") return { items: [], nextCursor: null };
       throw new Error("Storage unavailable");
     });
     const user = userEvent.setup();
@@ -174,7 +179,8 @@ describe("Tasknotes desktop", () => {
   it("keeps a successful create when sorted refresh fails and allows reloading", async () => {
     let listReads = 0;
     invokeMock.mockImplementation(async (command, args) => {
-      if (command === "list_tasks") {
+      if (command === "list_lists") return { items: [], nextCursor: null };
+    if (command === "list_tasks") {
         listReads++;
         if (listReads === 2) throw new Error("Temporary read error");
         return { items: [...saved], nextCursor: null };

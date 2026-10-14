@@ -15,6 +15,9 @@ const base: Task = {
   priority: "medium",
   progress: 0,
   nextStep: "",
+  listId: null,
+  dueDate: null,
+  tags: [],
   revision: 1,
   createdAt: 100,
   updatedAt: 100,
@@ -25,6 +28,7 @@ beforeEach(() => {
   saved = [{ ...base }];
   invokeMock.mockReset();
   invokeMock.mockImplementation(async (command, args) => {
+    if (command === "list_lists") return { items: [], nextCursor: null };
     if (command === "list_tasks") return { items: [...saved], nextCursor: null };
     if (command === "change_task") {
       const change = (args as { input: {

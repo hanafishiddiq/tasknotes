@@ -7,12 +7,14 @@ import {
 } from "lucide-react";
 import type {
   Task,
+  TaskList,
   WorkStatus,
   Priority,
   TaskChange,
   ProgressDraft,
 } from "../lib/task-api";
 import TaskProgressHistory from "./TaskProgressHistory";
+import { deadlineStatus } from "../lib/deadlines";
 import {
   STATUS_ORDER,
   STATUS_VIEW,
@@ -25,6 +27,12 @@ const dateFormatter = new Intl.DateTimeFormat("en", {
   day: "numeric",
 });
 
+function formatCalendarDeadline(dateOnly: string): string {
+  // Calendar-only dates must not pass through UTC midnight.
+  const [year, month, day] = dateOnly.split("-").map(Number);
+  return dateFormatter.format(new Date(year, month - 1, day, 12));
+}
+
 interface TaskRowProps {
   task: Task;
   expanded: boolean;
@@ -33,6 +41,10 @@ interface TaskRowProps {
   onSave: (title: string, description: string) => Promise<void>;
   onChange: (change: TaskChange) => Promise<void>;
   onRecordProgress: (update: ProgressDraft) => Promise<void>;
+  lists: TaskList[];
+  today: string;
+  onMove: (listId: string | null) => Promise<void>;
+  onUpdateDetails: (tags: string[], dueDate: string | null) => Promise<void>;
 }
 
 export default function TaskRow({
@@ -43,14 +55,21 @@ export default function TaskRow({
   onSave,
   onChange,
   onRecordProgress,
+  lists,
+  today,
+  onMove,
+  onUpdateDetails,
 }: TaskRowProps) {
   const [draftTitle, setDraftTitle] = useState(task.title);
   const [draftDescription, setDraftDescription] = useState(task.description);
   const [draftProgress, setDraftProgress] = useState(String(task.progress));
   const [draftNextStep, setDraftNextStep] = useState(task.nextStep ?? "");
   const [draftNote, setDraftNote] = useState("");
+  const [draftTags, setDraftTags] = useState((task.tags ?? []).join(", "));
+  const [draftDueDate, setDraftDueDate] = useState(task.dueDate ?? "");
   const StatusIcon = STATUS_VIEW[task.status].icon;
   const PriorityIcon = PRIORITY_VIEW[task.priority].icon;
+  const due = deadlineStatus(task.dueDate, today, task.status);
   const hasUnsavedText =
     draftTitle !== task.title || draftDescription !== task.description;
   const hasUnsavedProgress = draftProgress !== String(task.progress);
@@ -58,7 +77,11 @@ export default function TaskRow({
   const hasUnsavedNote = draftNote.trim().length > 0;
   const hasUnsavedProgressUpdate =
     hasUnsavedProgress || hasUnsavedNextStep || hasUnsavedNote;
-  const canChangeMetadata = !saving && !hasUnsavedText;
+  const hasUnsavedDetails =
+    draftTags !== (task.tags ?? []).join(", ") ||
+    draftDueDate !== (task.dueDate ?? "");
+  const canChangeDetails = !saving && !hasUnsavedText && !hasUnsavedProgressUpdate;
+  const canChangeMetadata = !saving && !hasUnsavedText && !hasUnsavedDetails;
   const canChangeSelectors = canChangeMetadata && !hasUnsavedProgressUpdate;
   const numericProgress =
     draftProgress.trim() === "" ? NaN : Number(draftProgress);
@@ -74,7 +97,9 @@ export default function TaskRow({
     setDraftProgress(String(task.progress));
     setDraftNextStep(task.nextStep ?? "");
     setDraftNote("");
-  }, [task.progress, task.nextStep, task.revision]);
+    setDraftTags((task.tags ?? []).join(", "));
+    setDraftDueDate(task.dueDate ?? "");
+  }, [task.progress, task.nextStep, task.revision, task.dueDate, task.tags]);
 
   function toggle() {
     if (!expanded) {
@@ -83,13 +108,15 @@ export default function TaskRow({
       setDraftProgress(String(task.progress));
       setDraftNextStep(task.nextStep ?? "");
       setDraftNote("");
+      setDraftTags((task.tags ?? []).join(", "));
+      setDraftDueDate(task.dueDate ?? "");
     }
     onToggle();
   }
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!draftTitle.trim() || saving || hasUnsavedProgressUpdate) return;
+    if (!draftTitle.trim() || saving || hasUnsavedProgressUpdate || hasUnsavedDetails) return;
     await onSave(draftTitle, draftDescription);
   }
 
@@ -106,6 +133,12 @@ export default function TaskRow({
       ...(hasUnsavedNextStep ? { nextStep: draftNextStep } : {}),
       ...(hasUnsavedNote ? { note: draftNote.trim() } : {}),
     });
+  }
+
+  async function saveDetails() {
+    if (!canChangeDetails || !hasUnsavedDetails) return;
+    const tags = draftTags.split(",").map((value) => value.trim()).filter(Boolean);
+    await onUpdateDetails(tags, draftDueDate || null);
   }
 
   function discardUpdateDraft() {
@@ -153,6 +186,14 @@ export default function TaskRow({
             <PriorityIcon size={12} aria-hidden="true" />
             {PRIORITY_VIEW[task.priority].label}
           </span>
+          {due === "overdue" && <span className="deadline-pill deadline-pill--overdue">Overdue</span>}
+          {due === "today" && <span className="deadline-pill deadline-pill--today">Due today</span>}
+          {due === "upcoming" && task.dueDate && (
+            <span className="deadline-pill deadline-pill--upcoming">Due {formatCalendarDeadline(task.dueDate)}</span>
+          )}
+          {(task.tags ?? []).slice(0, 2).map((tag) => (
+            <span className="tag-pill" key={tag}>{tag}</span>
+          ))}
           <span
             className="progress-readout"
             aria-label={`Progress ${task.progress}%`}
@@ -185,7 +226,7 @@ export default function TaskRow({
               onChange={(event) => setDraftTitle(event.target.value)}
               maxLength={200}
               required
-              disabled={saving || hasUnsavedProgressUpdate}
+              disabled={saving || hasUnsavedProgressUpdate || hasUnsavedDetails}
             />
             <label htmlFor={`description-${task.id}`}>Description</label>
             <textarea
@@ -196,7 +237,7 @@ export default function TaskRow({
               rows={3}
               maxLength={20000}
               placeholder="Add a little more context..."
-              disabled={saving || hasUnsavedProgressUpdate}
+              disabled={saving || hasUnsavedProgressUpdate || hasUnsavedDetails}
             />
             <div className="editor-actions">
               <span className="editor-note">
@@ -207,7 +248,7 @@ export default function TaskRow({
                 className="button button-primary button-small"
                 type="submit"
                 disabled={
-                  !draftTitle.trim() || saving || hasUnsavedProgressUpdate
+                  !draftTitle.trim() || saving || hasUnsavedProgressUpdate || hasUnsavedDetails
                 }
               >
                 {saving && (
@@ -217,6 +258,35 @@ export default function TaskRow({
               </button>
             </div>
           </form>
+          <div className="task-organization-controls" aria-label="Task organization">
+            <label htmlFor={`list-${task.id}`}>
+              List
+              <select id={`list-${task.id}`} aria-label="Task list"
+                value={task.listId ?? ""} disabled={!canChangeSelectors}
+                onChange={(event) => void onMove(event.target.value || null)}>
+                <option value="">Inbox</option>
+                {lists.map((list) => (
+                  <option value={list.id} key={list.id}>{list.name}</option>
+                ))}
+              </select>
+            </label>
+            <label htmlFor={`tags-${task.id}`}>
+              Tags (comma-separated)
+              <input id={`tags-${task.id}`} aria-label="Tags" maxLength={640}
+                placeholder="Work, Urgent" value={draftTags}
+                disabled={!canChangeDetails}
+                onChange={(event) => setDraftTags(event.target.value)} />
+            </label>
+            <label htmlFor={`due-${task.id}`}>
+              Deadline
+              <input id={`due-${task.id}`} aria-label="Deadline" type="date"
+                value={draftDueDate} disabled={!canChangeDetails}
+                onChange={(event) => setDraftDueDate(event.target.value)} />
+            </label>
+            <button type="button" className="button button-secondary button-small"
+              disabled={!canChangeDetails || !hasUnsavedDetails}
+              onClick={() => void saveDetails()}>Save tags and deadline</button>
+          </div>
           <div
             className="task-controls"
             role="group"
@@ -321,6 +391,9 @@ export default function TaskRow({
             <p className="metadata-hint">
               Save title/description edits before changing status or priority.
             </p>
+          )}
+          {hasUnsavedDetails && (
+            <p className="metadata-hint">Save tags and deadline before editing progress or another field.</p>
           )}
           {hasUnsavedProgressUpdate && (
             <div className="metadata-hint">
