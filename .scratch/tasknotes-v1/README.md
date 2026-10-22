@@ -1,7 +1,7 @@
 # Tasknotes v1 — Local Issue Tracker
 
 **Planning:** COMPLETE (2026-10-11). All Q1–Q49 decisions accepted.
-**Implementation (2026-10-13):** Tickets **01–03 completed and merged to `main`** after independent AI code reviews and owner-authorized source-only integration; **Tickets 04–18 have not started**. No release/deployment or user SQLite migration occurred. [Merge and acceptance record](../../docs/qa/tickets-01-03-postmerge-2026-10-13.md).
+**Implementation (2026-10-22):** Tickets **01–04 completed and merged to `main`** after independent AI code reviews and owner approval (01–03 on 2026-10-13, [merge record](../../docs/qa/tickets-01-03-postmerge-2026-10-13.md); 04 with the redesign UI on 2026-10-22). **Ticket 05 is in review** on a Draft PR. Tickets 06–18 have not been completed. No release/deployment or user SQLite migration occurred.
 **Canonical specification:** [spec.md](spec.md).
 **Source of truth for terminology:** [GLOSSARY.md](../../GLOSSARY.md).
 **Architecture decisions:** [docs/adr](../../docs/adr).
@@ -43,7 +43,7 @@
 | 17 | Performance and synthetic benchmarks | 05, 07, 12, 14 |
 | 18 | macOS release-quality verification | 12, 13, 15, 16, 17 |
 
-**Current frontier after merging 01→02→03 (2026-10-13):** Tickets **04 (Inbox/Lists/tags/deadlines)** and **06 (Markdown Notes)** are unblocked by Ticket 01 but still **not started**. Tickets 05 and 07 onward still have uncompleted dependencies. Each additional feature requires its own implementation instruction.
+**Current frontier (2026-10-22):** Ticket **05 (Search and filters)** is in review and Ticket **06 (Markdown Notes)** is unblocked. Tickets 07 onward still have uncompleted dependencies. Each additional feature requires its own implementation instruction.
 
 ## Privacy and public repository rules
 
