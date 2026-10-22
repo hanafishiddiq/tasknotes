@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** not started — requires an explicit phase-transition instruction.
+**Implementation:** in progress — owner started Ticket 06 on 2026-10-22 after Ticket 05 merged. [Plan](../../../docs/plans/ticket-06-markdown-notes-2026-10-22.md).
 
 ## Acceptance criteria
 
