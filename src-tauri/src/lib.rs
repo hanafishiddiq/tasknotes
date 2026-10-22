@@ -1,9 +1,12 @@
+use tasknotes_core::notes::{CreateNote, Note, NotePage, UpdateNote};
 use tasknotes_core::tasks::{
     ChangeTask, CreateList, CreateTask, List, ListPage, MoveTask, Priority, ProgressHistoryPage,
     RecordProgress, RenameList, SetListRemoved, SortMode, Task, TaskPage, TaskQuery, TaskStore,
     TaskView, UpdateTask, UpdateTaskDetails, WorkStatus,
 };
 use tauri::{Manager, State};
+
+mod quit;
 
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
@@ -118,9 +121,39 @@ fn update_task_details(
         .map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+fn list_notes(
+    store: State<'_, TaskStore>,
+    limit: u32,
+    cursor: Option<String>,
+) -> Result<NotePage, String> {
+    store
+        .list_notes(limit, cursor.as_deref())
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn get_note(store: State<'_, TaskStore>, id: String) -> Result<Option<Note>, String> {
+    store.get_note(&id).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn create_note(store: State<'_, TaskStore>, input: CreateNote) -> Result<Note, String> {
+    store.create_note(input).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn update_note(store: State<'_, TaskStore>, input: UpdateNote) -> Result<Note, String> {
+    store.update_note(input).map_err(|error| error.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(quit::QuitState::default())
+        .menu(quit::menu)
+        .on_menu_event(quit::on_menu_event)
+        .on_window_event(quit::on_window_event)
         .setup(|app| {
             // Data is private to this macOS user, never kept in the public source repository.
             let app_data_dir = app.path().app_data_dir()?;
@@ -146,7 +179,12 @@ pub fn run() {
             rename_list,
             set_list_removed,
             move_task,
-            update_task_details
+            update_task_details,
+            list_notes,
+            get_note,
+            create_note,
+            update_note,
+            quit::quit_ready
         ])
         .run(tauri::generate_context!())
         .expect("Unable to launch Tasknotes");

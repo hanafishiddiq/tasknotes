@@ -55,7 +55,7 @@ The desktop experience combines a minimal list of Tasks, an independent rich-tex
 26. As a user, I want Markdown-backed rich-text editing so notes are readable and portable without writing raw Markdown.
 27. As a user, I want headings, emphasis, checklists, bullet lists, and links so my Notes can represent ordinary working documents.
 28. As a user, I want autosave so typing in Notes does not require manual Save actions.
-29. As a user, I want folders and pinned Notes so my Notes workspace stays organized.
+29. As a user, I want folders, including folders inside folders, and pinned Notes so my Notes workspace stays organized.
 30. As a user, I want a Note linked to multiple Tasks and a Task linked to multiple Notes without duplicating data.
 31. As a user, I want unlinking to remove only the relationship, not the Note or Task.
 32. As a user, I want removing a Task, Note, or List to place it into Removed rather than erase it.
@@ -113,6 +113,7 @@ The desktop experience combines a minimal list of Tasks, an independent rich-tex
 - A new Task starts Ready with 0% progress and Medium priority. Progress 100% means Completed. A change from Ready to 1–99% means In Progress. Reducing progress on a Completed Task reopens it; an explicit reopen restores the prior incomplete percentage.
 - Progress Entries and meaningful Audit Entries are append-only. Expanding Task rows shows a summary rather than loading every entry.
 - Notes store canonical Markdown; rich-text editor must round-trip supported formatting without data loss. Note-to-Task relationships are many-to-many and non-owning.
+- **Nested Note Folders (owner decision 2026-10-22):** a Note Folder can contain other Note Folders as well as Notes, forming a tree that is independent of Task Lists. A folder can never be moved into itself or one of its descendants. Removing a folder is reversible like any Removed item. To settle when Ticket 07 starts: maximum depth, whether a folder view also shows Notes from its subfolders, sibling name rules, and how Removed treats a folder's subtree (Ticket 09).
 - Removing a List hides its child Tasks without mutating their own Removed disposition. Restore exposes children except those separately Removed.
 - A note marked Exclude from AI must not be exposed in AI-facing search, listing, direct access, metadata or task-note linkage. From the AI perspective, a private Note must behave like a non-discoverable resource.
 - User-visible search covers Task title, description, Next Step, dated progress notes, and Note content. Official AI search returns only authorized matches.

@@ -69,6 +69,14 @@ pub enum TaskError {
     InvalidTransition(&'static str),
     #[error("Revision conflict: the Task has changed; reload before saving")]
     RevisionConflict,
+    #[error("Note not found")]
+    NoteNotFound,
+    #[error("Note must be 200,000 characters or fewer")]
+    NoteTooLong,
+    #[error("Invalid Note page cursor")]
+    InvalidNoteCursor,
+    #[error("This Note changed elsewhere; your text was not saved over it")]
+    NoteRevisionConflict,
     #[error("Unsupported database schema version {0}; refusing to modify a newer database")]
     UnsupportedSchema(i64),
     #[error("Unable to open local storage: {0}")]
@@ -314,6 +322,9 @@ pub(crate) fn read_task(row: &Row<'_>) -> rusqlite::Result<Task> {
 
 pub(crate) const COLUMNS: &str = "id, title, description, status, priority, progress, revision, created_at, updated_at, next_step, list_id, due_date";
 
+/// How long a write waits for another process (the CLI, MCP) holding the database lock.
+pub const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
+
 impl TaskStore {
     /// Opens an on-disk database and applies transactional, forward-only migrations.
     pub fn open(path: &Path) -> Result<Self, TaskError> {
@@ -322,9 +333,9 @@ impl TaskStore {
         }
 
         let mut connection = Connection::open(path)?;
-        connection.busy_timeout(Duration::from_secs(5))?;
+        connection.busy_timeout(BUSY_TIMEOUT)?;
         let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        if version > 5 {
+        if version > 6 {
             return Err(TaskError::UnsupportedSchema(version));
         }
 
@@ -430,6 +441,11 @@ impl TaskStore {
             crate::search::migrate_v5(&migration)?;
             migration.commit()?;
         }
+        if version < 6 {
+            let migration = connection.transaction()?;
+            crate::notes::migrate_v6(&migration)?;
+            migration.commit()?;
+        }
         Ok(Self {
             path: path.to_path_buf(),
         })
@@ -437,7 +453,7 @@ impl TaskStore {
 
     pub(crate) fn connect(&self) -> Result<Connection, TaskError> {
         let connection = Connection::open(&self.path)?;
-        connection.busy_timeout(Duration::from_secs(5))?;
+        connection.busy_timeout(BUSY_TIMEOUT)?;
         connection.pragma_update(None, "foreign_keys", true)?;
         Ok(connection)
     }

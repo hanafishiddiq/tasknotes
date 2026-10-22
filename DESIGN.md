@@ -296,6 +296,12 @@ The selected row opens a page underneath it, indented to the 38px content edge: 
 ### Progress History
 A compact 12px timeline: tertiary date, then status and "from% -> to%" in primary text with tabular numerals, then note and "Next:" lines in secondary gray, each entry separated by a hairline.
 
+### Notes Workspace
+Apple Notes columns: the folder sidebar, a Note list, then the editor.
+- **Note list:** a Headline "Notes" with the compose icon, then 7px-radius cells of a bold single-line title over a 12px tertiary date; the open Note takes the selected row color. Older Notes load from a small accent-text "Load more Notes" action under the list.
+- **Editor:** a borderless sheet centered at 720px with 32px side padding (16px at 720px and below). Note text is a reading size above Body Page: 15px/1.55, headings 24, 19, 16 and 15px at 700. Checklist items draw an 18px circle that fills with the accent and an ink tick when done; quotes take a 3px folder-selected bar and secondary text; code is monospace on field gray (6px radius for blocks, 5px inline).
+- **Banners:** save errors use the error banner; "changed somewhere else" uses the notice banner with its two choices as small buttons.
+
 ## Do's and Don'ts
 
 ### Do:

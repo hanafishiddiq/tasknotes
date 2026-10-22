@@ -32,3 +32,5 @@
 - This is an implementation ticket, not proof that implementation has begun.
 
 ## Comments
+
+**2026-10-22:** Note Folders can be nested (owner decision, see Ticket 07). Markdown export should keep the folder tree (for example as directories) and JSON export must keep each folder's parent, so a round trip does not flatten it.

@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import {
-  Check, Folder, Inbox, ListChecks, Moon, Pencil,
+  Check, Folder, Inbox, ListChecks, Moon, NotebookText, Pencil,
   Plus, RotateCcw, Sun, Trash2, X,
 } from "lucide-react";
 import type { TaskList, TaskView } from "../lib/task-api";
@@ -8,6 +8,8 @@ import type { Theme } from "../lib/use-theme";
 
 interface TaskSidebarProps {
   view: TaskView;
+  /** The Notes workspace is showing instead of a Task view. */
+  notesActive: boolean;
   lists: TaskList[];
   listError: string | null;
   /** Tasks on the current page, or null when the count is not known. */
@@ -18,6 +20,7 @@ interface TaskSidebarProps {
   theme: Theme;
   onToggleTheme: () => void;
   onNavigate: (view: TaskView) => void;
+  onOpenNotes: () => void;
   onCreateList: (name: string) => Promise<boolean>;
   onRenameList: (list: TaskList, name: string) => Promise<boolean>;
   onRemoveList: (list: TaskList) => Promise<void>;
@@ -26,8 +29,8 @@ interface TaskSidebarProps {
 }
 
 export default function TaskSidebar({
-  view, lists, listError, shownCount, hasMoreTasks, hasMoreLists, busy,
-  theme, onToggleTheme, onNavigate, onCreateList, onRenameList, onRemoveList,
+  view, notesActive, lists, listError, shownCount, hasMoreTasks, hasMoreLists, busy,
+  theme, onToggleTheme, onNavigate, onOpenNotes, onCreateList, onRenameList, onRemoveList,
   onRestoreList, onLoadMoreLists,
 }: TaskSidebarProps) {
   const [name, setName] = useState("");
@@ -47,8 +50,11 @@ export default function TaskSidebar({
     if (await onRenameList(list, renameDraft)) setRenaming(null);
   }
 
+  // While Notes are open, no Task view is the current place.
+  const isCurrent = (place: TaskView) => !notesActive && place.kind === view.kind &&
+    (place.kind !== "list" || (view.kind === "list" && view.listId === place.listId));
   // The page holds only the active view's Tasks, so only that folder gets a count.
-  const count = (active: boolean) => active && shownCount !== null && (
+  const count = (place: TaskView) => isCurrent(place) && shownCount !== null && (
     <span className="folder-count">{shownCount}{hasMoreTasks ? "+" : ""}</span>
   );
 
@@ -59,19 +65,19 @@ export default function TaskSidebar({
         <button type="button" disabled={busy}
           aria-label="All tasks"
           className="folder"
-          aria-current={view.kind === "all" ? "page" : undefined}
+          aria-current={isCurrent({ kind: "all" }) ? "page" : undefined}
           onClick={() => onNavigate({ kind: "all" })}>
           <ListChecks size={17} aria-hidden="true" />
           <span className="folder-name">All tasks</span>
-          {count(view.kind === "all")}
+          {count({ kind: "all" })}
         </button>
         <button type="button" disabled={busy}
           aria-label="Inbox"
           className="folder"
-          aria-current={view.kind === "inbox" ? "page" : undefined}
+          aria-current={isCurrent({ kind: "inbox" }) ? "page" : undefined}
           onClick={() => onNavigate({ kind: "inbox" })}>
           <Inbox size={17} aria-hidden="true" /><span className="folder-name">Inbox</span>
-          {count(view.kind === "inbox")}
+          {count({ kind: "inbox" })}
         </button>
       </nav>
 
@@ -97,11 +103,11 @@ export default function TaskSidebar({
               <>
                 <button type="button" disabled={busy}
                   aria-label={list.name}
-                  aria-current={view.kind === "list" && view.listId === list.id ? "page" : undefined}
+                  aria-current={isCurrent({ kind: "list", listId: list.id }) ? "page" : undefined}
                   className="folder"
                   onClick={() => onNavigate({ kind: "list", listId: list.id })}>
                   <Folder size={17} aria-hidden="true" /><span className="folder-name">{list.name}</span>
-                  {count(view.kind === "list" && view.listId === list.id)}
+                  {count({ kind: "list", listId: list.id })}
                 </button>
                 <span className="folder-actions">
                   <button type="button" className="folder-action" disabled={busy}
@@ -130,6 +136,17 @@ export default function TaskSidebar({
         <button type="submit" className="folder-action" aria-label="Add list"
           disabled={busy || !name.trim()}><Check size={14} /></button>
       </form>
+
+      <div className="sidebar-heading">Notes</div>
+      <nav aria-label="Note folders" className="sidebar-nav">
+        <button type="button" disabled={busy}
+          aria-label="All notes"
+          className="folder"
+          aria-current={notesActive ? "page" : undefined}
+          onClick={onOpenNotes}>
+          <NotebookText size={17} aria-hidden="true" /><span className="folder-name">All notes</span>
+        </button>
+      </nav>
 
       <div className="sidebar-spacer" />
       {lists.some((list) => list.removed) && (

@@ -49,7 +49,7 @@ The next intended action recorded against a Task to help a person or AI resume w
 A reversible association between a Task and a Note; removing the association does not remove either entity.
 
 **Folder**:
-A category that organizes Notes independently from Task Lists.
+A category that organizes Notes independently from Task Lists. A Folder can contain other Folders, so Folders form a tree.
 
 **Audit Entry**:
 An immutable dated record that an official Tasknotes interface made or attempted a consequential change.
