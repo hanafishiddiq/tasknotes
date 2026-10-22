@@ -263,3 +263,29 @@ fn a_failed_v6_migration_rolls_back_and_keeps_the_v5_database_usable() {
     );
     assert_eq!(version(&db), 6);
 }
+
+#[test]
+fn the_title_reads_canonical_markdown_escapes_and_marks_as_plain_text() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("escapes.db"));
+    let cases = [
+        // The editor saves literal * _ ` ~ \ with a backslash.
+        ("Budget: 5 \\* 3 = 15", "Budget: 5 * 3 = 15"),
+        (
+            "snake\\_case\\_name and snake_case",
+            "snake_case_name and snake_case",
+        ),
+        ("\\# Not a heading", "# Not a heading"),
+        ("C:\\\\Users", "C:\\Users"),
+        (
+            "~~Old plan~~ replaced, run `pnpm test`",
+            "Old plan replaced, run pnpm test",
+        ),
+        ("_under_ and __strong__", "under and strong"),
+        // Escaped brackets are text, not a link.
+        ("\\[draft\\](later) notes", "[draft](later) notes"),
+    ];
+    for (markdown, title) in cases {
+        assert_eq!(note(&store, markdown).title, title, "markdown {markdown:?}");
+    }
+}

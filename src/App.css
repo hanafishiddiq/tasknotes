@@ -1176,17 +1176,52 @@ textarea:disabled {
 .note-h3 {
   font-size: 16px;
 }
+.note-h4 {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 700;
+}
 .note-bold {
   font-weight: 700;
 }
 .note-italic {
   font-style: italic;
 }
+.note-strike {
+  text-decoration: line-through;
+}
 .note-link {
   color: var(--accent-text);
   text-decoration: underline;
 }
-.note-ul {
+.note-code-inline,
+.note-code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  background: var(--field);
+}
+.note-code-inline {
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+.note-code {
+  display: block;
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  tab-size: 2;
+}
+.note-quote {
+  margin: 0 0 8px;
+  padding-left: 12px;
+  border-left: 3px solid var(--side-selected);
+  color: var(--text-2);
+}
+.note-ul,
+.note-ol {
   margin: 0 0 8px;
   padding-left: 22px;
 }

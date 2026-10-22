@@ -50,7 +50,38 @@
 | `- Milk` / `Eggs` makes a bullet list saved as `- Milk\n- Eggs` | PASS after fix |
 | Switching to another Note opens it | PASS |
 
-Found and fixed during QA: editor list items shared the class `note-list-item` with the Note list buttons, whose `display: flex` hid the bullets (CSS only, so jsdom could not see it). Not a bug: the sidebar briefly showed the old highlight; reading `AXARIACurrent` from the live WebView gave `All notes = page`, `All tasks = false`, and the paint caught up on the next edit. Switch-before-autosave ordering is proven by the Vitest test only, since each native step took longer than the 600 ms pause. Typing `- [ ] ` stays a bullet with literal text until reopen; recorded for slice 3.
+Found and fixed during QA: editor list items shared the class `note-list-item` with the Note list buttons, whose `display: flex` hid the bullets (CSS only, so jsdom could not see it). Not a bug: the sidebar briefly showed the old highlight; reading `AXARIACurrent` from the live WebView gave `All notes = page`, `All tasks = false`. Slice 3 QA narrowed it down: while the window is inactive the WebView does not repaint the sidebar at all (not even the hover background), and once the window is active the highlight moves to "All notes" at once. Switch-before-autosave ordering is proven by the Vitest test only, since each native step took longer than the 600 ms pause. Typing `- [ ] ` stays a bullet with literal text until reopen; recorded for slice 3.
 
 Checks at the slice 2 commit: 78 Vitest tests (stable over repeated runs), typecheck, build, 57 Rust core tests, core and Tauri Clippy `-D warnings`, fmt.
 
+## Implementation checkpoint — slice 3, Markdown fidelity (2026-10-22)
+
+**Owner decision ("Tambah format umum"):** besides headings, bold, italic, bullet lists, checklists and links, the editor also recognises numbered lists, quotes, fenced code blocks, inline code and strikethrough, and reads `_italic_` / `__bold__`. Recorded as an addendum to ADR-0003. This widens the acceptance criterion above; nothing in it is dropped.
+
+**What changed:** the transformer set in `src/lib/note-markdown.ts`; theme classes and CSS for the new formats; a typed-checklist shortcut inside bullet items, so typing `- [ ] Passport` makes a checkbox at once, as reopening already did; the core title now reads backslash escapes and drops inline marks (`5 \* 3` → `5 * 3`, `snake\_case` → `snake_case`, `~~old~~` → `old`).
+
+**Tests:** 24 round-trip cases (17 kept byte-for-byte, 6 normalised once then stable, empty Note); 3 App tests that check recognition through roles (headings, `strong`, `em`, `code`, `ol`, `blockquote`, checkbox with `aria-checked`, link) and that an edit saves the rest unchanged; 1 core title test with 7 cases. Mutation checks, each making a test fail: no code blocks, no underscore emphasis, no strikethrough, bullet before checklist, underscore forms before star forms, checklist plugin removed, whole bullet list turned into a checklist, and four in the title (no escaped-bracket skip, all underscores dropped, lone `*` dropped, escapes kept as `\`).
+
+**Native QA** on the same isolated bundle, typing through Cua Driver (direct, `attribution: host`):
+
+| Case | Result |
+| --- | --- |
+| Typed `Formats`, `- [ ] Passport`, `Tickets`, `1. First`, `Second`, `> Quote`, inline code, `~~old~~`, a code block: saved exactly as canonical Markdown (`- [ ] Passport\n- [ ] Tickets`, `1. First\n2. Second`, `> Quote`, `` `pnpm test` ``, `~~old~~`, a fenced block) | PASS |
+| Every format renders as formatting: circles, numbers, quote bar, monospace code, struck text | PASS |
+| Clicking the Passport circle saves `- [x] Passport` (revision 18 → 19) | PASS via `app_click` |
+| Switching away and back, then quit and relaunch: same rendering, revision still 19 (opening writes nothing) | PASS |
+
+The circle click needs a real pointer event: Cua's background pixel click became an AX press at the item's centre and its foreground click did not reach the page, while `app_click` (raw input) toggled it.
+
+**Open finding for the owner — escaped literals lose their escape on save.** Lexical reads every CommonMark backslash escape but writes back only `*`, `_`, `` ` ``, `~` and `\`. Text that only looks like Markdown is saved without its escape and becomes formatting on the next open (probe through `roundTripNoteMarkdown`, two saves each):
+
+| Stored | After one edit | Next open shows |
+| --- | --- | --- |
+| `\# Not a heading` | `# Not a heading` | a heading |
+| `\- Not a bullet`, `1\. Not a list`, `\> Not a quote` | marker unescaped | a list or quote |
+| `\[ \] Not a task`, `- \[ \] Literal` | `[ ] …`, `- [ ] …` | a checkbox |
+| `\[draft\](later) notes` | `\\[draft\\](later) notes` | a backslash and a link |
+
+The editor never writes these escapes itself, so today this needs Markdown from elsewhere (CLI/MCP writes, later import) or literal text the shortcuts left alone (for example after undoing one; pasted text not yet checked). Awaiting the owner's choice before changing the canonical spelling.
+
+Checks at the slice 3 commit: 98 Vitest tests, typecheck, build, 58 Rust core tests, core and Tauri Clippy `-D warnings`, fmt. The owner's database was not opened (mtime still 2026-10-13).

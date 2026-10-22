@@ -82,8 +82,8 @@ fn validated(markdown: &str) -> Result<(), TaskError> {
     Ok(())
 }
 
-/// The first non-empty line as plain text: block markers, emphasis stars and
-/// link targets removed, at most 100 characters.
+/// The first non-empty line as plain text: block markers, inline marks, escapes
+/// and link targets removed, at most 100 characters.
 fn title_of(markdown: &str) -> String {
     let line = markdown
         .lines()
@@ -97,7 +97,7 @@ fn title_of(markdown: &str) -> String {
     for checkbox in ["[ ] ", "[x] ", "[X] "] {
         text = text.strip_prefix(checkbox).unwrap_or(text);
     }
-    let plain = without_emphasis(&without_link_targets(text));
+    let plain = without_marks(&without_link_targets(text));
     let title: String = plain.split_whitespace().collect::<Vec<_>>().join(" ");
     let title: String = title.chars().take(TITLE_CHARS).collect();
     match title.trim_end() {
@@ -112,6 +112,11 @@ fn without_link_targets(text: &str) -> String {
     let mut rest = text;
     while let Some(open) = rest.find('[') {
         let after = &rest[open + 1..];
+        if rest[..open].ends_with('\\') {
+            out.push_str(&rest[..=open]);
+            rest = after;
+            continue;
+        }
         let link = after.find("](").and_then(|close| {
             after[close + 2..]
                 .find(')')
@@ -133,20 +138,41 @@ fn without_link_targets(text: &str) -> String {
     out
 }
 
-/// Drops `*` used as emphasis (touching a word), keeps a lone `*` like `5 * 3`.
-fn without_emphasis(text: &str) -> String {
+/// Plain text from inline Markdown: a backslash escape gives its literal
+/// character, and `*`, `~` and backticks used as marks are dropped. A lone `*`
+/// like `5 * 3` and an underscore inside a word like `snake_case` are text.
+fn without_marks(text: &str) -> String {
     let chars: Vec<char> = text.chars().collect();
-    chars
-        .iter()
-        .enumerate()
-        .filter(|&(index, &c)| {
-            let spaced = |neighbour: Option<&char>| neighbour.is_none_or(|n| n.is_whitespace());
-            c != '*'
-                || (spaced(index.checked_sub(1).and_then(|i| chars.get(i)))
-                    && spaced(chars.get(index + 1)))
-        })
-        .map(|(_, &c)| c)
-        .collect()
+    let spaced = |index: Option<usize>| {
+        index
+            .and_then(|i| chars.get(i))
+            .is_none_or(|c| c.is_whitespace())
+    };
+    let wordy = |index: Option<usize>| {
+        index
+            .and_then(|i| chars.get(i))
+            .is_some_and(|c| c.is_alphanumeric())
+    };
+    let mut out = String::with_capacity(text.len());
+    let mut index = 0;
+    while index < chars.len() {
+        let c = chars[index];
+        let (before, after) = (index.checked_sub(1), Some(index + 1));
+        match c {
+            '\\' if chars
+                .get(index + 1)
+                .is_some_and(|next| next.is_ascii_punctuation()) =>
+            {
+                out.push(chars[index + 1]);
+                index += 1;
+            }
+            '*' | '~' | '`' if !(spaced(before) && spaced(after)) => {}
+            '_' if !(wordy(before) && wordy(after)) => {}
+            _ => out.push(c),
+        }
+        index += 1;
+    }
+    out
 }
 
 fn parse_cursor(value: &str) -> Result<(i64, String), TaskError> {

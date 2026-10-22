@@ -221,4 +221,70 @@ describe("standalone Notes", () => {
     expect(screen.getByRole("button", { name: "All notes" })).not.toHaveAttribute("aria-current");
     expect(screen.queryByRole("textbox", { name: "Note text" })).not.toBeInTheDocument();
   });
+
+  it("shows every supported format as formatting and saves the rest unchanged after an edit", async () => {
+    const markdown = [
+      "# Release plan",
+      "## Scope",
+      "Ship **bold**, *italic*, ~~old~~ and `code` today.",
+      "1. First\n2. Second",
+      "> Quoted line",
+      "```\nconst ready = true;\n```",
+      "- [x] Done item\n- [ ] Open item",
+      "See [the docs](https://example.com/docs).",
+    ].join("\n\n");
+    backend.seed(markdown, "Release plan");
+    const user = await openNotes();
+    const editor = await screen.findByRole("textbox", { name: "Note text" });
+    await waitFor(() => expect(editor).toHaveTextContent("Release plan"));
+
+    expect(within(editor).getByRole("heading", { level: 1, name: "Release plan" })).toBeInTheDocument();
+    expect(within(editor).getByRole("heading", { level: 2, name: "Scope" })).toBeInTheDocument();
+    expect(within(editor).getByText("bold").tagName).toBe("STRONG");
+    expect(within(editor).getByText("italic").tagName).toBe("EM");
+    expect(within(editor).getByText("code").closest("code")).not.toBeNull();
+    expect(editor.querySelector("ol")).toHaveTextContent("FirstSecond");
+    expect(editor.querySelector("blockquote")).toHaveTextContent("Quoted line");
+    expect(within(editor).getByText("const ready = true;").closest("code")).not.toBeNull();
+    expect(within(editor).getByRole("checkbox", { name: "Done item" })).toHaveAttribute("aria-checked", "true");
+    expect(within(editor).getByRole("checkbox", { name: "Open item" })).toHaveAttribute("aria-checked", "false");
+    expect(within(editor).getByRole("link", { name: "the docs" })).toHaveAttribute("href", "https://example.com/docs");
+
+    await user.click(editor);
+    await user.keyboard("X");
+    await eventually(() => expect(backend.notes.get("note-1")?.markdown)
+      .toBe(markdown.replace("# Release plan", "# XRelease plan")));
+  });
+
+  it("turns a typed - [ ] into the same checklist item that reopening shows", async () => {
+    const user = await openNotes();
+    const editor = await screen.findByRole("textbox", { name: "Note text" });
+    await user.click(editor);
+    // user-event reads "[[" as one literal "[".
+    await user.keyboard("Packing list{Enter}- [[ ] Passport{Enter}Charger");
+
+    expect(within(editor).getByRole("checkbox", { name: "Passport" })).toHaveAttribute("aria-checked", "false");
+    expect(within(editor).getByRole("checkbox", { name: "Charger" })).toBeInTheDocument();
+    await eventually(() => expect([...backend.notes.values()][0]?.markdown)
+      .toBe("Packing list\n\n- [ ] Passport\n- [ ] Charger"));
+  });
+
+  it("keeps earlier bullets, honours [x], and leaves escaped brackets alone on open", async () => {
+    backend.seed("- \\[ \\] Literal brackets", "[ ] Literal brackets");
+    const user = await openNotes();
+    const opened = await screen.findByRole("textbox", { name: "Note text" });
+    await waitFor(() => expect(opened).toHaveTextContent("[ ] Literal brackets"));
+    expect(within(opened).queryByRole("checkbox")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "New note" }));
+    const editor = screen.getByRole("textbox", { name: "Note text" });
+    await waitFor(() => expect(editor).toHaveTextContent(""));
+    await user.click(editor);
+    await user.keyboard("- Milk{Enter}[[x] Eggs");
+
+    expect(within(editor).getByRole("listitem")).toHaveTextContent("Milk");
+    expect(within(editor).getByRole("checkbox", { name: "Eggs" })).toHaveAttribute("aria-checked", "true");
+    await eventually(() => expect(backend.notes.get("note-2")?.markdown).toBe("- Milk\n\n- [x] Eggs"));
+    expect(backend.notes.get("note-1")?.markdown).toBe("- \\[ \\] Literal brackets");
+  });
 });

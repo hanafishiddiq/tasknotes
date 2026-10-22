@@ -6,22 +6,45 @@ import { CodeNode } from "@lexical/code";
 import {
   $convertFromMarkdownString,
   $convertToMarkdownString,
+  BOLD_ITALIC_STAR,
+  BOLD_ITALIC_UNDERSCORE,
   BOLD_STAR,
+  BOLD_UNDERSCORE,
   CHECK_LIST,
+  CODE,
   HEADING,
+  INLINE_CODE,
   ITALIC_STAR,
+  ITALIC_UNDERSCORE,
   LINK,
+  ORDERED_LIST,
+  QUOTE,
+  STRIKETHROUGH,
   UNORDERED_LIST,
   type Transformer,
 } from "@lexical/markdown";
 
-/** The supported Note formatting subset from ADR-0003. */
+/**
+ * The ADR-0003 subset plus the common CommonMark blocks and marks (owner
+ * decision 2026-10-22), so Markdown written elsewhere keeps its meaning.
+ * Order matters: a checklist is tried before a bullet, and the star forms
+ * come first so they are the canonical export.
+ */
 export const NOTE_TRANSFORMERS: Transformer[] = [
   HEADING,
+  QUOTE,
+  CODE,
   CHECK_LIST,
   UNORDERED_LIST,
+  ORDERED_LIST,
+  INLINE_CODE,
+  BOLD_ITALIC_STAR,
+  BOLD_ITALIC_UNDERSCORE,
   BOLD_STAR,
+  BOLD_UNDERSCORE,
+  STRIKETHROUGH,
   ITALIC_STAR,
+  ITALIC_UNDERSCORE,
   LINK,
 ];
 
