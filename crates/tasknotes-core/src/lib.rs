@@ -1,3 +1,4 @@
+pub mod notes;
 mod organization;
 mod search;
 pub mod tasks;

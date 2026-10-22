@@ -1,0 +1,285 @@
+use rusqlite::{OptionalExtension, Row, Transaction, params};
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+use crate::tasks::{TaskError, TaskStore, current_millis};
+
+/// A standalone document stored as canonical Markdown (ADR-0003).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Note {
+    pub id: String,
+    pub markdown: String,
+    /// Derived from the first line on every write; never edited directly.
+    pub title: String,
+    pub revision: i64,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateNote {
+    pub markdown: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateNote {
+    pub id: String,
+    pub markdown: String,
+    pub expected_revision: i64,
+}
+
+/// What a Note list shows, without loading whole documents.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteSummary {
+    pub id: String,
+    pub title: String,
+    pub revision: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotePage {
+    pub items: Vec<NoteSummary>,
+    pub next_cursor: Option<String>,
+}
+
+const COLUMNS: &str = "id, markdown, title, revision, created_at, updated_at";
+
+/// Edit stamps never repeat, so the list follows the order of writes even when
+/// several land within one millisecond. `?4` is the current time.
+const NEXT_STAMP: &str = "SELECT max(?4, coalesce(max(updated_at) + 1, 0)) AS stamp FROM notes";
+
+/// Schema v6: standalone Notes.
+pub(crate) fn migrate_v6(migration: &Transaction) -> Result<(), TaskError> {
+    migration.execute_batch(
+        "CREATE TABLE notes (
+            id TEXT PRIMARY KEY NOT NULL,
+            markdown TEXT NOT NULL,
+            title TEXT NOT NULL,
+            revision INTEGER NOT NULL CHECK(revision >= 1),
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+         );
+         CREATE INDEX notes_updated_order ON notes(updated_at DESC, id DESC);
+         PRAGMA user_version = 6;",
+    )?;
+    Ok(())
+}
+
+const MAX_NOTE_CHARS: usize = 200_000;
+const TITLE_CHARS: usize = 100;
+const UNTITLED: &str = "New Note";
+
+fn validated(markdown: &str) -> Result<(), TaskError> {
+    if markdown.chars().count() > MAX_NOTE_CHARS {
+        return Err(TaskError::NoteTooLong);
+    }
+    Ok(())
+}
+
+/// The first non-empty line as plain text: block markers, emphasis stars and
+/// link targets removed, at most 100 characters.
+fn title_of(markdown: &str) -> String {
+    let line = markdown
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or("");
+    let mut text = line.trim_start_matches('#').trim_start();
+    for marker in ["- ", "* ", "+ "] {
+        text = text.strip_prefix(marker).unwrap_or(text);
+    }
+    for checkbox in ["[ ] ", "[x] ", "[X] "] {
+        text = text.strip_prefix(checkbox).unwrap_or(text);
+    }
+    let plain = without_emphasis(&without_link_targets(text));
+    let title: String = plain.split_whitespace().collect::<Vec<_>>().join(" ");
+    let title: String = title.chars().take(TITLE_CHARS).collect();
+    match title.trim_end() {
+        "" => UNTITLED.to_owned(),
+        trimmed => trimmed.to_owned(),
+    }
+}
+
+/// `[text](url)` becomes `text`.
+fn without_link_targets(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(open) = rest.find('[') {
+        let after = &rest[open + 1..];
+        let link = after.find("](").and_then(|close| {
+            after[close + 2..]
+                .find(')')
+                .map(|end| (&after[..close], close + 2 + end + 1))
+        });
+        match link {
+            Some((label, consumed)) => {
+                out.push_str(&rest[..open]);
+                out.push_str(label);
+                rest = &after[consumed..];
+            }
+            None => {
+                out.push_str(&rest[..=open]);
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Drops `*` used as emphasis (touching a word), keeps a lone `*` like `5 * 3`.
+fn without_emphasis(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    chars
+        .iter()
+        .enumerate()
+        .filter(|&(index, &c)| {
+            let spaced = |neighbour: Option<&char>| neighbour.is_none_or(|n| n.is_whitespace());
+            c != '*'
+                || (spaced(index.checked_sub(1).and_then(|i| chars.get(i)))
+                    && spaced(chars.get(index + 1)))
+        })
+        .map(|(_, &c)| c)
+        .collect()
+}
+
+fn parse_cursor(value: &str) -> Result<(i64, String), TaskError> {
+    let mut fields = value.split('|');
+    match (fields.next(), fields.next(), fields.next(), fields.next()) {
+        (Some("n1"), Some(time), Some(id), None) => {
+            let time = time
+                .parse::<i64>()
+                .map_err(|_| TaskError::InvalidNoteCursor)?;
+            Uuid::parse_str(id).map_err(|_| TaskError::InvalidNoteCursor)?;
+            Ok((time, id.to_owned()))
+        }
+        _ => Err(TaskError::InvalidNoteCursor),
+    }
+}
+
+fn read_note(row: &Row<'_>) -> rusqlite::Result<Note> {
+    Ok(Note {
+        id: row.get(0)?,
+        markdown: row.get(1)?,
+        title: row.get(2)?,
+        revision: row.get(3)?,
+        created_at: row.get(4)?,
+        updated_at: row.get(5)?,
+    })
+}
+
+impl TaskStore {
+    pub fn create_note(&self, input: CreateNote) -> Result<Note, TaskError> {
+        validated(&input.markdown)?;
+        let now = current_millis()?;
+        Ok(self.connect()?.query_row(
+            &format!(
+                "INSERT INTO notes ({COLUMNS})
+                 SELECT ?1, ?2, ?3, 1, stamp, stamp FROM ({NEXT_STAMP}) RETURNING {COLUMNS}"
+            ),
+            params![
+                Uuid::new_v4().to_string(),
+                input.markdown,
+                title_of(&input.markdown),
+                now
+            ],
+            read_note,
+        )?)
+    }
+
+    /// Saves only over the revision the editor started from; a newer edit wins
+    /// and the caller decides what to do with its text.
+    pub fn update_note(&self, input: UpdateNote) -> Result<Note, TaskError> {
+        validated(&input.markdown)?;
+        let now = current_millis()?;
+        let conn = self.connect()?;
+        let updated = conn
+            .query_row(
+                &format!(
+                    "UPDATE notes SET markdown = ?1, title = ?2, revision = revision + 1,
+                       updated_at = ({NEXT_STAMP})
+                     WHERE id = ?3 AND revision = ?5 RETURNING {COLUMNS}"
+                ),
+                params![
+                    input.markdown,
+                    title_of(&input.markdown),
+                    input.id,
+                    now,
+                    input.expected_revision
+                ],
+                read_note,
+            )
+            .optional()?;
+        match updated {
+            Some(note) => Ok(note),
+            None => {
+                let exists: bool = conn.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM notes WHERE id = ?1)",
+                    params![input.id],
+                    |row| row.get(0),
+                )?;
+                Err(if exists {
+                    TaskError::NoteRevisionConflict
+                } else {
+                    TaskError::NoteNotFound
+                })
+            }
+        }
+    }
+
+    /// Most recently edited first, as a bounded keyset page.
+    pub fn list_notes(&self, limit: u32, cursor: Option<&str>) -> Result<NotePage, TaskError> {
+        if !(1..=100).contains(&limit) {
+            return Err(TaskError::InvalidPageSize);
+        }
+        let (time, id) = cursor.map(parse_cursor).transpose()?.unzip();
+        let conn = self.connect()?;
+        // A row-value bound lets SQLite seek into the index instead of scanning
+        // every newer Note on later pages. The first page binds both as NULL.
+        let mut stmt = conn.prepare(&format!(
+            "SELECT id, title, revision, updated_at FROM notes {}
+             ORDER BY updated_at DESC, id DESC LIMIT ?3",
+            if time.is_some() {
+                "WHERE (updated_at, id) < (?1, ?2)"
+            } else {
+                "WHERE ?1 IS NULL AND ?2 IS NULL"
+            }
+        ))?;
+        let mut items = stmt
+            .query_map(params![time, id, i64::from(limit) + 1], |row| {
+                Ok(NoteSummary {
+                    id: row.get(0)?,
+                    title: row.get(1)?,
+                    revision: row.get(2)?,
+                    updated_at: row.get(3)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let next_cursor = if items.len() > limit as usize {
+            items.pop();
+            items
+                .last()
+                .map(|last| format!("n1|{}|{}", last.updated_at, last.id))
+        } else {
+            None
+        };
+        Ok(NotePage { items, next_cursor })
+    }
+
+    pub fn get_note(&self, id: &str) -> Result<Option<Note>, TaskError> {
+        Ok(self
+            .connect()?
+            .query_row(
+                &format!("SELECT {COLUMNS} FROM notes WHERE id = ?1"),
+                params![id],
+                read_note,
+            )
+            .optional()?)
+    }
+}

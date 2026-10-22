@@ -69,6 +69,14 @@ pub enum TaskError {
     InvalidTransition(&'static str),
     #[error("Revision conflict: the Task has changed; reload before saving")]
     RevisionConflict,
+    #[error("Note not found")]
+    NoteNotFound,
+    #[error("Note must be 200,000 characters or fewer")]
+    NoteTooLong,
+    #[error("Invalid Note page cursor")]
+    InvalidNoteCursor,
+    #[error("This Note changed elsewhere; your text was not saved over it")]
+    NoteRevisionConflict,
     #[error("Unsupported database schema version {0}; refusing to modify a newer database")]
     UnsupportedSchema(i64),
     #[error("Unable to open local storage: {0}")]
@@ -324,7 +332,7 @@ impl TaskStore {
         let mut connection = Connection::open(path)?;
         connection.busy_timeout(Duration::from_secs(5))?;
         let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        if version > 5 {
+        if version > 6 {
             return Err(TaskError::UnsupportedSchema(version));
         }
 
@@ -428,6 +436,11 @@ impl TaskStore {
         if version < 5 {
             let migration = connection.transaction()?;
             crate::search::migrate_v5(&migration)?;
+            migration.commit()?;
+        }
+        if version < 6 {
+            let migration = connection.transaction()?;
+            crate::notes::migrate_v6(&migration)?;
             migration.commit()?;
         }
         Ok(Self {
