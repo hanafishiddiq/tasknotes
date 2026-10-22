@@ -305,11 +305,14 @@ export default function App() {
     setSavingId(task.id);
     setError(null);
     // Paging is disabled while saving, so this is still the visible page.
-    const pageCursor = currentPageCursor;
+    const queryAtStart = currentQuery.current;
+    const startCursor = currentPageCursor;
     try {
       const updated = await mutate();
       const generation = ++requestGeneration.current;
       const { sort: latestSort, view: latestView, filters: latestFilters } = currentQuery.current;
+      // A cursor belongs to the query that produced it; a new query starts on page 1.
+      const pageCursor = currentQuery.current === queryAtStart ? startCursor : null;
       setTasks((current) => current.map((item) => item.id === updated.id ? updated : item));
       // The mutation already succeeded; never let an old page replace its result.
       try {

@@ -214,4 +214,37 @@ describe("Task search and filters", () => {
     await waitFor(() => expect(screen.getByRole("textbox", { name: "Task title" })).toHaveValue(""));
     expect(screen.queryByRole("status", { name: "Task hidden by filters" })).not.toBeInTheDocument();
   });
+
+  it("does not reuse a page cursor when the filters change during a save", async () => {
+    const user = userEvent.setup();
+    const pendingSave = deferred<Task>();
+    respond = (args) => {
+      // The core rejects a cursor that belongs to another query.
+      if (args.cursor === "page-2" && args.status) throw "Invalid task page cursor";
+      if (args.cursor === "page-2") return { items: [lease], nextCursor: null };
+      return { items: [budget], nextCursor: args.status ? null : "page-2" };
+    };
+    invokeMock.mockImplementation(async (command, args) => {
+      if (command === "list_lists") return { items: [], nextCursor: null };
+      if (command === "list_tasks") {
+        listCalls.push(args as ListArgs);
+        return respond(args as ListArgs);
+      }
+      if (command === "change_task") return pendingSave.promise;
+      throw new Error("Unexpected command: " + command);
+    });
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Next page" }));
+    await user.click(await screen.findByRole("button", { name: "Open Renew lease" }));
+    await user.selectOptions(screen.getByRole("combobox", { name: "Priority" }), "very_high");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Filter by status" }), "in_progress");
+
+    await act(async () => {
+      pendingSave.resolve({ ...lease, priority: "very_high", revision: 2 });
+      await pendingSave.promise;
+    });
+    await waitFor(() => expect(lastListCall()).toEqual({ limit: 50, cursor: null, status: "in_progress" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(listCalls.some((call) => call.cursor === "page-2" && call.status)).toBe(false);
+  });
 });
