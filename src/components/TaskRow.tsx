@@ -268,6 +268,10 @@ export default function TaskRow({
                 value={task.listId ?? ""} disabled={!canChangeSelectors}
                 onChange={(event) => void onMove(event.target.value || null)}>
                 <option value="">Inbox</option>
+                {/* The sidebar loads Lists in pages; never fall back to showing Inbox. */}
+                {task.listId && !lists.some((list) => list.id === task.listId) && (
+                  <option value={task.listId} disabled>Current List (not loaded)</option>
+                )}
                 {lists.map((list) => (
                   <option value={list.id} key={list.id}>{list.name}</option>
                 ))}

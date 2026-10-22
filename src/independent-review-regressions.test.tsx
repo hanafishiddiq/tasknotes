@@ -333,4 +333,82 @@ describe("independent reviewer regression evidence", () => {
     await createUnrelatedTask(user);
     expect(screen.getByRole("textbox", { name: "Tags" })).toHaveValue("work, urgent");
   });
+
+  it("R6: saving a change on a later page keeps the user on that page", async () => {
+    const user = userEvent.setup();
+    const first = { ...existing, id: "first", title: "First Page Task" };
+    const second = { ...existing, id: "second", title: "Second Page Task" };
+    const requestedCursors: (string | null)[] = [];
+    nativeInvoke.mockImplementation(async (command, args) => {
+      if (command === "list_lists") return { items: [], nextCursor: null };
+      if (command === "list_tasks") {
+        const { cursor } = args as { cursor: string | null };
+        requestedCursors.push(cursor);
+        return cursor === "page-2"
+          ? { items: [{ ...second }], nextCursor: null }
+          : { items: [{ ...first }], nextCursor: "page-2" };
+      }
+      if (command === "change_task") {
+        Object.assign(second, { priority: "very_high", revision: second.revision + 1 });
+        return { ...second };
+      }
+      throw new Error("Unexpected native call: " + command);
+    });
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Next page" }));
+    await user.click(await screen.findByRole("button", { name: "Open Second Page Task" }));
+    await user.selectOptions(screen.getByRole("combobox", { name: "Priority" }), "very_high");
+
+    await waitFor(() => expect(requestedCursors[requestedCursors.length - 1]).toBe("page-2"));
+    expect(screen.getByRole("article", { name: "Second Page Task" })).toBeInTheDocument();
+    expect(screen.queryByRole("article", { name: "First Page Task" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Previous page" })).toBeInTheDocument();
+  });
+
+  it("R6b: a later page emptied by a change falls back to the first page", async () => {
+    const user = userEvent.setup();
+    const first = { ...existing, id: "first", title: "First Page Task" };
+    const lone = { ...existing, id: "lone", title: "Lone Task" };
+    let moved = false;
+    nativeInvoke.mockImplementation(async (command, args) => {
+      if (command === "list_lists") return { items: [], nextCursor: null };
+      if (command === "list_tasks") {
+        const { cursor } = args as { cursor: string | null };
+        if (cursor === "page-2") return { items: moved ? [] : [{ ...lone }], nextCursor: null };
+        return { items: moved ? [{ ...lone, revision: 2 }, { ...first }] : [{ ...first }], nextCursor: moved ? null : "page-2" };
+      }
+      if (command === "change_task") {
+        moved = true;
+        return { ...lone, priority: "very_high", revision: 2 };
+      }
+      throw new Error("Unexpected native call: " + command);
+    });
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Next page" }));
+    await user.click(await screen.findByRole("button", { name: "Open Lone Task" }));
+    await user.selectOptions(screen.getByRole("combobox", { name: "Priority" }), "very_high");
+
+    expect(await screen.findByRole("article", { name: "First Page Task" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Previous page" })).not.toBeInTheDocument();
+  });
+
+  it("R7: a Task in a List beyond the loaded sidebar page is not shown as Inbox", async () => {
+    const user = userEvent.setup();
+    const lists = Array.from({ length: 100 }, (_, index) => ({
+      id: `list-${index}`, name: `List ${index}`, revision: 1,
+      createdAt: 1, updatedAt: 1, removed: false,
+    }));
+    nativeInvoke.mockImplementation(async (command) => {
+      if (command === "list_lists") return { items: lists, nextCursor: "more-lists" };
+      if (command === "list_tasks") {
+        return { items: [{ ...existing, listId: "list-unloaded" }], nextCursor: null };
+      }
+      throw new Error("Unexpected native call: " + command);
+    });
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open Existing Task" }));
+    const select = screen.getByRole("combobox", { name: "Task list" }) as HTMLSelectElement;
+    expect(select.value).toBe("list-unloaded");
+    expect(select.selectedOptions[0].textContent).not.toBe("Inbox");
+  });
 });
