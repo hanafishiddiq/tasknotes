@@ -409,7 +409,8 @@ impl TaskStore {
                  CREATE INDEX tasks_list_created ON tasks(list_id, created_at DESC, id DESC);
                  CREATE TABLE tags (
                     name TEXT PRIMARY KEY COLLATE NOCASE NOT NULL
-                      CHECK(length(trim(name)) BETWEEN 1 AND 40)
+                      CHECK(length(trim(name)) BETWEEN 1 AND 40),
+                    fold TEXT NOT NULL UNIQUE
                  );
                  CREATE TABLE task_tags (
                     task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE RESTRICT,

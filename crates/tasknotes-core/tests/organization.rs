@@ -786,3 +786,39 @@ fn case_only_tag_edit_and_same_list_move_report_no_change() {
         task.revision
     );
 }
+
+#[test]
+fn non_ascii_tags_share_one_canonical_spelling_and_order() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("unicode-tags.db");
+    let store = store_at(&db);
+    tag_task(&store, "First", &["Ärger"]);
+    let second = tag_task(&store, "Second", &["ärger", "Äb", "äa"]);
+    assert_eq!(second.tags, vec!["äa", "Äb", "Ärger"]);
+    assert_eq!(
+        store.get_task(&second.id).unwrap().unwrap().tags,
+        second.tags
+    );
+    let tag_rows: i64 = Connection::open(&db)
+        .unwrap()
+        .query_row("SELECT count(*) FROM tags", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(tag_rows, 3);
+}
+
+#[test]
+fn reads_show_the_canonical_spelling_for_older_task_tag_rows() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("legacy-tag-row.db");
+    let store = store_at(&db);
+    let task = tag_task(&store, "Plan", &["Work"]);
+    // A pre-canonical build could store the typed spelling on the association.
+    Connection::open(&db)
+        .unwrap()
+        .execute("UPDATE task_tags SET tag_name='work'", [])
+        .unwrap();
+    assert_eq!(
+        store.get_task(&task.id).unwrap().unwrap().tags,
+        vec!["Work"]
+    );
+}

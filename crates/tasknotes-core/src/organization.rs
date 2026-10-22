@@ -91,12 +91,17 @@ fn clean_tags(raw: &[String]) -> Result<Vec<String>, TaskError> {
         if text.is_empty() || text.chars().count() > 40 || text.chars().any(char::is_control) {
             return Err(TaskError::InvalidTags);
         }
-        if seen.insert(text.to_lowercase()) {
+        if seen.insert(tag_fold(text)) {
             clean.push(text.to_owned());
         }
     }
-    clean.sort_by_key(|item| item.to_lowercase());
+    clean.sort_by_key(|item| tag_fold(item));
     Ok(clean)
+}
+
+/// Unicode case-folded Tag identity; SQLite NOCASE only folds ASCII.
+fn tag_fold(name: &str) -> String {
+    name.to_lowercase()
 }
 
 /// Validate an ISO date-only value, avoiding midnight UTC/time-zone conversions.
@@ -160,8 +165,8 @@ pub(crate) fn hydrate_tags(
         .collect();
     let placeholders = vec!["?"; tasks.len()].join(",");
     let sql = format!(
-        "SELECT task_id,tag_name FROM task_tags WHERE task_id IN ({placeholders})
-        ORDER BY tag_name COLLATE NOCASE ASC"
+        "SELECT tt.task_id,t.name FROM task_tags tt JOIN tags t ON t.name=tt.tag_name
+        WHERE tt.task_id IN ({placeholders}) ORDER BY t.fold ASC"
     );
     let mut stmt = conn.prepare(&sql)?;
     let mut rows = stmt.query(params_from_iter(tasks.iter().map(|t| t.id.as_str())))?;
@@ -232,12 +237,8 @@ impl TaskStore {
             return Err(TaskError::RevisionConflict);
         }
         if before.due_date == due_date
-            && before
-                .tags
-                .iter()
-                .map(|s| s.to_lowercase())
-                .collect::<Vec<_>>()
-                == tags.iter().map(|s| s.to_lowercase()).collect::<Vec<_>>()
+            && before.tags.iter().map(|s| tag_fold(s)).collect::<Vec<_>>()
+                == tags.iter().map(|s| tag_fold(s)).collect::<Vec<_>>()
         {
             return Err(TaskError::TaskUnchanged);
         }
@@ -254,15 +255,17 @@ impl TaskStore {
         tx.execute("DELETE FROM task_tags WHERE task_id=?1", params![input.id])?;
         let mut canonical = Vec::with_capacity(tags.len());
         for tag in &tags {
+            let fold = tag_fold(tag);
             tx.execute(
-                "INSERT INTO tags(name) VALUES (?1) ON CONFLICT DO NOTHING",
-                params![tag],
+                "INSERT INTO tags(name,fold) VALUES (?1,?2) ON CONFLICT DO NOTHING",
+                params![tag, fold],
             )?;
             // The first stored spelling of a Tag is canonical for every Task.
-            let name: String =
-                tx.query_row("SELECT name FROM tags WHERE name=?1", params![tag], |row| {
-                    row.get(0)
-                })?;
+            let name: String = tx.query_row(
+                "SELECT name FROM tags WHERE fold=?1",
+                params![fold],
+                |row| row.get(0),
+            )?;
             tx.execute(
                 "INSERT INTO task_tags(task_id,tag_name) VALUES (?1,?2)",
                 params![input.id, name],
