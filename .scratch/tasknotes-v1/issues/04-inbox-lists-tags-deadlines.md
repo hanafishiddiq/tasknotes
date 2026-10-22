@@ -58,3 +58,18 @@ An independent reviewer checked Draft PR #16 at SHA c8be24c440c7b5612e3e47a3d45b
 All three were reproduced as RED React/Tauri tests then fixed to GREEN. Further regression tests cover reverse-order responses, Task move while paging, and resumed app clock changes. The requested migration rollback fault injection passed using synthetic v3 SQLite. See the review response in docs/reviews/ticket04-independent-review-remediation-2026-10-14.md.
 
 **Remaining:** independent re-review of the new SHA and actual macOS native GUI click/edit/restore/restart acceptance. Implementation remains in review; Draft PR stays unmerged. The ordinary user app and database are unchanged.
+
+
+## Independent re-review of bbce8af — 2026-10-22
+
+An independent reviewer confirmed S-01, S-02 and SPEC-01 are fixed at `bbce8af`, but returned **REQUEST CHANGES** for new findings. All were remediated with RED→GREEN tests:
+
+| Finding | Severity | Remediation | Evidence |
+| --- | --- | --- | --- |
+| Unrelated list refresh wiped unsaved Task drafts (effect keyed on `task.tags` array identity) | Major | Key on tag contents (`7f44feb`) | R5/R5b RED on `bbce8af`, GREEN after |
+| Same Tag stored with different casing per Task | Minor | Owner decision 2026-10-22: **first spelling wins**; `task_tags` stores canonical `tags.name` | `first_tag_spelling_is_canonical_across_tasks` |
+| Case-only Tag edit / same-List move returned the Progress error message | Minor | New `TaskUnchanged` error | `case_only_tag_edit_and_same_list_move_report_no_change` |
+| Task in a List beyond the loaded sidebar page displayed as Inbox | Minor | Disabled "Current List (not loaded)" option (`13ec175`) | R7 RED→GREEN |
+| Any save jumped back to page 1 | Nit | Refresh the visible page cursor; fall back to page 1 only if it is empty | R6 RED→GREEN, R6b guard |
+
+Local checks after remediation: 41 React tests, typecheck, 33 Rust core tests, core and Tauri Clippy `-D warnings`, Rust fmt — all PASS (synthetic data only). **Remaining gates:** re-review of the remediation commits, native GUI click/type/restart acceptance, and owner merge approval (schema v4 is forward-only).
