@@ -48,6 +48,8 @@ pub enum TaskError {
     NotFound,
     #[error("Progress update must change a field or include a non-empty note")]
     EmptyProgressUpdate,
+    #[error("Nothing to save: the Task already has these details")]
+    TaskUnchanged,
     #[error("Next Step cannot exceed 4,000 characters")]
     NextStepTooLong,
     #[error("Progress note cannot exceed 10,000 characters")]

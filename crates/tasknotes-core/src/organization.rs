@@ -239,7 +239,7 @@ impl TaskStore {
                 .collect::<Vec<_>>()
                 == tags.iter().map(|s| s.to_lowercase()).collect::<Vec<_>>()
         {
-            return Err(TaskError::EmptyProgressUpdate);
+            return Err(TaskError::TaskUnchanged);
         }
         let now = current_millis()?;
         let mut updated = tx.query_row(
@@ -252,18 +252,25 @@ impl TaskStore {
             read_task,
         )?;
         tx.execute("DELETE FROM task_tags WHERE task_id=?1", params![input.id])?;
+        let mut canonical = Vec::with_capacity(tags.len());
         for tag in &tags {
             tx.execute(
                 "INSERT INTO tags(name) VALUES (?1) ON CONFLICT DO NOTHING",
                 params![tag],
             )?;
+            // The first stored spelling of a Tag is canonical for every Task.
+            let name: String =
+                tx.query_row("SELECT name FROM tags WHERE name=?1", params![tag], |row| {
+                    row.get(0)
+                })?;
             tx.execute(
                 "INSERT INTO task_tags(task_id,tag_name) VALUES (?1,?2)",
-                params![input.id, tag],
+                params![input.id, name],
             )?;
+            canonical.push(name);
         }
         tx.commit()?;
-        updated.tags = tags;
+        updated.tags = canonical;
         Ok(updated)
     }
 
@@ -282,7 +289,7 @@ impl TaskStore {
             return Err(TaskError::RevisionConflict);
         }
         if old.list_id == input.list_id {
-            return Err(TaskError::EmptyProgressUpdate);
+            return Err(TaskError::TaskUnchanged);
         }
         if let Some(ref id) = input.list_id {
             require_active_list(&tx, id)?;

@@ -2,8 +2,8 @@ use std::path::Path;
 
 use rusqlite::Connection;
 use tasknotes_core::tasks::{
-    CreateList, CreateTask, MoveTask, RenameList, SetListRemoved, SortMode, TaskStore, TaskView,
-    UpdateTaskDetails,
+    CreateList, CreateTask, MoveTask, RenameList, SetListRemoved, SortMode, TaskError, TaskStore,
+    TaskView, UpdateTaskDetails,
 };
 
 fn store_at(path: &Path) -> TaskStore {
@@ -723,4 +723,66 @@ fn v3_to_v4_migration_failure_rolls_back_ddl_and_preserves_task_history() {
         .pragma_query_value(None, "user_version", |r| r.get(0))
         .unwrap();
     assert_eq!(final_version, 4);
+}
+
+fn tag_task(store: &TaskStore, title: &str, tags: &[&str]) -> tasknotes_core::tasks::Task {
+    let created = store
+        .create_task(CreateTask {
+            title: title.into(),
+            description: String::new(),
+        })
+        .unwrap();
+    store
+        .update_task_details(UpdateTaskDetails {
+            id: created.id,
+            expected_revision: created.revision,
+            tags: tags.iter().map(|t| t.to_string()).collect(),
+            due_date: None,
+        })
+        .unwrap()
+}
+
+#[test]
+fn first_tag_spelling_is_canonical_across_tasks() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("canonical-tags.db"));
+    let first = tag_task(&store, "First", &["Work"]);
+    let second = tag_task(&store, "Second", &["work", "iOS"]);
+    assert_eq!(first.tags, vec!["Work"]);
+    assert_eq!(second.tags, vec!["iOS", "Work"]);
+    assert_eq!(
+        store.get_task(&second.id).unwrap().unwrap().tags,
+        vec!["iOS", "Work"]
+    );
+}
+
+#[test]
+fn case_only_tag_edit_and_same_list_move_report_no_change() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("no-change.db"));
+    let task = tag_task(&store, "Plan", &["Work"]);
+    let recased = store.update_task_details(UpdateTaskDetails {
+        id: task.id.clone(),
+        expected_revision: task.revision,
+        tags: vec!["WORK".into()],
+        due_date: None,
+    });
+    assert!(
+        matches!(recased, Err(TaskError::TaskUnchanged)),
+        "{recased:?}"
+    );
+    let same_list = store.move_task(MoveTask {
+        id: task.id.clone(),
+        expected_revision: task.revision,
+        list_id: None,
+    });
+    assert!(
+        matches!(same_list, Err(TaskError::TaskUnchanged)),
+        "{same_list:?}"
+    );
+    assert!(!TaskError::TaskUnchanged.to_string().contains("Progress"));
+    assert_eq!(
+        store.get_task(&task.id).unwrap().unwrap().revision,
+        task.revision
+    );
 }
