@@ -17,6 +17,7 @@ fn list_tasks(
     status: Option<WorkStatus>,
     priority: Option<Priority>,
     tag: Option<String>,
+    task_id: Option<String>,
 ) -> Result<TaskPage, String> {
     let query = TaskQuery {
         text: text.unwrap_or_default(),
@@ -25,6 +26,7 @@ fn list_tasks(
         tag,
         view: view.unwrap_or_default(),
         sort: sort.unwrap_or_default(),
+        task_id,
         ..TaskQuery::default()
     };
     store

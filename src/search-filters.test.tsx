@@ -18,7 +18,7 @@ function task(overrides: Partial<Task>): Task {
 
 type ListArgs = {
   limit: number; cursor: string | null; sort?: string;
-  text?: string; status?: string; priority?: string; tag?: string;
+  text?: string; status?: string; priority?: string; tag?: string; taskId?: string;
 };
 
 function deferred<T>() {
@@ -202,16 +202,52 @@ describe("Task search and filters", () => {
     await waitFor(() => expect(screen.queryByRole("status", { name: "Task hidden by filters" })).not.toBeInTheDocument());
   });
 
-  it("does not claim a new Task is hidden while more filtered pages exist", async () => {
+  it("asks the core whether a new Task matches when more filtered pages exist", async () => {
     const user = userEvent.setup();
-    respond = (args) => args.priority
-      ? { items: [lease], nextCursor: "more" }
-      : { items: [budget, lease], nextCursor: null };
+    respond = (args) => {
+      if (args.taskId) return { items: [], nextCursor: null };
+      return args.priority ? { items: [lease], nextCursor: "more" } : { items: [budget, lease], nextCursor: null };
+    };
+    render(<App />);
+    await screen.findByRole("article", { name: "Quarterly budget" });
+    await user.selectOptions(screen.getByRole("combobox", { name: "Filter by priority" }), "high");
+    await waitFor(() => expect(lastListCall()).toEqual({ limit: 50, cursor: null, priority: "high" }));
+
+    await user.type(screen.getByRole("textbox", { name: "Task title" }), "Buy oat milk{Enter}");
+    expect(await screen.findByRole("status", { name: "Task hidden by filters" })).toBeInTheDocument();
+    expect(lastListCall()).toEqual({ limit: 1, cursor: null, taskId: "created", priority: "high" });
+  });
+
+  it("stays quiet when a new Task matches but sits on a later page", async () => {
+    const user = userEvent.setup();
+    respond = (args) => {
+      if (args.taskId) return { items: [task({ id: "created", title: "Buy oat milk", priority: "high" })], nextCursor: null };
+      return args.priority ? { items: [lease], nextCursor: "more" } : { items: [budget, lease], nextCursor: null };
+    };
     render(<App />);
     await screen.findByRole("article", { name: "Quarterly budget" });
     await user.selectOptions(screen.getByRole("combobox", { name: "Filter by priority" }), "high");
     await user.type(screen.getByRole("textbox", { name: "Task title" }), "Buy oat milk{Enter}");
+    await waitFor(() => expect(lastListCall().taskId).toBe("created"));
     await waitFor(() => expect(screen.getByRole("textbox", { name: "Task title" })).toHaveValue(""));
+    expect(screen.queryByRole("status", { name: "Task hidden by filters" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the refreshed list when the match check itself fails", async () => {
+    const user = userEvent.setup();
+    respond = (args) => {
+      if (args.taskId) throw "database is locked";
+      return args.priority ? { items: [lease], nextCursor: "more" } : { items: [budget, lease], nextCursor: null };
+    };
+    render(<App />);
+    await screen.findByRole("article", { name: "Quarterly budget" });
+    await user.selectOptions(screen.getByRole("combobox", { name: "Filter by priority" }), "high");
+    await user.type(screen.getByRole("textbox", { name: "Task title" }), "Buy oat milk{Enter}");
+    await waitFor(() => expect(lastListCall().taskId).toBe("created"));
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Task title" })).toHaveValue(""));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByRole("article", { name: "Buy oat milk" })).not.toBeInTheDocument();
+    expect(screen.getByRole("article", { name: "Renew lease" })).toBeInTheDocument();
     expect(screen.queryByRole("status", { name: "Task hidden by filters" })).not.toBeInTheDocument();
   });
 

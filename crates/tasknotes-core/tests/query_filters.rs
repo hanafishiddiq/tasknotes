@@ -329,3 +329,73 @@ fn a_cursor_only_continues_the_query_that_produced_it() {
     }
     assert!(store.query_tasks(&first, 2, Some(&cursor)).is_ok());
 }
+
+#[test]
+fn a_query_can_check_whether_one_task_matches_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("one.db"));
+    let lease = make(
+        &store,
+        "Renew lease",
+        None,
+        WorkStatus::InProgress,
+        Priority::High,
+        &["Home"],
+    );
+    make(
+        &store,
+        "Renew passport",
+        None,
+        WorkStatus::InProgress,
+        Priority::High,
+        &["Home"],
+    );
+    let matches = |query: TaskQuery| {
+        let page = store
+            .query_tasks(
+                &TaskQuery {
+                    task_id: Some(lease.id.clone()),
+                    ..query
+                },
+                1,
+                None,
+            )
+            .unwrap();
+        assert!(page.next_cursor.is_none());
+        page.items
+            .iter()
+            .map(|task| task.title.clone())
+            .collect::<Vec<_>>()
+    };
+
+    assert_eq!(
+        matches(TaskQuery {
+            text: "renew".into(),
+            status: Some(WorkStatus::InProgress),
+            tag: Some("home".into()),
+            ..TaskQuery::default()
+        }),
+        vec!["Renew lease"]
+    );
+    assert!(
+        matches(TaskQuery {
+            text: "passport".into(),
+            ..TaskQuery::default()
+        })
+        .is_empty()
+    );
+    assert!(
+        matches(TaskQuery {
+            priority: Some(Priority::Low),
+            ..TaskQuery::default()
+        })
+        .is_empty()
+    );
+    assert_eq!(
+        matches(TaskQuery {
+            view: TaskView::Inbox,
+            ..TaskQuery::default()
+        }),
+        vec!["Renew lease"]
+    );
+}

@@ -254,14 +254,19 @@ export default function App() {
         const page = await taskApi.list(null, latestSort, latestView, latestFilters);
         if (generation !== requestGeneration.current) return;
         setLoading(false);
-        // Claim "hidden" only when the whole filtered result is on this page.
-        setCreatedHidden(!sameFilters(latestFilters, NO_FILTERS) && !page.nextCursor &&
-          !page.items.some((item) => item.id === created.id));
         setTasks(page.items);
         setCurrentPageCursor(null);
         setPreviousPageCursors([]);
         setNextCursor(page.nextCursor);
         setRefreshError(false);
+        const offPage = !sameFilters(latestFilters, NO_FILTERS) &&
+          !page.items.some((item) => item.id === created.id);
+        // Off the first page, only the core can say whether the new Task
+        // matches. If that check fails, say nothing rather than guess.
+        const hidden = offPage && (!page.nextCursor || await taskApi
+          .matches(created.id, latestView, latestFilters)
+          .then((matches) => !matches, () => false));
+        if (generation === requestGeneration.current) setCreatedHidden(hidden);
       } catch (reason) {
         if (generation !== requestGeneration.current) return;
         setLoading(false);

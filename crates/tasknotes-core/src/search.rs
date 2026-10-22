@@ -27,6 +27,8 @@ pub struct TaskQuery {
     pub view: TaskView,
     pub scope: TaskScope,
     pub sort: SortMode,
+    /// Narrow the query to one Task, to ask whether it matches the rest.
+    pub task_id: Option<String>,
 }
 
 const MAX_SEARCH_WORDS: usize = 16;
@@ -149,6 +151,7 @@ impl TaskStore {
             query.priority.map_or("", Priority::as_sql),
             tag_fold.as_deref().unwrap_or(""),
             &terms.join(" "),
+            query.task_id.as_deref().unwrap_or(""),
         ]);
         let after = cursor
             .map(|value| parse_cursor(value, &key, sort))
@@ -175,6 +178,9 @@ impl TaskStore {
             TaskView::List(id) => {
                 filters.push(format!("tasks.list_id = {}", bind(Value::Text(id.clone()))))
             }
+        }
+        if let Some(id) = &query.task_id {
+            filters.push(format!("tasks.id = {}", bind(Value::Text(id.clone()))));
         }
         if let Some(status) = query.status {
             filters.push(format!(
