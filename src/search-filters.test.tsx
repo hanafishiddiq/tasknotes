@@ -298,6 +298,10 @@ describe("Task search and filters", () => {
     expect(screen.queryByRole("heading", { name: "Couldn't load your tasks" })).not.toBeInTheDocument();
     const section = screen.getByRole("region", { name: "Your tasks" });
     expect(within(section).getByRole("heading", { name: "Search couldn't run" })).toBeInTheDocument();
+    // The rows on hand belong to the previous query, so no count is claimed.
+    const title = screen.getByRole("heading", { level: 1, name: "All tasks" });
+    expect(title.parentElement?.querySelector("span")).toBeNull();
+    expect(screen.getByRole("button", { name: "All tasks" }).querySelector(".folder-count")).toBeNull();
 
     await user.click(within(section).getByRole("button", { name: "Clear search and filters" }));
     expect(await screen.findByRole("article", { name: "Renew lease" })).toBeInTheDocument();

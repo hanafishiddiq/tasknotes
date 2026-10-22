@@ -467,11 +467,13 @@ export default function App() {
   const filterControlsActive = filtering || searchDraft.trim() !== "" || tagDraft.trim() !== "";
   const captureOpen = title.length > 0 || description.length > 0;
   const captureDisabled = creating || Boolean(savingId) || loading || loadError;
+  // After a refused search the rows on hand belong to the previous query.
+  const countKnown = !(loadError && filtering);
 
   return (
     <div className="app-shell">
       <TaskSidebar
-        view={view} lists={lists} shownCount={tasks.length} hasMoreTasks={Boolean(nextCursor)}
+        view={view} lists={lists} shownCount={countKnown ? tasks.length : null} hasMoreTasks={Boolean(nextCursor)}
         listError={listError}
         hasMoreLists={Boolean(listCursor)} busy={busyList || creating || Boolean(savingId) || loadingMore}
         theme={theme} onToggleTheme={toggleTheme}
@@ -519,7 +521,7 @@ export default function App() {
           <div className="content-wrap">
             <div className="page-title">
               <h1>{pageTitle}</h1>
-              <span>{tasks.length}{nextCursor ? "+" : ""}</span>
+              {countKnown && <span>{tasks.length}{nextCursor ? "+" : ""}</span>}
             </div>
 
             <div className="filter-chips" role="group" aria-label="Filters">
@@ -615,7 +617,6 @@ export default function App() {
               {loading ? (
                 <div className="loading-state" role="status"><LoaderCircle className="spin" size={16} /> Loading your tasks...</div>
               ) : loadError && filtering ? (
-                // Rows still on screen belong to an older query, so hide them.
                 <div className="empty-state" aria-label="Search unavailable">
                   <SearchX size={26} strokeWidth={1.5} aria-hidden="true" />
                   <h3>Search couldn't run</h3>
