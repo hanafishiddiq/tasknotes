@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   ArrowDownWideNarrow, CheckCircle2, LoaderCircle, LockKeyhole, Search, SearchX, SquarePen, Tag,
 } from "lucide-react";
@@ -13,6 +13,9 @@ import TaskSidebar from "./components/TaskSidebar";
 import { useLocalCalendarDay } from "./lib/use-local-calendar-day";
 import { useTheme } from "./lib/use-theme";
 import "./App.css";
+
+// The rich-text editor loads only when Notes are first opened, keeping Task startup light.
+const NotesWorkspace = lazy(() => import("./components/NotesWorkspace"));
 
 // Typing settles before a search query reaches the core.
 const SEARCH_DELAY_MS = 250;
@@ -31,6 +34,9 @@ function errorMessage(error: unknown): string {
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [view, setView] = useState<TaskView>({ kind: "all" });
+  const [workspace, setWorkspace] = useState<"tasks" | "notes">("tasks");
+  // Once opened, Notes stay mounted so a pending autosave survives visiting Tasks.
+  const [notesOpened, setNotesOpened] = useState(false);
   const [lists, setLists] = useState<TaskList[]>([]);
   const [listCursor, setListCursor] = useState<string | null>(null);
   const [busyList, setBusyList] = useState(false);
@@ -115,8 +121,14 @@ export default function App() {
     setPreviousPageCursors([]);
   }
 
+  function openNotes() {
+    setNotesOpened(true);
+    setWorkspace("notes");
+  }
+
   function navigate(next: TaskView) {
     if (busyList || creating || savingId || loadingMore) return;
+    setWorkspace("tasks");
     if (next.kind === view.kind &&
         (next.kind !== "list" || (view.kind === "list" && next.listId === view.listId))) return;
     setTasks([]);
@@ -473,7 +485,8 @@ export default function App() {
   return (
     <div className="app-shell">
       <TaskSidebar
-        view={view} lists={lists} shownCount={countKnown ? tasks.length : null} hasMoreTasks={Boolean(nextCursor)}
+        view={view} notesActive={workspace === "notes"} onOpenNotes={openNotes}
+        lists={lists} shownCount={countKnown ? tasks.length : null} hasMoreTasks={Boolean(nextCursor)}
         listError={listError}
         hasMoreLists={Boolean(listCursor)} busy={busyList || creating || Boolean(savingId) || loadingMore}
         theme={theme} onToggleTheme={toggleTheme}
@@ -483,7 +496,7 @@ export default function App() {
         onLoadMoreLists={loadMoreLists}
       />
 
-      <main className="main-view">
+      <main className="main-view" hidden={workspace === "notes"}>
         <header className="toolbar">
           <span className="toolbar-grow" />
           <label className="toolbar-search" htmlFor="task-search">
@@ -701,6 +714,12 @@ export default function App() {
           </div>
         </div>
       </main>
+      {notesOpened && (
+        <Suspense fallback={workspace === "notes" &&
+          <div className="loading-state" role="status"><LoaderCircle className="spin" size={16} /> Loading notes...</div>}>
+          <NotesWorkspace hidden={workspace !== "notes"} />
+        </Suspense>
+      )}
     </div>
   );
 }
