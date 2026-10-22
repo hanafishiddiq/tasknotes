@@ -1,10 +1,5 @@
-import { useEffect, useState, type FormEvent } from "react";
-import {
-  ChevronDown,
-  ChevronUp,
-  LoaderCircle,
-  LockKeyhole,
-} from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { CalendarDays, Check, Folder, LoaderCircle, Tag } from "lucide-react";
 import type {
   Task,
   TaskList,
@@ -25,6 +20,11 @@ import {
 const dateFormatter = new Intl.DateTimeFormat("en", {
   month: "short",
   day: "numeric",
+});
+
+const stampFormatter = new Intl.DateTimeFormat("en", {
+  dateStyle: "long",
+  timeStyle: "short",
 });
 
 function formatCalendarDeadline(dateOnly: string): string {
@@ -67,8 +67,8 @@ export default function TaskRow({
   const [draftNote, setDraftNote] = useState("");
   const [draftTags, setDraftTags] = useState((task.tags ?? []).join(", "));
   const [draftDueDate, setDraftDueDate] = useState(task.dueDate ?? "");
-  const StatusIcon = STATUS_VIEW[task.status].icon;
   const PriorityIcon = PRIORITY_VIEW[task.priority].icon;
+  const titleField = useRef<HTMLTextAreaElement>(null);
   const due = deadlineStatus(task.dueDate, today, task.status);
   const hasUnsavedText =
     draftTitle !== task.title || draftDescription !== task.description;
@@ -103,6 +103,19 @@ export default function TaskRow({
     setDraftTags((task.tags ?? []).join(", "));
     setDraftDueDate(task.dueDate ?? "");
   }, [task.progress, task.nextStep, task.revision, task.dueDate, savedTagsKey]);
+
+  // The detail title wraps like a note heading; grow it with its content.
+  useLayoutEffect(() => {
+    const field = titleField.current;
+    if (!field) return;
+    const fit = () => {
+      field.style.height = "auto";
+      field.style.height = `${field.scrollHeight}px`;
+    };
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, [draftTitle, expanded]);
 
   function toggle() {
     if (!expanded) {
@@ -150,17 +163,19 @@ export default function TaskRow({
     setDraftNote("");
   }
 
+  const listName = lists.find((list) => list.id === task.listId)?.name ?? "Inbox";
+  const preview = task.nextStep
+    ? `Next: ${task.nextStep}`
+    : task.description || `Created ${dateFormatter.format(new Date(task.createdAt))}`;
+
   return (
     <article
-      className={`task-card ${expanded ? "task-card--expanded" : ""}`}
+      className={`task-card task-card--${task.status} ${expanded ? "task-card--expanded" : ""}`}
       aria-label={task.title}
     >
       <div className="task-row">
-        <span
-          className={`task-circle status-color--${task.status}`}
-          aria-hidden="true"
-        >
-          <StatusIcon size={18} strokeWidth={1.8} />
+        <span className={`task-check task-check--${task.status}`} aria-hidden="true">
+          {task.status === "completed" && <Check size={11} strokeWidth={3} />}
         </span>
         <button
           className="task-open"
@@ -171,22 +186,20 @@ export default function TaskRow({
         >
           <span className="task-row-title">{task.title}</span>
           <span className="task-row-subtitle">
-            {task.description ? (
-              <span className="task-summary">{task.description}</span>
-            ) : (
-              <span>
-                Created {dateFormatter.format(new Date(task.createdAt))}
+            {task.status === "in_progress" && (
+              <span className="progress-readout" aria-label={`Progress ${task.progress}%`}>
+                {task.progress}%
               </span>
             )}
+            <span className="task-summary">{preview}</span>
           </span>
         </button>
-        <div className="task-row-meta" aria-label="Task details summary">
-          <span className={`status-pill status-pill--${task.status}`}>
-            <StatusIcon size={12} aria-hidden="true" />
+        <div className="task-row-meta">
+          <span className={`status-pill status-pill--${task.status} sr-only`}>
             {STATUS_VIEW[task.status].label}
           </span>
           <span className={`priority-pill priority-pill--${task.priority}`}>
-            <PriorityIcon size={12} aria-hidden="true" />
+            <PriorityIcon size={13} strokeWidth={2} aria-hidden="true" />
             {PRIORITY_VIEW[task.priority].label}
           </span>
           {due === "overdue" && <span className="deadline-pill deadline-pill--overdue">Overdue</span>}
@@ -195,22 +208,8 @@ export default function TaskRow({
             <span className="deadline-pill deadline-pill--upcoming">Due {formatCalendarDeadline(task.dueDate)}</span>
           )}
           {(task.tags ?? []).slice(0, 2).map((tag) => (
-            <span className="tag-pill" key={tag}>{tag}</span>
+            <span className="tag-pill" key={tag}>#{tag}</span>
           ))}
-          <span
-            className="progress-readout"
-            aria-label={`Progress ${task.progress}%`}
-          >
-            {task.progress}%
-          </span>
-          <button
-            className="expand-icon"
-            type="button"
-            onClick={toggle}
-            aria-label={`${expanded ? "Collapse" : "Expand"} task details`}
-          >
-            {expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-          </button>
         </div>
       </div>
 
@@ -220,87 +219,63 @@ export default function TaskRow({
           aria-label="Task details"
           className="task-editor"
         >
-          <form onSubmit={save}>
-            <label htmlFor={`title-${task.id}`}>Title</label>
-            <input
+          <p className="task-stamp">
+            Updated {stampFormatter.format(new Date(task.updatedAt))} · {listName}
+          </p>
+          <form className="task-page" onSubmit={save}>
+            <label className="sr-only" htmlFor={`title-${task.id}`}>Title</label>
+            <textarea
+              ref={titleField}
               id={`title-${task.id}`}
+              className="task-page-title"
               aria-label="Edit title"
+              rows={1}
               value={draftTitle}
-              onChange={(event) => setDraftTitle(event.target.value)}
+              onChange={(event) => setDraftTitle(event.target.value.replace(/\n/g, " "))}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                  event.preventDefault();
+                  event.currentTarget.form?.requestSubmit();
+                }
+              }}
               maxLength={200}
               required
               disabled={saving || hasUnsavedProgressUpdate || hasUnsavedDetails}
             />
-            <label htmlFor={`description-${task.id}`}>Description</label>
+            <label className="sr-only" htmlFor={`description-${task.id}`}>Description</label>
             <textarea
               id={`description-${task.id}`}
+              className="task-page-body"
               aria-label="Edit description"
               value={draftDescription}
               onChange={(event) => setDraftDescription(event.target.value)}
               rows={3}
               maxLength={20000}
-              placeholder="Add a little more context..."
+              placeholder="Add notes..."
               disabled={saving || hasUnsavedProgressUpdate || hasUnsavedDetails}
             />
-            <div className="editor-actions">
-              <span className="editor-note">
-                <LockKeyhole size={13} aria-hidden="true" /> Saved only on this
-                Mac
-              </span>
-              <button
-                className="button button-primary button-small"
-                type="submit"
-                disabled={
-                  !draftTitle.trim() || saving || hasUnsavedProgressUpdate || hasUnsavedDetails
-                }
-              >
-                {saving && (
-                  <LoaderCircle className="spin" size={15} aria-hidden="true" />
-                )}
-                {saving ? "Saving..." : "Save changes"}
-              </button>
-            </div>
+            {(hasUnsavedText || saving) && (
+              <div className="editor-actions">
+                <button
+                  className="button button-primary button-small"
+                  type="submit"
+                  disabled={
+                    !draftTitle.trim() || saving || hasUnsavedProgressUpdate || hasUnsavedDetails
+                  }
+                >
+                  {saving && (
+                    <LoaderCircle className="spin" size={13} aria-hidden="true" />
+                  )}
+                  {saving ? "Saving..." : "Save changes"}
+                </button>
+              </div>
+            )}
           </form>
-          <div className="task-organization-controls" aria-label="Task organization">
-            <label htmlFor={`list-${task.id}`}>
-              List
-              <select id={`list-${task.id}`} aria-label="Task list"
-                value={task.listId ?? ""} disabled={!canChangeSelectors}
-                onChange={(event) => void onMove(event.target.value || null)}>
-                <option value="">Inbox</option>
-                {/* The sidebar loads Lists in pages; never fall back to showing Inbox. */}
-                {task.listId && !lists.some((list) => list.id === task.listId) && (
-                  <option value={task.listId} disabled>Current List (not loaded)</option>
-                )}
-                {lists.map((list) => (
-                  <option value={list.id} key={list.id}>{list.name}</option>
-                ))}
-              </select>
-            </label>
-            <label htmlFor={`tags-${task.id}`}>
-              Tags (comma-separated)
-              <input id={`tags-${task.id}`} aria-label="Tags" maxLength={640}
-                placeholder="Work, Urgent" value={draftTags}
-                disabled={!canChangeDetails}
-                onChange={(event) => setDraftTags(event.target.value)} />
-            </label>
-            <label htmlFor={`due-${task.id}`}>
-              Deadline
-              <input id={`due-${task.id}`} aria-label="Deadline" type="date"
-                value={draftDueDate} disabled={!canChangeDetails}
-                onChange={(event) => setDraftDueDate(event.target.value)} />
-            </label>
-            <button type="button" className="button button-secondary button-small"
-              disabled={!canChangeDetails || !hasUnsavedDetails}
-              onClick={() => void saveDetails()}>Save tags and deadline</button>
-          </div>
-          <div
-            className="task-controls"
-            role="group"
-            aria-label="Task status and priority"
-          >
-            <label htmlFor={`status-${task.id}`}>
-              Work status
+
+          <div className="task-properties" role="group" aria-label="Task status and priority">
+            <label className="property" htmlFor={`status-${task.id}`}>
+              <span className="sr-only">Work status</span>
+              <span className={`task-check task-check--${task.status} task-check--small`} aria-hidden="true" />
               <select
                 id={`status-${task.id}`}
                 aria-label="Work status"
@@ -321,8 +296,9 @@ export default function TaskRow({
                 ))}
               </select>
             </label>
-            <label htmlFor={`priority-${task.id}`}>
-              Priority
+            <label className="property" htmlFor={`priority-${task.id}`}>
+              <span className="sr-only">Priority</span>
+              <PriorityIcon size={13} strokeWidth={2} aria-hidden="true" />
               <select
                 id={`priority-${task.id}`}
                 aria-label="Priority"
@@ -339,61 +315,119 @@ export default function TaskRow({
                 ))}
               </select>
             </label>
-            <label htmlFor={`progress-${task.id}`}>
-              Progress (%)
-              <input
-                id={`progress-${task.id}`}
-                aria-label="Progress percentage"
-                type="number"
-                min="0"
-                max="100"
-                step="1"
-                value={draftProgress}
-                disabled={!canChangeMetadata}
-                onChange={(event) => setDraftProgress(event.target.value)}
-              />
-            </label>
-            <button
-              className="button button-secondary button-small"
-              type="button"
-              disabled={
-                !canChangeMetadata ||
-                !validProgress ||
-                !hasUnsavedProgressUpdate
-              }
-              onClick={() => void saveProgressUpdate()}
-            >
-              {progressButtonLabel}
-            </button>
-          </div>
-          <div className="progress-note-form" aria-label="Progress update">
-            <label htmlFor={`next-step-${task.id}`}>
-              Next step
-              <textarea
-                id={`next-step-${task.id}`}
-                aria-label="Next step"
-                rows={2}
-                maxLength={4000}
-                placeholder="What will you do next?"
-                value={draftNextStep}
-                disabled={!canChangeMetadata}
-                onChange={(event) => setDraftNextStep(event.target.value)}
-              />
-            </label>
-            <label htmlFor={`progress-note-${task.id}`}>
-              Progress note
-              <textarea
-                id={`progress-note-${task.id}`}
-                aria-label="Progress note"
-                rows={3}
-                maxLength={10000}
-                placeholder="What did you accomplish?"
-                value={draftNote}
-                disabled={!canChangeMetadata}
-                onChange={(event) => setDraftNote(event.target.value)}
-              />
+            <label className="property" htmlFor={`list-${task.id}`}>
+              <span className="sr-only">List</span>
+              <Folder size={13} aria-hidden="true" />
+              <select id={`list-${task.id}`} aria-label="Task list"
+                value={task.listId ?? ""} disabled={!canChangeSelectors}
+                onChange={(event) => void onMove(event.target.value || null)}>
+                <option value="">Inbox</option>
+                {/* The sidebar loads Lists in pages; never fall back to showing Inbox. */}
+                {task.listId && !lists.some((list) => list.id === task.listId) && (
+                  <option value={task.listId} disabled>Current List (not loaded)</option>
+                )}
+                {lists.map((list) => (
+                  <option value={list.id} key={list.id}>{list.name}</option>
+                ))}
+              </select>
             </label>
           </div>
+
+          <div className="task-properties" aria-label="Task organization">
+            <label className="property" htmlFor={`due-${task.id}`}>
+              <span className="sr-only">Deadline</span>
+              <CalendarDays size={13} aria-hidden="true" />
+              <input id={`due-${task.id}`} aria-label="Deadline" type="date"
+                value={draftDueDate} disabled={!canChangeDetails}
+                onChange={(event) => setDraftDueDate(event.target.value)} />
+            </label>
+            <label className="property property--wide" htmlFor={`tags-${task.id}`}>
+              <span className="sr-only">Tags (comma-separated)</span>
+              <Tag size={13} aria-hidden="true" />
+              <input id={`tags-${task.id}`} aria-label="Tags" maxLength={640}
+                placeholder="Tags, comma-separated" value={draftTags}
+                disabled={!canChangeDetails}
+                onChange={(event) => setDraftTags(event.target.value)} />
+            </label>
+            {hasUnsavedDetails && (
+              <button type="button" className="button button-primary button-small"
+                disabled={!canChangeDetails}
+                onClick={() => void saveDetails()}>Save tags and deadline</button>
+            )}
+          </div>
+
+          <div className="progress-editor" aria-label="Progress update">
+            <div className="progress-line">
+              <label className="field-label" htmlFor={`progress-${task.id}`}>Progress</label>
+              <span className="progress-track" aria-hidden="true">
+                <span style={{ transform: `scaleX(${(validProgress ? numericProgress : task.progress) / 100})` }} />
+              </span>
+              <span className="progress-number">
+                <input
+                  id={`progress-${task.id}`}
+                  aria-label="Progress percentage"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={draftProgress}
+                  disabled={!canChangeMetadata}
+                  onChange={(event) => setDraftProgress(event.target.value)}
+                />
+                %
+              </span>
+            </div>
+            <label className="field-label" htmlFor={`next-step-${task.id}`}>Next step</label>
+            <textarea
+              id={`next-step-${task.id}`}
+              className="next-step-input"
+              aria-label="Next step"
+              rows={1}
+              maxLength={4000}
+              placeholder="What will you do next?"
+              value={draftNextStep}
+              disabled={!canChangeMetadata}
+              onChange={(event) => setDraftNextStep(event.target.value)}
+            />
+            <label className="sr-only" htmlFor={`progress-note-${task.id}`}>Progress note</label>
+            <textarea
+              id={`progress-note-${task.id}`}
+              className="progress-note-input"
+              aria-label="Progress note"
+              rows={2}
+              maxLength={10000}
+              placeholder="Add a progress note..."
+              value={draftNote}
+              disabled={!canChangeMetadata}
+              onChange={(event) => setDraftNote(event.target.value)}
+            />
+            <div className="editor-actions">
+              {hasUnsavedProgressUpdate && (
+                <button
+                  type="button"
+                  className="button button-small"
+                  onClick={discardUpdateDraft}
+                >
+                  {hasUnsavedNextStep || hasUnsavedNote
+                    ? "Discard update draft"
+                    : "Discard progress edit"}
+                </button>
+              )}
+              <button
+                className="button button-primary button-small"
+                type="button"
+                disabled={
+                  !canChangeMetadata ||
+                  !validProgress ||
+                  !hasUnsavedProgressUpdate
+                }
+                onClick={() => void saveProgressUpdate()}
+              >
+                {progressButtonLabel}
+              </button>
+            </div>
+          </div>
+
           {hasUnsavedText && (
             <p className="metadata-hint">
               Save title/description edits before changing status or priority.
@@ -403,18 +437,9 @@ export default function TaskRow({
             <p className="metadata-hint">Save tags and deadline before editing progress or another field.</p>
           )}
           {hasUnsavedProgressUpdate && (
-            <div className="metadata-hint">
+            <p className="metadata-hint">
               Save or discard the progress update before changing another field.
-              <button
-                type="button"
-                className="text-button"
-                onClick={discardUpdateDraft}
-              >
-                {hasUnsavedNextStep || hasUnsavedNote
-                  ? "Discard update draft"
-                  : "Discard progress edit"}
-              </button>
-            </div>
+            </p>
           )}
           <TaskProgressHistory taskId={task.id} revision={task.revision} />
         </section>
