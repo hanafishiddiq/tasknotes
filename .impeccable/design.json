@@ -1,0 +1,839 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-22T02:33:39+00:00",
+  "title": "Design System: Tasknotes",
+  "extensions": {
+    "colorMeta": {
+      "ink-gray-canvas": {
+        "role": "neutral",
+        "displayName": "Ink Gray Canvas",
+        "canonical": "#1e1e1e",
+        "cssVariable": "--bg",
+        "theme": "dark",
+        "oklch": "oklch(23.5% 0.000 89.9)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#242424",
+          "#404040",
+          "#5d5d5d",
+          "#7d7d7d",
+          "#9e9e9e",
+          "#c4c4c4",
+          "#eeeeee"
+        ]
+      },
+      "graphite-sidebar": {
+        "role": "neutral",
+        "displayName": "Graphite Sidebar",
+        "canonical": "#282828",
+        "cssVariable": "--sidebar",
+        "theme": "dark",
+        "oklch": "oklch(27.7% 0.000 89.9)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#242424",
+          "#404040",
+          "#5d5d5d",
+          "#7d7d7d",
+          "#9e9e9e",
+          "#c4c4c4",
+          "#eeeeee"
+        ]
+      },
+      "hover-gray": {
+        "role": "neutral",
+        "displayName": "Hover Gray",
+        "canonical": "#2c2c2c",
+        "cssVariable": "--hover",
+        "theme": "dark",
+        "oklch": "oklch(29.3% 0.000 89.9)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#242424",
+          "#404040",
+          "#5d5d5d",
+          "#7d7d7d",
+          "#9e9e9e",
+          "#c4c4c4",
+          "#eeeeee"
+        ]
+      },
+      "folder-selected-gray": {
+        "role": "neutral",
+        "displayName": "Folder Selected Gray",
+        "canonical": "#464646",
+        "cssVariable": "--side-selected",
+        "theme": "dark",
+        "oklch": "oklch(39.4% 0.000 89.9)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#242424",
+          "#404040",
+          "#5d5d5d",
+          "#7d7d7d",
+          "#9e9e9e",
+          "#c4c4c4",
+          "#eeeeee"
+        ]
+      },
+      "muted-gold-selection": {
+        "role": "primary",
+        "displayName": "Muted Gold Selection",
+        "canonical": "#67551a",
+        "cssVariable": "--row-selected",
+        "theme": "dark",
+        "oklch": "oklch(45.6% 0.080 91.7)",
+        "tonalRamp": [
+          "#120a00",
+          "#302200",
+          "#4f3e00",
+          "#6e5c22",
+          "#8e7c43",
+          "#af9d68",
+          "#cfc4a1",
+          "#f2eee4"
+        ]
+      },
+      "selection-text": {
+        "role": "primary",
+        "displayName": "Selection Text",
+        "canonical": "#ffffff",
+        "cssVariable": "--row-selected-text",
+        "theme": "dark",
+        "oklch": "oklch(100.0% 0.000 89.9)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#242424",
+          "#404040",
+          "#5d5d5d",
+          "#7d7d7d",
+          "#9e9e9e",
+          "#c4c4c4",
+          "#eeeeee"
+        ]
+      },
+      "field-gray": {
+        "role": "neutral",
+        "displayName": "Field Gray",
+        "canonical": "#2a2a2a",
+        "cssVariable": "--field",
+        "theme": "dark",
+        "oklch": "oklch(28.5% 0.000 89.9)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#242424",
+          "#404040",
+          "#5d5d5d",
+          "#7d7d7d",
+          "#9e9e9e",
+          "#c4c4c4",
+          "#eeeeee"
+        ]
+      },
+      "hairline": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "#353535",
+        "cssVariable": "--sep",
+        "theme": "dark",
+        "oklch": "oklch(32.9% 0.000 89.9)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#242424",
+          "#404040",
+          "#5d5d5d",
+          "#7d7d7d",
+          "#9e9e9e",
+          "#c4c4c4",
+          "#eeeeee"
+        ]
+      },
+      "text-primary": {
+        "role": "neutral",
+        "displayName": "Text Primary",
+        "canonical": "#ececec",
+        "cssVariable": "--text",
+        "theme": "dark",
+        "oklch": "oklch(94.3% 0.000 89.9)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#242424",
+          "#404040",
+          "#5d5d5d",
+          "#7d7d7d",
+          "#9e9e9e",
+          "#c4c4c4",
+          "#eeeeee"
+        ]
+      },
+      "text-secondary": {
+        "role": "neutral",
+        "displayName": "Text Secondary",
+        "canonical": "#b2b2b7",
+        "cssVariable": "--text-2",
+        "theme": "dark",
+        "oklch": "oklch(76.5% 0.007 286.2)",
+        "tonalRamp": [
+          "#0b0b0d",
+          "#242427",
+          "#3f3f43",
+          "#5d5d61",
+          "#7d7d81",
+          "#9e9ea2",
+          "#c4c4c7",
+          "#eeeeef"
+        ]
+      },
+      "text-tertiary": {
+        "role": "neutral",
+        "displayName": "Text Tertiary",
+        "canonical": "#98989d",
+        "cssVariable": "--text-3",
+        "theme": "dark",
+        "oklch": "oklch(68.1% 0.007 286.2)",
+        "tonalRamp": [
+          "#0b0b0d",
+          "#242427",
+          "#3f3f43",
+          "#5d5d62",
+          "#7d7d81",
+          "#9e9ea2",
+          "#c4c4c7",
+          "#eeeeef"
+        ]
+      },
+      "notes-yellow": {
+        "role": "primary",
+        "displayName": "Notes Yellow",
+        "canonical": "#ffd60a",
+        "cssVariable": "--accent",
+        "theme": "dark",
+        "oklch": "oklch(88.5% 0.181 94.8)",
+        "tonalRamp": [
+          "#160800",
+          "#391e00",
+          "#5b3900",
+          "#7b5800",
+          "#9c7900",
+          "#bc9c00",
+          "#d8c478",
+          "#f4efd9"
+        ]
+      },
+      "notes-yellow-text": {
+        "role": "primary",
+        "displayName": "Notes Yellow Text",
+        "canonical": "#ffd60a",
+        "cssVariable": "--accent-text",
+        "theme": "dark",
+        "oklch": "oklch(88.5% 0.181 94.8)",
+        "tonalRamp": [
+          "#160800",
+          "#391e00",
+          "#5b3900",
+          "#7b5800",
+          "#9c7900",
+          "#bc9c00",
+          "#d8c478",
+          "#f4efd9"
+        ]
+      },
+      "accent-ink": {
+        "role": "primary",
+        "displayName": "Accent Ink",
+        "canonical": "#1e1e1e",
+        "cssVariable": "--accent-ink",
+        "theme": "dark",
+        "oklch": "oklch(23.5% 0.000 89.9)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#242424",
+          "#404040",
+          "#5d5d5d",
+          "#7d7d7d",
+          "#9e9e9e",
+          "#c4c4c4",
+          "#eeeeee"
+        ]
+      },
+      "alert-red": {
+        "role": "secondary",
+        "displayName": "Alert Red",
+        "canonical": "#ff6b61",
+        "cssVariable": "--red",
+        "theme": "dark",
+        "oklch": "oklch(71.0% 0.183 26.6)",
+        "tonalRamp": [
+          "#250000",
+          "#540000",
+          "#800003",
+          "#a52a27",
+          "#cb4e47",
+          "#ed766b",
+          "#feaba2",
+          "#ffe8e4"
+        ]
+      },
+      "caution-orange": {
+        "role": "secondary",
+        "displayName": "Caution Orange",
+        "canonical": "#ffa53d",
+        "cssVariable": "--orange",
+        "theme": "dark",
+        "oklch": "oklch(79.5% 0.155 65.4)",
+        "tonalRamp": [
+          "#200000",
+          "#4a0700",
+          "#722200",
+          "#964400",
+          "#ba6500",
+          "#da8926",
+          "#efb881",
+          "#fcebdb"
+        ]
+      },
+      "focus-ring": {
+        "role": "neutral",
+        "displayName": "Focus Ring",
+        "canonical": "rgba(255, 214, 10, 0.55)",
+        "cssVariable": "--focus",
+        "theme": "dark",
+        "tonalRamp": [
+          "#160800",
+          "#391e00",
+          "#5b3900",
+          "#7b5800",
+          "#9c7900",
+          "#bc9c00",
+          "#d8c478",
+          "#f4efd9"
+        ]
+      },
+      "light-paper-canvas": {
+        "role": "neutral",
+        "displayName": "Paper Canvas (light)",
+        "canonical": "#ffffff",
+        "cssVariable": "--bg",
+        "theme": "light",
+        "oklch": "oklch(100.0% 0.000 89.9)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#242424",
+          "#404040",
+          "#5d5d5d",
+          "#7d7d7d",
+          "#9e9e9e",
+          "#c4c4c4",
+          "#eeeeee"
+        ]
+      },
+      "light-sidebar": {
+        "role": "neutral",
+        "displayName": "Warm Gray Sidebar (light)",
+        "canonical": "#f0f0ef",
+        "cssVariable": "--sidebar",
+        "theme": "light",
+        "oklch": "oklch(95.5% 0.001 106.4)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#242423",
+          "#40403f",
+          "#5e5e5d",
+          "#7d7d7c",
+          "#9e9e9d",
+          "#c4c4c3",
+          "#eeeeee"
+        ]
+      },
+      "light-hover": {
+        "role": "neutral",
+        "displayName": "Hover (light)",
+        "canonical": "#f4f4f3",
+        "cssVariable": "--hover",
+        "theme": "light",
+        "oklch": "oklch(96.7% 0.001 106.4)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#242423",
+          "#40403f",
+          "#5e5e5d",
+          "#7d7d7c",
+          "#9e9e9d",
+          "#c4c4c3",
+          "#eeeeee"
+        ]
+      },
+      "light-folder-selected": {
+        "role": "neutral",
+        "displayName": "Folder Selected (light)",
+        "canonical": "#dcdcdb",
+        "cssVariable": "--side-selected",
+        "theme": "light",
+        "oklch": "oklch(89.4% 0.001 106.4)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#242423",
+          "#40403f",
+          "#5e5e5d",
+          "#7d7d7c",
+          "#9e9e9d",
+          "#c4c4c3",
+          "#eeeeee"
+        ]
+      },
+      "light-butter-selection": {
+        "role": "primary",
+        "displayName": "Butter Selection (light)",
+        "canonical": "#ffe27a",
+        "cssVariable": "--row-selected",
+        "theme": "light",
+        "oklch": "oklch(91.6% 0.128 94.1)",
+        "tonalRamp": [
+          "#140900",
+          "#352000",
+          "#563b00",
+          "#755a00",
+          "#967b00",
+          "#b79d3b",
+          "#d5c489",
+          "#f3efde"
+        ]
+      },
+      "light-selection-text": {
+        "role": "primary",
+        "displayName": "Selection Text (light)",
+        "canonical": "#1d1d1f",
+        "cssVariable": "--row-selected-text",
+        "theme": "light",
+        "oklch": "oklch(23.2% 0.004 286.1)",
+        "tonalRamp": [
+          "#0b0b0c",
+          "#242425",
+          "#3f3f42",
+          "#5d5d60",
+          "#7d7d7f",
+          "#9e9ea0",
+          "#c4c4c5",
+          "#eeeeef"
+        ]
+      },
+      "light-field": {
+        "role": "neutral",
+        "displayName": "Field (light)",
+        "canonical": "#f4f4f3",
+        "cssVariable": "--field",
+        "theme": "light",
+        "oklch": "oklch(96.7% 0.001 106.4)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#242423",
+          "#40403f",
+          "#5e5e5d",
+          "#7d7d7c",
+          "#9e9e9d",
+          "#c4c4c3",
+          "#eeeeee"
+        ]
+      },
+      "light-hairline": {
+        "role": "neutral",
+        "displayName": "Hairline (light)",
+        "canonical": "#e4e4e2",
+        "cssVariable": "--sep",
+        "theme": "light",
+        "oklch": "oklch(91.8% 0.003 106.5)",
+        "tonalRamp": [
+          "#0b0b0a",
+          "#242423",
+          "#40403e",
+          "#5e5e5c",
+          "#7d7d7b",
+          "#9e9e9d",
+          "#c4c4c3",
+          "#eeeeee"
+        ]
+      },
+      "light-text-primary": {
+        "role": "neutral",
+        "displayName": "Text Primary (light)",
+        "canonical": "#1d1d1f",
+        "cssVariable": "--text",
+        "theme": "light",
+        "oklch": "oklch(23.2% 0.004 286.1)",
+        "tonalRamp": [
+          "#0b0b0c",
+          "#242425",
+          "#3f3f42",
+          "#5d5d60",
+          "#7d7d7f",
+          "#9e9ea0",
+          "#c4c4c5",
+          "#eeeeef"
+        ]
+      },
+      "light-text-secondary": {
+        "role": "neutral",
+        "displayName": "Text Secondary (light)",
+        "canonical": "#55555a",
+        "cssVariable": "--text-2",
+        "theme": "light",
+        "oklch": "oklch(52.6% 0.008 286.1)",
+        "tonalRamp": [
+          "#0b0b0d",
+          "#242427",
+          "#3f3f44",
+          "#5d5d62",
+          "#7d7d82",
+          "#9e9ea3",
+          "#c4c4c7",
+          "#eeeeef"
+        ]
+      },
+      "light-text-tertiary": {
+        "role": "neutral",
+        "displayName": "Text Tertiary (light)",
+        "canonical": "#68686d",
+        "cssVariable": "--text-3",
+        "theme": "light",
+        "oklch": "oklch(54.7% 0.008 286.1)",
+        "tonalRamp": [
+          "#0b0b0d",
+          "#242427",
+          "#3f3f44",
+          "#5d5d62",
+          "#7d7d82",
+          "#9e9ea3",
+          "#c4c4c7",
+          "#eeeeef"
+        ]
+      },
+      "light-ochre-accent": {
+        "role": "primary",
+        "displayName": "Ochre Accent (light)",
+        "canonical": "#b58500",
+        "cssVariable": "--accent",
+        "theme": "light",
+        "oklch": "oklch(64.6% 0.133 83.0)",
+        "tonalRamp": [
+          "#190600",
+          "#3d1a00",
+          "#613400",
+          "#815300",
+          "#a37400",
+          "#c49635",
+          "#dec086",
+          "#f6eddd"
+        ]
+      },
+      "light-ochre-text": {
+        "role": "primary",
+        "displayName": "Ochre Text (light)",
+        "canonical": "#8a6400",
+        "cssVariable": "--accent-text",
+        "theme": "light",
+        "oklch": "oklch(52.8% 0.109 82.4)",
+        "tonalRamp": [
+          "#160700",
+          "#391d00",
+          "#5b3700",
+          "#7b5600",
+          "#9d7622",
+          "#bd9850",
+          "#dac193",
+          "#f5eee0"
+        ]
+      },
+      "light-accent-ink": {
+        "role": "primary",
+        "displayName": "Accent Ink (light)",
+        "canonical": "#1d1d1f",
+        "cssVariable": "--accent-ink",
+        "theme": "light",
+        "oklch": "oklch(23.2% 0.004 286.1)",
+        "tonalRamp": [
+          "#0b0b0c",
+          "#242425",
+          "#3f3f42",
+          "#5d5d60",
+          "#7d7d7f",
+          "#9e9ea0",
+          "#c4c4c5",
+          "#eeeeef"
+        ]
+      },
+      "light-alert-red": {
+        "role": "secondary",
+        "displayName": "Alert Red (light)",
+        "canonical": "#d1281c",
+        "cssVariable": "--red",
+        "theme": "light",
+        "oklch": "oklch(55.8% 0.205 29.4)",
+        "tonalRamp": [
+          "#250000",
+          "#530000",
+          "#800000",
+          "#a52b20",
+          "#cb4f41",
+          "#ec7666",
+          "#feac9f",
+          "#ffe8e3"
+        ]
+      },
+      "light-caution-orange": {
+        "role": "secondary",
+        "displayName": "Caution Orange (light)",
+        "canonical": "#b85400",
+        "cssVariable": "--orange",
+        "theme": "light",
+        "oklch": "oklch(56.3% 0.150 49.4)",
+        "tonalRamp": [
+          "#220000",
+          "#4e0000",
+          "#781500",
+          "#9c3b00",
+          "#c15c13",
+          "#e28148",
+          "#f6b38f",
+          "#ffeadf"
+        ]
+      },
+      "light-focus-ring": {
+        "role": "neutral",
+        "displayName": "Focus Ring (light)",
+        "canonical": "rgba(209, 156, 0, 0.5)",
+        "cssVariable": "--focus",
+        "theme": "light",
+        "tonalRamp": [
+          "#190600",
+          "#3d1a00",
+          "#613400",
+          "#815300",
+          "#a37400",
+          "#c49635",
+          "#dec086",
+          "#f6eddd"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Page title with tertiary count on the same baseline."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Editable task title in the expanded Notes page."
+      },
+      "title-small": {
+        "displayName": "Title Small",
+        "purpose": "Empty-state headings only."
+      },
+      "body-page": {
+        "displayName": "Body Page",
+        "purpose": "Task description and Next Step inside the expanded page."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Base size for rows, folders, buttons."
+      },
+      "body-strong": {
+        "displayName": "Body Strong",
+        "purpose": "Row titles, group headings, capture field."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Metadata, counts, timestamps, history, small buttons."
+      },
+      "label-strong": {
+        "displayName": "Label Strong",
+        "purpose": "Editor field names and the progress history heading."
+      },
+      "section-label": {
+        "displayName": "Section Label",
+        "purpose": "Sidebar group names, sentence case, tertiary gray."
+      }
+    },
+    "themes": {
+      "default": "dark",
+      "attribute": "data-theme on <html>",
+      "values": [
+        "dark",
+        "light"
+      ],
+      "persistence": "localStorage key tasknotes.theme; falls back to dark",
+      "lightSelector": ":root[data-theme=\"light\"]"
+    },
+    "shadows": [
+      {
+        "name": "none",
+        "value": "none",
+        "purpose": "The system is flat; depth is tonal. The only box-shadow is an inset 1px hairline ring on the progress number at hover: inset 0 0 0 1px var(--sep)."
+      }
+    ],
+    "focus": [
+      {
+        "name": "focus-outline",
+        "value": "outline: 2px solid var(--focus); outline-offset: 1px; border-radius: 6px",
+        "purpose": "Every :focus-visible element and focused property capsule."
+      }
+    ],
+    "motion": [
+      {
+        "name": "fade-background",
+        "value": "background-color 120ms ease-out",
+        "purpose": "Hover/selection background on rows, folders, buttons, icon buttons and sort control."
+      },
+      {
+        "name": "progress-fill",
+        "value": "transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1)",
+        "purpose": "Progress track fill changes."
+      },
+      {
+        "name": "spinner",
+        "value": "rotate 900ms linear infinite",
+        "purpose": "Loading glyph; disabled under prefers-reduced-motion: reduce."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "compact",
+        "value": "720px",
+        "purpose": "At or below: sidebar becomes a top horizontal strip, content padding 16px, row metadata wraps under the title."
+      }
+    ],
+    "layout": {
+      "sidebarWidth": "210px",
+      "toolbarHeight": "52px",
+      "contentMaxWidth": "720px",
+      "editorMaxWidth": "600px",
+      "rowContentInset": "38px"
+    }
+  },
+  "components": [
+    {
+      "name": "Button",
+      "kind": "button",
+      "refersTo": "button",
+      "description": "Quiet default action: transparent, secondary text, hover steps to hover gray.",
+      "html": "<button class=\"ds-btn\">Cancel</button>",
+      "css": ".ds-btn{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 12px;border:0;border-radius:6px;background:none;font:400 13px/1.4 -apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Roboto,'Helvetica Neue',sans-serif;color:var(--text-2,#b2b2b7);cursor:pointer;transition:background-color 120ms ease-out}.ds-btn:hover{color:var(--text,#ececec);background:var(--hover,#2c2c2c)}.ds-btn:focus-visible{outline:2px solid var(--focus,rgba(255,214,10,.55));outline-offset:1px}"
+    },
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The single accent-filled action per context (Create task, Save, Apply progress).",
+      "html": "<button class=\"ds-btn-primary\">Apply progress</button> <button class=\"ds-btn-primary\" disabled>Apply progress</button>",
+      "css": ".ds-btn-primary{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 12px;border:0;border-radius:6px;font:600 13px/1.4 -apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Roboto,'Helvetica Neue',sans-serif;color:var(--accent-ink,#1e1e1e);background:var(--accent,#ffd60a);cursor:pointer;transition:background-color 120ms ease-out}.ds-btn-primary:hover:not(:disabled){filter:brightness(1.05)}.ds-btn-primary:disabled{font-weight:500;color:var(--text-3,#98989d);background:var(--field,#2a2a2a);cursor:not-allowed}.ds-btn-primary:focus-visible{outline:2px solid var(--focus,rgba(255,214,10,.55));outline-offset:1px}"
+    },
+    {
+      "name": "Icon Button",
+      "kind": "button",
+      "refersTo": "icon-button",
+      "description": "Toolbar icon action, e.g. compose a new task.",
+      "html": "<button class=\"ds-icon-btn\" aria-label=\"New task\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7\"/><path d=\"M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z\"/></svg></button>",
+      "css": ".ds-icon-btn{display:grid;place-items:center;width:32px;height:28px;border:0;border-radius:6px;background:none;color:var(--text-2,#b2b2b7);cursor:pointer;transition:background-color 120ms ease-out}.ds-icon-btn:hover{color:var(--text,#ececec);background:var(--hover,#2c2c2c)}.ds-icon-btn:focus-visible{outline:2px solid var(--focus,rgba(255,214,10,.55));outline-offset:1px}"
+    },
+    {
+      "name": "Sidebar Folders",
+      "kind": "nav",
+      "refersTo": "folder",
+      "description": "Notes-style folder list: accent folder icons, tabular counts, gray selected fill.",
+      "html": "<nav class=\"ds-side\"><div class=\"ds-side-h\">Lists</div><a class=\"ds-folder\" aria-current=\"page\" href=\"#\"><svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z\"/></svg><span>Writing</span><span class=\"ds-count\">4</span></a><a class=\"ds-folder\" href=\"#\"><svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z\"/></svg><span>Home</span><span class=\"ds-count\">2</span></a></nav>",
+      "css": ".ds-side{display:flex;flex-direction:column;gap:1px;width:210px;padding:12px 10px;background:var(--sidebar,#282828);font:400 13px/1.4 -apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Roboto,'Helvetica Neue',sans-serif}.ds-side-h{padding:4px 8px;font-size:11px;font-weight:700;color:var(--text-3,#98989d)}.ds-folder{display:flex;align-items:center;gap:8px;height:28px;padding:0 8px;border-radius:6px;color:var(--text,#ececec);text-decoration:none;transition:background-color 120ms ease-out}.ds-folder svg{flex:none;color:var(--accent,#ffd60a)}.ds-folder:hover{background:var(--hover,#2c2c2c)}.ds-folder[aria-current=page]{background:var(--side-selected,#464646)}.ds-count{margin-left:auto;font-size:12px;color:var(--text-3,#98989d);font-variant-numeric:tabular-nums}.ds-folder:focus-visible{outline:2px solid var(--focus,rgba(255,214,10,.55));outline-offset:1px}"
+    },
+    {
+      "name": "Task Row",
+      "kind": "custom",
+      "refersTo": "task-row",
+      "description": "Signature Notes list cell: status ring, bold title, gray second line with progress, plain-text metadata; selected row turns gold.",
+      "html": "<div class=\"ds-row\"><span class=\"ds-ring ds-ring--ip\"></span><span class=\"ds-main\"><b>Draft release notes</b><span class=\"ds-sub\"><em>60%</em> Next: outline sections</span></span><span class=\"ds-meta\"><span class=\"ds-hi\"><svg width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m5 12 7-7 7 7\"/><path d=\"M12 19V5\"/></svg> High</span><span class=\"ds-red\">Overdue</span><span class=\"ds-tag\">#docs</span></span></div><div class=\"ds-row ds-row--sel\"><span class=\"ds-ring ds-ring--done\"><svg width=\"11\" height=\"11\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 6 9 17l-5-5\"/></svg></span><span class=\"ds-main\"><b>Set up fixtures</b><span class=\"ds-sub\">Synthetic data only</span></span><span class=\"ds-meta\"><span>Medium</span></span></div>",
+      "css": ".ds-row{display:flex;align-items:flex-start;gap:10px;width:560px;padding:8px 10px;border-radius:7px;font:400 13px/1.4 -apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Roboto,'Helvetica Neue',sans-serif;color:var(--text,#ececec);transition:background-color 120ms ease-out}.ds-row:hover{background:var(--hover,#2c2c2c)}.ds-ring{display:grid;place-items:center;flex:none;width:18px;height:18px;margin-top:1px;border:1.5px solid var(--text-3,#98989d);border-radius:50%;box-sizing:border-box}.ds-ring--ip{border-color:var(--accent,#ffd60a)}.ds-ring--ip::after{content:'';width:6px;height:6px;border-radius:50%;background:var(--accent,#ffd60a)}.ds-ring--done{color:var(--accent-ink,#1e1e1e);border-color:var(--accent,#ffd60a);background:var(--accent,#ffd60a)}.ds-main{flex:1;min-width:0}.ds-main b{display:block;font-weight:700}.ds-sub{display:flex;gap:10px;color:var(--text-2,#b2b2b7)}.ds-sub em{font-style:normal;font-weight:500;color:var(--text,#ececec);font-variant-numeric:tabular-nums}.ds-meta{display:flex;gap:10px;align-items:center;padding-top:1px;font-size:12px;color:var(--text-2,#b2b2b7)}.ds-hi{display:inline-flex;gap:3px;align-items:center;color:var(--orange,#ffa53d)}.ds-red{color:var(--red,#ff6b61)}.ds-tag{color:var(--accent-text,#ffd60a)}.ds-row--sel,.ds-row--sel:hover{color:var(--row-selected-text,#fff);background:var(--row-selected,#67551a)}.ds-row--sel .ds-sub,.ds-row--sel .ds-meta{color:inherit}.ds-row--sel .ds-ring--done{border-color:currentColor;background:currentColor;color:var(--row-selected,#67551a)}"
+    },
+    {
+      "name": "Property Capsule",
+      "kind": "chip",
+      "refersTo": "property-capsule",
+      "description": "Editor property control: field-gray capsule with leading icon and a bare native select/input.",
+      "html": "<label class=\"ds-prop\"><svg width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"4\" width=\"18\" height=\"18\" rx=\"2\"/><path d=\"M16 2v4M8 2v4M3 10h18\"/></svg><input type=\"text\" value=\"Oct 24\" aria-label=\"Deadline\"></label>",
+      "css": ".ds-prop{display:inline-flex;align-items:center;gap:6px;min-height:26px;padding:4px 10px;border-radius:13px;font:400 12px -apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Roboto,'Helvetica Neue',sans-serif;color:var(--text-2,#b2b2b7);background:var(--field,#2a2a2a);box-sizing:border-box}.ds-prop input{width:80px;padding:0;border:0;outline:none;background:transparent;font:inherit;color:var(--text,#ececec)}.ds-prop:focus-within{outline:2px solid var(--focus,rgba(255,214,10,.55));outline-offset:1px}"
+    },
+    {
+      "name": "Quick Capture",
+      "kind": "input",
+      "refersTo": "capture-row",
+      "description": "Dashed-ring single-field capture; row takes hover gray on focus.",
+      "html": "<form class=\"ds-cap\"><span class=\"ds-cap-ring\"></span><input placeholder=\"New task\" aria-label=\"Task title\"></form>",
+      "css": ".ds-cap{display:flex;align-items:center;gap:10px;width:540px;padding:8px 10px;border-radius:8px;font:700 13px/1.4 -apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Roboto,'Helvetica Neue',sans-serif}.ds-cap:focus-within{background:var(--hover,#2c2c2c)}.ds-cap-ring{flex:none;width:18px;height:18px;border:1.5px dashed var(--text-3,#98989d);border-radius:50%;box-sizing:border-box}.ds-cap input{flex:1;padding:0;border:0;outline:none;background:transparent;font:inherit;color:var(--text,#ececec)}.ds-cap input::placeholder{font-weight:400;color:var(--text-3,#98989d)}"
+    },
+    {
+      "name": "Next Step Field",
+      "kind": "input",
+      "description": "Borderless 14px field with a hairline underline that turns accent on focus.",
+      "html": "<label class=\"ds-ns\"><span>Next step</span><input value=\"Write rollback test\"></label>",
+      "css": ".ds-ns{display:block;width:420px;font:400 13px -apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Roboto,'Helvetica Neue',sans-serif}.ds-ns span{display:block;font-size:12px;font-weight:700;color:var(--text-2,#b2b2b7)}.ds-ns input{display:block;width:100%;margin-top:2px;padding:4px 0 6px;border:0;border-bottom:1px solid var(--sep,#353535);outline:none;background:transparent;font:inherit;font-size:14px;color:var(--text,#ececec)}.ds-ns input:focus{border-bottom-color:var(--accent,#ffd60a)}"
+    },
+    {
+      "name": "Progress Track",
+      "kind": "custom",
+      "refersTo": "progress-number",
+      "description": "4px hairline track with accent fill beside a field-gray tabular number box.",
+      "html": "<div class=\"ds-prog\"><b>Progress</b><span class=\"ds-track\"><span style=\"transform:scaleX(.6)\"></span></span><span class=\"ds-num\">60 %</span></div>",
+      "css": ".ds-prog{display:flex;align-items:center;gap:12px;width:420px;font:400 13px -apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Roboto,'Helvetica Neue',sans-serif;color:var(--text,#ececec)}.ds-prog b{font-size:12px;color:var(--text-2,#b2b2b7)}.ds-track{position:relative;flex:1;height:4px;overflow:hidden;border-radius:2px;background:var(--sep,#353535)}.ds-track span{position:absolute;inset:0;border-radius:2px;background:var(--accent,#ffd60a);transform-origin:left center;transition:transform 240ms cubic-bezier(.2,.8,.2,1)}.ds-num{padding:2px 6px;border-radius:5px;font-weight:600;background:var(--field,#2a2a2a);font-variant-numeric:tabular-nums}.ds-num:hover{box-shadow:inset 0 0 0 1px var(--sep,#353535)}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Notes Folder, Played Straight",
+    "overview": "**Creative North Star: \"The Notes Folder, Played Straight\"**\n\nTasknotes wears Apple Notes' design language without irony or reinterpretation: a flat graphite folder sidebar, one quiet content column, bold one-line titles over gray second lines, inset hairline separators, and Notes yellow as the only voice of color. It is built to sit beside an editor and terminal for a whole working day, so the surface is calm, dense and small-typed (13px base), and nothing on it competes for attention without carrying state.\n\nDark is the default appearance (`data-theme=\"dark\"` on `<html>`), with a light appearance that mirrors it on white paper and a pale warm-gray sidebar. The user switches from the bottom of the sidebar; the choice persists per window in `localStorage` under `tasknotes.theme`, and the app falls back to dark when storage is unavailable. Both themes share every rule in this file; only token values change.\n\nThe world borrows Notes' palette, type and density but not its window chrome: there are no traffic lights, title-bar blur or vibrancy, because the product is meant to travel to other platforms. It refuses the SaaS dashboard vocabulary outright: no hero, no cards, no gradients, no colored badges.",
+    "keyCharacteristics": [
+      "Flat tonal layering: canvas, sidebar and hover grays do all the depth work; there are no shadows.",
+      "One accent family (Notes yellow) reserved for state and the single primary action.",
+      "Notes list cells: bold title, gray second line, metadata right-aligned as plain colored text.",
+      "Inline expansion: the selected row turns gold and opens a Notes-style page beneath it, one at a time.",
+      "System font at 13px, bold for hierarchy, tabular numerals wherever numbers align."
+    ],
+    "rules": [
+      {
+        "name": "The One Voice Rule",
+        "body": "Yellow is the only hue that appears without a state reason. It marks folders, status, tags, progress, the selected row and the one primary button. Never use it for decoration, headings or borders.",
+        "section": "colors"
+      },
+      {
+        "name": "The Split Accent Rule",
+        "body": "In light appearance the accent has three jobs with three values: fills and rings use the ochre accent, accent-colored text uses the darker ochre text, and anything placed on a yellow fill uses near-black accent ink. Never set small text in the fill value.",
+        "section": "colors"
+      },
+      {
+        "name": "The Plain Text Status Rule",
+        "body": "Priority, deadline and tag metadata are colored text with an icon or `#` prefix, never filled badges. Priority always shows its icon and its label together; color is a second channel, not the only one.",
+        "section": "colors"
+      },
+      {
+        "name": "The Weight Not Size Rule",
+        "body": "Hierarchy within a list comes from bold versus regular and from the three text grays. Do not add sizes between 13px and 20px for list content.",
+        "section": "typography"
+      },
+      {
+        "name": "The No-Lift Rule",
+        "body": "Nothing floats. State is shown by a background step (hover, selected, focused capture) or a focus outline, never by shadow or translation.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** keep the canvas, sidebar, hover and field grays as the only surface steps, separated by 1px hairlines.",
+      "**Do** reserve Notes yellow for folder icons, status rings, tags, progress fill, focus, the selected row and the single primary action.",
+      "**Do** use the darker accent-text value for any yellow text in light appearance and accent ink on any yellow fill.",
+      "**Do** show priority as icon plus label, deadlines as words (\"Overdue\", \"Due today\", \"Due Oct 22\"), tags as `#name`.",
+      "**Do** build list hierarchy with bold titles and the three text grays at 13px, with tabular numerals for counts and percentages.",
+      "**Do** design every new surface in both appearances, starting from dark.",
+      "**Do** keep motion to 120ms background fades and a 240ms progress fill, and drop them under Reduce Motion."
+    ],
+    "donts": [
+      "**Don't** add hero sections, cards, gradients or filled badges; this is the SaaS-dashboard look the owner rejected.",
+      "**Don't** reproduce macOS window chrome (traffic lights, title-bar vibrancy, translucent sidebars); the product must make sense on other platforms.",
+      "**Don't** add shadows or lift; depth is tonal only.",
+      "**Don't** introduce a second accent hue or a display typeface.",
+      "**Don't** convey priority, deadline or status by color alone."
+    ]
+  }
+}

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
-  ArrowRight, CheckCircle2, ChevronDown, Clock3,
-  LoaderCircle, LockKeyhole, Plus, Sparkles,
+  ArrowDownWideNarrow, CheckCircle2, LoaderCircle, LockKeyhole, SquarePen,
 } from "lucide-react";
 import {
   taskApi, TASK_PAGE_SIZE, type Task, type TaskList, type TaskView,
@@ -11,6 +10,7 @@ import { STATUS_ORDER, STATUS_VIEW } from "./lib/task-visuals";
 import TaskRow from "./components/TaskRow";
 import TaskSidebar from "./components/TaskSidebar";
 import { useLocalCalendarDay } from "./lib/use-local-calendar-day";
+import { useTheme } from "./lib/use-theme";
 import "./App.css";
 
 function errorMessage(error: unknown): string {
@@ -42,6 +42,8 @@ export default function App() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [theme, toggleTheme] = useTheme();
+  const titleInput = useRef<HTMLInputElement>(null);
   // Ignore stale results from older Task queries after a newer user action.
   const requestGeneration = useRef(0);
   const currentQuery = useRef({ sort, view });
@@ -397,12 +399,16 @@ export default function App() {
     : lists.find((list) => list.id === view.listId)?.name ?? "List";
   const today = useLocalCalendarDay();
 
+  const captureOpen = title.length > 0 || description.length > 0;
+  const captureDisabled = creating || Boolean(savingId) || loading || loadError;
+
   return (
     <div className="app-shell">
       <TaskSidebar
         view={view} lists={lists} shownCount={tasks.length} hasMoreTasks={Boolean(nextCursor)}
         listError={listError}
         hasMoreLists={Boolean(listCursor)} busy={busyList || creating || Boolean(savingId) || loadingMore}
+        theme={theme} onToggleTheme={toggleTheme}
         onNavigate={navigate} onCreateList={createList} onRenameList={renameList}
         onRemoveList={(list) => setListRemoved(list, true)}
         onRestoreList={(list) => setListRemoved(list, false)}
@@ -410,110 +416,103 @@ export default function App() {
       />
 
       <main className="main-view">
-        <header className="top-bar">
-          <div className="top-location"><span>Workspace</span><ChevronDown size={14} className="breadcrumb-icon" /><strong>{pageTitle}</strong></div>
-          <span className="local-badge"><span /> Local storage</span>
+        <header className="toolbar">
+          <span className="toolbar-grow" />
+          <label className="toolbar-sort" htmlFor="task-sort">
+            <ArrowDownWideNarrow size={17} aria-hidden="true" />
+            <select
+              id="task-sort"
+              aria-label="Sort tasks"
+              value={sort}
+              disabled={loading || loadingMore || Boolean(savingId)}
+              onChange={(event) => changeSort(event.target.value as SortMode)}
+            >
+              <option value="priority">Highest priority</option>
+              <option value="newest">Newest first</option>
+            </select>
+          </label>
+          <button className="icon-button" type="button" aria-label="New task"
+            disabled={captureDisabled} onClick={() => titleInput.current?.focus()}>
+            <SquarePen size={18} aria-hidden="true" />
+          </button>
         </header>
 
-        <div className="content-wrap">
-          <div className="hero-intro">
-            <span className="eyebrow"><Sparkles size={14} aria-hidden="true" /> YOUR SPACE TO FOCUS</span>
-            <h1>{pageTitle}</h1>
-            <p>A quieter place to keep track of what matters.</p>
-          </div>
-
-          <section className="composer" aria-label="Create a task">
-            <div className="composer-top">
-              <span className="composer-icon"><Plus size={17} aria-hidden="true" /></span>
-              <div>
-                <h2>Capture a task</h2>
-                <p>Start small. The details can follow.</p>
-              </div>
+        <div className="main-scroll">
+          <div className="content-wrap">
+            <div className="page-title">
+              <h1>{pageTitle}</h1>
+              <span>{tasks.length}{nextCursor ? "+" : ""}</span>
             </div>
-            <form onSubmit={createTask}>
-              <label className="sr-only" htmlFor="new-task-title">Task title</label>
-              <input
-                id="new-task-title"
-                className="new-task-title"
-                aria-label="Task title"
-                placeholder="What needs to get done?"
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                maxLength={200}
-                disabled={creating || Boolean(savingId) || loading || loadError}
-                required
-              />
-              <label className="sr-only" htmlFor="new-task-desc">Description (optional)</label>
-              <textarea
-                id="new-task-desc"
-                aria-label="Description (optional)"
-                placeholder="A little context, if you like..."
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                rows={2}
-                maxLength={20000}
-                disabled={creating || Boolean(savingId) || loading || loadError}
-              />
-              <div className="composer-footer">
-                <span className="composer-hint"><Clock3 size={14} aria-hidden="true" /> Ready to work on later</span>
-                <button className="button button-primary" type="submit" disabled={!title.trim() || creating || Boolean(savingId) || loading || loadError}>
-                  {creating ? <LoaderCircle className="spin" size={16} /> : <Plus size={16} />}
-                  {creating ? "Adding..." : "Add task"}
-                </button>
+
+            <form className={`capture ${captureOpen ? "capture--open" : ""}`} aria-label="Create a task" onSubmit={createTask}>
+              <div className="capture-row">
+                <span className="capture-ring" aria-hidden="true" />
+                <input
+                  ref={titleInput}
+                  id="new-task-title"
+                  className="capture-title"
+                  aria-label="Task title"
+                  placeholder="New task"
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  maxLength={200}
+                  disabled={captureDisabled}
+                  required
+                />
               </div>
+              {captureOpen && (
+                <div className="capture-extra">
+                  <textarea
+                    id="new-task-desc"
+                    className="capture-description"
+                    aria-label="Description (optional)"
+                    placeholder="Notes (optional)"
+                    value={description}
+                    onChange={(event) => setDescription(event.target.value)}
+                    rows={2}
+                    maxLength={20000}
+                    disabled={captureDisabled}
+                  />
+                  <div className="capture-actions">
+                    <span>Starts as Ready</span>
+                    <button className="button button-primary" type="submit" disabled={!title.trim() || captureDisabled}>
+                      {creating && <LoaderCircle className="spin" size={14} aria-hidden="true" />}
+                      {creating ? "Adding..." : "Add task"}
+                    </button>
+                  </div>
+                </div>
+              )}
             </form>
-          </section>
 
-          {error && <div role="alert" className="error-banner">
-            <span>{error}</span>
-            {refreshError && <button className="button button-secondary button-small" type="button" onClick={retryFirstLoad}>Refresh list</button>}
-          </div>}
+            {error && <div role="alert" className="error-banner">
+              <span>{error}</span>
+              {refreshError && <button className="button button-small" type="button" onClick={retryFirstLoad}>Refresh list</button>}
+            </div>}
 
-          <section className="task-section" aria-label="Your tasks">
-            <div className="list-heading">
-              <div><h2>Your tasks</h2><p>{tasks.length}{nextCursor ? "+" : ""} currently shown</p></div>
-              <label className="sort-control" htmlFor="task-sort">
-                Sort within groups
-                <select
-                  id="task-sort"
-                  aria-label="Sort tasks"
-                  value={sort}
-                  disabled={loading || loadingMore || Boolean(savingId)}
-                  onChange={(event) => changeSort(event.target.value as SortMode)}
-                >
-                  <option value="priority">Highest priority</option>
-                  <option value="newest">Newest first</option>
-                </select>
-              </label>
-            </div>
-
-            {loading ? (
-              <div className="loading-state" role="status"><LoaderCircle className="spin" size={20} /> Loading your tasks...</div>
-            ) : loadError && tasks.length === 0 ? (
-              <div className="empty-state" aria-label="Tasks unavailable">
-                <div className="empty-icon"><LockKeyhole size={29} aria-hidden="true" /></div>
-                <h3>Couldn't load your tasks</h3>
-                <p>The local database couldn't be opened. Nothing has been changed; check the message above and try again.</p>
-                <button className="button button-more retry-button" type="button" onClick={retryFirstLoad}>Try again</button>
-              </div>
-            ) : tasks.length === 0 && previousPageCursors.length === 0 ? (
-              <div className="empty-state">
-                <div className="empty-icon"><CheckCircle2 size={31} strokeWidth={1.4} aria-hidden="true" /></div>
-                <h3>Your list is clear</h3>
-                <p>Every great plan starts with a single step. Add your first task above whenever you're ready.</p>
-                <ArrowRight size={19} className="empty-arrow" aria-hidden="true" />
-              </div>
-            ) : (
-              <div className="task-list">
-                {groups.map(({ status, items }) => {
-                  const GroupIcon = STATUS_VIEW[status].icon;
-                  return (
+            <section className="task-section" aria-label="Your tasks">
+              {loading ? (
+                <div className="loading-state" role="status"><LoaderCircle className="spin" size={16} /> Loading your tasks...</div>
+              ) : loadError && tasks.length === 0 ? (
+                <div className="empty-state" aria-label="Tasks unavailable">
+                  <LockKeyhole size={26} strokeWidth={1.5} aria-hidden="true" />
+                  <h3>Couldn't load your tasks</h3>
+                  <p>The local database couldn't be opened. Nothing has been changed; check the message above and try again.</p>
+                  <button className="button button-small" type="button" onClick={retryFirstLoad}>Try again</button>
+                </div>
+              ) : tasks.length === 0 && previousPageCursors.length === 0 ? (
+                <div className="empty-state">
+                  <CheckCircle2 size={26} strokeWidth={1.5} aria-hidden="true" />
+                  <h3>Your list is clear</h3>
+                  <p>Type a title in New task above to add your first one.</p>
+                </div>
+              ) : (
+                <div className="task-list">
+                  {groups.map(({ status, items }) => (
                     <section className="task-group" key={status} aria-label={`${STATUS_VIEW[status].label} tasks`}>
-                      <div className="task-group-heading">
-                        <GroupIcon size={16} aria-hidden="true" />
-                        <h3>{STATUS_VIEW[status].label}</h3>
+                      <h3 className="task-group-heading">
+                        {STATUS_VIEW[status].label}
                         <span>{items.length}{nextCursor ? "+" : ""}</span>
-                      </div>
+                      </h3>
                       {items.map((task) => (
                         <TaskRow
                           key={task.id}
@@ -531,33 +530,31 @@ export default function App() {
                         />
                       ))}
                     </section>
-                  );
-                })}
-                {(previousPageCursors.length > 0 || nextCursor) && (
-                  <div className="task-page-navigation" aria-label="Task pages">
-                    {previousPageCursors.length > 0 && (
-                      <button className="button button-more" type="button"
-                        disabled={loadingMore || Boolean(savingId) || creating}
-                        onClick={() => void previousTaskPage()}>
-                        Previous page
-                      </button>
-                    )}
-                    {nextCursor && (
-                      <button className="button button-more" type="button"
-                        disabled={loadingMore || Boolean(savingId) || creating}
-                        onClick={() => void nextTaskPage()}>
-                        {loadingMore ? "Loading..." : "Next page"}
-                        {loadingMore && <LoaderCircle className="spin" size={16} />}
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </section>
+                  ))}
+                  {(previousPageCursors.length > 0 || nextCursor) && (
+                    <div className="task-page-navigation" aria-label="Task pages">
+                      {previousPageCursors.length > 0 && (
+                        <button className="button button-small" type="button"
+                          disabled={loadingMore || Boolean(savingId) || creating}
+                          onClick={() => void previousTaskPage()}>
+                          Previous page
+                        </button>
+                      )}
+                      {nextCursor && (
+                        <button className="button button-small" type="button"
+                          disabled={loadingMore || Boolean(savingId) || creating}
+                          onClick={() => void nextTaskPage()}>
+                          {loadingMore ? "Loading..." : "Next page"}
+                          {loadingMore && <LoaderCircle className="spin" size={14} />}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+          </div>
         </div>
-
-        <footer className="footer-note"><LockKeyhole size={13} aria-hidden="true" /> Local-first. No account needed.</footer>
       </main>
     </div>
   );
