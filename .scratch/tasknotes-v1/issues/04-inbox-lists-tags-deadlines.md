@@ -96,3 +96,5 @@ Driven by the assistant through macOS computer use (real clicks, typing and nati
 | T9 quit and relaunch: Lists, Tasks, Tags, deadline, theme persist | PASS (DB integrity ok, 62 Tasks) |
 
 **Findings for follow-up (not blockers of the behaviors above):** the sidebar count beside "All tasks" shows the current view's visible count (also present in the archived UI); Task rows show at most two Tags without a "+N" hint; after a "Nothing to save" error the Tags/Deadline draft has no discard control.
+
+**Remediated the same day (owner-requested, TDD):** the count now sits beside the active view only; rows show a `+N` pill for hidden Tags; Tags/Deadline drafts have a "Discard tag and deadline changes" button; Task details say "List not loaded" instead of "Inbox" for an unloaded List. Four new RED→GREEN tests in `src/notes-redesign.test.tsx`; 50 React tests, typecheck and build pass. Rebuilt QA app checked visually (count beside Home, `+1` on a three-Tag row, discard restores saved Tags and unlocks fields; QA DB revision unchanged).
