@@ -6,21 +6,21 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** in progress — owner started Ticket 06 on 2026-10-22 after Ticket 05 merged. [Plan](../../../docs/plans/ticket-06-markdown-notes-2026-10-22.md).
+**Implementation:** in progress — slices 1–5 and the independent review are done (2026-10-22); awaiting the owner's approval to push and open the Draft PR. [Plan](../../../docs/plans/ticket-06-markdown-notes-2026-10-22.md).
 
 ## Acceptance criteria
 
-- [ ] Users can create, edit and reopen a standalone Note without any associated Task.
-- [ ] Headings, bold, italic, bullet lists, checklists and links round-trip through WYSIWYG editing and canonical Markdown without loss in supported cases.
-- [ ] Autosave persists typing without manual Save and does not silently overwrite a more recent conflicting edit.
-- [ ] Note creation and updates use the same Rust core and local SQLite persistence as desktop Tasks.
-- [ ] Invalid content or interrupted writes leave the last consistent saved version recoverable.
+- [x] Users can create, edit and reopen a standalone Note without any associated Task.
+- [x] Headings, bold, italic, bullet lists, checklists and links round-trip through WYSIWYG editing and canonical Markdown without loss in supported cases.
+- [x] Autosave persists typing without manual Save and does not silently overwrite a more recent conflicting edit.
+- [x] Note creation and updates use the same Rust core and local SQLite persistence as desktop Tasks.
+- [x] Invalid content or interrupted writes leave the last consistent saved version recoverable.
 
 ## Verification
 
-- [ ] Run Markdown round-trip cases, forced autosave/restart scenarios and core persistence tests on synthetic Notes.
-- [ ] Relevant tests pass and evidence is recorded here.
-- [ ] Run `/code-review` and address findings before marking complete.
+- [x] Run Markdown round-trip cases, forced autosave/restart scenarios and core persistence tests on synthetic Notes.
+- [x] Relevant tests pass and evidence is recorded here.
+- [x] Run `/code-review` and address findings before marking complete.
 
 ## Delivery guardrails
 
@@ -105,3 +105,29 @@ Checks at the slice 3 commit: 98 Vitest tests, typecheck, build, 58 Rust core te
 | `integrity_check` on the QA database; owner's database untouched (mtime 2026-10-13) | PASS |
 
 Checks at the slice 4 commit: 118 Vitest tests (two runs), typecheck, build, 58 Rust core tests, Clippy, fmt.
+
+## Implementation checkpoint — slice 5, recovery, acceptance and review (2026-10-22)
+
+**Interrupted write:** a core test aborts a save after SQLite has started changing the row (an `AFTER UPDATE` trigger raising, as a full disk would): the stored Note keeps its text, title and revision, and the next save with the same revision succeeds. Splitting the save into two statements makes it fail (mutation check), so it pins the single atomic write. Invalid content: the 200,000-character limit test (slice 1).
+
+**Quit:** native QA proved typing within the autosave pause was lost on Cmd+Q (probe build with a 10 s pause: the keystroke was missing after quit, and present after waiting). Owner decision ("Simpan dulu saat keluar"): Cmd+Q and closing the window now ask the page first (`src-tauri/src/quit.rs`, `src/lib/quit.ts`); pending text is saved, then the app quits. When it cannot be saved (conflict, error) the app stays open and brings the Note forward with the reason. A page that never answers cannot hold the app open: after 15 s (over twice SQLite's 5 s busy timeout, checked at compile time) the app quits anyway. Known limitation: Quit from the Dock or a shutdown cannot be delayed (tao exits straight from `applicationWillTerminate`), so up to one autosave pause (600 ms) of typing is still at risk there — reproduced with an AppleEvent quit.
+
+**Independent review** (`/code-review`, Standards and Spec in parallel, base `origin/main` 80de645). Findings and what happened:
+
+| Finding | Outcome |
+| --- | --- |
+| Quit answer timeout equalled SQLite's busy timeout; one answer also settled later quit requests | Fixed: 15 s, numbered requests echoed by the page; unit test and three mutation checks |
+| Escaping went beyond what the editor reads: rules, `1)` lists, reference links, HTML and table brackets gained backslashes | Fixed: escapes only where this editor would re-read Markdown; other syntax saved as written; ADR-0003 corrected; 12 mutation checks |
+| Title kept `> `, dropped the `#` of `#tag`, used the fence line of a code block | Fixed: the title is the first line as the editor shows it (8 new cases) |
+| Clicking or moving the cursor in a Note in non-canonical spelling saved it | Fixed: selection-only changes no longer count as edits (App test RED first; native: revision unchanged) |
+| Only the first 50 Notes could be reopened | Fixed: "Load more Notes" under the list (App test; mutation check on the cursor) |
+| DESIGN.md: Notes heading size, list title weight, focus offset, radii, 16px mobile padding; no Note editor tokens | Fixed in CSS; Note editor recorded in DESIGN.md "Notes Workspace" |
+| Smells: repeated saved-state literal, copied `errorMessage`, `chosen`, `validated`, repeated sidebar condition, event name repeated in tests | Fixed |
+| Conflict decided by re-reading rather than a typed core error | Kept: the core still refuses every stale write; the Tauri seam returns errors as text, and the plan chose a re-read |
+| Same not-found/conflict tail in `update_note` and two Task updates; `TaskStore` holds Notes; `NEXT_STAMP` binds `?4`; `notes` is a public module | Kept: shared store per ADR-0001; a cross-module refactor is outside this ticket |
+| Windows labels Quit "&Exit", so the menu item is not replaced there | Not applicable: Tasknotes is a macOS app; other platforms keep the default menu |
+| "Forced restart" is shown by core reopen, the abort test and native quit/relaunch, not by killing the process mid-write | Recorded: SQLite's atomic commit plus the abort test cover it; no kill test |
+
+**Native QA after the fixes** (normal 600 ms build, Cua Driver direct, `attribution: host`): the Notes list shows the Headline title and bold rows; moving the cursor in a Note stored as `_Packing_ list` / `- [X] Passport` saved nothing (revision stayed 1); typing one character then Cmd+Q at once saved revision 2 (in canonical spelling, as ADR-0003 says for an edit) and quit; with the 10 s probe build Cmd+Q, Close Window and a conflict-held quit all behaved as above, and the app stayed open past the timeout when the page answered "stay". `integrity_check` ok; the owner's database untouched (mtime 2026-10-13).
+
+Checks at the slice 5 commit: 128 Vitest tests in 10 files (two runs), typecheck, build, 60 Rust core tests, 1 Tauri unit test, core and Tauri Clippy `-D warnings`, fmt.
