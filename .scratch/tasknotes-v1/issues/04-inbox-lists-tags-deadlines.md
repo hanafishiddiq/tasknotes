@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** review — source and synthetic TDD tests implemented on a dedicated Ticket04 feature branch; native QA build, independent Standards/Spec review and merge/deployment approval remain separate gates.
+**Implementation:** completed — owner approved the merge on 2026-10-22: PR #16 (merge commit `5d76baf`) and the redesign UI in PR #17. Schema v4 is forward-only: before installing a build from `main` over the owner's real database, take a verified backup.
 
 ## Acceptance criteria
 
@@ -18,9 +18,9 @@
 
 ## Verification
 
-- [ ] Actual native GUI CRUD/quit/restart on Inbox, Lists, tags and deadlines still requires visible interaction acceptance. Rust referential-integrity, React/Tauri contract, synthetic native startup and clock-boundary tests have passed.
+- [x] Native GUI CRUD/quit/restart on Inbox, Lists, tags and deadlines passed T1–T9 on the redesign QA build with synthetic data (see "Native GUI acceptance on the redesign build — 2026-10-22" below).
 - [x] Frontend and Rust test suites pass, including v1/v2/v3 to v4 migration and locale-boundary controls; evidence [here](../../../docs/qa/ticket-04-acceptance-2026-10-13.md).
-- [ ] Complete **independent** Standards and Spec code-review and address proven findings before marking complete. Two independent reviewer attempts failed due to AGY credits exhausted (HTTP 429); implementing-assistant self-review is recorded separately in [Ticket04 review](../../../docs/reviews/ticket-04.md), but is NOT an independent approval.
+- [x] Independent Standards and Spec reviews: REQUEST CHANGES at `c8be24c` (2026-10-14), then two independent re-reviews on 2026-10-22 (`bbce8af`, `bbce8af..8f0280e`). Every proven finding was fixed with a RED→GREEN test. The last fixes (`fe50c2c` Unicode Tag fold and the redesign QA findings) were verified by tests and native QA, not by a further independent review.
 
 ## Delivery guardrails
 
