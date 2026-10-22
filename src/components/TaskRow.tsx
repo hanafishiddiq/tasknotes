@@ -93,13 +93,16 @@ export default function TaskRow({
     hasUnsavedNextStep || hasUnsavedNote
       ? "Save progress update"
       : "Apply progress";
+  // Every refresh delivers a new tags array; key on its contents so an
+  // unrelated refresh does not wipe unsaved drafts.
+  const savedTagsKey = (task.tags ?? []).join("\u0000");
   useEffect(() => {
     setDraftProgress(String(task.progress));
     setDraftNextStep(task.nextStep ?? "");
     setDraftNote("");
     setDraftTags((task.tags ?? []).join(", "));
     setDraftDueDate(task.dueDate ?? "");
-  }, [task.progress, task.nextStep, task.revision, task.dueDate, task.tags]);
+  }, [task.progress, task.nextStep, task.revision, task.dueDate, savedTagsKey]);
 
   function toggle() {
     if (!expanded) {

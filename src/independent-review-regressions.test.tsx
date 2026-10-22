@@ -290,4 +290,47 @@ describe("independent reviewer regression evidence", () => {
       .not.toHaveTextContent("Overdue");
   });
 
+  async function renderWithRefreshableTask() {
+    const saved: Task[] = [{ ...existing, tags: ["work"] }];
+    nativeInvoke.mockImplementation(async (command, args) => {
+      if (command === "list_lists") return { items: [], nextCursor: null };
+      // Every refresh returns fresh objects and arrays, as the native bridge does.
+      if (command === "list_tasks") {
+        return { items: saved.map((task) => ({ ...task, tags: [...task.tags] })), nextCursor: null };
+      }
+      if (command === "create_task") {
+        const input = (args as { input: { title: string } }).input;
+        const task = { ...existing, id: "created", title: input.title, createdAt: 200 };
+        saved.unshift(task);
+        return task;
+      }
+      throw new Error("Unexpected native call: " + command);
+    });
+    render(<App />);
+    await userEvent.click(await screen.findByRole("button", { name: "Open Existing Task" }));
+  }
+
+  async function createUnrelatedTask(user: ReturnType<typeof userEvent.setup>) {
+    await user.type(screen.getByRole("textbox", { name: "Task title" }), "Other Task");
+    await user.click(screen.getByRole("button", { name: "Add task" }));
+    expect(await screen.findByRole("article", { name: "Other Task" })).toBeInTheDocument();
+  }
+
+  it("R5: an unrelated list refresh keeps an unsaved Progress note", async () => {
+    const user = userEvent.setup();
+    await renderWithRefreshableTask();
+    await user.type(screen.getByRole("textbox", { name: "Progress note" }), "Halfway there");
+    await createUnrelatedTask(user);
+    expect(screen.getByRole("textbox", { name: "Progress note" })).toHaveValue("Halfway there");
+  });
+
+  it("R5b: an unrelated list refresh keeps an unsaved Tags draft", async () => {
+    const user = userEvent.setup();
+    await renderWithRefreshableTask();
+    const tags = screen.getByRole("textbox", { name: "Tags" });
+    await user.clear(tags);
+    await user.type(tags, "work, urgent");
+    await createUnrelatedTask(user);
+    expect(screen.getByRole("textbox", { name: "Tags" })).toHaveValue("work, urgent");
+  });
 });
