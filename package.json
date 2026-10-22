@@ -13,7 +13,16 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.node.json --noEmit"
   },
   "dependencies": {
+    "@lexical/code": "0.52.0",
+    "@lexical/history": "0.52.0",
+    "@lexical/link": "0.52.0",
+    "@lexical/list": "0.52.0",
+    "@lexical/markdown": "0.52.0",
+    "@lexical/react": "0.52.0",
+    "@lexical/rich-text": "0.52.0",
+    "@lexical/utils": "0.52.0",
     "@tauri-apps/api": "^2",
+    "lexical": "0.52.0",
     "lucide-react": "^1.55.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
