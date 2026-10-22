@@ -6,6 +6,8 @@ use tasknotes_core::tasks::{
 };
 use tauri::{Manager, State};
 
+mod quit;
+
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 fn list_tasks(
@@ -148,6 +150,10 @@ fn update_note(store: State<'_, TaskStore>, input: UpdateNote) -> Result<Note, S
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(quit::QuitState::default())
+        .menu(quit::menu)
+        .on_menu_event(quit::on_menu_event)
+        .on_window_event(quit::on_window_event)
         .setup(|app| {
             // Data is private to this macOS user, never kept in the public source repository.
             let app_data_dir = app.path().app_data_dir()?;
@@ -177,7 +183,8 @@ pub fn run() {
             list_notes,
             get_note,
             create_note,
-            update_note
+            update_note,
+            quit::quit_ready
         ])
         .run(tauri::generate_context!())
         .expect("Unable to launch Tasknotes");

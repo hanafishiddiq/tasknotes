@@ -12,6 +12,7 @@ import TaskRow from "./components/TaskRow";
 import TaskSidebar from "./components/TaskSidebar";
 import { useLocalCalendarDay } from "./lib/use-local-calendar-day";
 import { useTheme } from "./lib/use-theme";
+import { listenForQuit } from "./lib/quit";
 import "./App.css";
 
 // The rich-text editor loads only when Notes are first opened, keeping Task startup light.
@@ -113,6 +114,12 @@ export default function App() {
       if (active) setListError("Could not load Lists: " + errorMessage(reason));
     });
     return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    // Only Notes save on a delay, so they are what can hold a quit back.
+    const stop = listenForQuit(openNotes);
+    return () => void stop.then((unlisten) => unlisten());
   }, []);
 
   function resetTaskPages() {

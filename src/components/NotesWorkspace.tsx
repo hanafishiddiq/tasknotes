@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { LoaderCircle, SquarePen } from "lucide-react";
 import { noteApi, type Note, type NoteSummary } from "../lib/note-api";
+import { saveBeforeQuit } from "../lib/quit";
 import NoteEditor, { type NoteEditorHandle } from "./NoteEditor";
 
 // Typing settles before an autosave reaches the core.
@@ -70,6 +71,9 @@ export default function NotesWorkspace({ hidden }: { hidden: boolean }) {
       window.clearTimeout(timer.current);
     };
   }, []);
+
+  // flush reads only refs, so the first render's copy stays current.
+  useEffect(() => saveBeforeQuit(flush), []);
 
   function edited() {
     dirty.current = true;

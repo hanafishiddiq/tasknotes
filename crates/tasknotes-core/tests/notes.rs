@@ -184,6 +184,43 @@ fn an_oversized_write_is_refused_and_the_last_saved_version_stays() {
     assert_eq!(store.list_notes(100, None).unwrap().items.len(), 1);
 }
 
+#[test]
+fn an_interrupted_save_leaves_the_last_saved_version_recoverable() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("interrupted.db");
+    let store = store_at(&path);
+    let kept = note(&store, "Trip plan\n\nBook the train");
+    // The write fails after SQLite has started changing the row, as a full
+    // disk or an I/O error would.
+    let raw = Connection::open(&path).unwrap();
+    raw.execute_batch(
+        "CREATE TRIGGER interrupt AFTER UPDATE OF revision ON notes
+         BEGIN SELECT RAISE(ABORT, 'disk I/O error'); END;",
+    )
+    .unwrap();
+
+    assert!(
+        store
+            .update_note(UpdateNote {
+                id: kept.id.clone(),
+                markdown: "Ferry plan\n\nBook the ferry".into(),
+                expected_revision: 1,
+            })
+            .is_err()
+    );
+    assert_eq!(store.get_note(&kept.id).unwrap().unwrap(), kept);
+
+    raw.execute_batch("DROP TRIGGER interrupt;").unwrap();
+    let saved = store
+        .update_note(UpdateNote {
+            id: kept.id.clone(),
+            markdown: "Ferry plan\n\nBook the ferry".into(),
+            expected_revision: 1,
+        })
+        .unwrap();
+    assert_eq!((saved.revision, saved.title.as_str()), (2, "Ferry plan"));
+}
+
 fn version(db: &Path) -> i64 {
     Connection::open(db)
         .unwrap()

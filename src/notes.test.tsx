@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
 import App from "./App";
 import type { Note } from "./lib/note-api";
+import { tauriEvents } from "./test/tauri-events";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 const invokeMock = vi.mocked(invoke);
@@ -87,11 +88,15 @@ beforeEach(() => {
   invokeMock.mockReset();
   invokeMock.mockImplementation(async (command, args) => {
     if (command === "list_lists" || command === "list_tasks") return { items: [], nextCursor: null };
+    if (command === "quit_ready") return null;
     return backend.handle(command, (args ?? {}) as Record<string, unknown>);
   });
 });
 
 afterEach(() => cleanup());
+
+/** The desktop shell asks the page before it quits (Cmd+Q, closing the window). */
+const quitRequested = () => tauriEvents.emit("tasknotes://quit-requested");
 
 async function openNotes() {
   const user = userEvent.setup();
@@ -292,6 +297,47 @@ describe("standalone Notes", () => {
     await user.keyboard("Ok ");
     await eventually(() => expect(backend.notes.get("note-2")?.markdown).toBe("Ok My Trip plan\n\nBook the train"));
     expect(backend.notes.get("note-1")?.markdown).toBe("Trip plan\n\nBook the ferry");
+  });
+
+  it("saves typing that has not reached autosave before the app quits", async () => {
+    backend.seed("Trip plan", "Trip plan");
+    const user = await openNotes();
+    const editor = await screen.findByRole("textbox", { name: "Note text" });
+    await waitFor(() => expect(editor).toHaveTextContent("Trip plan"));
+    await user.click(editor);
+    await user.keyboard("My ");
+
+    // Quit before the autosave pause has passed.
+    await quitRequested();
+    expect(backend.notes.get("note-1")?.markdown).toBe("My Trip plan");
+    const commands = invokeMock.mock.calls.map(([command]) => command);
+    expect(commands.lastIndexOf("update_note")).toBeLessThan(commands.indexOf("quit_ready"));
+    expect(invokeMock).toHaveBeenLastCalledWith("quit_ready", { proceed: true });
+  });
+
+  it("stays open on quit when the Note cannot be saved, and shows why", async () => {
+    backend.seed("Trip plan", "Trip plan");
+    const user = await openNotes();
+    const editor = await screen.findByRole("textbox", { name: "Note text" });
+    await waitFor(() => expect(editor).toHaveTextContent("Trip plan"));
+    backend.editElsewhere("note-1", "Ferry plan");
+    await user.click(editor);
+    await user.keyboard("My ");
+    await user.click(screen.getByRole("button", { name: "All tasks" }));
+    expect(screen.queryByRole("textbox", { name: "Note text" })).not.toBeInTheDocument();
+
+    await quitRequested();
+    expect(invokeMock).toHaveBeenLastCalledWith("quit_ready", { proceed: false });
+    expect(await screen.findByRole("textbox", { name: "Note text" })).toHaveTextContent("My Trip plan");
+    expect(screen.getByRole("alert")).toHaveTextContent("This Note was changed somewhere else");
+    expect(backend.notes.get("note-1")?.markdown).toBe("Ferry plan");
+  });
+
+  it("quits right away when no Note has unsaved text", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "All notes" });
+    await quitRequested();
+    expect(invokeMock).toHaveBeenLastCalledWith("quit_ready", { proceed: true });
   });
 
   it("marks All notes, not a Task view, as the current place in the sidebar", async () => {
