@@ -87,3 +87,21 @@ The editor never writes these escapes itself, so today this needs Markdown from 
 **Fix — literal text keeps its escapes:** on save, plain text (not code) also escapes `[` and `]`, and a marker at the start of a line in a paragraph, list item or quote (`#`, `>`, `-`, `+`, `1.`, `1)`, a `---` rule), including after a soft line break and after leading spaces; `#tag`, `-5 degrees` and `1.5 litres` stay as typed. On open, an escaped `\[` no longer starts a link. ADR-0003 addendum updated. 16 new round-trip cases (12 RED before the fix, 2 normalised once, 2 guards against needless escapes) and 1 App test (open a Note of literal text: no heading, list, checkbox or link; one typed character saves the rest byte-for-byte; RED before the fix because `\[draft\](later)` opened as a link). 12 mutation checks each make a test fail. Native: the editor loads in WKWebView with the new link pattern; a Note seeded with the five literal lines in the isolated QA database showed them as text, and one typed character (through Cua, after background `app_type` did not reach the WebView) saved revision 2 with every escape unchanged. Checks: 115 Vitest tests, typecheck, build, 58 Rust core tests, Clippy, fmt.
 
 Checks at the slice 3 commit: 98 Vitest tests, typecheck, build, 58 Rust core tests, core and Tauri Clippy `-D warnings`, fmt. The owner's database was not opened (mtime still 2026-10-13).
+
+## Implementation checkpoint — slice 4, conflict (2026-10-22)
+
+**Behaviour:** when a save is refused, the desktop reads the Note again. A newer revision means it changed somewhere else (today that can only be another writer such as a later CLI or MCP; the core refuses the stale save): the text stays on screen, autosave stops, and a banner says "This Note was changed somewhere else. Your text is still here and was not saved over it." with **Load latest** (drop the unsaved text and open the stored version, list title refreshed) and **Save mine as a new Note** (store the text on screen as a new Note and keep editing it; the other version is left as it is). Any other failure still shows the error and retries on the next edit. While the banner is up, opening another Note or starting a new one does nothing, so the unsaved text cannot be lost by navigating away (implementation choice; the owner can ask for a different rule).
+
+**Tests:** 3 App tests through the mocked Tauri seam, each RED first: conflict shows the banner, stores nothing over the other version, makes no further saves after more typing and keeps the Note open when another is clicked; Load latest; Save mine as a new Note. 8 mutation checks each make a test fail (autosave not paused, no re-read, every failure treated as a conflict, Load latest leaving the conflict or a stale list title, the new Note not tracked, not listed, or the conflict left on).
+
+**Native QA** on the isolated bundle, typing and clicking through Cua Driver (direct, `attribution: host`); "another writer" was simulated by raising the revision in the synthetic QA database while the Note was open:
+
+| Case | Result |
+| --- | --- |
+| Typing after another writer saved revision 2: banner shown, text stays, stored Note still the other version | PASS |
+| More typing with the banner up: no save (revision stays 2) | PASS |
+| Save mine as a new Note: new Note at revision 1 with the typed text, first and current in the list; the other Note unchanged | PASS |
+| Load latest after another writer edited that new Note: banner gone, editor shows the stored version; the next typing saves revision 3 on top of it | PASS |
+| `integrity_check` on the QA database; owner's database untouched (mtime 2026-10-13) | PASS |
+
+Checks at the slice 4 commit: 118 Vitest tests (two runs), typecheck, build, 58 Rust core tests, Clippy, fmt.

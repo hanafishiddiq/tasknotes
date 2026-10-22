@@ -1126,8 +1126,14 @@ textarea:disabled {
   color: var(--text-3);
   font-size: 12px;
 }
-.note-editor-pane .error-banner {
+.note-editor-pane .error-banner,
+.note-editor-pane .notice-banner {
   margin: 0 32px 12px;
+}
+.notice-actions {
+  display: flex;
+  flex: none;
+  gap: 8px;
 }
 .note-editor {
   flex: 1;

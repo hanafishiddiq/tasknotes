@@ -36,6 +36,9 @@ export default function NotesWorkspace({ hidden }: { hidden: boolean }) {
   const [editor, setEditor] = useState<{ key: number; markdown: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Set when a save found a newer revision: autosave stops until the person chooses.
+  const [conflict, setConflict] = useState(false);
+  const conflicted = useRef(false);
   const editorRef = useRef<NoteEditorHandle>(null);
   const saved = useRef<Saved>(DRAFT);
   const dirty = useRef(false);
@@ -78,6 +81,7 @@ export default function NotesWorkspace({ hidden }: { hidden: boolean }) {
   async function flush(): Promise<boolean> {
     window.clearTimeout(timer.current);
     while (inFlight.current) await inFlight.current;
+    if (conflicted.current) return false;
     if (!dirty.current) return true;
     const markdown = editorRef.current?.markdown() ?? "";
     const base = saved.current;
@@ -98,7 +102,13 @@ export default function NotesWorkspace({ hidden }: { hidden: boolean }) {
       } catch (reason) {
         // Keep the text on screen and try again on the next edit.
         dirty.current = true;
-        setError("Couldn't save this Note: " + errorMessage(reason));
+        const latest = base.id === null ? null : await noteApi.get(base.id).catch(() => null);
+        if (latest && latest.revision !== base.revision) {
+          conflicted.current = true;
+          setConflict(true);
+        } else {
+          setError("Couldn't save this Note: " + errorMessage(reason));
+        }
         return false;
       } finally {
         setSaving(false);
@@ -124,6 +134,47 @@ export default function NotesWorkspace({ hidden }: { hidden: boolean }) {
       show({ id: note.id, revision: note.revision, markdown: note.markdown });
     } catch (reason) {
       setError(errorMessage(reason));
+    }
+  }
+
+  /** Drops the unsaved text and opens the version saved elsewhere. */
+  async function loadLatest() {
+    const id = saved.current.id;
+    if (id === null) return;
+    try {
+      const note = await noteApi.get(id);
+      if (!note) {
+        setError("This Note could not be found.");
+        return;
+      }
+      conflicted.current = false;
+      setConflict(false);
+      setNotes((current) => current.map((item) => (item.id === note.id ? summary(note) : item)));
+      show({ id: note.id, revision: note.revision, markdown: note.markdown });
+    } catch (reason) {
+      setError(errorMessage(reason));
+    }
+  }
+
+  /** Stores the text on screen as its own Note; the other version stays as it is. */
+  async function saveMineAsNew() {
+    const markdown = editorRef.current?.markdown() ?? "";
+    dirty.current = false;
+    setSaving(true);
+    try {
+      const note = await noteApi.create(markdown);
+      saved.current = { id: note.id, revision: note.revision, markdown: note.markdown };
+      conflicted.current = false;
+      setConflict(false);
+      setOpenId(note.id);
+      setNotes((current) => [summary(note), ...current]);
+      // Typing that landed while the new Note was being stored is saved next.
+      if (dirty.current) edited();
+    } catch (reason) {
+      dirty.current = true;
+      setError("Couldn't save this Note: " + errorMessage(reason));
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -159,6 +210,21 @@ export default function NotesWorkspace({ hidden }: { hidden: boolean }) {
           {saving && <><LoaderCircle className="spin" size={13} aria-hidden="true" /> Saving…</>}
         </div>
         {error && <div role="alert" className="error-banner"><span>{error}</span></div>}
+        {conflict && (
+          <div role="alert" className="notice-banner">
+            <span>This Note was changed somewhere else. Your text is still here and was not saved over it.</span>
+            <span className="notice-actions">
+              <button className="button button-small" type="button" disabled={saving}
+                onClick={() => void loadLatest()}>
+                Load latest
+              </button>
+              <button className="button button-small" type="button" disabled={saving}
+                onClick={() => void saveMineAsNew()}>
+                Save mine as a new Note
+              </button>
+            </span>
+          </div>
+        )}
         {editor && (
           <NoteEditor key={editor.key} initialMarkdown={editor.markdown} onEdit={edited} editorRef={editorRef} />
         )}

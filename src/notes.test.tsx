@@ -59,6 +59,12 @@ class NoteBackend {
   commands(name: string) {
     return this.calls.filter((call) => call.command === name).map((call) => call.args);
   }
+
+  /** Another writer (the CLI, an agent) saves a newer revision. */
+  editElsewhere(id: string, markdown: string): Note {
+    const current = this.notes.get(id)!;
+    return this.write({ id, markdown, title: firstLine(markdown), revision: current.revision + 1 });
+  }
 }
 
 // The real title rule lives in the core; the stand-in only needs a plausible title.
@@ -208,6 +214,84 @@ describe("standalone Notes", () => {
     await user.type(editor, "!");
     await eventually(() => expect(backend.notes.get("note-1")?.markdown).toBe("Groceries and eggs!"));
     await eventually(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+  });
+
+  it("pauses autosave and asks what to do when the Note changed elsewhere", async () => {
+    backend.seed("Groceries", "Groceries");
+    backend.seed("Trip plan\n\nBook the train", "Trip plan");
+    const user = await openNotes();
+    const editor = await screen.findByRole("textbox", { name: "Note text" });
+    await waitFor(() => expect(editor).toHaveTextContent("Book the train"));
+    backend.editElsewhere("note-2", "Trip plan\n\nBook the ferry");
+
+    await user.click(editor);
+    await user.keyboard("My ");
+    const banner = await screen.findByRole("alert", {}, { timeout: 3000 });
+    expect(banner).toHaveTextContent("This Note was changed somewhere else");
+    expect(within(banner).getByRole("button", { name: "Load latest" })).toBeInTheDocument();
+    expect(within(banner).getByRole("button", { name: "Save mine as a new Note" })).toBeInTheDocument();
+    expect(editor).toHaveTextContent("My Trip plan");
+    expect(backend.notes.get("note-2")?.markdown).toBe("Trip plan\n\nBook the ferry");
+
+    // Further typing is not saved over the other version, and the Note is not left behind.
+    await user.keyboard("own ");
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    expect(backend.commands("update_note")).toHaveLength(1);
+    await user.click(within(screen.getByRole("list", { name: "Notes" })).getByRole("button", { name: /Groceries/ }));
+    expect(screen.getByRole("textbox", { name: "Note text" })).toHaveTextContent("My own Trip plan");
+    expect(screen.getByRole("alert")).toHaveTextContent("This Note was changed somewhere else");
+    expect(backend.commands("update_note")).toHaveLength(1);
+  });
+
+  it("loads the other version on Load latest and saves new edits on top of it", async () => {
+    backend.seed("Trip plan\n\nBook the train", "Trip plan");
+    const user = await openNotes();
+    const editor = await screen.findByRole("textbox", { name: "Note text" });
+    await waitFor(() => expect(editor).toHaveTextContent("Book the train"));
+    backend.editElsewhere("note-1", "Ferry trip\n\nBook the ferry");
+    await user.click(editor);
+    await user.keyboard("My ");
+    const banner = await screen.findByRole("alert", {}, { timeout: 3000 });
+
+    await user.click(within(banner).getByRole("button", { name: "Load latest" }));
+    const reloaded = screen.getByRole("textbox", { name: "Note text" });
+    await waitFor(() => expect(reloaded).toHaveTextContent("Book the ferry"));
+    expect(reloaded).not.toHaveTextContent("My Trip plan");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(within(screen.getByRole("list", { name: "Notes" })).getByRole("button", { name: /Ferry trip/ }))
+      .toHaveAttribute("aria-current", "true");
+
+    await user.click(reloaded);
+    await user.keyboard("Our ");
+    await eventually(() => expect(backend.notes.get("note-1")?.markdown).toBe("Our Ferry trip\n\nBook the ferry"));
+    const updates = backend.commands("update_note");
+    expect(updates[updates.length - 1]).toMatchObject({ input: { expectedRevision: 2 } });
+  });
+
+  it("keeps both versions on Save mine as a new Note", async () => {
+    backend.seed("Trip plan\n\nBook the train", "Trip plan");
+    const user = await openNotes();
+    const editor = await screen.findByRole("textbox", { name: "Note text" });
+    await waitFor(() => expect(editor).toHaveTextContent("Book the train"));
+    backend.editElsewhere("note-1", "Trip plan\n\nBook the ferry");
+    await user.click(editor);
+    await user.keyboard("My ");
+    const banner = await screen.findByRole("alert", {}, { timeout: 3000 });
+
+    await user.click(within(banner).getByRole("button", { name: "Save mine as a new Note" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+    expect(backend.notes.get("note-2")?.markdown).toBe("My Trip plan\n\nBook the train");
+    expect(backend.notes.get("note-1")?.markdown).toBe("Trip plan\n\nBook the ferry");
+    const items = within(screen.getByRole("list", { name: "Notes" })).getAllByRole("button");
+    expect(items).toHaveLength(2);
+    expect(items[0]).toHaveTextContent("My Trip plan");
+    expect(items[0]).toHaveAttribute("aria-current", "true");
+    expect(screen.getByRole("textbox", { name: "Note text" })).toHaveTextContent("My Trip plan");
+
+    await user.click(screen.getByRole("textbox", { name: "Note text" }));
+    await user.keyboard("Ok ");
+    await eventually(() => expect(backend.notes.get("note-2")?.markdown).toBe("Ok My Trip plan\n\nBook the train"));
+    expect(backend.notes.get("note-1")?.markdown).toBe("Trip plan\n\nBook the ferry");
   });
 
   it("marks All notes, not a Task view, as the current place in the sidebar", async () => {
