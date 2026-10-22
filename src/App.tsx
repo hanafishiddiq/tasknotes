@@ -1,17 +1,26 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
-  ArrowDownWideNarrow, CheckCircle2, LoaderCircle, LockKeyhole, SquarePen,
+  ArrowDownWideNarrow, CheckCircle2, LoaderCircle, LockKeyhole, Search, SearchX, SquarePen, Tag,
 } from "lucide-react";
 import {
-  taskApi, TASK_PAGE_SIZE, type Task, type TaskList, type TaskView,
-  type SortMode, type TaskChange, type ProgressDraft,
+  taskApi, NO_FILTERS, TASK_PAGE_SIZE, type Task, type TaskList, type TaskView,
+  type SortMode, type TaskChange, type ProgressDraft, type TaskFilters, type WorkStatus,
+  type Priority,
 } from "./lib/task-api";
-import { STATUS_ORDER, STATUS_VIEW } from "./lib/task-visuals";
+import { PRIORITY_ORDER, PRIORITY_VIEW, STATUS_ORDER, STATUS_VIEW } from "./lib/task-visuals";
 import TaskRow from "./components/TaskRow";
 import TaskSidebar from "./components/TaskSidebar";
 import { useLocalCalendarDay } from "./lib/use-local-calendar-day";
 import { useTheme } from "./lib/use-theme";
 import "./App.css";
+
+// Typing settles before a search query reaches the core.
+const SEARCH_DELAY_MS = 250;
+
+function sameFilters(a: TaskFilters, b: TaskFilters): boolean {
+  return a.text.trim() === b.text.trim() && a.tag.trim() === b.tag.trim() &&
+    a.status === b.status && a.priority === b.priority;
+}
 
 function errorMessage(error: unknown): string {
   if (typeof error === "string") return error;
@@ -28,6 +37,9 @@ export default function App() {
   const [loadingLists, setLoadingLists] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
   const [sort, setSort] = useState<SortMode>("priority");
+  const [filters, setFilters] = useState<TaskFilters>(NO_FILTERS);
+  const [searchDraft, setSearchDraft] = useState("");
+  const [tagDraft, setTagDraft] = useState("");
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [currentPageCursor, setCurrentPageCursor] = useState<string | null>(null);
   const [previousPageCursors, setPreviousPageCursors] = useState<(string | null)[]>([]);
@@ -46,14 +58,14 @@ export default function App() {
   const titleInput = useRef<HTMLInputElement>(null);
   // Ignore stale results from older Task queries after a newer user action.
   const requestGeneration = useRef(0);
-  const currentQuery = useRef({ sort, view });
+  const currentQuery = useRef({ sort, view, filters });
 
   useEffect(() => {
-    currentQuery.current = { sort, view };
+    currentQuery.current = { sort, view, filters };
     const generation = ++requestGeneration.current;
     let active = true;
     taskApi
-      .list(null, sort, view)
+      .list(null, sort, view, filters)
       .then((page) => {
         if (!active || generation !== requestGeneration.current) return;
         setTasks(page.items);
@@ -73,7 +85,15 @@ export default function App() {
         if (active && generation === requestGeneration.current) setLoading(false);
       });
     return () => { active = false; };
-  }, [loadAttempt, sort, view]);
+  }, [loadAttempt, sort, view, filters]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      applyFilters({ ...currentQuery.current.filters, text: searchDraft, tag: tagDraft });
+    }, SEARCH_DELAY_MS);
+    return () => window.clearTimeout(timer);
+    // applyFilters reads the latest query through currentQuery.
+  }, [searchDraft, tagDraft]);
 
   useEffect(() => {
     let active = true;
@@ -222,13 +242,13 @@ export default function App() {
         view.kind === "list" ? view.listId : undefined,
       );
       const generation = ++requestGeneration.current;
-      const { sort: latestSort, view: latestView } = currentQuery.current;
+      const { sort: latestSort, view: latestView, filters: latestFilters } = currentQuery.current;
       // Clear only after the actual write succeeds; retry must not create a
       // duplicate if the subsequent read fails.
       setTitle("");
       setDescription("");
       try {
-        const page = await taskApi.list(null, latestSort, latestView);
+        const page = await taskApi.list(null, latestSort, latestView, latestFilters);
         if (generation !== requestGeneration.current) return;
         setLoading(false);
         setTasks(page.items);
@@ -283,14 +303,14 @@ export default function App() {
     try {
       const updated = await mutate();
       const generation = ++requestGeneration.current;
-      const { sort: latestSort, view: latestView } = currentQuery.current;
+      const { sort: latestSort, view: latestView, filters: latestFilters } = currentQuery.current;
       setTasks((current) => current.map((item) => item.id === updated.id ? updated : item));
       // The mutation already succeeded; never let an old page replace its result.
       try {
-        let page = await taskApi.list(pageCursor, latestSort, latestView);
+        let page = await taskApi.list(pageCursor, latestSort, latestView, latestFilters);
         const stayOnPage = pageCursor !== null && page.items.length > 0;
         if (pageCursor !== null && !stayOnPage) {
-          page = await taskApi.list(null, latestSort, latestView);
+          page = await taskApi.list(null, latestSort, latestView, latestFilters);
         }
         if (generation !== requestGeneration.current) return;
         setLoading(false);
@@ -356,13 +376,33 @@ export default function App() {
     setSort(nextSort);
   }
 
+  /** Start a fresh first page for new search text or filters. */
+  function applyFilters(next: TaskFilters) {
+    if (sameFilters(next, currentQuery.current.filters)) return;
+    currentQuery.current = { ...currentQuery.current, filters: next };
+    requestGeneration.current += 1;
+    setError(null);
+    setRefreshError(false);
+    setLoading(true);
+    setNextCursor(null);
+    setExpandedId(null);
+    resetTaskPages();
+    setFilters(next);
+  }
+
+  function clearFilters() {
+    setSearchDraft("");
+    setTagDraft("");
+    applyFilters(NO_FILTERS);
+  }
+
   async function nextTaskPage() {
     if (!nextCursor || loadingMore || creating || savingId) return;
     const generation = requestGeneration.current;
     setLoadingMore(true);
     setError(null);
     try {
-      const page = await taskApi.list(nextCursor, sort, view);
+      const page = await taskApi.list(nextCursor, sort, view, filters);
       if (generation !== requestGeneration.current) return;
       setPreviousPageCursors((existing) => [...existing, currentPageCursor]);
       setCurrentPageCursor(nextCursor);
@@ -383,7 +423,7 @@ export default function App() {
     setLoadingMore(true);
     setError(null);
     try {
-      const page = await taskApi.list(previous, sort, view);
+      const page = await taskApi.list(previous, sort, view, filters);
       if (generation !== requestGeneration.current) return;
       setPreviousPageCursors((existing) => existing.slice(0, -1));
       setCurrentPageCursor(previous);
@@ -407,6 +447,8 @@ export default function App() {
     : lists.find((list) => list.id === view.listId)?.name ?? "List";
   const today = useLocalCalendarDay();
 
+  const filtering = !sameFilters(filters, NO_FILTERS);
+  const filterControlsActive = filtering || searchDraft.trim() !== "" || tagDraft.trim() !== "";
   const captureOpen = title.length > 0 || description.length > 0;
   const captureDisabled = creating || Boolean(savingId) || loading || loadError;
 
@@ -426,6 +468,18 @@ export default function App() {
       <main className="main-view">
         <header className="toolbar">
           <span className="toolbar-grow" />
+          <label className="toolbar-search" htmlFor="task-search">
+            <Search size={15} aria-hidden="true" />
+            <input
+              id="task-search"
+              type="search"
+              aria-label="Search tasks"
+              placeholder="Search"
+              maxLength={200}
+              value={searchDraft}
+              onChange={(event) => setSearchDraft(event.target.value)}
+            />
+          </label>
           <label className="toolbar-sort" htmlFor="task-sort">
             <ArrowDownWideNarrow size={17} aria-hidden="true" />
             <select
@@ -450,6 +504,41 @@ export default function App() {
             <div className="page-title">
               <h1>{pageTitle}</h1>
               <span>{tasks.length}{nextCursor ? "+" : ""}</span>
+            </div>
+
+            <div className="filter-chips" role="group" aria-label="Filters">
+              <label className={`property filter-chip ${filters.status ? "filter-chip--active" : ""}`}>
+                <select aria-label="Filter by status" value={filters.status}
+                  onChange={(event) => applyFilters({
+                    ...currentQuery.current.filters, status: event.target.value as WorkStatus | "",
+                  })}>
+                  <option value="">Any status</option>
+                  {STATUS_ORDER.map((status) => (
+                    <option key={status} value={status}>{STATUS_VIEW[status].label}</option>
+                  ))}
+                </select>
+              </label>
+              <label className={`property filter-chip ${filters.priority ? "filter-chip--active" : ""}`}>
+                <select aria-label="Filter by priority" value={filters.priority}
+                  onChange={(event) => applyFilters({
+                    ...currentQuery.current.filters, priority: event.target.value as Priority | "",
+                  })}>
+                  <option value="">Any priority</option>
+                  {[...PRIORITY_ORDER].reverse().map((priority) => (
+                    <option key={priority} value={priority}>{PRIORITY_VIEW[priority].label}</option>
+                  ))}
+                </select>
+              </label>
+              <label className={`property filter-chip filter-chip--tag ${filters.tag ? "filter-chip--active" : ""}`}>
+                <Tag size={13} aria-hidden="true" />
+                <input aria-label="Filter by tag" placeholder="Tag" maxLength={40}
+                  value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} />
+              </label>
+              {filterControlsActive && (
+                <button className="button button-small" type="button" onClick={clearFilters}>
+                  Clear search and filters
+                </button>
+              )}
             </div>
 
             <form className={`capture ${captureOpen ? "capture--open" : ""}`} aria-label="Create a task" onSubmit={createTask}>
@@ -506,6 +595,15 @@ export default function App() {
                   <h3>Couldn't load your tasks</h3>
                   <p>The local database couldn't be opened. Nothing has been changed; check the message above and try again.</p>
                   <button className="button button-small" type="button" onClick={retryFirstLoad}>Try again</button>
+                </div>
+              ) : tasks.length === 0 && previousPageCursors.length === 0 && filtering ? (
+                <div className="empty-state">
+                  <SearchX size={26} strokeWidth={1.5} aria-hidden="true" />
+                  <h3>No matching tasks</h3>
+                  <p>Nothing in this view matches the search and filters.</p>
+                  <button className="button button-small" type="button" onClick={clearFilters}>
+                    Clear search and filters
+                  </button>
                 </div>
               ) : tasks.length === 0 && previousPageCursors.length === 0 ? (
                 <div className="empty-state">

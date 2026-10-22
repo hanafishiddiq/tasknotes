@@ -123,7 +123,8 @@ describe("Task status and priority", () => {
     }));
     expect(await screen.findByRole("region", { name: "Completed tasks" })).toBeInTheDocument();
     expect(within(screen.getByRole("article", { name: "Ready plan" })).getByText("Completed", { selector: ".status-pill" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Ready" })).toBeDisabled();
+    const workStatus = screen.getByRole("combobox", { name: "Work status" });
+    expect(within(workStatus).getByRole("option", { name: "Ready" })).toBeDisabled();
   });
 
   it("allows sorting by newest while keeping status groups in fixed order", async () => {

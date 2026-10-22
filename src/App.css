@@ -301,6 +301,34 @@ textarea:disabled {
 .toolbar-grow {
   flex: 1;
 }
+.toolbar-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 220px;
+  height: 28px;
+  margin-right: 6px;
+  padding: 0 10px;
+  border-radius: 7px;
+  color: var(--text-3);
+  background: var(--field);
+}
+.toolbar-search:focus-within {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.toolbar-search input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+}
+.toolbar-search input::placeholder {
+  color: var(--text-3);
+}
 .toolbar-sort {
   display: inline-flex;
   align-items: center;
@@ -352,6 +380,25 @@ textarea:disabled {
   gap: 8px;
   margin: 0 0 12px;
   padding: 0 10px;
+}
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: -4px 0 14px;
+  padding: 0 10px;
+}
+.filter-chip--active {
+  color: var(--accent-text);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.filter-chip--active select {
+  color: var(--accent-text);
+}
+.filter-chip--tag input {
+  width: 72px;
+  cursor: text;
 }
 .page-title h1 {
   margin: 0;
@@ -966,6 +1013,9 @@ textarea:disabled {
 }
 
 @media (max-width: 720px) {
+  .toolbar-search {
+    width: 140px;
+  }
   .app-shell {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
