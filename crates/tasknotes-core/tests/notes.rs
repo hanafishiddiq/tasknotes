@@ -157,6 +157,27 @@ fn the_title_is_the_first_line_without_markdown_syntax() {
 }
 
 #[test]
+fn the_title_shows_the_first_line_as_the_editor_does() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("blocks.db"));
+    let cases = [
+        ("> Quoted line", "Quoted line"),
+        ("1. First step\n2. Second step", "First step"),
+        ("1. [ ] Not a checkbox", "[ ] Not a checkbox"),
+        // Text the editor shows as typed.
+        ("#tag notes", "#tag notes"),
+        ("1) First step", "1) First step"),
+        ("---", "---"),
+        // A code block's title is its first line of code.
+        ("```ts\nconst ready = true;\n```", "const ready = true;"),
+        ("```\n```", "New Note"),
+    ];
+    for (markdown, title) in cases {
+        assert_eq!(note(&store, markdown).title, title, "markdown {markdown:?}");
+    }
+}
+
+#[test]
 fn an_oversized_write_is_refused_and_the_last_saved_version_stays() {
     let dir = tempfile::tempdir().unwrap();
     let store = store_at(&dir.path().join("size.db"));

@@ -322,6 +322,9 @@ pub(crate) fn read_task(row: &Row<'_>) -> rusqlite::Result<Task> {
 
 pub(crate) const COLUMNS: &str = "id, title, description, status, priority, progress, revision, created_at, updated_at, next_step, list_id, due_date";
 
+/// How long a write waits for another process (the CLI, MCP) holding the database lock.
+pub const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
+
 impl TaskStore {
     /// Opens an on-disk database and applies transactional, forward-only migrations.
     pub fn open(path: &Path) -> Result<Self, TaskError> {
@@ -330,7 +333,7 @@ impl TaskStore {
         }
 
         let mut connection = Connection::open(path)?;
-        connection.busy_timeout(Duration::from_secs(5))?;
+        connection.busy_timeout(BUSY_TIMEOUT)?;
         let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
         if version > 6 {
             return Err(TaskError::UnsupportedSchema(version));
@@ -450,7 +453,7 @@ impl TaskStore {
 
     pub(crate) fn connect(&self) -> Result<Connection, TaskError> {
         let connection = Connection::open(&self.path)?;
-        connection.busy_timeout(Duration::from_secs(5))?;
+        connection.busy_timeout(BUSY_TIMEOUT)?;
         connection.pragma_update(None, "foreign_keys", true)?;
         Ok(connection)
     }

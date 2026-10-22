@@ -75,34 +75,72 @@ const MAX_NOTE_CHARS: usize = 200_000;
 const TITLE_CHARS: usize = 100;
 const UNTITLED: &str = "New Note";
 
-fn validated(markdown: &str) -> Result<(), TaskError> {
+fn check_length(markdown: &str) -> Result<(), TaskError> {
     if markdown.chars().count() > MAX_NOTE_CHARS {
         return Err(TaskError::NoteTooLong);
     }
     Ok(())
 }
 
-/// The first non-empty line as plain text: block markers, inline marks, escapes
-/// and link targets removed, at most 100 characters.
+/// The first line as the editor shows it: block markers, inline marks, escapes
+/// and link targets removed, at most 100 characters. A Note that opens with a
+/// code block is titled by its first line of code, as written.
 fn title_of(markdown: &str) -> String {
-    let line = markdown
+    let mut lines = markdown
         .lines()
         .map(str::trim)
-        .find(|line| !line.is_empty())
-        .unwrap_or("");
-    let mut text = line.trim_start_matches('#').trim_start();
-    for marker in ["- ", "* ", "+ "] {
-        text = text.strip_prefix(marker).unwrap_or(text);
-    }
-    for checkbox in ["[ ] ", "[x] ", "[X] "] {
-        text = text.strip_prefix(checkbox).unwrap_or(text);
-    }
-    let plain = without_marks(&without_link_targets(text));
+        .filter(|line| !line.is_empty());
+    let plain = match lines.next() {
+        Some(fence) if fence.starts_with("```") => lines
+            .next()
+            .filter(|line| !line.starts_with("```"))
+            .unwrap_or("")
+            .to_owned(),
+        Some(line) => without_marks(&without_link_targets(without_block_marker(line))),
+        None => String::new(),
+    };
     let title: String = plain.split_whitespace().collect::<Vec<_>>().join(" ");
     let title: String = title.chars().take(TITLE_CHARS).collect();
     match title.trim_end() {
         "" => UNTITLED.to_owned(),
         trimmed => trimmed.to_owned(),
+    }
+}
+
+/// Drops what the editor reads as a heading, quote or list marker, and a
+/// checkbox at the start of a paragraph or after `- `. Anything else, such as
+/// `#tag` or `1) step`, is text the editor shows as typed.
+fn without_block_marker(line: &str) -> &str {
+    let spaced = |rest: &str| rest.starts_with(char::is_whitespace);
+    let hashes = line.bytes().take_while(|byte| *byte == b'#').count();
+    if (1..=6).contains(&hashes) && spaced(&line[hashes..]) {
+        return line[hashes..].trim_start();
+    }
+    if let Some(rest) = line.strip_prefix('>').filter(|rest| spaced(rest)) {
+        return rest.trim_start();
+    }
+    let digits = line.bytes().take_while(u8::is_ascii_digit).count();
+    if let Some(rest) = line[digits..]
+        .strip_prefix('.')
+        .filter(|rest| digits > 0 && spaced(rest))
+    {
+        return rest.trim_start();
+    }
+    let (rest, dashed) = match line.strip_prefix("- ") {
+        Some(rest) => (rest.trim_start(), true),
+        None => (line, false),
+    };
+    for checkbox in ["[ ]", "[x]", "[X]", "[]"] {
+        if let Some(text) = rest.strip_prefix(checkbox).filter(|text| spaced(text)) {
+            return text.trim_start();
+        }
+    }
+    if dashed {
+        return rest;
+    }
+    match line.strip_prefix("* ").or_else(|| line.strip_prefix("+ ")) {
+        Some(rest) => rest.trim_start(),
+        None => line,
     }
 }
 
@@ -202,7 +240,7 @@ fn read_note(row: &Row<'_>) -> rusqlite::Result<Note> {
 
 impl TaskStore {
     pub fn create_note(&self, input: CreateNote) -> Result<Note, TaskError> {
-        validated(&input.markdown)?;
+        check_length(&input.markdown)?;
         let now = current_millis()?;
         Ok(self.connect()?.query_row(
             &format!(
@@ -222,7 +260,7 @@ impl TaskStore {
     /// Saves only over the revision the editor started from; a newer edit wins
     /// and the caller decides what to do with its text.
     pub fn update_note(&self, input: UpdateNote) -> Result<Note, TaskError> {
-        validated(&input.markdown)?;
+        check_length(&input.markdown)?;
         let now = current_millis()?;
         let conn = self.connect()?;
         let updated = conn

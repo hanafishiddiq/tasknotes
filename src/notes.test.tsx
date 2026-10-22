@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
 import App from "./App";
 import type { Note } from "./lib/note-api";
+import { QUIT_REQUESTED } from "./lib/quit";
 import { tauriEvents } from "./test/tauri-events";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -32,10 +33,12 @@ class NoteBackend {
   handle(command: string, args: Record<string, unknown>) {
     this.calls.push({ command, args });
     if (command === "list_notes") {
-      const items = [...this.notes.values()]
+      const all = [...this.notes.values()]
         .sort((a, b) => b.updatedAt - a.updatedAt)
         .map(({ id, title, revision, updatedAt }) => ({ id, title, revision, updatedAt }));
-      return { items, nextCursor: null };
+      const start = args.cursor ? Number(args.cursor) : 0;
+      const end = start + (args.limit as number);
+      return { items: all.slice(start, end), nextCursor: end < all.length ? String(end) : null };
     }
     if (command === "get_note") return this.notes.get(args.id as string) ?? null;
     if (command === "create_note") {
@@ -96,7 +99,7 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 /** The desktop shell asks the page before it quits (Cmd+Q, closing the window). */
-const quitRequested = () => tauriEvents.emit("tasknotes://quit-requested");
+const quitRequested = (ticket = 1) => tauriEvents.emit(QUIT_REQUESTED, ticket);
 
 async function openNotes() {
   const user = userEvent.setup();
@@ -312,7 +315,7 @@ describe("standalone Notes", () => {
     expect(backend.notes.get("note-1")?.markdown).toBe("My Trip plan");
     const commands = invokeMock.mock.calls.map(([command]) => command);
     expect(commands.lastIndexOf("update_note")).toBeLessThan(commands.indexOf("quit_ready"));
-    expect(invokeMock).toHaveBeenLastCalledWith("quit_ready", { proceed: true });
+    expect(invokeMock).toHaveBeenLastCalledWith("quit_ready", { ticket: 1, proceed: true });
   });
 
   it("stays open on quit when the Note cannot be saved, and shows why", async () => {
@@ -327,17 +330,45 @@ describe("standalone Notes", () => {
     expect(screen.queryByRole("textbox", { name: "Note text" })).not.toBeInTheDocument();
 
     await quitRequested();
-    expect(invokeMock).toHaveBeenLastCalledWith("quit_ready", { proceed: false });
+    expect(invokeMock).toHaveBeenLastCalledWith("quit_ready", { ticket: 1, proceed: false });
     expect(await screen.findByRole("textbox", { name: "Note text" })).toHaveTextContent("My Trip plan");
     expect(screen.getByRole("alert")).toHaveTextContent("This Note was changed somewhere else");
     expect(backend.notes.get("note-1")?.markdown).toBe("Ferry plan");
   });
 
-  it("quits right away when no Note has unsaved text", async () => {
+  it("quits right away when no Note has unsaved text, answering the request it was asked", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "All notes" });
-    await quitRequested();
-    expect(invokeMock).toHaveBeenLastCalledWith("quit_ready", { proceed: true });
+    await quitRequested(7);
+    expect(invokeMock).toHaveBeenLastCalledWith("quit_ready", { ticket: 7, proceed: true });
+  });
+
+  it("does not save a Note that was only clicked into", async () => {
+    // Not in canonical spelling, so any save would rewrite it.
+    backend.seed("_Trip_ plan\n\n- [X] Tickets", "Trip plan");
+    const user = await openNotes();
+    const editor = await screen.findByRole("textbox", { name: "Note text" });
+    await waitFor(() => expect(editor).toHaveTextContent("Trip plan"));
+    await user.click(editor);
+    await user.keyboard("{ArrowDown}{ArrowRight}");
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    await user.click(screen.getByRole("button", { name: "New note" }));
+    expect(backend.commands("update_note")).toHaveLength(0);
+    expect(backend.notes.get("note-1")?.revision).toBe(1);
+  });
+
+  it("loads older Notes beyond the first page so every Note can be reopened", async () => {
+    for (let n = 1; n <= 51; n += 1) backend.seed(`Note ${n}`, `Note ${n}`);
+    const user = await openNotes();
+    const list = await screen.findByRole("list", { name: "Notes" });
+    await waitFor(() => expect(within(list).getAllByRole("button")).toHaveLength(50));
+    expect(within(list).queryByRole("button", { name: /^Note 1(?!\d)/ })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Load more Notes" }));
+    await waitFor(() => expect(within(list).getAllByRole("button")).toHaveLength(51));
+    expect(screen.queryByRole("button", { name: "Load more Notes" })).not.toBeInTheDocument();
+    await user.click(within(list).getByRole("button", { name: /^Note 1(?!\d)/ }));
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Note text" })).toHaveTextContent("Note 1"));
   });
 
   it("marks All notes, not a Task view, as the current place in the sidebar", async () => {

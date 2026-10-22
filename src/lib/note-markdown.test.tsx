@@ -21,19 +21,26 @@ const CANONICAL: Record<string, string> = {
   // Text that only looks like Markdown keeps its escape, so it stays text.
   escapedHeading: "\\# Not a heading",
   escapedBullets: "\\- Not a bullet\n\n\\+ Not either",
-  escapedOrdered: "1\\. Not a list\n\n2\\) Not either",
+  escapedOrdered: "1\\. Not a list",
   escapedQuote: "\\> Not a quote",
-  escapedRule: "\\---",
   escapedCheckbox: "\\[ \\] Not a task",
   escapedCheckboxInBullet: "- \\[ \\] Literal brackets",
   escapedLink: "\\[draft\\](later) is not a link",
   escapedAfterLineBreak: "First line\n\\# second line",
   escapedIndented: "   \\- indented",
-  escapedInBullet: "- \\- inner",
-  escapedInQuote: "> \\# inner",
-  // ...but only where it would otherwise read as Markdown.
-  plainLineStarts: "#tag\n\n-5 degrees\n\n1.5 litres",
-  bracketsInInlineCode: "Type `- [ ]` for a task.",
+  // ...but only where this editor would read it as Markdown, so syntax it does
+  // not edit (rules, `1)` lists, reference links, raw HTML) stays as written.
+  plainLineStarts: "#tag\n\n-5 degrees\n\n1.5 litres\n\n>no space",
+  bracketsInInlineCode: "Type `- [ ]` for a task or `[text](url)` for a link.",
+  plainBrackets: "Fix the [WIP] items",
+  bracketsInLinkText: "[a [b] c](https://example.com)",
+  thematicBreak: "Above\n\n---\n\nBelow",
+  setextHeading: "Title\n---",
+  parenthesisList: "1) First\n2) Second",
+  referenceLink: "See [the ADR][adr].\n\n[adr]: https://example.com/adr",
+  htmlWithBrackets: "<div>\nx [y]\n</div>",
+  tableWithBrackets: "| a | [b] |\n|---|---|\n| 1 | 2 |",
+  markersInsideBlocks: "- - inner\n\n> # inner",
   mixed:
     "# Release notes\n\nSummary with **bold**.\n\n- [x] Schema v5\n- [ ] Editor\n\nSee [docs](https://example.com/docs).",
   // Not edited as rich text, but kept verbatim.
@@ -50,8 +57,9 @@ const NORMALISED: Record<string, [string, string]> = {
   twoSpaceNesting: ["- Parent\n  - Child", "- Parent\n    - Child"],
   trailingNewline: ["text\n", "text"],
   literalUnderscores: ["snake_case_name", "snake\\_case\\_name"],
-  literalBrackets: ["a [b] c and [a]: note", "a \\[b\\] c and \\[a\\]: note"],
-  bracketsInLinkText: ["[a [b] c](https://example.com)", "[a \\[b\\] c](https://example.com)"],
+  // The editor cannot tell an escaped rule or `1)` from the usual spelling, so
+  // it keeps the usual one, which is what Markdown from elsewhere nearly always uses.
+  escapedSyntaxTheEditorDoesNotRead: ["\\---\n\n2\\) step\n\n- \\- inner", "---\n\n2) step\n\n- - inner"],
 };
 
 describe("canonical Note Markdown round-trip", () => {

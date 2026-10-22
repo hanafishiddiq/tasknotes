@@ -12,6 +12,7 @@ import TaskRow from "./components/TaskRow";
 import TaskSidebar from "./components/TaskSidebar";
 import { useLocalCalendarDay } from "./lib/use-local-calendar-day";
 import { useTheme } from "./lib/use-theme";
+import { errorMessage } from "./lib/error-message";
 import { listenForQuit } from "./lib/quit";
 import "./App.css";
 
@@ -24,12 +25,6 @@ const SEARCH_DELAY_MS = 250;
 function sameFilters(a: TaskFilters, b: TaskFilters): boolean {
   return a.text.trim() === b.text.trim() && a.tag.trim() === b.tag.trim() &&
     a.status === b.status && a.priority === b.priority;
-}
-
-function errorMessage(error: unknown): string {
-  if (typeof error === "string") return error;
-  if (error instanceof Error) return error.message;
-  return "Something went wrong. Please try again.";
 }
 
 export default function App() {

@@ -10,20 +10,38 @@
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 
+use tasknotes_core::tasks::BUSY_TIMEOUT;
 use tauri::menu::{Menu, MenuEvent, MenuItem, MenuItemKind};
 use tauri::{AppHandle, Emitter, Manager, Runtime, State, Window, WindowEvent};
 
 const QUIT_MENU_ID: &str = "tasknotes-quit";
 const QUIT_REQUESTED: &str = "tasknotes://quit-requested";
-/// Far longer than saving the largest Note takes, short enough that a hung
-/// page does not trap the person.
-const ANSWER_TIMEOUT: Duration = Duration::from_secs(5);
+/// Room for the last save to wait out another writer's lock and still answer,
+/// short enough that a hung page does not trap the person.
+const ANSWER_TIMEOUT: Duration = Duration::from_secs(15);
+const _: () = assert!(ANSWER_TIMEOUT.as_secs() > 2 * BUSY_TIMEOUT.as_secs());
 
+/// Numbered quit requests and the newest one the page has answered.
 #[derive(Default)]
 pub struct QuitState {
     asked: AtomicU64,
     answered: AtomicU64,
     exiting: AtomicBool,
+}
+
+impl QuitState {
+    fn ask(&self) -> u64 {
+        self.asked.fetch_add(1, Ordering::SeqCst) + 1
+    }
+
+    /// Answering a request also settles the older ones; they asked the same thing.
+    fn answer(&self, ticket: u64) {
+        self.answered.fetch_max(ticket, Ordering::SeqCst);
+    }
+
+    fn answered(&self, ticket: u64) -> bool {
+        self.answered.load(Ordering::SeqCst) >= ticket
+    }
 }
 
 /// The default menu, with its Quit item replaced by one that asks the page first.
@@ -67,18 +85,14 @@ pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
 }
 
 fn request<R: Runtime>(app: &AppHandle<R>) {
-    let ticket = app
-        .state::<QuitState>()
-        .asked
-        .fetch_add(1, Ordering::SeqCst)
-        + 1;
-    if app.emit(QUIT_REQUESTED, ()).is_err() {
+    let ticket = app.state::<QuitState>().ask();
+    if app.emit(QUIT_REQUESTED, ticket).is_err() {
         return exit(app);
     }
     let app = app.clone();
     std::thread::spawn(move || {
         std::thread::sleep(ANSWER_TIMEOUT);
-        if app.state::<QuitState>().answered.load(Ordering::SeqCst) < ticket {
+        if !app.state::<QuitState>().answered(ticket) {
             exit(&app);
         }
     });
@@ -93,11 +107,28 @@ fn exit<R: Runtime>(app: &AppHandle<R>) {
 
 /// The page's answer to a quit request: quit now, or stay open to show why not.
 #[tauri::command]
-pub fn quit_ready(app: AppHandle, state: State<'_, QuitState>, proceed: bool) {
-    state
-        .answered
-        .store(state.asked.load(Ordering::SeqCst), Ordering::SeqCst);
+pub fn quit_ready(app: AppHandle, state: State<'_, QuitState>, ticket: u64, proceed: bool) {
+    state.answer(ticket);
     if proceed {
         exit(&app);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::QuitState;
+
+    #[test]
+    fn an_answer_settles_only_the_requests_it_answers() {
+        let state = QuitState::default();
+        let first = state.ask();
+        let second = state.ask();
+        state.answer(first);
+        assert!(state.answered(first));
+        assert!(!state.answered(second));
+        state.answer(second);
+        // A late answer to an older request does not reopen a newer one.
+        state.answer(first);
+        assert!(state.answered(second));
     }
 }

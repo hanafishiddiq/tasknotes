@@ -50,8 +50,11 @@ export default function TaskSidebar({
     if (await onRenameList(list, renameDraft)) setRenaming(null);
   }
 
+  // While Notes are open, no Task view is the current place.
+  const isCurrent = (place: TaskView) => !notesActive && place.kind === view.kind &&
+    (place.kind !== "list" || (view.kind === "list" && view.listId === place.listId));
   // The page holds only the active view's Tasks, so only that folder gets a count.
-  const count = (active: boolean) => active && !notesActive && shownCount !== null && (
+  const count = (place: TaskView) => isCurrent(place) && shownCount !== null && (
     <span className="folder-count">{shownCount}{hasMoreTasks ? "+" : ""}</span>
   );
 
@@ -62,19 +65,19 @@ export default function TaskSidebar({
         <button type="button" disabled={busy}
           aria-label="All tasks"
           className="folder"
-          aria-current={!notesActive && view.kind === "all" ? "page" : undefined}
+          aria-current={isCurrent({ kind: "all" }) ? "page" : undefined}
           onClick={() => onNavigate({ kind: "all" })}>
           <ListChecks size={17} aria-hidden="true" />
           <span className="folder-name">All tasks</span>
-          {count(view.kind === "all")}
+          {count({ kind: "all" })}
         </button>
         <button type="button" disabled={busy}
           aria-label="Inbox"
           className="folder"
-          aria-current={!notesActive && view.kind === "inbox" ? "page" : undefined}
+          aria-current={isCurrent({ kind: "inbox" }) ? "page" : undefined}
           onClick={() => onNavigate({ kind: "inbox" })}>
           <Inbox size={17} aria-hidden="true" /><span className="folder-name">Inbox</span>
-          {count(view.kind === "inbox")}
+          {count({ kind: "inbox" })}
         </button>
       </nav>
 
@@ -100,11 +103,11 @@ export default function TaskSidebar({
               <>
                 <button type="button" disabled={busy}
                   aria-label={list.name}
-                  aria-current={!notesActive && view.kind === "list" && view.listId === list.id ? "page" : undefined}
+                  aria-current={isCurrent({ kind: "list", listId: list.id }) ? "page" : undefined}
                   className="folder"
                   onClick={() => onNavigate({ kind: "list", listId: list.id })}>
                   <Folder size={17} aria-hidden="true" /><span className="folder-name">{list.name}</span>
-                  {count(view.kind === "list" && view.listId === list.id)}
+                  {count({ kind: "list", listId: list.id })}
                 </button>
                 <span className="folder-actions">
                   <button type="button" className="folder-action" disabled={busy}

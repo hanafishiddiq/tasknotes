@@ -1,17 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { LoaderCircle, SquarePen } from "lucide-react";
+import { errorMessage } from "../lib/error-message";
 import { noteApi, type Note, type NoteSummary } from "../lib/note-api";
 import { saveBeforeQuit } from "../lib/quit";
 import NoteEditor, { type NoteEditorHandle } from "./NoteEditor";
 
 // Typing settles before an autosave reaches the core.
 export const NOTE_AUTOSAVE_MS = 600;
-
-function errorMessage(error: unknown): string {
-  if (typeof error === "string") return error;
-  if (error instanceof Error) return error.message;
-  return "Something went wrong. Please try again.";
-}
 
 const EDITED = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
 
@@ -24,6 +19,10 @@ interface Saved {
 
 const DRAFT: Saved = { id: null, revision: 0, markdown: "" };
 
+function savedFrom(note: Note): Saved {
+  return { id: note.id, revision: note.revision, markdown: note.markdown };
+}
+
 function summary(note: Note): NoteSummary {
   return { id: note.id, title: note.title, revision: note.revision, updatedAt: note.updatedAt };
 }
@@ -31,6 +30,9 @@ function summary(note: Note): NoteSummary {
 /** The Notes list beside one open Note, as in Apple Notes. */
 export default function NotesWorkspace({ hidden }: { hidden: boolean }) {
   const [notes, setNotes] = useState<NoteSummary[]>([]);
+  // Where the next page of older Notes starts; null once every Note is listed.
+  const [moreCursor, setMoreCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   // The editor remounts only when another Note or a new draft is opened,
   // never when a draft becomes a stored Note, so typing is not interrupted.
@@ -45,7 +47,8 @@ export default function NotesWorkspace({ hidden }: { hidden: boolean }) {
   const dirty = useRef(false);
   const timer = useRef<number | undefined>(undefined);
   const inFlight = useRef<Promise<boolean> | null>(null);
-  const chosen = useRef(false);
+  // Set once the person opens a Note or a draft, so the first load does not replace it.
+  const pickedByPerson = useRef(false);
 
   function show(next: Saved) {
     saved.current = next;
@@ -60,9 +63,10 @@ export default function NotesWorkspace({ hidden }: { hidden: boolean }) {
       .then(async (page) => {
         if (!active) return;
         setNotes(page.items);
+        setMoreCursor(page.nextCursor);
         const latest = page.items[0] ? await noteApi.get(page.items[0].id) : null;
         // The person may already have picked a Note or started a new one.
-        if (!active || chosen.current) return;
+        if (!active || pickedByPerson.current) return;
         show(latest ?? DRAFT);
       })
       .catch((reason) => { if (active) setError(errorMessage(reason)); });
@@ -98,7 +102,7 @@ export default function NotesWorkspace({ hidden }: { hidden: boolean }) {
         const note = base.id === null
           ? await noteApi.create(markdown)
           : await noteApi.update(base.id, markdown, base.revision);
-        saved.current = { id: note.id, revision: note.revision, markdown: note.markdown };
+        saved.current = savedFrom(note);
         setOpenId(note.id);
         setNotes((current) => [summary(note), ...current.filter((item) => item.id !== note.id)]);
         setError(null);
@@ -127,7 +131,7 @@ export default function NotesWorkspace({ hidden }: { hidden: boolean }) {
   }
 
   async function openNote(id: string) {
-    chosen.current = true;
+    pickedByPerson.current = true;
     if (id === saved.current.id || !(await flush())) return;
     try {
       const note = await noteApi.get(id);
@@ -135,9 +139,24 @@ export default function NotesWorkspace({ hidden }: { hidden: boolean }) {
         setError("This Note could not be found.");
         return;
       }
-      show({ id: note.id, revision: note.revision, markdown: note.markdown });
+      show(savedFrom(note));
     } catch (reason) {
       setError(errorMessage(reason));
+    }
+  }
+
+  async function loadMore() {
+    if (moreCursor === null) return;
+    setLoadingMore(true);
+    try {
+      const page = await noteApi.list(moreCursor);
+      // Keyset pages: a Note saved meanwhile is newer than the cursor, so it cannot repeat.
+      setNotes((current) => [...current, ...page.items]);
+      setMoreCursor(page.nextCursor);
+    } catch (reason) {
+      setError("Couldn't load more Notes: " + errorMessage(reason));
+    } finally {
+      setLoadingMore(false);
     }
   }
 
@@ -154,7 +173,7 @@ export default function NotesWorkspace({ hidden }: { hidden: boolean }) {
       conflicted.current = false;
       setConflict(false);
       setNotes((current) => current.map((item) => (item.id === note.id ? summary(note) : item)));
-      show({ id: note.id, revision: note.revision, markdown: note.markdown });
+      show(savedFrom(note));
     } catch (reason) {
       setError(errorMessage(reason));
     }
@@ -167,7 +186,7 @@ export default function NotesWorkspace({ hidden }: { hidden: boolean }) {
     setSaving(true);
     try {
       const note = await noteApi.create(markdown);
-      saved.current = { id: note.id, revision: note.revision, markdown: note.markdown };
+      saved.current = savedFrom(note);
       conflicted.current = false;
       setConflict(false);
       setOpenId(note.id);
@@ -183,7 +202,7 @@ export default function NotesWorkspace({ hidden }: { hidden: boolean }) {
   }
 
   async function newNote() {
-    chosen.current = true;
+    pickedByPerson.current = true;
     if (await flush()) show(DRAFT);
   }
 
@@ -208,6 +227,11 @@ export default function NotesWorkspace({ hidden }: { hidden: boolean }) {
             </li>
           ))}
         </ul>
+        {moreCursor !== null && (
+          <button type="button" className="note-list-more" disabled={loadingMore} onClick={() => void loadMore()}>
+            {loadingMore ? "Loading..." : "Load more Notes"}
+          </button>
+        )}
       </section>
       <section className="note-editor-pane" aria-label="Note editor">
         <div className="note-save-state" role="status">

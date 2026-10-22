@@ -7,7 +7,7 @@ import {
   type LexicalNode,
   type TextNode,
 } from "lexical";
-import { $isQuoteNode, HeadingNode, QuoteNode } from "@lexical/rich-text";
+import { HeadingNode, QuoteNode } from "@lexical/rich-text";
 import { $isListItemNode, ListItemNode, ListNode } from "@lexical/list";
 import { LinkNode } from "@lexical/link";
 import { CodeNode } from "@lexical/code";
@@ -39,22 +39,24 @@ const NOTE_LINK: TextMatchTransformer = {
   importRegExp: new RegExp(String.raw`(?<=(?:^|[^\\])(?:\\\\)*)` + LINK.importRegExp!.source),
 };
 
-/** Markers that start a heading, quote, list or rule at the start of a line. */
-const LINE_START = /^(\s*)(#(?=#{0,5}(?:\s|$))|>|[-+](?=\s|$)|-(?=[ \t]*-[ \t]*-[- \t]*$))/;
-const ORDERED_START = /^(\s*\d{1,9})([.)])(?=\s|$)/;
+/** Markers this editor reads as a heading, quote or list at the start of a line. */
+const BLOCK_MARKER = /^(\s*)(#(?=#{0,5}\s)|>(?=\s)|[-+](?=\s))/;
+const ORDERED_MARKER = /^(\s*\d{1,9})(\.)(?=\s)/;
+/** A checkbox at the start of a paragraph or list item. */
+const CHECKBOX = /^(\s*)\[([ xX]?)\](?=\s)/;
 
-function startsLine(node: TextNode): boolean {
+/** Where a block marker in this text would be read back as one. */
+function opensParagraphLine(node: TextNode): boolean {
   const before = node.getPreviousSibling();
-  if (before) return $isLineBreakNode(before);
-  const parent = node.getParent();
-  return $isParagraphNode(parent) || $isQuoteNode(parent) || $isListItemNode(parent);
+  return before ? $isLineBreakNode(before) : $isParagraphNode(node.getParent());
 }
 
 /**
  * Lexical saves only the escapes for `*`, `_`, backticks, `~` and `\`, so
- * literal text such as `# not a heading` or `[ ] not a task` would come back
- * as formatting on the next open. Brackets and line-start markers in plain
- * text keep a backslash too, so text stays text.
+ * literal text such as `# not a heading`, `[ ] not a task` or `[a](b)` would
+ * come back as formatting on the next open. Plain text keeps a backslash
+ * exactly where this editor would otherwise read Markdown; syntax it does not
+ * edit, such as rules or `1)` lists, stays as written for other Markdown tools.
  */
 const LITERAL_TEXT: TextMatchTransformer = {
   type: "text-match",
@@ -62,9 +64,14 @@ const LITERAL_TEXT: TextMatchTransformer = {
   regExp: /$^/,
   export: (node, _exportChildren, exportFormat) => {
     if (!$isTextNode(node) || node.hasFormat("code")) return null;
-    const text = exportFormat(node, node.getTextContent()).replace(/[[\]]/g, "\\$&");
-    if (!startsLine(node)) return text;
-    return text.replace(LINE_START, "$1\\$2").replace(ORDERED_START, "$1\\$2");
+    let text = exportFormat(node, node.getTextContent());
+    if (text.includes("](")) text = text.replace(/[[\]]/g, "\\$&");
+    const paragraphLine = opensParagraphLine(node);
+    if (paragraphLine || (!node.getPreviousSibling() && $isListItemNode(node.getParent()))) {
+      text = text.replace(CHECKBOX, "$1\\[$2\\]");
+    }
+    if (paragraphLine) text = text.replace(BLOCK_MARKER, "$1\\$2").replace(ORDERED_MARKER, "$1\\$2");
+    return text;
   },
 };
 

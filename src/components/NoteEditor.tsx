@@ -22,7 +22,7 @@ export interface NoteEditorHandle {
 
 interface NoteEditorProps {
   initialMarkdown: string;
-  /** Called after every content change; export stays lazy to keep typing light. */
+  /** Called after each change to the text, not to the cursor; export stays lazy to keep typing light. */
   onEdit: () => void;
   editorRef: Ref<NoteEditorHandle>;
 }
@@ -136,7 +136,7 @@ export default function NoteEditor({ initialMarkdown, onEdit, editorRef }: NoteE
       <LinkPlugin />
       <MarkdownShortcutPlugin transformers={NOTE_TRANSFORMERS} />
       <ChecklistShortcutPlugin />
-      <OnChangePlugin onChange={() => onEdit()} />
+      <OnChangePlugin ignoreSelectionChange onChange={() => onEdit()} />
       <MarkdownHandle editorRef={editorRef} />
     </LexicalComposer>
   );
