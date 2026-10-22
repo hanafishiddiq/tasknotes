@@ -287,4 +287,27 @@ describe("standalone Notes", () => {
     await eventually(() => expect(backend.notes.get("note-2")?.markdown).toBe("- Milk\n\n- [x] Eggs"));
     expect(backend.notes.get("note-1")?.markdown).toBe("- \\[ \\] Literal brackets");
   });
+
+  it("keeps text that only looks like Markdown as text after an edit", async () => {
+    const markdown = [
+      "Notes",
+      "\\# Not a heading",
+      "1\\. Not a list",
+      "- \\[ \\] Literal brackets",
+      "\\[draft\\](later) is not a link",
+    ].join("\n\n");
+    backend.seed(markdown, "Notes");
+    const user = await openNotes();
+    const editor = await screen.findByRole("textbox", { name: "Note text" });
+    await waitFor(() => expect(editor).toHaveTextContent("# Not a heading"));
+    expect(within(editor).queryByRole("heading")).not.toBeInTheDocument();
+    expect(within(editor).queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(within(editor).queryByRole("link")).not.toBeInTheDocument();
+    expect(editor.querySelector("ol")).toBeNull();
+
+    await user.click(editor);
+    await user.keyboard("X");
+    await eventually(() => expect(backend.notes.get("note-1")?.markdown)
+      .toBe(markdown.replace("Notes", "XNotes")));
+  });
 });

@@ -73,7 +73,7 @@ Checks at the slice 2 commit: 78 Vitest tests (stable over repeated runs), typec
 
 The circle click needs a real pointer event: Cua's background pixel click became an AX press at the item's centre and its foreground click did not reach the page, while `app_click` (raw input) toggled it.
 
-**Open finding for the owner — escaped literals lose their escape on save.** Lexical reads every CommonMark backslash escape but writes back only `*`, `_`, `` ` ``, `~` and `\`. Text that only looks like Markdown is saved without its escape and becomes formatting on the next open (probe through `roundTripNoteMarkdown`, two saves each):
+**Finding (fixed below) — escaped literals lost their escape on save.** Lexical reads every CommonMark backslash escape but writes back only `*`, `_`, `` ` ``, `~` and `\`. Text that only looks like Markdown is saved without its escape and becomes formatting on the next open (probe through `roundTripNoteMarkdown`, two saves each):
 
 | Stored | After one edit | Next open shows |
 | --- | --- | --- |
@@ -82,6 +82,8 @@ The circle click needs a real pointer event: Cua's background pixel click became
 | `\[ \] Not a task`, `- \[ \] Literal` | `[ ] …`, `- [ ] …` | a checkbox |
 | `\[draft\](later) notes` | `\\[draft\\](later) notes` | a backslash and a link |
 
-The editor never writes these escapes itself, so today this needs Markdown from elsewhere (CLI/MCP writes, later import) or literal text the shortcuts left alone (for example after undoing one; pasted text not yet checked). Awaiting the owner's choice before changing the canonical spelling.
+The editor never writes these escapes itself, so today this needs Markdown from elsewhere (CLI/MCP writes, later import) or literal text the shortcuts left alone (for example after undoing one; pasted text not yet checked). Owner decision 2026-10-22: fix it, so text that only looks like Markdown stays text after saving.
+
+**Fix — literal text keeps its escapes:** on save, plain text (not code) also escapes `[` and `]`, and a marker at the start of a line in a paragraph, list item or quote (`#`, `>`, `-`, `+`, `1.`, `1)`, a `---` rule), including after a soft line break and after leading spaces; `#tag`, `-5 degrees` and `1.5 litres` stay as typed. On open, an escaped `\[` no longer starts a link. ADR-0003 addendum updated. 16 new round-trip cases (12 RED before the fix, 2 normalised once, 2 guards against needless escapes) and 1 App test (open a Note of literal text: no heading, list, checkbox or link; one typed character saves the rest byte-for-byte; RED before the fix because `\[draft\](later)` opened as a link). 12 mutation checks each make a test fail. Native: the editor loads in WKWebView with the new link pattern; a Note seeded with the five literal lines in the isolated QA database showed them as text, and one typed character (through Cua, after background `app_type` did not reach the WebView) saved revision 2 with every escape unchanged. Checks: 115 Vitest tests, typecheck, build, 58 Rust core tests, Clippy, fmt.
 
 Checks at the slice 3 commit: 98 Vitest tests, typecheck, build, 58 Rust core tests, core and Tauri Clippy `-D warnings`, fmt. The owner's database was not opened (mtime still 2026-10-13).
