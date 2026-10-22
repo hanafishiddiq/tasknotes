@@ -40,6 +40,8 @@ export default function App() {
   const [filters, setFilters] = useState<TaskFilters>(NO_FILTERS);
   const [searchDraft, setSearchDraft] = useState("");
   const [tagDraft, setTagDraft] = useState("");
+  // A Task just created outside the active search or filters.
+  const [createdHidden, setCreatedHidden] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [currentPageCursor, setCurrentPageCursor] = useState<string | null>(null);
   const [previousPageCursors, setPreviousPageCursors] = useState<(string | null)[]>([]);
@@ -121,6 +123,7 @@ export default function App() {
     setNextCursor(null);
     resetTaskPages();
     setExpandedId(null);
+    setCreatedHidden(false);
     setLoading(true);
     setLoadError(false);
     setError(null);
@@ -251,6 +254,9 @@ export default function App() {
         const page = await taskApi.list(null, latestSort, latestView, latestFilters);
         if (generation !== requestGeneration.current) return;
         setLoading(false);
+        // Claim "hidden" only when the whole filtered result is on this page.
+        setCreatedHidden(!sameFilters(latestFilters, NO_FILTERS) && !page.nextCursor &&
+          !page.items.some((item) => item.id === created.id));
         setTasks(page.items);
         setCurrentPageCursor(null);
         setPreviousPageCursors([]);
@@ -379,6 +385,7 @@ export default function App() {
   /** Start a fresh first page for new search text or filters. */
   function applyFilters(next: TaskFilters) {
     if (sameFilters(next, currentQuery.current.filters)) return;
+    setCreatedHidden(false);
     currentQuery.current = { ...currentQuery.current, filters: next };
     requestGeneration.current += 1;
     setError(null);
@@ -391,6 +398,7 @@ export default function App() {
   }
 
   function clearFilters() {
+    setCreatedHidden(false);
     setSearchDraft("");
     setTagDraft("");
     applyFilters(NO_FILTERS);
@@ -580,6 +588,15 @@ export default function App() {
                 </div>
               )}
             </form>
+
+            {createdHidden && (
+              <div role="status" aria-label="Task hidden by filters" className="notice-banner">
+                <span>Task added, but hidden by the current search or filters</span>
+                <button className="button button-small" type="button" onClick={clearFilters}>
+                  Clear search and filters
+                </button>
+              </div>
+            )}
 
             {error && <div role="alert" className="error-banner">
               <span>{error}</span>

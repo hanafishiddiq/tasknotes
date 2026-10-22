@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
 import App from "./App";
@@ -50,6 +50,10 @@ beforeEach(() => {
     if (command === "list_tasks") {
       listCalls.push(args as ListArgs);
       return respond(args as ListArgs);
+    }
+    if (command === "create_task") {
+      const input = (args as { input: { title: string } }).input;
+      return task({ id: "created", title: input.title, createdAt: 200 });
     }
     throw new Error("Unexpected command: " + command);
   });
@@ -140,5 +144,74 @@ describe("Task search and filters", () => {
     await waitFor(() => expect(lastListCall()).toEqual({ limit: 50, cursor: null, priority: "high" }));
     await user.click(await screen.findByRole("button", { name: "Next page" }));
     await waitFor(() => expect(lastListCall()).toEqual({ limit: 50, cursor: "page-2", priority: "high" }));
+  });
+
+  it("keeps accepting typing after the first search results arrive", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("article", { name: "Quarterly budget" });
+    const search = screen.getByRole("searchbox", { name: "Search tasks" });
+    await user.type(search, "ren");
+    await waitFor(() => expect(lastListCall().text).toBe("ren"));
+    await screen.findByRole("article", { name: "Renew lease" });
+
+    await user.type(search, "ew");
+    expect(search).toHaveValue("renew");
+    expect(search).toHaveFocus();
+    await waitFor(() => expect(lastListCall().text).toBe("renew"));
+  });
+
+  it("says when a new Task is hidden by the active search or filters", async () => {
+    const user = userEvent.setup();
+    respond = (args) => ({ items: args.priority ? [lease] : [budget, lease], nextCursor: null });
+    render(<App />);
+    await screen.findByRole("article", { name: "Quarterly budget" });
+    await user.selectOptions(screen.getByRole("combobox", { name: "Filter by priority" }), "high");
+    await waitFor(() => expect(screen.queryByRole("article", { name: "Quarterly budget" })).not.toBeInTheDocument());
+
+    await user.type(screen.getByRole("textbox", { name: "Task title" }), "Buy oat milk{Enter}");
+    const notice = await screen.findByRole("status", { name: "Task hidden by filters" });
+    expect(notice).toHaveTextContent("Task added, but hidden by the current search or filters");
+
+    await user.click(within(notice).getByRole("button", { name: "Clear search and filters" }));
+    await waitFor(() => expect(lastListCall()).toEqual({ limit: 50, cursor: null }));
+    expect(screen.queryByRole("status", { name: "Task hidden by filters" })).not.toBeInTheDocument();
+  });
+
+  it("stays quiet when the new Task is visible or no filter is active", async () => {
+    const user = userEvent.setup();
+    respond = () => ({ items: [task({ id: "created", title: "Buy oat milk" }), lease], nextCursor: null });
+    render(<App />);
+    await screen.findByRole("article", { name: "Renew lease" });
+    await user.selectOptions(screen.getByRole("combobox", { name: "Filter by status" }), "ready");
+    await user.type(screen.getByRole("textbox", { name: "Task title" }), "Buy oat milk{Enter}");
+    expect(await screen.findByRole("article", { name: "Buy oat milk" })).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "Task hidden by filters" })).not.toBeInTheDocument();
+  });
+
+  it("drops the hidden-Task notice once the filters change", async () => {
+    const user = userEvent.setup();
+    respond = (args) => ({ items: args.priority ? [lease] : [budget, lease], nextCursor: null });
+    render(<App />);
+    await screen.findByRole("article", { name: "Quarterly budget" });
+    await user.selectOptions(screen.getByRole("combobox", { name: "Filter by priority" }), "high");
+    await user.type(screen.getByRole("textbox", { name: "Task title" }), "Buy oat milk{Enter}");
+    await screen.findByRole("status", { name: "Task hidden by filters" });
+
+    await user.selectOptions(screen.getByRole("combobox", { name: "Filter by priority" }), "low");
+    await waitFor(() => expect(screen.queryByRole("status", { name: "Task hidden by filters" })).not.toBeInTheDocument());
+  });
+
+  it("does not claim a new Task is hidden while more filtered pages exist", async () => {
+    const user = userEvent.setup();
+    respond = (args) => args.priority
+      ? { items: [lease], nextCursor: "more" }
+      : { items: [budget, lease], nextCursor: null };
+    render(<App />);
+    await screen.findByRole("article", { name: "Quarterly budget" });
+    await user.selectOptions(screen.getByRole("combobox", { name: "Filter by priority" }), "high");
+    await user.type(screen.getByRole("textbox", { name: "Task title" }), "Buy oat milk{Enter}");
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Task title" })).toHaveValue(""));
+    expect(screen.queryByRole("status", { name: "Task hidden by filters" })).not.toBeInTheDocument();
   });
 });

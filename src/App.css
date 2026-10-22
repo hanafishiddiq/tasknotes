@@ -389,12 +389,16 @@ textarea:disabled {
   margin: -4px 0 14px;
   padding: 0 10px;
 }
-.filter-chip--active {
+/* Active = tinted fill and accent text; the yellow ring stays reserved for focus.
+   Two classes outrank .property select, which is declared later. */
+.property.filter-chip--active {
   color: var(--accent-text);
-  box-shadow: inset 0 0 0 1px var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, var(--field));
 }
-.filter-chip--active select {
+.property.filter-chip--active select,
+.property.filter-chip--active input {
   color: var(--accent-text);
+  font-weight: 600;
 }
 .filter-chip--tag input {
   width: 72px;
@@ -518,6 +522,17 @@ textarea:disabled {
   padding: 8px 10px;
   border-radius: 8px;
   color: var(--red);
+  background: var(--hover);
+}
+.notice-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: var(--text-2);
   background: var(--hover);
 }
 .loading-state {
