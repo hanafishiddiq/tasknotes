@@ -1,25 +1,36 @@
 use tasknotes_core::tasks::{
-    ChangeTask, CreateList, CreateTask, List, ListPage, MoveTask, ProgressHistoryPage,
-    RecordProgress, RenameList, SetListRemoved, SortMode, Task, TaskPage, TaskStore, TaskView,
-    UpdateTask, UpdateTaskDetails,
+    ChangeTask, CreateList, CreateTask, List, ListPage, MoveTask, Priority, ProgressHistoryPage,
+    RecordProgress, RenameList, SetListRemoved, SortMode, Task, TaskPage, TaskQuery, TaskStore,
+    TaskView, UpdateTask, UpdateTaskDetails, WorkStatus,
 };
 use tauri::{Manager, State};
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 fn list_tasks(
     store: State<'_, TaskStore>,
     limit: u32,
     cursor: Option<String>,
     sort: Option<SortMode>,
     view: Option<TaskView>,
+    text: Option<String>,
+    status: Option<WorkStatus>,
+    priority: Option<Priority>,
+    tag: Option<String>,
+    task_id: Option<String>,
 ) -> Result<TaskPage, String> {
+    let query = TaskQuery {
+        text: text.unwrap_or_default(),
+        status,
+        priority,
+        tag,
+        view: view.unwrap_or_default(),
+        sort: sort.unwrap_or_default(),
+        task_id,
+        ..TaskQuery::default()
+    };
     store
-        .list_tasks_in_view(
-            limit,
-            cursor.as_deref(),
-            sort.unwrap_or_default(),
-            view.unwrap_or(TaskView::All),
-        )
+        .query_tasks(&query, limit, cursor.as_deref())
         .map_err(|error| error.to_string())
 }
 

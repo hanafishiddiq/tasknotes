@@ -45,9 +45,10 @@ pub struct ListPage {
     pub next_cursor: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "listId", rename_all = "snake_case")]
 pub enum TaskView {
+    #[default]
     All,
     Inbox,
     List(String),

@@ -10,7 +10,8 @@ interface TaskSidebarProps {
   view: TaskView;
   lists: TaskList[];
   listError: string | null;
-  shownCount: number;
+  /** Tasks on the current page, or null when the count is not known. */
+  shownCount: number | null;
   hasMoreTasks: boolean;
   hasMoreLists: boolean;
   busy: boolean;
@@ -47,7 +48,7 @@ export default function TaskSidebar({
   }
 
   // The page holds only the active view's Tasks, so only that folder gets a count.
-  const count = (active: boolean) => active && (
+  const count = (active: boolean) => active && shownCount !== null && (
     <span className="folder-count">{shownCount}{hasMoreTasks ? "+" : ""}</span>
   );
 

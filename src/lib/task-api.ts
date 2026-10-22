@@ -97,8 +97,30 @@ export interface ProgressHistoryPage {
   nextCursor: number | null;
 }
 
+/** Search text and filters applied on top of the sidebar view. Empty means Any. */
+export interface TaskFilters {
+  text: string;
+  status: WorkStatus | "";
+  priority: Priority | "";
+  tag: string;
+}
+
+export const NO_FILTERS: TaskFilters = { text: "", status: "", priority: "", tag: "" };
+
 export const TASK_PAGE_SIZE = 50;
 export const HISTORY_PAGE_SIZE = 10;
+
+function queryArgs(view: TaskView, filters: TaskFilters) {
+  const text = filters.text.trim();
+  const tag = filters.tag.trim();
+  return {
+    ...(view.kind === "all" ? {} : { view }),
+    ...(text ? { text } : {}),
+    ...(filters.status ? { status: filters.status } : {}),
+    ...(filters.priority ? { priority: filters.priority } : {}),
+    ...(tag ? { tag } : {}),
+  };
+}
 
 // The desktop talks only to the Tauri command seam. Business rules live in Rust.
 export const taskApi = {
@@ -106,14 +128,27 @@ export const taskApi = {
     cursor: string | null = null,
     sort: SortMode = "priority",
     view: TaskView = { kind: "all" },
+    filters: TaskFilters = NO_FILTERS,
   ): Promise<TaskPage> {
-    // Preserve the Ticket 01–03 default Tauri command contract.
+    // Preserve the Ticket 01–03 default Tauri command contract: send only
+    // what differs from the defaults.
     return invoke("list_tasks", {
       limit: TASK_PAGE_SIZE,
       cursor,
       ...(sort === "priority" ? {} : { sort }),
-      ...(view.kind === "all" ? {} : { view }),
+      ...queryArgs(view, filters),
     });
+  },
+
+  /** Whether one Task passes the view, search and filters, as the core decides. */
+  async matches(taskId: string, view: TaskView, filters: TaskFilters): Promise<boolean> {
+    const page = await invoke<TaskPage>("list_tasks", {
+      limit: 1,
+      cursor: null,
+      taskId,
+      ...queryArgs(view, filters),
+    });
+    return page.items.length > 0;
   },
 
   create(input: TaskDraft, listId?: string): Promise<Task> {
