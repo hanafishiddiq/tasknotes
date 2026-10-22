@@ -9,6 +9,7 @@ use uuid::Uuid;
 pub use crate::organization::{
     CreateList, List, ListPage, MoveTask, RenameList, SetListRemoved, TaskView, UpdateTaskDetails,
 };
+pub use crate::search::{TaskQuery, TaskScope};
 
 /// One stable interface for desktop commands today and CLI/MCP adapters later.
 #[derive(Debug, Clone)]
@@ -94,7 +95,7 @@ impl WorkStatus {
         }
     }
 
-    fn rank(self) -> i64 {
+    pub(crate) fn rank(self) -> i64 {
         match self {
             Self::InProgress => 0,
             Self::Ready => 1,
@@ -102,7 +103,7 @@ impl WorkStatus {
         }
     }
 
-    fn as_sql(self) -> &'static str {
+    pub(crate) fn as_sql(self) -> &'static str {
         match self {
             Self::Ready => "ready",
             Self::InProgress => "in_progress",
@@ -133,7 +134,7 @@ impl Priority {
         }
     }
 
-    fn rank(self) -> i64 {
+    pub(crate) fn rank(self) -> i64 {
         match self {
             Self::VeryLow => 1,
             Self::Low => 2,
@@ -143,7 +144,7 @@ impl Priority {
         }
     }
 
-    fn as_sql(self) -> &'static str {
+    pub(crate) fn as_sql(self) -> &'static str {
         match self {
             Self::VeryLow => "very_low",
             Self::Low => "low",
@@ -197,7 +198,7 @@ pub enum SortMode {
 }
 
 impl SortMode {
-    fn as_cursor(self) -> &'static str {
+    pub(crate) fn as_cursor(self) -> &'static str {
         match self {
             Self::Priority => "priority",
             Self::Newest => "newest",
@@ -321,7 +322,7 @@ impl TaskStore {
         let mut connection = Connection::open(path)?;
         connection.busy_timeout(Duration::from_secs(5))?;
         let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        if version > 4 {
+        if version > 5 {
             return Err(TaskError::UnsupportedSchema(version));
         }
 
@@ -420,6 +421,11 @@ impl TaskStore {
                  CREATE INDEX task_tags_tag_name ON task_tags(tag_name, task_id);
                  PRAGMA user_version = 4;",
             )?;
+            migration.commit()?;
+        }
+        if version < 5 {
+            let migration = connection.transaction()?;
+            crate::search::migrate_v5(&migration)?;
             migration.commit()?;
         }
         Ok(Self {
@@ -795,154 +801,14 @@ impl TaskStore {
         sort: SortMode,
         view: TaskView,
     ) -> Result<TaskPage, TaskError> {
-        if !(1..=100).contains(&limit) {
-            return Err(TaskError::InvalidPageSize);
-        }
-
-        let scoped = !matches!(view, TaskView::All);
-        let scope_key = view.cursor_key();
-        let (after_status, after_priority, after_time, after_id) = match cursor {
-            None => (None, None, None, None),
-            Some(value) => {
-                let fields: Vec<_> = value.split('|').collect();
-                let offset = usize::from(scoped);
-                if fields.len() != 6 + offset
-                    || fields[0] != if scoped { "v3" } else { "v2" }
-                    || fields[1] != sort.as_cursor()
-                    || (scoped && fields[2] != scope_key)
-                {
-                    return Err(TaskError::InvalidCursor);
-                }
-                let status = fields[2 + offset]
-                    .parse::<i64>()
-                    .map_err(|_| TaskError::InvalidCursor)?;
-                let priority = fields[3 + offset]
-                    .parse::<i64>()
-                    .map_err(|_| TaskError::InvalidCursor)?;
-                let timestamp = fields[4 + offset]
-                    .parse::<i64>()
-                    .map_err(|_| TaskError::InvalidCursor)?;
-                if !(0..=2).contains(&status)
-                    || (sort == SortMode::Priority && !(1..=5).contains(&priority))
-                    || (sort == SortMode::Newest && priority != 0)
-                    || timestamp < 0
-                    || Uuid::parse_str(fields[5 + offset]).is_err()
-                {
-                    return Err(TaskError::InvalidCursor);
-                }
-                (
-                    Some(status),
-                    Some(priority),
-                    Some(timestamp),
-                    Some(fields[5 + offset].to_owned()),
-                )
-            }
-        };
-
-        const STATUS_RANK: &str =
-            "CASE status WHEN 'in_progress' THEN 0 WHEN 'ready' THEN 1 ELSE 2 END";
-        const PRIORITY_RANK: &str = "CASE priority WHEN 'very_high' THEN 5 WHEN 'high' THEN 4 WHEN 'medium' THEN 3 WHEN 'low' THEN 2 ELSE 1 END";
-        let priority_expr = if sort == SortMode::Priority {
-            PRIORITY_RANK
-        } else {
-            "0"
-        };
-
-        let (cursor_filter, secondary_order) = match sort {
-            SortMode::Priority => (
-                "(?1 IS NULL
-                   OR status_rank > ?1
-                   OR (status_rank = ?1 AND priority_rank < ?2)
-                   OR (status_rank = ?1 AND priority_rank = ?2 AND created_at < ?3)
-                   OR (status_rank = ?1 AND priority_rank = ?2
-                       AND created_at = ?3 AND id < ?4))",
-                "priority_rank DESC, ",
-            ),
-            SortMode::Newest => (
-                "(?1 IS NULL
-                   OR status_rank > ?1
-                   OR (status_rank = ?1 AND created_at < ?3)
-                   OR (status_rank = ?1 AND created_at = ?3 AND id < ?4))",
-                "",
-            ),
-        };
-        // Do not add a constant priority_rank sort key in Newest mode: doing so
-        // forces SQLite to build a temporary B-tree instead of using the index.
-        let sql = format!(
-            "WITH ranked AS (
-                SELECT {COLUMNS}, {STATUS_RANK} AS status_rank,
-                    {priority_expr} AS priority_rank
-                FROM tasks
-                WHERE (tasks.list_id IS NULL OR EXISTS (
-                    SELECT 1 FROM lists WHERE lists.id=tasks.list_id AND lists.removed_at IS NULL
-                ))
-                AND (?6 = 'all' OR (?6 = 'inbox' AND tasks.list_id IS NULL)
-                    OR (?6 = 'list' AND tasks.list_id = ?7))
-             )
-             SELECT {COLUMNS} FROM ranked
-             WHERE {cursor_filter}
-             ORDER BY status_rank ASC, {secondary_order}created_at DESC, id DESC
-             LIMIT ?5"
-        );
-        let conn = self.connect()?;
-        if let TaskView::List(ref id) = view {
-            crate::organization::require_active_list(&conn, id)?;
-        }
-        let (scope_kind, list_id) = match &view {
-            TaskView::All => ("all", None),
-            TaskView::Inbox => ("inbox", None),
-            TaskView::List(id) => ("list", Some(id.as_str())),
-        };
-        let mut stmt = conn.prepare(&sql)?;
-        let mut rows = stmt.query(params![
-            after_status,
-            after_priority,
-            after_time,
-            after_id,
-            i64::from(limit) + 1,
-            scope_kind,
-            list_id,
-        ])?;
-        let mut items = Vec::with_capacity(limit as usize + 1);
-        while let Some(row) = rows.next()? {
-            items.push(read_task(row)?);
-        }
-        drop(rows);
-        drop(stmt);
-        crate::organization::hydrate_tags(&conn, &mut items)?;
-
-        let next_cursor = if items.len() > limit as usize {
-            items.pop();
-            items.last().map(|task| {
-                let priority = if sort == SortMode::Priority {
-                    task.priority.rank()
-                } else {
-                    0
-                };
-                if scoped {
-                    format!(
-                        "v3|{}|{}|{}|{}|{}|{}",
-                        sort.as_cursor(),
-                        scope_key,
-                        task.status.rank(),
-                        priority,
-                        task.created_at,
-                        task.id
-                    )
-                } else {
-                    format!(
-                        "v2|{}|{}|{}|{}|{}",
-                        sort.as_cursor(),
-                        task.status.rank(),
-                        priority,
-                        task.created_at,
-                        task.id
-                    )
-                }
-            })
-        } else {
-            None
-        };
-        Ok(TaskPage { items, next_cursor })
+        self.query_tasks(
+            &TaskQuery {
+                view,
+                sort,
+                ..TaskQuery::default()
+            },
+            limit,
+            cursor,
+        )
     }
 }
