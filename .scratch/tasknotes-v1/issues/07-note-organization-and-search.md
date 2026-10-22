@@ -1,6 +1,6 @@
 # 07: Note organization and searching
 
-**What to build:** Folders, pinned Notes, notes list/search, and global query coverage of Note content, with keyboard-ready navigation and reasonable page sizes. Verify Markdown content indexing and ordering.
+**What to build:** Folders that can be nested (folders inside folders), pinned Notes, notes list/search, and global query coverage of Note content, with keyboard-ready navigation and reasonable page sizes. Verify Markdown content indexing and ordering.
 
 **Blocked by:** 06 — Standalone Markdown Notes
 
@@ -11,6 +11,7 @@
 ## Acceptance criteria
 
 - [ ] Users can organize Notes into folders, pin/unpin Notes, and navigate a dedicated Notes workspace.
+- [ ] Folders can contain subfolders; a Note can live in any folder; the folder tree survives restart; moving a folder into itself or one of its own subfolders is refused.
 - [ ] Search finds Note titles and Markdown content; results reflect edits and behave correctly for empty Notes.
 - [ ] Global Search can surface authorized Notes as well as Tasks, without pulling all Note bodies into the initial viewport.
 - [ ] Pin and folder sorting is deterministic and persisted across restarts.
@@ -31,3 +32,16 @@
 - This is an implementation ticket, not proof that implementation has begun.
 
 ## Comments
+
+## Owner decision — nested Note Folders (2026-10-22)
+
+Han asked for folders inside folders and chose to build it here, with the folder feature, rather than as a later ticket. This applies to **Note Folders only**; Task Lists stay flat. Recorded in the [spec](../spec.md) (user story 29 and "Nested Note Folders") and `GLOSSARY.md`.
+
+Decided: a folder contains subfolders and Notes; the tree is independent of Task Lists; no folder may become its own ancestor; removing a folder is reversible.
+
+Open, to settle with the owner when this ticket starts:
+- Maximum nesting depth.
+- Whether opening a folder also lists Notes from its subfolders.
+- Name rules among sibling folders (unique or not, case handling).
+- How Removed and restore treat a folder's subfolders and Notes (Ticket 09).
+- How the sidebar shows the tree (expand/collapse, remembered state) within bounded rendering.

@@ -32,3 +32,5 @@
 - This is an implementation ticket, not proof that implementation has begun.
 
 ## Comments
+
+**2026-10-22:** Note Folders can be nested (owner decision, see Ticket 07). Define and test how removing and restoring a folder treats its subfolders and Notes. The List rule (children hidden without changing their own Removed disposition) is the natural default, to be confirmed with the owner.
