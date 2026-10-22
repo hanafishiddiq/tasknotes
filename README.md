@@ -2,7 +2,7 @@
 
 A local-first macOS desktop app for tasks and notes, with a machine-friendly interface for trusted AI tools.
 
-> **Project stage:** Tickets 01–03 are implemented on stacked feature branches and awaiting native GUI acceptance. The other 15 tickets have not started.
+> **Project stage (2026-10-13):** Tickets **01–03 are merged and implementation-complete**, following independent AI review and owner-authorized **source-only** merges; **04–18 remain unimplemented**. Native app release, live SQLite migrations, large-dataset performance and macOS release-quality verification are not yet approved.
 
 ## Agreed direction
 
@@ -50,7 +50,7 @@ For an isolated debug run against synthetic data, create a temporary directory a
 
 See [planning decisions](docs/planning/DECISIONS.md) and [domain terms](GLOSSARY.md).
 
-**Planning complete:** [Approved v1 specification](.scratch/tasknotes-v1/spec.md) · [18 implementation tickets](.scratch/tasknotes-v1/README.md) · [Architectural decisions](docs/adr/). Tickets 01, 02 and 03 were separately authorized. None of their Draft PRs has been merged to `main`.
+**Planning complete:** [Approved v1 specification](.scratch/tasknotes-v1/spec.md) · [18 implementation tickets](.scratch/tasknotes-v1/README.md) · [Architectural decisions](docs/adr/). Tickets 01, 02 and 03 were separately authorized and merged to `main` on 2026-10-13 in dependency order; see [integration evidence](docs/qa/tickets-01-03-postmerge-2026-10-13.md). Additional feature tickets require separate implementation authorization.
 
 ## Privacy
 
@@ -58,4 +58,4 @@ This repository is public, **but user tasks, notes, SQLite databases, backups, p
 
 ## Scope
 
-Tickets 01–03 supply a macOS desktop preview, persistent Task CRUD, status/priority sorting, Next Step, and append-only progress history. Tickets 04–18 remain unimplemented. The native WebView manual create/edit/restart acceptance criterion has not been verified; review the Draft PRs before merging.
+Tickets 01–03 now supply persistent Task CRUD, status/priority sorting, Next Step, and append-only progress history in `main`. Owner-operated native create/edit/restart and repeated synthetic WKWebView E2E passed; the manual OS sorting-picker interaction was not separately verified. Tickets 04–18 are future work. Ordinary Tasknotes is owner-reported smooth; [Issue19 QA-only lag pursuit](.scratch/tasknotes-v1/issues/19-native-interaction-lag.md) was stopped without claiming a root-cause fix.

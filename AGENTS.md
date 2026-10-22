@@ -1,6 +1,6 @@
 # Engineering instructions
 
-Tasknotes **completed planning** on 2026-10-11. The approved specification and 18 implementation tickets are under `.scratch/tasknotes-v1/`. Application implementation is underway in **stacked Draft PRs for Tickets 01–03**, each separately authorized. None is merged to `main`; their native GUI acceptance and dependency gates remain open. Do not mark any blocked ticket complete or merge downstream changes until their parent tickets have passed review. Any additional feature ticket still requires an explicit instruction.
+Tasknotes **completed planning** on 2026-10-11. The approved specification and 18 implementation tickets are under `.scratch/tasknotes-v1/`. **Tickets 01–03 were merged to `main` in dependency order on 2026-10-13 after independent AI Standards/Spec review and the owner's contextual source-only merge authorization; no app deployment/data migration was performed.** Their current outcome is recorded in `docs/qa/tickets-01-03-postmerge-2026-10-13.md`. Tickets 04 and 06 are the next potentially unblocked frontier; **implement each only on its own explicit instruction**. Always verify blocker `Implementation: completed`, review/QA evidence, and database rollback constraints before integration; never merge unrelated Issue19 experimental QA branches.
 
 ## Agent skills
 
