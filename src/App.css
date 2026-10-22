@@ -675,6 +675,10 @@ textarea:disabled {
   white-space: nowrap;
   color: var(--accent-text);
 }
+.tag-pill--more {
+  flex: none;
+  color: var(--text-3);
+}
 .task-card--expanded .task-row-meta,
 .task-card--expanded .task-row-meta > span {
   color: inherit;
@@ -783,6 +787,12 @@ textarea:disabled {
 .property--wide input {
   width: 100%;
   cursor: text;
+}
+.details-actions {
+  display: flex;
+  flex-basis: 100%;
+  justify-content: flex-end;
+  gap: 6px;
 }
 .progress-editor {
   margin-top: 18px;

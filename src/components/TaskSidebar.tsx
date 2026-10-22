@@ -46,6 +46,11 @@ export default function TaskSidebar({
     if (await onRenameList(list, renameDraft)) setRenaming(null);
   }
 
+  // The page holds only the active view's Tasks, so only that folder gets a count.
+  const count = (active: boolean) => active && (
+    <span className="folder-count">{shownCount}{hasMoreTasks ? "+" : ""}</span>
+  );
+
   return (
     <aside className="sidebar">
       <div className="sidebar-heading">Tasknotes</div>
@@ -57,13 +62,15 @@ export default function TaskSidebar({
           onClick={() => onNavigate({ kind: "all" })}>
           <ListChecks size={17} aria-hidden="true" />
           <span className="folder-name">All tasks</span>
-          <span className="folder-count">{shownCount}{hasMoreTasks ? "+" : ""}</span>
+          {count(view.kind === "all")}
         </button>
         <button type="button" disabled={busy}
+          aria-label="Inbox"
           className="folder"
           aria-current={view.kind === "inbox" ? "page" : undefined}
           onClick={() => onNavigate({ kind: "inbox" })}>
           <Inbox size={17} aria-hidden="true" /><span className="folder-name">Inbox</span>
+          {count(view.kind === "inbox")}
         </button>
       </nav>
 
@@ -88,10 +95,12 @@ export default function TaskSidebar({
             ) : (
               <>
                 <button type="button" disabled={busy}
+                  aria-label={list.name}
                   aria-current={view.kind === "list" && view.listId === list.id ? "page" : undefined}
                   className="folder"
                   onClick={() => onNavigate({ kind: "list", listId: list.id })}>
                   <Folder size={17} aria-hidden="true" /><span className="folder-name">{list.name}</span>
+                  {count(view.kind === "list" && view.listId === list.id)}
                 </button>
                 <span className="folder-actions">
                   <button type="button" className="folder-action" disabled={busy}

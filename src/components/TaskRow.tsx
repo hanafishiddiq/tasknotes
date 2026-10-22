@@ -68,6 +68,7 @@ export default function TaskRow({
   const [draftTags, setDraftTags] = useState((task.tags ?? []).join(", "));
   const [draftDueDate, setDraftDueDate] = useState(task.dueDate ?? "");
   const PriorityIcon = PRIORITY_VIEW[task.priority].icon;
+  const hiddenTags = (task.tags ?? []).slice(2);
   const titleField = useRef<HTMLTextAreaElement>(null);
   const due = deadlineStatus(task.dueDate, today, task.status);
   const hasUnsavedText =
@@ -163,7 +164,14 @@ export default function TaskRow({
     setDraftNote("");
   }
 
-  const listName = lists.find((list) => list.id === task.listId)?.name ?? "Inbox";
+  function discardDetailsDraft() {
+    setDraftTags((task.tags ?? []).join(", "));
+    setDraftDueDate(task.dueDate ?? "");
+  }
+
+  const listName = task.listId
+    ? lists.find((list) => list.id === task.listId)?.name ?? "List not loaded"
+    : "Inbox";
   const preview = task.nextStep
     ? `Next: ${task.nextStep}`
     : task.description || `Created ${dateFormatter.format(new Date(task.createdAt))}`;
@@ -210,6 +218,12 @@ export default function TaskRow({
           {(task.tags ?? []).slice(0, 2).map((tag) => (
             <span className="tag-pill" key={tag}>#{tag}</span>
           ))}
+          {hiddenTags.length > 0 && (
+            <span className="tag-pill tag-pill--more" role="note" title={hiddenTags.join(", ")}
+              aria-label={`${hiddenTags.length} more tags: ${hiddenTags.join(", ")}`}>
+              +{hiddenTags.length}
+            </span>
+          )}
         </div>
       </div>
 
@@ -350,9 +364,15 @@ export default function TaskRow({
                 onChange={(event) => setDraftTags(event.target.value)} />
             </label>
             {hasUnsavedDetails && (
-              <button type="button" className="button button-primary button-small"
-                disabled={!canChangeDetails}
-                onClick={() => void saveDetails()}>Save tags and deadline</button>
+              <div className="details-actions">
+                <button type="button" className="button button-small"
+                  disabled={saving} onClick={discardDetailsDraft}>
+                  Discard tag and deadline changes
+                </button>
+                <button type="button" className="button button-primary button-small"
+                  disabled={!canChangeDetails}
+                  onClick={() => void saveDetails()}>Save tags and deadline</button>
+              </div>
             )}
           </div>
 

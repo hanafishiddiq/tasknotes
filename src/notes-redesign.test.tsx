@@ -121,3 +121,85 @@ describe("Notes-style desktop shell", () => {
     expect(within(row).getByText("Warm white, E27")).toBeInTheDocument();
   });
 });
+
+describe("native QA findings (2026-10-22)", () => {
+  const home = {
+    id: "list-home", name: "Home Errands", revision: 1,
+    createdAt: 1, updatedAt: 1, removed: false,
+  };
+
+  function folderCount(button: HTMLElement) {
+    return button.querySelector(".folder-count")?.textContent ?? null;
+  }
+
+  it("shows the visible count beside the active view only", async () => {
+    const user = userEvent.setup();
+    const inboxTask = task({ id: "inbox-1", title: "Inbox task" });
+    const homeTasks = [
+      task({ id: "home-1", title: "Buy groceries", listId: home.id }),
+      task({ id: "home-2", title: "Call the dentist", listId: home.id }),
+    ];
+    invokeMock.mockImplementation(async (command, args) => {
+      if (command === "list_lists") return { items: [home], nextCursor: null };
+      if (command === "list_tasks") {
+        const view = (args as { view?: { kind: string } }).view;
+        if (view?.kind === "list") return { items: homeTasks, nextCursor: null };
+        if (view?.kind === "inbox") return { items: [inboxTask], nextCursor: null };
+        return { items: [inboxTask, ...homeTasks], nextCursor: "more" };
+      }
+      throw new Error("Unexpected command: " + command);
+    });
+    render(<App />);
+    await screen.findByRole("article", { name: "Inbox task" });
+    const allTasks = screen.getByRole("button", { name: "All tasks" });
+    const inbox = screen.getByRole("button", { name: "Inbox" });
+    const list = screen.getByRole("button", { name: "Home Errands" });
+    expect(folderCount(allTasks)).toBe("3+");
+    expect(folderCount(list)).toBeNull();
+
+    await user.click(list);
+    await screen.findByRole("article", { name: "Call the dentist" });
+    expect(folderCount(list)).toBe("2");
+    expect(folderCount(allTasks)).toBeNull();
+    expect(folderCount(inbox)).toBeNull();
+  });
+
+  it("shows +N for Tags beyond the two shown on a row", async () => {
+    saved = [task({ title: "Tagged task", tags: ["Café", "Urgent", "Work", "Home"] })];
+    render(<App />);
+    const row = await screen.findByRole("article", { name: "Tagged task" });
+    expect(within(row).getByText("#Café")).toBeInTheDocument();
+    expect(within(row).getByText("#Urgent")).toBeInTheDocument();
+    expect(within(row).queryByText("#Work")).not.toBeInTheDocument();
+    const more = within(row).getByText("+2");
+    expect(more).toHaveAccessibleName("2 more tags: Work, Home");
+  });
+
+  it("discards an unsaved Tags and Deadline draft, unlocking other fields", async () => {
+    const user = userEvent.setup();
+    saved = [task({ title: "Draft homepage copy", tags: ["Work"], dueDate: "2026-10-21" })];
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open Draft homepage copy" }));
+    const tags = screen.getByRole("textbox", { name: "Tags" });
+    await user.clear(tags);
+    await user.type(tags, "WORK");
+    expect(screen.getByRole("textbox", { name: "Progress note" })).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: "Discard tag and deadline changes" }));
+    expect(screen.getByRole("textbox", { name: "Tags" })).toHaveValue("Work");
+    expect(screen.getByLabelText("Deadline")).toHaveValue("2026-10-21");
+    expect(screen.queryByRole("button", { name: "Save tags and deadline" })).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Progress note" })).toBeEnabled();
+    expect(invokeMock).not.toHaveBeenCalledWith("update_task_details", expect.anything());
+  });
+
+  it("does not label a Task in an unloaded List as Inbox in its details", async () => {
+    const user = userEvent.setup();
+    saved = [task({ title: "Unloaded list task", listId: "list-unloaded" })];
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open Unloaded list task" }));
+    const details = screen.getByRole("region", { name: "Task details" });
+    expect(within(details).queryByText(/· Inbox$/)).not.toBeInTheDocument();
+    expect(within(details).getByText(/· List not loaded$/)).toBeInTheDocument();
+  });
+});
