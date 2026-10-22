@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** review — source and synthetic TDD tests implemented on a dedicated Ticket04 feature branch; native QA build, independent Standards/Spec review and merge/deployment approval remain separate gates.
+**Implementation:** completed — owner approved the merge on 2026-10-22: PR #16 (merge commit `5d76baf`) and the redesign UI in PR #17. Schema v4 is forward-only: before installing a build from `main` over the owner's real database, take a verified backup.
 
 ## Acceptance criteria
 
@@ -18,9 +18,9 @@
 
 ## Verification
 
-- [ ] Actual native GUI CRUD/quit/restart on Inbox, Lists, tags and deadlines still requires visible interaction acceptance. Rust referential-integrity, React/Tauri contract, synthetic native startup and clock-boundary tests have passed.
+- [x] Native GUI CRUD/quit/restart on Inbox, Lists, tags and deadlines passed T1–T9 on the redesign QA build with synthetic data (see "Native GUI acceptance on the redesign build — 2026-10-22" below).
 - [x] Frontend and Rust test suites pass, including v1/v2/v3 to v4 migration and locale-boundary controls; evidence [here](../../../docs/qa/ticket-04-acceptance-2026-10-13.md).
-- [ ] Complete **independent** Standards and Spec code-review and address proven findings before marking complete. Two independent reviewer attempts failed due to AGY credits exhausted (HTTP 429); implementing-assistant self-review is recorded separately in [Ticket04 review](../../../docs/reviews/ticket-04.md), but is NOT an independent approval.
+- [x] Independent Standards and Spec reviews: REQUEST CHANGES at `c8be24c` (2026-10-14), then two independent re-reviews on 2026-10-22 (`bbce8af`, `bbce8af..8f0280e`). Every proven finding was fixed with a RED→GREEN test. The last fixes (`fe50c2c` Unicode Tag fold and the redesign QA findings) were verified by tests and native QA, not by a further independent review.
 
 ## Delivery guardrails
 
@@ -75,3 +75,26 @@ An independent reviewer confirmed S-01, S-02 and SPEC-01 are fixed at `bbce8af`,
 Second re-review of the remediation (`bbce8af..8f0280e`) confirmed every fix fails without its change, then found that SQLite `NOCASE` folds only ASCII: non-ASCII Tags (`Ärger`/`ärger`) escaped the canonical rule and save/read order differed. Fixed by a Rust-folded, UNIQUE `tags.fold` key in the **unmerged** v4 schema plus a canonical-name join on reads (tests `non_ascii_tags_share_one_canonical_spelling_and_order`, `reads_show_the_canonical_spelling_for_older_task_tag_rows`, both RED→GREEN). Any synthetic QA database already created at v4 by an earlier branch build lacks this column and must be recreated; the owner's database was never migrated. The reviewer's unconfirmed note about Tasks in removed Lists does not apply: those Tasks are hidden from every view until restore (Ticket 09 owns the Removed view).
 
 Local checks after remediation: 41 React tests, typecheck, 35 Rust core tests, core and Tauri Clippy `-D warnings`, Rust fmt — all PASS (synthetic data only). **Remaining gates:** re-review of the remediation commits, native GUI click/type/restart acceptance, and owner merge approval (schema v4 is forward-only).
+
+
+## Native GUI acceptance on the redesign build — 2026-10-22
+
+The owner chose to accept Ticket 04 on the redesigned UI (PR #17, rebased onto the remediated PR #16; the pre-redesign UI is preserved as tag `archive/ui-legacy-ticket04`). Build: unsigned debug **Tasknotes Redesign QA.app** from `03b4c8f`, identifier `store.adamaja.tasknotes.redesignqa`, executable SHA-256 prefix `f784e79df7920dbe`, seeded with 59 synthetic Tasks / 2 Lists in its own app-data directory. The owner's database (`store.adamaja.tasknotes`) size and mtime were unchanged before and after.
+
+Driven by the assistant through macOS computer use (real clicks, typing and native pop-up menus in the WKWebView window), then cross-checked with a read-only SQLite query:
+
+| Case | Result |
+| --- | --- |
+| T1 initial render: dark theme, 50-row first page, High/Overdue/#Work pills | PASS |
+| T2 create in Inbox, move to List, appears once in All tasks | PASS (DB: List=Home Errands, revision 2) |
+| T3 unsaved Progress note and Tags drafts survive creating another Task | PASS |
+| T4 typed `work, café` resolves to canonical `Work`, `Café` | PASS |
+| T5 case-only Tag edit shows "Nothing to save…" | PASS |
+| T6 deadline Overdue → Due today → cleared | PASS |
+| T7 Priority change on page 2 stays on page 2 | PASS |
+| T8 List rename; remove hides its Tasks; restore returns them unchanged | PASS |
+| T9 quit and relaunch: Lists, Tasks, Tags, deadline, theme persist | PASS (DB integrity ok, 62 Tasks) |
+
+**Findings for follow-up (not blockers of the behaviors above):** the sidebar count beside "All tasks" shows the current view's visible count (also present in the archived UI); Task rows show at most two Tags without a "+N" hint; after a "Nothing to save" error the Tags/Deadline draft has no discard control.
+
+**Remediated the same day (owner-requested, TDD):** the count now sits beside the active view only; rows show a `+N` pill for hidden Tags; Tags/Deadline drafts have a "Discard tag and deadline changes" button; Task details say "List not loaded" instead of "Inbox" for an unloaded List. Four new RED→GREEN tests in `src/notes-redesign.test.tsx`; 50 React tests, typecheck and build pass. Rebuilt QA app checked visually (count beside Home, `+1` on a three-Tag row, discard restores saved Tags and unlocks fields; QA DB revision unchanged).

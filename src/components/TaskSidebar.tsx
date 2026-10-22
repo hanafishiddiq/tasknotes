@@ -1,9 +1,10 @@
 import { useState, type FormEvent } from "react";
 import {
-  CheckCircle2, Folder, Inbox, LockKeyhole, Pencil,
-  Plus, RotateCcw, Trash2,
+  Check, Folder, Inbox, ListChecks, Moon, Pencil,
+  Plus, RotateCcw, Sun, Trash2, X,
 } from "lucide-react";
 import type { TaskList, TaskView } from "../lib/task-api";
+import type { Theme } from "../lib/use-theme";
 
 interface TaskSidebarProps {
   view: TaskView;
@@ -13,6 +14,8 @@ interface TaskSidebarProps {
   hasMoreTasks: boolean;
   hasMoreLists: boolean;
   busy: boolean;
+  theme: Theme;
+  onToggleTheme: () => void;
   onNavigate: (view: TaskView) => void;
   onCreateList: (name: string) => Promise<boolean>;
   onRenameList: (list: TaskList, name: string) => Promise<boolean>;
@@ -23,7 +26,7 @@ interface TaskSidebarProps {
 
 export default function TaskSidebar({
   view, lists, listError, shownCount, hasMoreTasks, hasMoreLists, busy,
-  onNavigate, onCreateList, onRenameList, onRemoveList,
+  theme, onToggleTheme, onNavigate, onCreateList, onRenameList, onRemoveList,
   onRestoreList, onLoadMoreLists,
 }: TaskSidebarProps) {
   const [name, setName] = useState("");
@@ -43,104 +46,115 @@ export default function TaskSidebar({
     if (await onRenameList(list, renameDraft)) setRenaming(null);
   }
 
+  // The page holds only the active view's Tasks, so only that folder gets a count.
+  const count = (active: boolean) => active && (
+    <span className="folder-count">{shownCount}{hasMoreTasks ? "+" : ""}</span>
+  );
+
   return (
     <aside className="sidebar">
-      <div className="brand">
-        <div className="brand-mark"><CheckCircle2 size={22} strokeWidth={2.3} /></div>
-        <div><strong>tasknotes</strong><span>Make room for progress.</span></div>
-      </div>
-      <div className="sidebar-section-title">WORKSPACE</div>
-      <nav aria-label="Workspace" className="workspace-nav">
+      <div className="sidebar-heading">Tasknotes</div>
+      <nav aria-label="Workspace" className="sidebar-nav">
         <button type="button" disabled={busy}
           aria-label="All tasks"
-          className={`nav-item ${view.kind === "all" ? "nav-item--active" : ""}`}
+          className="folder"
           aria-current={view.kind === "all" ? "page" : undefined}
           onClick={() => onNavigate({ kind: "all" })}>
-          <CheckCircle2 size={18} strokeWidth={1.8} aria-hidden="true" />
-          <span>All tasks</span>
-          <span className="nav-count">{shownCount}{hasMoreTasks ? "+" : ""}</span>
+          <ListChecks size={17} aria-hidden="true" />
+          <span className="folder-name">All tasks</span>
+          {count(view.kind === "all")}
         </button>
         <button type="button" disabled={busy}
-          className={`nav-item ${view.kind === "inbox" ? "nav-item--active" : ""}`}
+          aria-label="Inbox"
+          className="folder"
           aria-current={view.kind === "inbox" ? "page" : undefined}
           onClick={() => onNavigate({ kind: "inbox" })}>
-          <Inbox size={18} aria-hidden="true" /><span>Inbox</span>
+          <Inbox size={17} aria-hidden="true" /><span className="folder-name">Inbox</span>
+          {count(view.kind === "inbox")}
         </button>
       </nav>
 
-      <div className="sidebar-section-title sidebar-list-title">LISTS</div>
-      {listError && <p className="sidebar-list-error" role="status">{listError}</p>}
-      <form className="sidebar-create-form" onSubmit={(event) => void create(event)}>
-        <input aria-label="New list name" placeholder="New list..." maxLength={100}
-          value={name} disabled={busy} onChange={(event) => setName(event.target.value)} />
-        <button type="submit" className="sidebar-icon-button" aria-label="Add list"
-          disabled={busy || !name.trim()}><Plus size={17} /></button>
-      </form>
-      <nav aria-label="Lists" className="lists-nav">
+      <div className="sidebar-heading">Lists</div>
+      {listError && <p className="sidebar-error" role="status">{listError}</p>}
+      <nav aria-label="Lists" className="sidebar-nav">
         {lists.filter((list) => !list.removed).map((list) => (
-          <div className="sidebar-list-row" key={list.id}>
+          <div className="folder-row" key={list.id}>
             {renaming === list.id ? (
-              <form className="sidebar-rename-form" onSubmit={(event) => void rename(event, list)}>
+              <form className="folder-form" onSubmit={(event) => void rename(event, list)}>
+                <Folder size={17} aria-hidden="true" />
                 <input aria-label="Rename list" value={renameDraft}
-                  maxLength={100} disabled={busy}
+                  maxLength={100} disabled={busy} autoFocus
                   onChange={(event) => setRenameDraft(event.target.value)} />
-                <button type="submit" className="sidebar-icon-button"
+                <button type="submit" className="folder-action"
                   aria-label="Save list name" disabled={busy || !renameDraft.trim()}>
-                  <CheckCircle2 size={15} />
+                  <Check size={14} />
                 </button>
-                <button type="button" className="sidebar-icon-button"
-                  aria-label="Cancel rename" onClick={() => setRenaming(null)}>×</button>
+                <button type="button" className="folder-action"
+                  aria-label="Cancel rename" onClick={() => setRenaming(null)}><X size={14} /></button>
               </form>
             ) : (
               <>
                 <button type="button" disabled={busy}
+                  aria-label={list.name}
                   aria-current={view.kind === "list" && view.listId === list.id ? "page" : undefined}
-                  className={`nav-item nav-list-name ${view.kind === "list" && view.listId === list.id ? "nav-item--active" : ""}`}
+                  className="folder"
                   onClick={() => onNavigate({ kind: "list", listId: list.id })}>
-                  <Folder size={16} aria-hidden="true" /><span>{list.name}</span>
+                  <Folder size={17} aria-hidden="true" /><span className="folder-name">{list.name}</span>
+                  {count(view.kind === "list" && view.listId === list.id)}
                 </button>
-                <button type="button" className="sidebar-icon-button" disabled={busy}
-                  aria-label={`Rename ${list.name}`}
-                  onClick={() => { setRenaming(list.id); setRenameDraft(list.name); }}>
-                  <Pencil size={14} />
-                </button>
-                <button type="button" className="sidebar-icon-button" disabled={busy}
-                  aria-label={`Remove ${list.name}`} onClick={() => void onRemoveList(list)}>
-                  <Trash2 size={14} />
-                </button>
+                <span className="folder-actions">
+                  <button type="button" className="folder-action" disabled={busy}
+                    aria-label={`Rename ${list.name}`}
+                    onClick={() => { setRenaming(list.id); setRenameDraft(list.name); }}>
+                    <Pencil size={13} />
+                  </button>
+                  <button type="button" className="folder-action" disabled={busy}
+                    aria-label={`Remove ${list.name}`} onClick={() => void onRemoveList(list)}>
+                    <Trash2 size={13} />
+                  </button>
+                </span>
               </>
             )}
           </div>
         ))}
         {hasMoreLists && (
-          <button className="sidebar-load-more" type="button" disabled={busy}
+          <button className="sidebar-link" type="button" disabled={busy}
             onClick={() => void onLoadMoreLists()}>Load more lists</button>
         )}
       </nav>
+      <form className="folder-form folder-form--new" onSubmit={(event) => void create(event)}>
+        <Plus size={16} aria-hidden="true" />
+        <input aria-label="New list name" placeholder="New List" maxLength={100}
+          value={name} disabled={busy} onChange={(event) => setName(event.target.value)} />
+        <button type="submit" className="folder-action" aria-label="Add list"
+          disabled={busy || !name.trim()}><Check size={14} /></button>
+      </form>
+
+      <div className="sidebar-spacer" />
       {lists.some((list) => list.removed) && (
-        <div className="removed-list-area">
-          <button type="button" className="sidebar-load-more"
+        <div className="removed-lists">
+          <button type="button" className="folder folder--quiet"
+            aria-expanded={removedVisible}
             onClick={() => setRemovedVisible((current) => !current)}>
-            {removedVisible ? "Hide removed lists" : "Show removed lists"}
+            <Trash2 size={16} aria-hidden="true" />
+            <span className="folder-name">{removedVisible ? "Hide removed lists" : "Show removed lists"}</span>
           </button>
           {removedVisible && lists.filter((list) => list.removed).map((list) => (
-            <div key={list.id} className="sidebar-list-row">
-              <span>{list.name}</span>
-              <button type="button" className="sidebar-icon-button" disabled={busy}
+            <div key={list.id} className="folder-row folder-row--removed">
+              <span className="folder-name">{list.name}</span>
+              <button type="button" className="folder-action folder-action--visible" disabled={busy}
                 aria-label={`Restore ${list.name}`} onClick={() => void onRestoreList(list)}>
-                <RotateCcw size={15} />
+                <RotateCcw size={13} />
               </button>
             </div>
           ))}
         </div>
       )}
-
-      <div className="sidebar-spacer" />
-      <div className="local-note">
-        <span className="local-note-icon"><LockKeyhole size={15} /></span>
-        <div><strong>Private by design</strong><span>Your tasks live on this Mac.</span></div>
-      </div>
-      <span className="sidebar-version">TASKNOTES · EARLY PREVIEW</span>
+      <button type="button" className="folder folder--quiet" onClick={onToggleTheme}
+        aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}>
+        {theme === "dark" ? <Sun size={16} aria-hidden="true" /> : <Moon size={16} aria-hidden="true" />}
+        <span className="folder-name">{theme === "dark" ? "Light appearance" : "Dark appearance"}</span>
+      </button>
     </aside>
   );
 }
