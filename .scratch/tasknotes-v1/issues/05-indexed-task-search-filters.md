@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** review — owner started Ticket 05 on 2026-10-22 after Tickets 01–04 merged. Branch `feat/ticket-05-indexed-search-filters`, Draft PR pending owner merge approval. Schema v5 is forward-only: before installing a build from `main` over the owner's real database, take a verified backup.
+**Implementation:** completed — owner approved merging PR #18 on 2026-10-22 after the independent review (APPROVE), fixes for Minor findings 1–3, native QA and green CI. Schema v5 is forward-only: before installing a build from `main` over the owner's real database, take a verified backup. Nits 5–7 stay open (see below).
 
 ## Acceptance criteria
 
