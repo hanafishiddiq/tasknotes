@@ -26,12 +26,12 @@ Owner instruction 2026-10-22: start Ticket 06 after Ticket 05 merged (PR #18).
 
 1. **Core Note store:** v5 → v6 migration (existing data intact, failed migration rolls back), create/get/update/list, revision conflict, title from the first line, size limit.
 2. **First Note end to end:** Tauri commands, Notes view with list and editor, lazy creation on the first character, autosave, reopen after reload.
-3. **Markdown fidelity:** each supported format is *recognised* by the editor (a checklist is a checkbox, not a bullet with "[ ]" text) and comes back byte-for-byte; unsupported syntax survives as text. The existing round-trip cases only prove nothing is lost: removing the checklist transformer still passes them (checked 2026-10-22).
+3. **Markdown fidelity:** each supported format is *recognised* by the editor (a checklist is a checkbox, not a bullet with "[ ]" text) and comes back byte-for-byte; unsupported syntax survives as text. The existing round-trip cases only prove nothing is lost: removing the checklist transformer still passes them (checked 2026-10-22). Native QA on slice 2 found the typing side of the same gap: typing `- [ ] Passport` makes a bullet whose text starts with "[ ] " (the `- ` shortcut fires first), it saves as `- [ ] Passport`, and on reopen the item becomes a real checkbox. Typing and reopening must agree.
 4. **Conflict:** stale revision → banner → "Load latest" / "Save mine as a new Note".
 5. **Recovery and acceptance:** rejected and interrupted writes keep the last saved version; native QA (typing, quit/reopen); independent review; ticket evidence.
 
 ## Risks
 
 - Schema v6 is forward-only like v4 and v5: no build from `main` may open the owner's database without a verified backup.
-- jsdom cannot type into Lexical like a real WKWebView; real typing is covered by native QA only.
+- jsdom types into Lexical only with two polyfills (`src/test/setup.ts`: `InputEvent.getTargetRanges`, `Range.getBoundingClientRect`); it still does not render CSS, so layout and real WKWebView typing are covered by native QA.
 - Very large Notes stress the editor before they stress SQLite; Ticket 17 measures 10,000 Notes.

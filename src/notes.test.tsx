@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
@@ -70,6 +70,10 @@ let backend: NoteBackend;
 
 // Autosave waits for a pause in typing, so saves need more than the default second.
 const eventually = (assertion: () => void) => waitFor(assertion, { timeout: 3000 });
+
+// The app loads the editor lazily; importing it once here keeps that one-time
+// module transform out of each test's wait for the Notes view.
+beforeAll(() => import("./components/NotesWorkspace"));
 
 beforeEach(() => {
   window.localStorage.clear();
@@ -204,5 +208,17 @@ describe("standalone Notes", () => {
     await user.type(editor, "!");
     await eventually(() => expect(backend.notes.get("note-1")?.markdown).toBe("Groceries and eggs!"));
     await eventually(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+  });
+
+  it("marks All notes, not a Task view, as the current place in the sidebar", async () => {
+    const user = await openNotes();
+    await screen.findByRole("textbox", { name: "Note text" });
+    expect(screen.getByRole("button", { name: "All notes" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("button", { name: "All tasks" })).not.toHaveAttribute("aria-current");
+
+    await user.click(screen.getByRole("button", { name: "All tasks" }));
+    expect(screen.getByRole("button", { name: "All tasks" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("button", { name: "All notes" })).not.toHaveAttribute("aria-current");
+    expect(screen.queryByRole("textbox", { name: "Note text" })).not.toBeInTheDocument();
   });
 });

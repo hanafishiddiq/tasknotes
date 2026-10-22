@@ -29,12 +29,13 @@ const THEME = {
   paragraph: "note-paragraph",
   heading: { h1: "note-h1", h2: "note-h2", h3: "note-h3" },
   text: { bold: "note-bold", italic: "note-italic" },
+  // Distinct from the Note list pane's classes: a shared name once hid the bullets.
   list: {
-    ul: "note-list",
-    listitem: "note-list-item",
+    ul: "note-ul",
+    listitem: "note-li",
     listitemChecked: "note-check note-check--done",
     listitemUnchecked: "note-check",
-    nested: { listitem: "note-list-nested" },
+    nested: { listitem: "note-li-nested" },
   },
   link: "note-link",
 };

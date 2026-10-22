@@ -1186,11 +1186,11 @@ textarea:disabled {
   color: var(--accent-text);
   text-decoration: underline;
 }
-.note-list {
+.note-ul {
   margin: 0 0 8px;
   padding-left: 22px;
 }
-.note-list-nested {
+.note-li-nested {
   list-style: none;
 }
 /* Checklist items draw their own circle; Lexical toggles on a click inside ::before. */
