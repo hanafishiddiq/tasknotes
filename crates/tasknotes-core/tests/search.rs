@@ -305,3 +305,28 @@ fn a_failed_v5_migration_rolls_back_and_keeps_the_v4_database_usable() {
         created.revision
     );
 }
+
+#[test]
+fn every_search_word_counts_and_too_many_words_are_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("long.db"));
+    let words: Vec<String> = (1..=16).map(|n| format!("word{n:02}")).collect();
+    task(&store, "All sixteen", &words.join(" "));
+    task(&store, "Missing the last", &words[..15].join(" "));
+
+    // The 16th word still narrows the result instead of being dropped.
+    assert_eq!(search(&store, &words.join(" ")), vec!["All sixteen"]);
+
+    let too_long = format!("{} word17", words.join(" "));
+    let error = store
+        .query_tasks(
+            &TaskQuery {
+                text: too_long,
+                ..TaskQuery::default()
+            },
+            50,
+            None,
+        )
+        .unwrap_err();
+    assert_eq!(error.to_string(), "Search can use at most 16 words");
+}

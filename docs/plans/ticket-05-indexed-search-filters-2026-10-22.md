@@ -19,7 +19,7 @@ Owner instruction 2026-10-22: start Ticket 05 after Tickets 01–04 were merged 
 Triggers rather than Rust-side writes so that every future writer (CLI, MCP) keeps the index consistent through the same SQLite file. Two tables keyed by rowid make every update O(log n); a single table keyed by an UNINDEXED task id would need full scans on update.
 
 **Query semantics (one core entry point):**
-- Text is tokenised in Rust into at most 8 word tokens, each quoted and prefix-matched (`"plan"*`). User input never reaches FTS syntax.
+- Text is tokenised in Rust into word tokens, each quoted and prefix-matched (`"plan"*`). User input never reaches FTS syntax. More than 16 words is refused with a clear error instead of silently dropping words (review finding 2); the desktop shows "Search couldn't run" with the message rather than the database-failure state or rows from the previous query.
 - A Task matches when **every** token appears somewhere in its fields **or** any of its Progress Entries.
 - Filters are combinable: work status, priority and tag (one value each, or Any). The List dimension is the existing sidebar scope (All / Inbox / a List) instead of a duplicate chip.
 - Ordering stays In Progress → Ready → Completed with the chosen secondary sort (priority or newest). No relevance sort: the spec fixes the group order under any sort.

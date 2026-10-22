@@ -45,6 +45,8 @@ pub enum TaskError {
     InvalidPageSize,
     #[error("Invalid task page cursor")]
     InvalidCursor,
+    #[error("Search can use at most 16 words")]
+    TooManySearchWords,
     #[error("Task not found")]
     NotFound,
     #[error("Progress update must change a field or include a non-empty note")]

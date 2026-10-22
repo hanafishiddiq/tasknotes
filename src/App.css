@@ -560,6 +560,12 @@ textarea:disabled {
   max-width: 36ch;
   margin: 0 0 14px;
 }
+.empty-state-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
 
 /* Status groups */
 .task-group + .task-group {

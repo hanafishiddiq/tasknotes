@@ -247,4 +247,24 @@ describe("Task search and filters", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(listCalls.some((call) => call.cursor === "page-2" && call.status)).toBe(false);
   });
+
+  it("explains a refused search instead of claiming the database failed", async () => {
+    const user = userEvent.setup();
+    respond = (args) => {
+      if (args.text && args.text.split(" ").length > 16) throw "Search can use at most 16 words";
+      return { items: [budget, lease], nextCursor: null };
+    };
+    render(<App />);
+    await screen.findByRole("article", { name: "Quarterly budget" });
+
+    await user.type(screen.getByRole("searchbox", { name: "Search tasks" }), "a b c d e f g h i j k l m n o p q");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Search can use at most 16 words");
+    expect(screen.queryByRole("heading", { name: "Couldn't load your tasks" })).not.toBeInTheDocument();
+    const section = screen.getByRole("region", { name: "Your tasks" });
+    expect(within(section).getByRole("heading", { name: "Search couldn't run" })).toBeInTheDocument();
+
+    await user.click(within(section).getByRole("button", { name: "Clear search and filters" }));
+    expect(await screen.findByRole("article", { name: "Renew lease" })).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
 });

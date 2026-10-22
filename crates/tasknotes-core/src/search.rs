@@ -29,7 +29,7 @@ pub struct TaskQuery {
     pub sort: SortMode,
 }
 
-const MAX_SEARCH_WORDS: usize = 8;
+const MAX_SEARCH_WORDS: usize = 16;
 const TOKENIZER: &str = "tokenize='unicode61 remove_diacritics 2'";
 
 /// Schema v5: the Task Removed disposition plus FTS5 indexes kept in sync by
@@ -69,13 +69,18 @@ pub(crate) fn migrate_v5(migration: &Transaction) -> Result<(), TaskError> {
 }
 
 /// Split user text into plain words. Each becomes a quoted prefix term, so the
-/// input can never reach FTS5 query syntax.
-fn search_terms(text: &str) -> Vec<String> {
-    text.split(|c: char| !c.is_alphanumeric())
+/// input can never reach FTS5 query syntax. Extra words are refused rather than
+/// dropped, so a result never silently ignores part of the search.
+fn search_terms(text: &str) -> Result<Vec<String>, TaskError> {
+    let terms: Vec<_> = text
+        .split(|c: char| !c.is_alphanumeric())
         .filter(|word| !word.is_empty())
-        .take(MAX_SEARCH_WORDS)
         .map(|word| format!("\"{word}\"*"))
-        .collect()
+        .collect();
+    if terms.len() > MAX_SEARCH_WORDS {
+        return Err(TaskError::TooManySearchWords);
+    }
+    Ok(terms)
 }
 
 /// FNV-1a: binds a cursor to the exact query that produced it.
@@ -130,7 +135,7 @@ impl TaskStore {
         if !(1..=100).contains(&limit) {
             return Err(TaskError::InvalidPageSize);
         }
-        let terms = search_terms(&query.text);
+        let terms = search_terms(&query.text)?;
         let tag_fold = query.tag.as_deref().map(|tag| tag.trim().to_lowercase());
         let sort = query.sort;
         let key = fingerprint(&[
