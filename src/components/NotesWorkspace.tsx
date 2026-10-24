@@ -1,13 +1,15 @@
-import { useEffect, useRef, useState } from "react";
-import { Folder as FolderIcon, LoaderCircle, Pin, PinOff, SquarePen } from "lucide-react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { Folder as FolderIcon, LoaderCircle, Pin, PinOff, Search, SquarePen } from "lucide-react";
 import { errorMessage } from "../lib/error-message";
-import { noteApi, type Note, type NoteScope, type NoteSummary } from "../lib/note-api";
+import { ALL_NOTES, noteApi, type Note, type NoteScope, type NoteSummary } from "../lib/note-api";
 import type { FolderOption } from "../lib/use-note-folders";
 import { saveBeforeQuit } from "../lib/quit";
 import NoteEditor, { type NoteEditorHandle } from "./NoteEditor";
 
 // Typing settles before an autosave reaches the core.
 export const NOTE_AUTOSAVE_MS = 600;
+// Typing settles before a search reaches the core.
+const NOTE_SEARCH_MS = 250;
 
 const EDITED = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
 
@@ -56,6 +58,26 @@ interface NotesWorkspaceProps {
 }
 
 /** The Notes list beside one open Note, as in Apple Notes. */
+/** A search snippet with its matched words (between U+0002 and U+0003) marked. */
+function Snippet({ text }: { text: string }) {
+  const parts = text.split(/[\u0002\u0003]/);
+  return (
+    <span className="note-list-snippet">
+      {parts.map((part, index) => index % 2 === 1 ? <mark key={index}>{part}</mark> : part)}
+    </span>
+  );
+}
+
+/** Arrow keys move focus between the Notes in the list. */
+function moveFocus(event: KeyboardEvent<HTMLUListElement>) {
+  if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+  const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("button.note-list-item")];
+  const at = items.indexOf(document.activeElement as HTMLButtonElement);
+  if (at === -1) return;
+  event.preventDefault();
+  items[Math.min(items.length - 1, Math.max(0, at + (event.key === "ArrowDown" ? 1 : -1)))].focus();
+}
+
 /** An edited Note goes to the top of its group: pinned Notes stay above the rest. */
 function placeEdited(list: NoteSummary[], item: NoteSummary): NoteSummary[] {
   const rest = list.filter((other) => other.id !== item.id);
@@ -75,6 +97,12 @@ export default function NotesWorkspace({ hidden, scope, scopeName, folders }: No
     { folderId: null, pinned: false },
   );
   const [placing, setPlacing] = useState(false);
+  const [searchDraft, setSearchDraft] = useState("");
+  // The search the list shows; empty means the scope's Notes.
+  const [searchText, setSearchText] = useState("");
+  const searchRef = useRef("");
+  // Ignore an older list answer once a newer search or scope was asked for.
+  const listGeneration = useRef(0);
   // The editor remounts only when another Note or a new draft is opened,
   // never when a draft becomes a stored Note, so typing is not interrupted.
   const [editor, setEditor] = useState<{ key: number; markdown: string } | null>(null);
@@ -94,6 +122,12 @@ export default function NotesWorkspace({ hidden, scope, scopeName, folders }: No
   // Set once the person opens a Note or a draft, so the first load does not replace it.
   const pickedByPerson = useRef(false);
 
+  /** A search looks in every folder; otherwise the list is the scope's Notes. */
+  function listPage(cursor: string | null) {
+    const text = searchRef.current.trim();
+    return text ? noteApi.list(cursor, ALL_NOTES, text) : noteApi.list(cursor, scopeRef.current);
+  }
+
   function show(next: Saved) {
     saved.current = next;
     dirty.current = false;
@@ -108,10 +142,15 @@ export default function NotesWorkspace({ hidden, scope, scopeName, folders }: No
     let active = true;
     const first = loadedScope.current === null;
     loadedScope.current = scopeKey(scope);
+    // Opening a folder ends any search, as in Apple Notes.
+    searchRef.current = "";
+    setSearchDraft("");
+    setSearchText("");
+    const generation = ++listGeneration.current;
     (async () => {
       const left = first || (await flush());
       const page = await noteApi.list(null, scope);
-      if (!active) return;
+      if (!active || generation !== listGeneration.current) return;
       setNotes(page.items);
       setMoreCursor(page.nextCursor);
       if (!left || (first && pickedByPerson.current)) return;
@@ -125,6 +164,28 @@ export default function NotesWorkspace({ hidden, scope, scopeName, folders }: No
   }, [scopeKey(scope)]);
 
   useEffect(() => () => window.clearTimeout(timer.current), []);
+
+  useEffect(() => {
+    const delay = window.setTimeout(() => setSearchText(searchDraft), NOTE_SEARCH_MS);
+    return () => window.clearTimeout(delay);
+  }, [searchDraft]);
+
+  // A new search replaces the list; the open Note stays open.
+  useEffect(() => {
+    if (searchText === searchRef.current) return;
+    searchRef.current = searchText;
+    const generation = ++listGeneration.current;
+    listPage(null)
+      .then((page) => {
+        if (generation !== listGeneration.current) return;
+        setNotes(page.items);
+        setMoreCursor(page.nextCursor);
+        setError(null);
+      })
+      .catch((reason) => {
+        if (generation === listGeneration.current) setError("Search couldn't run: " + errorMessage(reason));
+      });
+  }, [searchText]);
 
   // flush reads only refs, so the first render's copy stays current.
   useEffect(() => saveBeforeQuit(flush), []);
@@ -199,7 +260,9 @@ export default function NotesWorkspace({ hidden, scope, scopeName, folders }: No
     if (moreCursor === null) return;
     setLoadingMore(true);
     try {
-      const page = await noteApi.list(moreCursor, scopeRef.current);
+      const generation = listGeneration.current;
+      const page = await listPage(moreCursor);
+      if (generation !== listGeneration.current) return;
       // Keyset pages: a Note saved meanwhile is newer than the cursor, so it cannot repeat.
       setNotes((current) => [...current, ...page.items]);
       setMoreCursor(page.nextCursor);
@@ -253,7 +316,9 @@ export default function NotesWorkspace({ hidden, scope, scopeName, folders }: No
 
   /** The first page again, in the core's order, after the open Note was placed elsewhere. */
   async function refreshList() {
-    const page = await noteApi.list(null, scopeRef.current);
+    const generation = ++listGeneration.current;
+    const page = await listPage(null);
+    if (generation !== listGeneration.current) return;
     setNotes(page.items);
     setMoreCursor(page.nextCursor);
   }
@@ -290,7 +355,13 @@ export default function NotesWorkspace({ hidden, scope, scopeName, folders }: No
             <SquarePen size={18} aria-hidden="true" />
           </button>
         </header>
-        <ul className="note-list-items" aria-label="Notes">
+        <label className="note-search">
+          <Search size={14} aria-hidden="true" />
+          <input type="search" aria-label="Search notes" placeholder="Search all notes" maxLength={200}
+            value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} />
+        </label>
+        {searchText.trim() !== "" && notes.length === 0 && <p className="note-list-empty">No matching notes</p>}
+        <ul className="note-list-items" aria-label="Notes" onKeyDown={moveFocus}>
           {notes.map((note, index) => (
             <li key={note.id}>
               {note.pinned && index === 0 && <h2 className="note-list-heading">Pinned</h2>}
@@ -301,6 +372,7 @@ export default function NotesWorkspace({ hidden, scope, scopeName, folders }: No
                 onClick={() => void openNote(note.id)}>
                 <span className="note-list-title">{note.title}</span>
                 <span className="note-list-date">{EDITED.format(note.updatedAt)}</span>
+                {note.snippet && <Snippet text={note.snippet} />}
               </button>
             </li>
           ))}

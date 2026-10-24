@@ -1213,6 +1213,52 @@ button.folder-disclosure:hover:not(:disabled) {
   color: var(--text-3);
   font-size: 12px;
 }
+.note-search {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  margin: 0 10px 8px;
+  padding: 0 8px;
+  border-radius: 7px;
+  background: var(--field);
+  color: var(--text-3);
+}
+.note-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+}
+.note-search:focus-within {
+  outline: 2px solid var(--focus);
+}
+.note-list-empty {
+  margin: 12px 18px;
+  color: var(--text-3);
+}
+.note-list-snippet {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--text-2);
+  font-size: 12px;
+}
+.note-list-snippet mark {
+  background: transparent;
+  color: var(--accent-text);
+  font-weight: 700;
+}
+/* On the gold selection, accent text would vanish: the snippet takes the selection text color. */
+.note-list-item[aria-current="true"] .note-list-snippet,
+.note-list-item[aria-current="true"] .note-list-snippet mark {
+  color: inherit;
+}
 .note-list-heading {
   margin: 10px 0 4px;
   padding: 0 10px;
