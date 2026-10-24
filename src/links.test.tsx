@@ -264,5 +264,30 @@ describe("Task–Note links from a Note", () => {
     await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(1));
     expect(backend.links.filter((l) => l.unlinkedAt === null).map((l) => l.id)).toEqual([original.id]);
   });
+
+  it("shows a link change made on one side when returning to the other", async () => {
+    backend.task("task-1", "Book the ferry");
+    backend.note("note-1", "Trip plan");
+    backend.link("task-1", "note-1");
+    const user = await openTask("Book the ferry");
+    await waitFor(async () => expect(within(await linkedNotes()).getAllByRole("listitem")).toHaveLength(1));
+
+    await user.click(screen.getByRole("button", { name: "All notes" }));
+    const tasks = await linkedTasks();
+    await waitFor(() => expect(within(tasks).getAllByRole("listitem")).toHaveLength(1));
+    await user.click(within(tasks).getByRole("button", { name: "Unlink Book the ferry" }));
+    await waitFor(() => expect(within(tasks).queryAllByRole("listitem")).toHaveLength(0));
+
+    await user.click(screen.getByRole("button", { name: "All tasks" }));
+    await waitFor(async () => expect(within(await linkedNotes()).queryAllByRole("listitem")).toHaveLength(0));
+
+    // And back: a link made from the Task shows on the Note.
+    await user.click(screen.getByRole("button", { name: "Link a Note" }));
+    await user.click(within(await screen.findByRole("list", { name: "Notes to link" }))
+      .getByRole("button", { name: "Trip plan" }));
+    await waitFor(async () => expect(within(await linkedNotes()).getAllByRole("listitem")).toHaveLength(1));
+    await user.click(screen.getByRole("button", { name: "All notes" }));
+    await waitFor(async () => expect(within(await linkedTasks()).getAllByRole("listitem")).toHaveLength(1));
+  });
 });
 

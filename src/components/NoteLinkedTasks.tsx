@@ -12,13 +12,16 @@ const SEARCH_DELAY_MS = 250;
 
 interface NoteLinkedTasksProps {
   noteId: string;
+  /** False while the Task view covers the Notes workspace. */
+  shown: boolean;
   onOpenTask: (taskId: string) => void;
 }
 
 /** The Tasks linked to the open Note, above its text. */
-export default function NoteLinkedTasks({ noteId, onOpenTask }: NoteLinkedTasksProps) {
+export default function NoteLinkedTasks({ noteId, shown, onOpenTask }: NoteLinkedTasksProps) {
   const links = useLinks(
     noteId,
+    shown,
     (cursor) => linkApi.tasksOfNote(noteId, cursor),
     (item) => linkApi.link(item.taskId, noteId),
   );

@@ -714,6 +714,7 @@ export default function App() {
                           onMove={(listId) => moveTask(task, listId)}
                           onUpdateDetails={(tags, dueDate) => updateDetails(task, tags, dueDate)}
                           onOpenNote={openLinkedNote}
+                          shown={workspace === "tasks"}
                         />
                       ))}
                     </section>

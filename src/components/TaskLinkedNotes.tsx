@@ -8,13 +8,16 @@ import LinkedList from "./LinkedList";
 
 interface TaskLinkedNotesProps {
   taskId: string;
+  /** False while the Notes workspace covers the Task view. */
+  shown: boolean;
   onOpenNote: (noteId: string) => void;
 }
 
 /** The Notes linked to one Task, on its expanded page. */
-export default function TaskLinkedNotes({ taskId, onOpenNote }: TaskLinkedNotesProps) {
+export default function TaskLinkedNotes({ taskId, shown, onOpenNote }: TaskLinkedNotesProps) {
   const links = useLinks(
     taskId,
+    shown,
     (cursor) => linkApi.notesOfTask(taskId, cursor),
     (item) => linkApi.link(taskId, item.noteId),
   );

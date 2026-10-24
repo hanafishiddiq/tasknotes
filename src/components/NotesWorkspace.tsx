@@ -267,7 +267,7 @@ export default function NotesWorkspace({ hidden, request = null, onOpenTask }: N
           </div>
         )}
         {/* A draft has nothing to link until its first character stores it. */}
-        {openId !== null && <NoteLinkedTasks noteId={openId} onOpenTask={onOpenTask} />}
+        {openId !== null && <NoteLinkedTasks noteId={openId} shown={!hidden} onOpenTask={onOpenTask} />}
         {editor && (
           <NoteEditor key={editor.key} initialMarkdown={editor.markdown} onEdit={edited} editorRef={editorRef} />
         )}
