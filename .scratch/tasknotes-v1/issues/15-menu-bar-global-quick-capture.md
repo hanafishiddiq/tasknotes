@@ -31,3 +31,5 @@
 - This is an implementation ticket, not proof that implementation has begun.
 
 ## Comments
+
+**2026-10-25 — owner decision (Han):** The global Quick Capture shortcut is **off by default**. The user turns it on and picks the key combination in Settings, so nothing conflicts with other apps until then.

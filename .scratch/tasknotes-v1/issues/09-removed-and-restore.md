@@ -34,3 +34,5 @@
 ## Comments
 
 **2026-10-22:** Note Folders can be nested (owner decision, see Ticket 07). Define and test how removing and restoring a folder treats its subfolders and Notes. The List rule (children hidden without changing their own Removed disposition) is the natural default, to be confirmed with the owner.
+
+**2026-10-25 — owner decision (Han):** Removing a Note Folder follows the List rule. Its subfolders and Notes are hidden with it without changing their own Removed disposition. Restoring the folder brings them back, except any subfolder or Note that had been moved to Removed on its own, which stays in Removed.

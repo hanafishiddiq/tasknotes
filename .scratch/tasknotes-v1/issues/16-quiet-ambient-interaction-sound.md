@@ -32,3 +32,5 @@
 - This is an implementation ticket, not proof that implementation has begun.
 
 ## Comments
+
+**2026-10-25 — owner decision (Han):** The default ambient sound is **soft rain**, synthesized in code (Web Audio), so no third-party recording or license is needed. Record how it is generated as its provenance.

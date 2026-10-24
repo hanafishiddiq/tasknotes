@@ -33,3 +33,5 @@
 ## Comments
 
 **2026-10-22:** Note Folders can be nested (owner decision, see Ticket 07). Decide how folder paths appear in AI-facing output, and make sure a folder path, name or count never reveals a Note marked Exclude from AI.
+
+**2026-10-25 — owner decision (Han):** AI-facing output shows a Note's folder as both a full path (for example `"Work/Client A"`) and a stable `folder_id`. Any per-folder count or listing exposed to AI counts only Notes that AI may see, so a Note marked Exclude from AI never shows up through folder names, paths or counts.
