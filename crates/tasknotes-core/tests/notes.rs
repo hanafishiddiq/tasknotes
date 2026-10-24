@@ -259,7 +259,7 @@ fn v5_database(db: &Path) -> Task {
         .unwrap();
     Connection::open(db)
         .unwrap()
-        .execute_batch("DROP TABLE notes; PRAGMA user_version = 5;")
+        .execute_batch("DROP TABLE task_note_links; DROP TABLE notes; PRAGMA user_version = 5;")
         .unwrap();
     task
 }
@@ -271,7 +271,7 @@ fn a_v5_database_gains_notes_without_touching_its_tasks() {
     let task = v5_database(&db);
 
     let store = store_at(&db);
-    assert_eq!(version(&db), 6);
+    assert_eq!(version(&db), 7);
     let kept = store.get_task(&task.id).unwrap().unwrap();
     assert_eq!(
         (
@@ -319,7 +319,7 @@ fn a_failed_v6_migration_rolls_back_and_keeps_the_v5_database_usable() {
         store.get_task(&task.id).unwrap().unwrap().title,
         "Existing Task"
     );
-    assert_eq!(version(&db), 6);
+    assert_eq!(version(&db), 7);
 }
 
 #[test]
