@@ -242,6 +242,9 @@ fn an_interrupted_save_leaves_the_last_saved_version_recoverable() {
     assert_eq!((saved.revision, saved.title.as_str()), (2, "Ferry plan"));
 }
 
+/// Later schema steps run straight after v6.
+const CURRENT_VERSION: i64 = 7;
+
 fn version(db: &Path) -> i64 {
     Connection::open(db)
         .unwrap()
@@ -259,7 +262,10 @@ fn v5_database(db: &Path) -> Task {
         .unwrap();
     Connection::open(db)
         .unwrap()
-        .execute_batch("DROP TABLE notes; PRAGMA user_version = 5;")
+        .execute_batch(
+            "DROP TABLE notes_fts; DROP TABLE notes; DROP TABLE note_folders;
+             PRAGMA user_version = 5;",
+        )
         .unwrap();
     task
 }
@@ -271,7 +277,7 @@ fn a_v5_database_gains_notes_without_touching_its_tasks() {
     let task = v5_database(&db);
 
     let store = store_at(&db);
-    assert_eq!(version(&db), 6);
+    assert_eq!(version(&db), CURRENT_VERSION);
     let kept = store.get_task(&task.id).unwrap().unwrap();
     assert_eq!(
         (
@@ -319,7 +325,7 @@ fn a_failed_v6_migration_rolls_back_and_keeps_the_v5_database_usable() {
         store.get_task(&task.id).unwrap().unwrap().title,
         "Existing Task"
     );
-    assert_eq!(version(&db), 6);
+    assert_eq!(version(&db), CURRENT_VERSION);
 }
 
 #[test]

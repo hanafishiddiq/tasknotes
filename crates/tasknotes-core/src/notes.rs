@@ -15,6 +15,9 @@ pub struct Note {
     pub revision: i64,
     pub created_at: i64,
     pub updated_at: i64,
+    /// None when the Note is not in a folder.
+    pub folder_id: Option<String>,
+    pub pinned: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -48,7 +51,7 @@ pub struct NotePage {
     pub next_cursor: Option<String>,
 }
 
-const COLUMNS: &str = "id, markdown, title, revision, created_at, updated_at";
+const COLUMNS: &str = "id, markdown, title, revision, created_at, updated_at, folder_id, pinned";
 
 /// Edit stamps never repeat, so the list follows the order of writes even when
 /// several land within one millisecond. `?4` is the current time.
@@ -235,6 +238,8 @@ fn read_note(row: &Row<'_>) -> rusqlite::Result<Note> {
         revision: row.get(3)?,
         created_at: row.get(4)?,
         updated_at: row.get(5)?,
+        folder_id: row.get(6)?,
+        pinned: row.get(7)?,
     })
 }
 
@@ -244,7 +249,7 @@ impl TaskStore {
         let now = current_millis()?;
         Ok(self.connect()?.query_row(
             &format!(
-                "INSERT INTO notes ({COLUMNS})
+                "INSERT INTO notes (id, markdown, title, revision, created_at, updated_at)
                  SELECT ?1, ?2, ?3, 1, stamp, stamp FROM ({NEXT_STAMP}) RETURNING {COLUMNS}"
             ),
             params![
