@@ -9,15 +9,14 @@ interface LinkRow {
 
 /**
  * The links on one side of a Task–Note relationship, as either page shows them.
- * `load` reads a page for `owner`; `relink` links the pair of an unlinked row
- * again, which the core answers with the same link (Undo). The links are read
+ * `load` reads a page for `owner`; Undo restores the same link in its old
+ * place. The links are read
  * again whenever `shown` turns true, since the other side may have changed them.
  */
 export function useLinks<T extends LinkRow>(
   owner: string,
   shown: boolean,
   load: (cursor: string | null) => Promise<LinkPage<T>>,
-  relink: (item: T) => Promise<unknown>,
 ) {
   const [items, setItems] = useState<T[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -77,7 +76,7 @@ export function useLinks<T extends LinkRow>(
 
   async function undo() {
     const item = undoable;
-    if (item && await change(() => relink(item), "Couldn't undo: ")) setUndoable(null);
+    if (item && await change(() => linkApi.restore(item.linkId), "Couldn't undo: ")) setUndoable(null);
   }
 
   async function loadMore() {

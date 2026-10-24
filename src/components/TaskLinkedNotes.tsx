@@ -19,7 +19,6 @@ export default function TaskLinkedNotes({ taskId, shown, onOpenNote }: TaskLinke
     taskId,
     shown,
     (cursor) => linkApi.notesOfTask(taskId, cursor),
-    (item) => linkApi.link(taskId, item.noteId),
   );
   // Recent Notes offered for linking; null while the picker is closed.
   const [choices, setChoices] = useState<NoteSummary[] | null>(null);

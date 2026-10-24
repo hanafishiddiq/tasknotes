@@ -4,7 +4,7 @@ use rusqlite::Connection;
 use tasknotes_core::links::{LinkedNote, LinkedTask};
 use tasknotes_core::notes::{CreateNote, Note};
 
-use tasknotes_core::tasks::{CreateList, CreateTask, Task, TaskError, TaskStore};
+use tasknotes_core::tasks::{CreateList, CreateTask, SetListRemoved, Task, TaskError, TaskStore};
 
 fn store_at(path: &Path) -> TaskStore {
     TaskStore::open(path).expect("open isolated synthetic Tasknotes DB")
@@ -105,7 +105,7 @@ fn unlinking_removes_only_the_relationship_and_undo_brings_back_the_same_link() 
     assert_eq!(store.get_task(&ferry.id).unwrap().unwrap(), ferry);
     assert_eq!(store.get_note(&plan.id).unwrap().unwrap(), plan);
 
-    let restored = store.link_note(&ferry.id, &plan.id).unwrap();
+    let restored = store.restore_link(&link.id).unwrap();
     assert_eq!(restored, link, "Undo restores the same link, ID and order");
     let tasks = store.list_note_tasks(&plan.id, 50, None).unwrap();
     assert_eq!(task_titles(&tasks.items), ["Book the ferry"]);
@@ -359,4 +359,107 @@ fn a_failed_v7_migration_rolls_back_and_keeps_the_v6_database_usable() {
     assert_eq!(version(&db), 7);
     assert_eq!(store.get_task(&old_task.id).unwrap().unwrap(), old_task);
     assert_eq!(store.get_note(&old_note.id).unwrap().unwrap(), old_note);
+}
+
+#[test]
+fn linking_an_unlinked_pair_again_is_a_fresh_link_first_in_the_list() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("links.db"));
+    let ferry = task(&store, "Book the ferry");
+    let plan = note(&store, "# Trip plan");
+    let budget = note(&store, "# Budget");
+    let old = store.link_note(&ferry.id, &plan.id).unwrap();
+    store.link_note(&ferry.id, &budget.id).unwrap();
+    store.unlink_note(&old.id).unwrap();
+
+    let again = store.link_note(&ferry.id, &plan.id).unwrap();
+
+    assert_eq!(again.id, old.id, "one row per pair, ever");
+    assert!(again.linked_at > old.linked_at);
+    let notes = store.list_task_notes(&ferry.id, 50, None).unwrap();
+    assert_eq!(note_titles(&notes.items), ["Trip plan", "Budget"]);
+}
+
+#[test]
+fn undo_restores_the_original_place_and_refuses_unknown_links() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("links.db"));
+    let ferry = task(&store, "Book the ferry");
+    let plan = note(&store, "# Trip plan");
+    let budget = note(&store, "# Budget");
+    let old = store.link_note(&ferry.id, &plan.id).unwrap();
+    store.link_note(&ferry.id, &budget.id).unwrap();
+    store.unlink_note(&old.id).unwrap();
+
+    assert_eq!(store.restore_link(&old.id).unwrap(), old);
+    let notes = store.list_task_notes(&ferry.id, 50, None).unwrap();
+    assert_eq!(note_titles(&notes.items), ["Budget", "Trip plan"]);
+    // Restoring a link that is already active changes nothing.
+    assert_eq!(store.restore_link(&old.id).unwrap(), old);
+    assert!(matches!(
+        store.restore_link("00000000-0000-4000-8000-000000000000"),
+        Err(TaskError::LinkNotFound)
+    ));
+}
+
+#[test]
+fn a_note_lists_no_task_hidden_by_removed_and_shows_it_again_on_restore() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("links.db");
+    let store = store_at(&db);
+    let travel = store
+        .create_list(CreateList {
+            name: "Travel".into(),
+        })
+        .unwrap();
+    let ferry = store
+        .create_task_in_list(
+            CreateTask {
+                title: "Book the ferry".into(),
+                description: String::new(),
+            },
+            Some(&travel.id),
+        )
+        .unwrap();
+    let pack = task(&store, "Pack");
+    let plan = note(&store, "# Trip plan");
+    let link = store.link_note(&ferry.id, &plan.id).unwrap();
+    store.link_note(&pack.id, &plan.id).unwrap();
+
+    let removed = store
+        .set_list_removed(SetListRemoved {
+            id: travel.id.clone(),
+            expected_revision: travel.revision,
+            removed: true,
+        })
+        .unwrap();
+    let tasks = store.list_note_tasks(&plan.id, 50, None).unwrap();
+    assert_eq!(task_titles(&tasks.items), ["Pack"]);
+    assert_eq!(
+        store.get_link(&link.id).unwrap(),
+        Some(link.clone()),
+        "the link row stays"
+    );
+
+    // A Task Removed on its own (Ticket 09) is left out the same way.
+    other_writer(&db)
+        .execute("UPDATE tasks SET removed_at = 1 WHERE id = ?1", [&pack.id])
+        .unwrap();
+    assert!(
+        store
+            .list_note_tasks(&plan.id, 50, None)
+            .unwrap()
+            .items
+            .is_empty()
+    );
+
+    store
+        .set_list_removed(SetListRemoved {
+            id: travel.id,
+            expected_revision: removed.revision,
+            removed: false,
+        })
+        .unwrap();
+    let tasks = store.list_note_tasks(&plan.id, 50, None).unwrap();
+    assert_eq!(task_titles(&tasks.items), ["Book the ferry"]);
 }

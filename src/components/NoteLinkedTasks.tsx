@@ -23,7 +23,6 @@ export default function NoteLinkedTasks({ noteId, shown, onOpenTask }: NoteLinke
     noteId,
     shown,
     (cursor) => linkApi.tasksOfNote(noteId, cursor),
-    (item) => linkApi.link(item.taskId, noteId),
   );
   const [picking, setPicking] = useState(false);
   const [query, setQuery] = useState("");

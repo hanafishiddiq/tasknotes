@@ -121,7 +121,11 @@ const NOTES_OF_TASK: Side = Side {
 const TASKS_OF_NOTE: Side = Side {
     owner: "note_id",
     select: "t.id, t.title, t.status",
-    join: "JOIN tasks t ON t.id = l.task_id",
+    // Tasks hidden by Removed (their own, or their List's) are left out; the
+    // link row stays, so restoring brings the Task back into this list.
+    join: "JOIN tasks t ON t.id = l.task_id AND t.removed_at IS NULL
+           AND (t.list_id IS NULL OR EXISTS (
+             SELECT 1 FROM lists WHERE lists.id = t.list_id AND lists.removed_at IS NULL))",
 };
 
 /// One keyset page of active links on one side, most recently linked first.
@@ -170,7 +174,8 @@ fn page<T>(
 
 impl TaskStore {
     /// Links a Note to a Task. Linking a pair that is already linked returns
-    /// that link; a pair unlinked earlier gets its own link back, same ID.
+    /// that link; a pair unlinked earlier gets its own row back, same ID, with
+    /// a fresh stamp so it lists first. Undo is `restore_link`.
     pub fn link_note(&self, task_id: &str, note_id: &str) -> Result<NoteLink, TaskError> {
         let now = current_millis()?;
         let mut conn = self.connect()?;
@@ -185,7 +190,9 @@ impl TaskStore {
             &format!(
                 "INSERT INTO task_note_links ({COLUMNS})
                  SELECT ?1, ?2, ?3, stamp, NULL FROM ({NEXT_STAMP}) WHERE true
-                 ON CONFLICT(task_id, note_id) DO UPDATE SET unlinked_at = NULL
+                 ON CONFLICT(task_id, note_id) DO UPDATE SET unlinked_at = NULL,
+                   linked_at = CASE WHEN unlinked_at IS NULL THEN linked_at
+                                    ELSE excluded.linked_at END
                  RETURNING {COLUMNS}"
             ),
             params![Uuid::new_v4().to_string(), task_id, note_id, now],
@@ -195,8 +202,8 @@ impl TaskStore {
         Ok(link)
     }
 
-    /// Ends a link without touching the Task or the Note. Linking the pair
-    /// again (Undo) brings the link back with the same ID and place.
+    /// Ends a link without touching the Task or the Note. `restore_link`
+    /// (Undo) brings it back with the same ID and place.
     pub fn unlink_note(&self, link_id: &str) -> Result<NoteLink, TaskError> {
         let now = current_millis()?;
         self.connect()?
@@ -210,6 +217,33 @@ impl TaskStore {
             )
             .optional()?
             .ok_or(TaskError::LinkNotFound)
+    }
+
+    /// Undo for an unlink: the link comes back with its original stamp, so
+    /// it returns to the place it had. An active link is returned unchanged.
+    pub fn restore_link(&self, link_id: &str) -> Result<NoteLink, TaskError> {
+        self.connect()?
+            .query_row(
+                &format!(
+                    "UPDATE task_note_links SET unlinked_at = NULL
+                     WHERE id = ?1 RETURNING {COLUMNS}"
+                ),
+                params![link_id],
+                read_link,
+            )
+            .optional()?
+            .ok_or(TaskError::LinkNotFound)
+    }
+
+    pub fn get_link(&self, link_id: &str) -> Result<Option<NoteLink>, TaskError> {
+        Ok(self
+            .connect()?
+            .query_row(
+                &format!("SELECT {COLUMNS} FROM task_note_links WHERE id = ?1"),
+                params![link_id],
+                read_link,
+            )
+            .optional()?)
     }
 
     /// Notes linked to a Task, most recently linked first.

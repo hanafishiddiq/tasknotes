@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { WorkStatus } from "./task-api";
 
-/** A reversible Task–Note association; unlinking keeps the row, so Undo restores the same ID. */
+/** A reversible Task–Note association; unlinking keeps the row, so Undo restores the same link. */
 export interface NoteLink {
   id: string;
   taskId: string;
@@ -39,6 +39,11 @@ export const linkApi = {
 
   unlink(linkId: string): Promise<NoteLink> {
     return invoke("unlink_note", { linkId });
+  },
+
+  /** Undo for an unlink: the same link, back in its old place. */
+  restore(linkId: string): Promise<NoteLink> {
+    return invoke("restore_link", { linkId });
   },
 
   notesOfTask(taskId: string, cursor: string | null = null): Promise<LinkPage<LinkedNote>> {

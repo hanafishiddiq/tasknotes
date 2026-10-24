@@ -40,6 +40,8 @@ class Backend {
   link(taskId: string, noteId: string): Link {
     const existing = this.links.find((l) => l.taskId === taskId && l.noteId === noteId);
     if (existing) {
+      // As in the core: a fresh link of an unlinked pair lists first again.
+      if (existing.unlinkedAt !== null) existing.linkedAt = ++this.clock;
       existing.unlinkedAt = null;
       return { ...existing };
     }
@@ -78,6 +80,12 @@ class Backend {
         if (!this.tasks.some((t) => t.id === args.taskId)) throw "Task not found";
         if (!this.notes.has(args.noteId as string)) throw "Note not found";
         return this.link(args.taskId as string, args.noteId as string);
+      }
+      case "restore_link": {
+        const link = this.links.find((l) => l.id === args.linkId);
+        if (!link) throw "This link was not found or is already unlinked";
+        link.unlinkedAt = null;
+        return { ...link };
       }
       case "unlink_note": {
         const link = this.links.find((l) => l.id === args.linkId && l.unlinkedAt === null);
@@ -187,6 +195,9 @@ describe("Task–Note links from a Task", () => {
 
     await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(1));
     expect(backend.links.filter((l) => l.unlinkedAt === null).map((l) => l.id)).toEqual([original.id]);
+    // Undo restores the link in its old place rather than linking afresh.
+    expect(backend.commands("restore_link")).toEqual([{ linkId: original.id }]);
+    expect(backend.commands("link_note")).toEqual([]);
     expect(screen.queryByRole("status", { name: "Unlinked" })).not.toBeInTheDocument();
   });
 });
@@ -263,6 +274,9 @@ describe("Task–Note links from a Note", () => {
     await user.click(screen.getByRole("button", { name: "Undo unlink" }));
     await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(1));
     expect(backend.links.filter((l) => l.unlinkedAt === null).map((l) => l.id)).toEqual([original.id]);
+    // Undo restores the link in its old place rather than linking afresh.
+    expect(backend.commands("restore_link")).toEqual([{ linkId: original.id }]);
+    expect(backend.commands("link_note")).toEqual([]);
   });
 
   it("shows a link change made on one side when returning to the other", async () => {

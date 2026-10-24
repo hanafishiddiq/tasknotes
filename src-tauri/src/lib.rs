@@ -167,6 +167,13 @@ fn unlink_note(store: State<'_, TaskStore>, link_id: String) -> Result<NoteLink,
 }
 
 #[tauri::command]
+fn restore_link(store: State<'_, TaskStore>, link_id: String) -> Result<NoteLink, String> {
+    store
+        .restore_link(&link_id)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn list_task_notes(
     store: State<'_, TaskStore>,
     task_id: String,
@@ -229,6 +236,7 @@ pub fn run() {
             update_note,
             link_note,
             unlink_note,
+            restore_link,
             list_task_notes,
             list_note_tasks,
             quit::quit_ready
