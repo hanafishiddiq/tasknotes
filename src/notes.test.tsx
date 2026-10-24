@@ -3,78 +3,12 @@ import { cleanup, render, screen, waitFor, within } from "@testing-library/react
 import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
 import App from "./App";
-import type { Note } from "./lib/note-api";
 import { QUIT_REQUESTED } from "./lib/quit";
 import { tauriEvents } from "./test/tauri-events";
+import { NoteBackend } from "./test/note-backend";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 const invokeMock = vi.mocked(invoke);
-
-/** An in-memory stand-in for the core Note commands behind the Tauri seam. */
-class NoteBackend {
-  notes = new Map<string, Note>();
-  calls: { command: string; args: unknown }[] = [];
-  private clock = 1_000;
-  private nextId = 1;
-
-  seed(markdown: string, title: string): Note {
-    const note = this.write({ id: `note-${this.nextId++}`, markdown, title, revision: 1 });
-    return note;
-  }
-
-  private write(fields: Omit<Note, "createdAt" | "updatedAt">): Note {
-    const stamp = ++this.clock;
-    const previous = this.notes.get(fields.id);
-    const note = { ...fields, createdAt: previous?.createdAt ?? stamp, updatedAt: stamp };
-    this.notes.set(note.id, note);
-    return note;
-  }
-
-  handle(command: string, args: Record<string, unknown>) {
-    this.calls.push({ command, args });
-    if (command === "list_notes") {
-      const all = [...this.notes.values()]
-        .sort((a, b) => b.updatedAt - a.updatedAt)
-        .map(({ id, title, revision, updatedAt }) => ({ id, title, revision, updatedAt }));
-      const start = args.cursor ? Number(args.cursor) : 0;
-      const end = start + (args.limit as number);
-      return { items: all.slice(start, end), nextCursor: end < all.length ? String(end) : null };
-    }
-    if (command === "get_note") return this.notes.get(args.id as string) ?? null;
-    if (command === "create_note") {
-      const { markdown } = args.input as { markdown: string };
-      return this.write({ id: `note-${this.nextId++}`, markdown, title: firstLine(markdown), revision: 1 });
-    }
-    if (command === "update_note") {
-      const input = args.input as { id: string; markdown: string; expectedRevision: number };
-      const current = this.notes.get(input.id);
-      if (!current) throw "Note not found";
-      if (current.revision !== input.expectedRevision) {
-        throw "This Note changed elsewhere; your text was not saved over it";
-      }
-      return this.write({
-        id: input.id, markdown: input.markdown, title: firstLine(input.markdown),
-        revision: current.revision + 1,
-      });
-    }
-    throw new Error("Unexpected Note command: " + command);
-  }
-
-  commands(name: string) {
-    return this.calls.filter((call) => call.command === name).map((call) => call.args);
-  }
-
-  /** Another writer (the CLI, an agent) saves a newer revision. */
-  editElsewhere(id: string, markdown: string): Note {
-    const current = this.notes.get(id)!;
-    return this.write({ id, markdown, title: firstLine(markdown), revision: current.revision + 1 });
-  }
-}
-
-// The real title rule lives in the core; the stand-in only needs a plausible title.
-function firstLine(markdown: string) {
-  return markdown.split("\n").find((line) => line.trim())?.replace(/^#+\s*/, "").trim() || "New Note";
-}
 
 let backend: NoteBackend;
 
@@ -123,7 +57,9 @@ describe("standalone Notes", () => {
     await waitFor(() => expect(editor).toHaveTextContent("Release plan"));
     expect(within(editor).getByRole("heading", { name: "Release plan" })).toBeInTheDocument();
     expect(within(editor).getByText("v1").tagName).toBe("STRONG");
-    expect(backend.commands("list_notes")[0]).toEqual({ limit: 50, cursor: null });
+    expect(backend.commands("list_notes")[0]).toEqual({
+      limit: 50, cursor: null, folder: { kind: "all" }, text: "",
+    });
   });
 
   it("creates a Note only once its first character is typed, then keeps saving it", async () => {
@@ -137,7 +73,7 @@ describe("standalone Notes", () => {
 
     await user.click(editor);
     await user.type(editor, "Buy oat milk");
-    await eventually(() => expect(backend.commands("create_note")).toEqual([{ input: { markdown: "Buy oat milk" } }]));
+    await eventually(() => expect(backend.commands("create_note")).toEqual([{ input: { markdown: "Buy oat milk" }, folderId: null }]));
     const list = screen.getByRole("list", { name: "Notes" });
     await waitFor(() => expect(within(list).getAllByRole("button")[0]).toHaveTextContent("Buy oat milk"));
     expect(within(list).getAllByRole("button")[0]).toHaveAttribute("aria-current", "true");
@@ -362,12 +298,13 @@ describe("standalone Notes", () => {
     const user = await openNotes();
     const list = await screen.findByRole("list", { name: "Notes" });
     await waitFor(() => expect(within(list).getAllByRole("button")).toHaveLength(50));
-    expect(within(list).queryByRole("button", { name: /^Note 1(?!\d)/ })).not.toBeInTheDocument();
+    // By title text: the date beside it is locale-formatted ("Jan 1" or "1 Jan").
+    expect(within(list).queryByText("Note 1", { exact: true })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Load more Notes" }));
     await waitFor(() => expect(within(list).getAllByRole("button")).toHaveLength(51));
     expect(screen.queryByRole("button", { name: "Load more Notes" })).not.toBeInTheDocument();
-    await user.click(within(list).getByRole("button", { name: /^Note 1(?!\d)/ }));
+    await user.click(within(list).getByText("Note 1", { exact: true }));
     await waitFor(() => expect(screen.getByRole("textbox", { name: "Note text" })).toHaveTextContent("Note 1"));
   });
 

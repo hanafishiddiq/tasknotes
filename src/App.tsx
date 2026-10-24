@@ -14,6 +14,9 @@ import { useLocalCalendarDay } from "./lib/use-local-calendar-day";
 import { useTheme } from "./lib/use-theme";
 import { errorMessage } from "./lib/error-message";
 import { listenForQuit } from "./lib/quit";
+import { ALL_NOTES, type NoteScope } from "./lib/note-api";
+import { useNoteFolders } from "./lib/use-note-folders";
+import NoteFolderTree from "./components/NoteFolderTree";
 import "./App.css";
 
 // The rich-text editor loads only when Notes are first opened, keeping Task startup light.
@@ -33,6 +36,9 @@ export default function App() {
   const [workspace, setWorkspace] = useState<"tasks" | "notes">("tasks");
   // Once opened, Notes stay mounted so a pending autosave survives visiting Tasks.
   const [notesOpened, setNotesOpened] = useState(false);
+  const [noteScope, setNoteScope] = useState<NoteScope>(ALL_NOTES);
+  // The folder tree loads with Notes, keeping Task startup independent of it.
+  const noteFolders = useNoteFolders(notesOpened);
   const [lists, setLists] = useState<TaskList[]>([]);
   const [listCursor, setListCursor] = useState<string | null>(null);
   const [busyList, setBusyList] = useState(false);
@@ -113,7 +119,8 @@ export default function App() {
 
   useEffect(() => {
     // Only Notes save on a delay, so they are what can hold a quit back.
-    const stop = listenForQuit(openNotes);
+    // Showing Notes keeps the folder in view; only an unsaved Note can hold the quit back.
+    const stop = listenForQuit(() => { setNotesOpened(true); setWorkspace("notes"); });
     return () => void stop.then((unlisten) => unlisten());
   }, []);
 
@@ -123,9 +130,10 @@ export default function App() {
     setPreviousPageCursors([]);
   }
 
-  function openNotes() {
+  function openNotes(scope: NoteScope = ALL_NOTES) {
     setNotesOpened(true);
     setWorkspace("notes");
+    setNoteScope(scope);
   }
 
   function navigate(next: TaskView) {
@@ -487,7 +495,14 @@ export default function App() {
   return (
     <div className="app-shell">
       <TaskSidebar
-        view={view} notesActive={workspace === "notes"} onOpenNotes={openNotes}
+        view={view} notesActive={workspace === "notes"} onOpenNotes={() => openNotes()}
+        allNotesCurrent={workspace === "notes" && noteScope.kind === "all"}
+        noteFolders={notesOpened && (
+          <NoteFolderTree folders={noteFolders}
+            currentId={workspace === "notes" && noteScope.kind === "folder" ? noteScope.folderId : null}
+            disabled={busyList || creating || Boolean(savingId) || loadingMore}
+            onOpen={(folder) => openNotes({ kind: "folder", folderId: folder.id })} />
+        )}
         lists={lists} shownCount={countKnown ? tasks.length : null} hasMoreTasks={Boolean(nextCursor)}
         listError={listError}
         hasMoreLists={Boolean(listCursor)} busy={busyList || creating || Boolean(savingId) || loadingMore}
@@ -719,7 +734,10 @@ export default function App() {
       {notesOpened && (
         <Suspense fallback={workspace === "notes" &&
           <div className="loading-state" role="status"><LoaderCircle className="spin" size={16} /> Loading notes...</div>}>
-          <NotesWorkspace hidden={workspace !== "notes"} />
+          <NotesWorkspace hidden={workspace !== "notes"} scope={noteScope}
+            scopeName={noteScope.kind === "folder"
+              ? noteFolders.byId.get(noteScope.folderId)?.name ?? "Folder" : "Notes"}
+            folders={noteFolders.options} />
         </Suspense>
       )}
     </div>
