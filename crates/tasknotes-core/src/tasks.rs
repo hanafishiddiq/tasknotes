@@ -77,6 +77,10 @@ pub enum TaskError {
     InvalidNoteCursor,
     #[error("This Note changed elsewhere; your text was not saved over it")]
     NoteRevisionConflict,
+    #[error("This link was not found or is already unlinked")]
+    LinkNotFound,
+    #[error("Invalid Note Link page cursor")]
+    InvalidLinkCursor,
     #[error("Unsupported database schema version {0}; refusing to modify a newer database")]
     UnsupportedSchema(i64),
     #[error("Unable to open local storage: {0}")]
@@ -96,7 +100,7 @@ pub enum WorkStatus {
 }
 
 impl WorkStatus {
-    fn from_sql(value: &str) -> Option<Self> {
+    pub(crate) fn from_sql(value: &str) -> Option<Self> {
         match value {
             "ready" => Some(Self::Ready),
             "in_progress" => Some(Self::InProgress),
@@ -289,7 +293,7 @@ fn validated_text(title: &str, description: &str) -> Result<(String, String), Ta
     Ok((clean_title.to_owned(), description.to_owned()))
 }
 
-fn invalid_db_text(index: usize, value: String) -> rusqlite::Error {
+pub(crate) fn invalid_db_text(index: usize, value: String) -> rusqlite::Error {
     rusqlite::Error::FromSqlConversionFailure(
         index,
         Type::Text,
@@ -335,7 +339,7 @@ impl TaskStore {
         let mut connection = Connection::open(path)?;
         connection.busy_timeout(BUSY_TIMEOUT)?;
         let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        if version > 6 {
+        if version > 7 {
             return Err(TaskError::UnsupportedSchema(version));
         }
 
@@ -444,6 +448,11 @@ impl TaskStore {
         if version < 6 {
             let migration = connection.transaction()?;
             crate::notes::migrate_v6(&migration)?;
+            migration.commit()?;
+        }
+        if version < 7 {
+            let migration = connection.transaction()?;
+            crate::links::migrate_v7(&migration)?;
             migration.commit()?;
         }
         Ok(Self {
