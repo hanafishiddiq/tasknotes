@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** in progress — implemented, awaiting independent review (2026-10-25). [Plan](../../../docs/plans/ticket-08-task-note-links-2026-10-25.md).
+**Implementation:** in progress — implemented; independent review APPROVE (2026-10-25) with its findings fixed below; awaiting the owner's native check and merge decision. [Plan](../../../docs/plans/ticket-08-task-note-links-2026-10-25.md).
 
 ## Acceptance criteria
 
@@ -64,4 +64,18 @@ App tests in `src/links.test.tsx` through the mocked Tauri seam (each RED first)
 | **Link a Task** on a Note, type part of a title | Matching Tasks appear, already linked ones left out; picking one links it |
 | Quit (Cmd+Q) and relaunch | Every link is still there, both ways |
 | Check both appearances (sidebar toggle) | Link lists follow DESIGN.md "Task–Note Links": no shadows, yellow only for the Link/Undo text actions |
+
+## Independent review and fixes (2026-10-25)
+
+Review result: **APPROVE** with 2 Minor and 2 Nit findings, all fixed test-first on this branch.
+
+| Finding | Fix |
+| --- | --- |
+| Minor: a Note listed Tasks hidden by a Removed List, and opening one showed an empty page | Coordinator decision: `list_note_tasks` leaves out Tasks hidden by Removed (their own `removed_at` or their List's); the link row stays and the Task is listed again on restore. Test `a_note_lists_no_task_hidden_by_removed_and_shows_it_again_on_restore` (RED first). Ticket 09 Comments note that restore must bring these links back into view (`cd50e80`) |
+| Minor: linking an old pair again kept its old `linked_at`, so it could sort low or land on page 2 | An ordinary link of an unlinked pair gets a fresh stamp and lists first; Undo uses the new `restore_link` (core + Tauri), which keeps the original stamp and place. Tests `linking_an_unlinked_pair_again_is_a_fresh_link_first_in_the_list` (RED first) and `undo_restores_the_original_place_and_refuses_unknown_links`; both App Undo tests now require `restore_link` and no `link_note` (RED first) (`cd50e80`) |
+| Nit: opening a linked Task did nothing while the Task view was saving | The Task view opens at once with "Opening the linked Task once the current change is saved…" and opens the Task when the save is done. App test `opens a linked Task once a Task save in progress has finished` (RED first) (`a30e6c7`) |
+| Nit: `LinkedList` took both `noun` and `keptNoun` | `keptNoun` is now derived from `noun` (`a30e6c7`) |
+| Nit (follow-up): a stale Undo can revive a link ended by another interface | Recorded in the plan under Follow-ups for Tickets 10/12 (link revision or `unlinked_at` check, plus Audit Entry) |
+
+**Gates after the fixes:** `pnpm test` 136 tests in 11 files; `pnpm typecheck`; `pnpm build`; core `cargo test` 73 tests; Tauri `cargo test` 1 test; `cargo clippy --all-targets -- -D warnings` and `cargo fmt --check` for core and Tauri. All green. Native QA still not run (owner checklist above); add to it: remove the List of a linked Task, the Note no longer lists that Task; restore the List, it is back.
 
