@@ -35,6 +35,8 @@ export default function App() {
   const [notesOpened, setNotesOpened] = useState(false);
   // A Note asked for from elsewhere (a Task's linked Notes); the counter repeats a request.
   const [noteRequest, setNoteRequest] = useState<{ noteId: string; count: number } | null>(null);
+  // A linked Task asked for while the Task view was busy.
+  const [pendingLinkedTask, setPendingLinkedTask] = useState<string | null>(null);
   const [lists, setLists] = useState<TaskList[]>([]);
   const [listCursor, setListCursor] = useState<string | null>(null);
   const [busyList, setBusyList] = useState(false);
@@ -119,6 +121,13 @@ export default function App() {
     return () => void stop.then((unlisten) => unlisten());
   }, []);
 
+  useEffect(() => {
+    if (pendingLinkedTask && !(busyList || creating || savingId || loadingMore)) {
+      openLinkedTask(pendingLinkedTask);
+    }
+    // openLinkedTask reads the same busy flags listed here.
+  }, [pendingLinkedTask, busyList, creating, savingId, loadingMore]);
+
   function resetTaskPages() {
     requestGeneration.current += 1;
     setCurrentPageCursor(null);
@@ -132,7 +141,13 @@ export default function App() {
 
   /** Shows one Task, expanded, as when it is opened from a Note it is linked to. */
   function openLinkedTask(taskId: string) {
-    if (busyList || creating || savingId || loadingMore) return;
+    if (busyList || creating || savingId || loadingMore) {
+      // Opened once the Task view has finished its current change.
+      setPendingLinkedTask(taskId);
+      setWorkspace("tasks");
+      return;
+    }
+    setPendingLinkedTask(null);
     navigate({ kind: "all" });
     setSearchDraft("");
     setTagDraft("");
@@ -630,6 +645,13 @@ export default function App() {
                 </div>
               )}
             </form>
+
+            {pendingLinkedTask && (
+              <div role="status" aria-label="Opening linked Task" className="notice-banner">
+                <LoaderCircle className="spin" size={14} aria-hidden="true" />
+                <span>Opening the linked Task once the current change is saved…</span>
+              </div>
+            )}
 
             {filters.taskId && (
               <div role="status" aria-label="Linked Task" className="notice-banner">

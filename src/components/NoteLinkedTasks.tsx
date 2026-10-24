@@ -56,7 +56,7 @@ export default function NoteLinkedTasks({ noteId, shown, onOpenTask }: NoteLinke
   const offered = found.filter((task) => !linked.has(task.id));
 
   return (
-    <LinkedList noun="Tasks" keptNoun="Task" links={links}
+    <LinkedList noun="Tasks" links={links}
       icon={<SquareCheck size={13} aria-hidden="true" />}
       detail={(item) => <span className="linked-status">{STATUS_VIEW[item.status].label}</span>}
       onOpen={(item) => onOpenTask(item.taskId)}>

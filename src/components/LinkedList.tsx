@@ -10,18 +10,19 @@ interface LinkedListProps<T extends { linkId: string; title: string }> {
   onOpen: (item: T) => void;
   /** Extra text after the title, such as a Task's work status. */
   detail?: (item: T) => ReactNode;
-  /** What the unlink notice promises stays as it was. */
-  keptNoun: "Note" | "Task";
   children: ReactNode;
 }
 
 /** One side of a Task–Note relationship: open, unlink with Undo, then a way to add. */
 export default function LinkedList<T extends { linkId: string; title: string }>({
-  noun, links, icon, onOpen, detail, keptNoun, children,
+  noun, links, icon, onOpen, detail, children,
 }: LinkedListProps<T>) {
+  // The unlink notice promises the other side stays as it was.
+  const kept = noun === "Notes" ? "Note" : "Task";
+  const owner = noun === "Notes" ? "Task" : "Note";
   return (
     <section className="linked-section"
-      aria-label={`${noun} linked to this ${keptNoun === "Note" ? "Task" : "Note"}`}>
+      aria-label={`${noun} linked to this ${owner}`}>
       <h4 className="linked-heading">{noun}</h4>
       {links.error && <p role="alert" className="inline-error">{links.error}</p>}
       <ul className="linked-items" aria-label={`Linked ${noun}`}>
@@ -46,7 +47,7 @@ export default function LinkedList<T extends { linkId: string; title: string }>(
       )}
       {links.undoable && (
         <div role="status" aria-label="Unlinked" className="linked-undo">
-          <span>Unlinked “{links.undoable.title}”. The {keptNoun} itself is unchanged.</span>
+          <span>Unlinked “{links.undoable.title}”. The {kept} itself is unchanged.</span>
           <button type="button" className="text-link" aria-label="Undo unlink" disabled={links.busy}
             onClick={() => void links.undo()}>Undo</button>
         </div>

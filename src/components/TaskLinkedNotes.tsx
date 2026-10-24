@@ -43,7 +43,7 @@ export default function TaskLinkedNotes({ taskId, shown, onOpenNote }: TaskLinke
   const offered = choices?.filter((note) => !linked.has(note.id)) ?? [];
 
   return (
-    <LinkedList noun="Notes" keptNoun="Note" links={links}
+    <LinkedList noun="Notes" links={links}
       icon={<FileText size={13} aria-hidden="true" />}
       onOpen={(item) => onOpenNote(item.noteId)}>
       {choices === null ? (

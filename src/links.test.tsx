@@ -22,6 +22,8 @@ class Backend {
   notes = new Map<string, Note>();
   links: Link[] = [];
   calls: { command: string; args: Record<string, unknown> }[] = [];
+  /** Set to hold a Task save open until the test lets it finish. */
+  pendingSave: Promise<void> | null = null;
   private clock = 1_000;
 
   task(id: string, title: string, fields: Partial<Task> = {}): Task {
@@ -64,6 +66,15 @@ class Backend {
       case "list_lists": return { items: [], nextCursor: null };
       case "list_progress_entries": return { items: [], nextCursor: null };
       case "quit_ready": return null;
+      case "change_task": {
+        const input = args.input as { id: string; priority: Task["priority"] };
+        const task = this.tasks.find((t) => t.id === input.id)!;
+        const finish = () => {
+          Object.assign(task, { priority: input.priority, revision: task.revision + 1 });
+          return { ...task };
+        };
+        return this.pendingSave ? this.pendingSave.then(finish) : finish();
+      }
       case "list_tasks": {
         const text = String(args.text ?? "").toLowerCase();
         const items = this.tasks.filter((t) => (!args.taskId || t.id === args.taskId) &&
@@ -302,6 +313,34 @@ describe("Task–Note links from a Note", () => {
     await waitFor(async () => expect(within(await linkedNotes()).getAllByRole("listitem")).toHaveLength(1));
     await user.click(screen.getByRole("button", { name: "All notes" }));
     await waitFor(async () => expect(within(await linkedTasks()).getAllByRole("listitem")).toHaveLength(1));
+  });
+
+  it("opens a linked Task once a Task save in progress has finished", async () => {
+    backend.task("task-1", "Book the ferry");
+    backend.task("task-2", "Pack the bags");
+    backend.note("note-1", "Trip plan");
+    backend.link("task-1", "note-1");
+    backend.link("task-2", "note-1");
+    let release = () => {};
+    backend.pendingSave = new Promise((resolve) => { release = resolve; });
+    const user = await openTask("Book the ferry");
+    const notes = await linkedNotes();
+    await waitFor(() => expect(within(notes).getAllByRole("listitem")).toHaveLength(1));
+
+    // The priority save is still running when the person moves on through the links.
+    await user.selectOptions(screen.getByRole("combobox", { name: "Priority" }), "high");
+    await user.click(within(notes).getByRole("button", { name: "Trip plan" }));
+    const tasks = await linkedTasks();
+    await waitFor(() => expect(within(tasks).getAllByRole("listitem")).toHaveLength(2));
+    await user.click(within(tasks).getByRole("button", { name: /^Pack the bags/ }));
+
+    expect(await screen.findByRole("status", { name: "Opening linked Task" })).toBeInTheDocument();
+    release();
+    await screen.findByRole("status", { name: "Linked Task" });
+    const list = screen.getByRole("region", { name: "Your tasks" });
+    await waitFor(() => expect(within(list).getAllByRole("article").map((a) => a.getAttribute("aria-label")))
+      .toEqual(["Pack the bags"]));
+    expect(screen.getByRole("region", { name: "Task details" })).toBeInTheDocument();
   });
 });
 
