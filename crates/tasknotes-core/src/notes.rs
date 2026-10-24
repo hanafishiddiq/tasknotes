@@ -1,7 +1,11 @@
-use rusqlite::{OptionalExtension, Row, Transaction, params};
+use rusqlite::{
+    OptionalExtension, Row, Transaction, TransactionBehavior, params, params_from_iter,
+    types::Value,
+};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::search::fingerprint;
 use crate::tasks::{TaskError, TaskStore, current_millis};
 
 /// A standalone document stored as canonical Markdown (ADR-0003).
@@ -42,6 +46,44 @@ pub struct NoteSummary {
     pub title: String,
     pub revision: i64,
     pub updated_at: i64,
+    pub folder_id: Option<String>,
+    pub pinned: bool,
+    /// For a search hit: a few plain-text words around the match, matched
+    /// words between U+0002 and U+0003. Never the whole Note.
+    pub snippet: Option<String>,
+}
+
+/// Where a Note listing looks: every Note, or only those directly in one folder.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(tag = "kind", content = "folderId", rename_all = "snake_case")]
+pub enum NoteScope {
+    #[default]
+    All,
+    Folder(String),
+}
+
+/// Every Note listing goes through this one query: pinned first, then most
+/// recently edited.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct NoteQuery {
+    pub text: String,
+    pub folder: NoteScope,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MoveNote {
+    pub id: String,
+    /// None takes the Note out of every folder.
+    pub folder_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetNotePinned {
+    pub id: String,
+    pub pinned: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -216,18 +258,33 @@ fn without_marks(text: &str) -> String {
     out
 }
 
-fn parse_cursor(value: &str) -> Result<(i64, String), TaskError> {
-    let mut fields = value.split('|');
-    match (fields.next(), fields.next(), fields.next(), fields.next()) {
-        (Some("n1"), Some(time), Some(id), None) => {
-            let time = time
-                .parse::<i64>()
-                .map_err(|_| TaskError::InvalidNoteCursor)?;
-            Uuid::parse_str(id).map_err(|_| TaskError::InvalidNoteCursor)?;
-            Ok((time, id.to_owned()))
-        }
-        _ => Err(TaskError::InvalidNoteCursor),
+struct After {
+    pinned: bool,
+    time: i64,
+    id: String,
+}
+
+fn parse_cursor(value: &str, key: &str) -> Result<After, TaskError> {
+    let fields: Vec<_> = value.split('|').collect();
+    let [version, cursor_key, pinned, time, id] = fields[..] else {
+        return Err(TaskError::InvalidNoteCursor);
+    };
+    if version != "n2" || cursor_key != key || Uuid::parse_str(id).is_err() {
+        return Err(TaskError::InvalidNoteCursor);
     }
+    let pinned = match pinned {
+        "1" => true,
+        "0" => false,
+        _ => return Err(TaskError::InvalidNoteCursor),
+    };
+    let time = time
+        .parse::<i64>()
+        .map_err(|_| TaskError::InvalidNoteCursor)?;
+    Ok(After {
+        pinned,
+        time,
+        id: id.to_owned(),
+    })
 }
 
 fn read_note(row: &Row<'_>) -> rusqlite::Result<Note> {
@@ -245,21 +302,69 @@ fn read_note(row: &Row<'_>) -> rusqlite::Result<Note> {
 
 impl TaskStore {
     pub fn create_note(&self, input: CreateNote) -> Result<Note, TaskError> {
+        self.create_note_in_folder(input, None)
+    }
+
+    pub fn create_note_in_folder(
+        &self,
+        input: CreateNote,
+        folder_id: Option<&str>,
+    ) -> Result<Note, TaskError> {
         check_length(&input.markdown)?;
         let now = current_millis()?;
-        Ok(self.connect()?.query_row(
+        let mut conn = self.connect()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if let Some(folder) = folder_id {
+            crate::note_folders::require_folder(&tx, folder)?;
+        }
+        let note = tx.query_row(
             &format!(
-                "INSERT INTO notes (id, markdown, title, revision, created_at, updated_at)
-                 SELECT ?1, ?2, ?3, 1, stamp, stamp FROM ({NEXT_STAMP}) RETURNING {COLUMNS}"
+                "INSERT INTO notes (id, markdown, title, revision, created_at, updated_at, folder_id)
+                 SELECT ?1, ?2, ?3, 1, stamp, stamp, ?5 FROM ({NEXT_STAMP}) RETURNING {COLUMNS}"
             ),
             params![
                 Uuid::new_v4().to_string(),
                 input.markdown,
                 title_of(&input.markdown),
-                now
+                now,
+                folder_id
             ],
             read_note,
-        )?)
+        )?;
+        tx.commit()?;
+        Ok(note)
+    }
+
+    /// Placement only: the Markdown, its revision and the edit time stay, so
+    /// an editor open on the Note keeps saving without a conflict.
+    pub fn move_note(&self, input: MoveNote) -> Result<Note, TaskError> {
+        let mut conn = self.connect()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if let Some(folder) = input.folder_id.as_deref() {
+            crate::note_folders::require_folder(&tx, folder)?;
+        }
+        let note = tx
+            .query_row(
+                &format!("UPDATE notes SET folder_id = ?1 WHERE id = ?2 RETURNING {COLUMNS}"),
+                params![input.folder_id, input.id],
+                read_note,
+            )
+            .optional()?
+            .ok_or(TaskError::NoteNotFound)?;
+        tx.commit()?;
+        Ok(note)
+    }
+
+    /// Placement only, like a move; pinning twice is harmless.
+    pub fn set_note_pinned(&self, input: SetNotePinned) -> Result<Note, TaskError> {
+        self.connect()?
+            .query_row(
+                &format!("UPDATE notes SET pinned = ?1 WHERE id = ?2 RETURNING {COLUMNS}"),
+                params![input.pinned, input.id],
+                read_note,
+            )
+            .optional()?
+            .ok_or(TaskError::NoteNotFound)
     }
 
     /// Saves only over the revision the editor started from; a newer edit wins
@@ -302,39 +407,83 @@ impl TaskStore {
         }
     }
 
-    /// Most recently edited first, as a bounded keyset page.
+    /// Every Note, pinned first, then most recently edited, as a bounded keyset page.
     pub fn list_notes(&self, limit: u32, cursor: Option<&str>) -> Result<NotePage, TaskError> {
+        self.query_notes(&NoteQuery::default(), limit, cursor)
+    }
+
+    /// Bounded keyset page over one query. A cursor is valid only for the
+    /// query that produced it, so pages never repeat or skip across queries.
+    pub fn query_notes(
+        &self,
+        query: &NoteQuery,
+        limit: u32,
+        cursor: Option<&str>,
+    ) -> Result<NotePage, TaskError> {
         if !(1..=100).contains(&limit) {
             return Err(TaskError::InvalidPageSize);
         }
-        let (time, id) = cursor.map(parse_cursor).transpose()?.unzip();
+        let folder_key = match &query.folder {
+            NoteScope::All => "all".to_owned(),
+            NoteScope::Folder(id) => format!("folder:{id}"),
+        };
+        let key = fingerprint(&[&folder_key]);
+        let after = cursor.map(|value| parse_cursor(value, &key)).transpose()?;
+
+        let mut values: Vec<Value> = Vec::new();
+        let mut bind = |value: Value| {
+            values.push(value);
+            format!("?{}", values.len())
+        };
+        let mut filters = vec!["1".to_owned()];
+        if let NoteScope::Folder(id) = &query.folder {
+            filters.push(format!("n.folder_id = {}", bind(Value::Text(id.clone()))));
+        }
+        if let Some(after) = &after {
+            // A row-value bound lets SQLite seek into the index on later pages.
+            filters.push(format!(
+                "(n.pinned, n.updated_at, n.id) < ({}, {}, {})",
+                bind(Value::Integer(i64::from(after.pinned))),
+                bind(Value::Integer(after.time)),
+                bind(Value::Text(after.id.clone()))
+            ));
+        }
+        let page_size = bind(Value::Integer(i64::from(limit) + 1));
+        let sql = format!(
+            "SELECT n.id, n.title, n.revision, n.updated_at, n.folder_id, n.pinned
+             FROM notes n WHERE {}
+             ORDER BY n.pinned DESC, n.updated_at DESC, n.id DESC LIMIT {page_size}",
+            filters.join(" AND ")
+        );
+
         let conn = self.connect()?;
-        // A row-value bound lets SQLite seek into the index instead of scanning
-        // every newer Note on later pages. The first page binds both as NULL.
-        let mut stmt = conn.prepare(&format!(
-            "SELECT id, title, revision, updated_at FROM notes {}
-             ORDER BY updated_at DESC, id DESC LIMIT ?3",
-            if time.is_some() {
-                "WHERE (updated_at, id) < (?1, ?2)"
-            } else {
-                "WHERE ?1 IS NULL AND ?2 IS NULL"
-            }
-        ))?;
+        if let NoteScope::Folder(id) = &query.folder {
+            crate::note_folders::require_folder(&conn, id)?;
+        }
+        let mut stmt = conn.prepare(&sql)?;
         let mut items = stmt
-            .query_map(params![time, id, i64::from(limit) + 1], |row| {
+            .query_map(params_from_iter(values), |row| {
                 Ok(NoteSummary {
                     id: row.get(0)?,
                     title: row.get(1)?,
                     revision: row.get(2)?,
                     updated_at: row.get(3)?,
+                    folder_id: row.get(4)?,
+                    pinned: row.get(5)?,
+                    snippet: None,
                 })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         let next_cursor = if items.len() > limit as usize {
             items.pop();
-            items
-                .last()
-                .map(|last| format!("n1|{}|{}", last.updated_at, last.id))
+            items.last().map(|last| {
+                format!(
+                    "n2|{key}|{}|{}|{}",
+                    u8::from(last.pinned),
+                    last.updated_at,
+                    last.id
+                )
+            })
         } else {
             None
         };
