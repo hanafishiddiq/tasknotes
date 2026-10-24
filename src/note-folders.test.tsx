@@ -135,3 +135,77 @@ describe("nested Note Folders", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
+
+describe("pinned Notes and moving a Note", () => {
+  const titlesIn = (list: HTMLElement) => within(list).getAllByRole("button")
+    .map((button) => button.querySelector(".note-list-title")?.textContent);
+
+  it("pins the open Note above the rest and unpins it, without making its autosave conflict", async () => {
+    const older = backend.seed("Packing list", "Packing list");
+    backend.seed("Recipes", "Recipes");
+    const user = await openNotes();
+    const list = screen.getByRole("list", { name: "Notes" });
+    await eventually(() => expect(titlesIn(list)).toEqual(["Recipes", "Packing list"]));
+
+    await user.click(within(list).getByText("Packing list", { exact: true }));
+    await eventually(() => expect(screen.getByRole("textbox", { name: "Note text" })).toHaveTextContent("Packing list"));
+    await user.click(screen.getByRole("button", { name: "Pin note" }));
+    await eventually(() => expect(titlesIn(list)).toEqual(["Packing list", "Recipes"]));
+    expect(backend.commands("set_note_pinned")).toEqual([{ input: { id: older.id, pinned: true } }]);
+    expect(within(list).getByText("Pinned")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Unpin note" })).toHaveAttribute("aria-pressed", "true");
+
+    // Pinning is not an edit: the editor still saves over the revision it opened.
+    await user.click(screen.getByRole("textbox", { name: "Note text" }));
+    await user.keyboard("Bali ");
+    await eventually(() => expect(backend.commands("update_note")).toEqual([
+      { input: { id: older.id, markdown: "Bali Packing list", expectedRevision: 1 } },
+    ]));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    await eventually(() => expect(titlesIn(list)).toEqual(["Bali Packing list", "Recipes"]));
+
+    await user.click(screen.getByRole("button", { name: "Unpin note" }));
+    await eventually(() => expect(within(list).queryByText("Pinned")).not.toBeInTheDocument());
+    expect(backend.commands("set_note_pinned")[1]).toEqual({ input: { id: older.id, pinned: false } });
+  });
+
+  it("an edited Note stays below the pinned ones", async () => {
+    backend.seed("Pinned plan", "Pinned plan", { pinned: true });
+    backend.seed("Scratch", "Scratch");
+    const user = await openNotes();
+    const list = screen.getByRole("list", { name: "Notes" });
+    await eventually(() => expect(titlesIn(list)).toEqual(["Pinned plan", "Scratch"]));
+    await user.click(within(list).getByText("Scratch", { exact: true }));
+    await eventually(() => expect(screen.getByRole("textbox", { name: "Note text" })).toHaveTextContent("Scratch"));
+    await user.click(screen.getByRole("textbox", { name: "Note text" }));
+    await user.keyboard("Old ");
+    await eventually(() => expect(titlesIn(list)).toEqual(["Pinned plan", "Old Scratch"]));
+  });
+
+  it("moves the open Note to another folder", async () => {
+    const work = backend.folder("Work");
+    const home = backend.folder("Home");
+    const receipts = backend.seed("Receipts", "Receipts", { folderId: work.id });
+    const user = await openNotes();
+    await user.click(await within(folderTree()).findByRole("button", { name: "Work" }));
+    const list = screen.getByRole("list", { name: "Notes" });
+    await eventually(() => expect(titlesIn(list)).toEqual(["Receipts"]));
+    await eventually(() => expect(screen.getByRole("textbox", { name: "Note text" })).toHaveTextContent("Receipts"));
+
+    const picker = screen.getByRole("combobox", { name: "Folder" });
+    expect(picker).toHaveValue(work.id);
+    await user.selectOptions(picker, "Home");
+    await eventually(() => expect(backend.commands("move_note")).toEqual([
+      { input: { id: receipts.id, folderId: home.id } },
+    ]));
+    // Work no longer holds it; the Note stays open where it now lives.
+    await eventually(() => expect(within(list).queryAllByRole("button")).toHaveLength(0));
+    expect(screen.getByRole("textbox", { name: "Note text" })).toHaveTextContent("Receipts");
+    expect(screen.getByRole("combobox", { name: "Folder" })).toHaveValue(home.id);
+
+    await user.selectOptions(screen.getByRole("combobox", { name: "Folder" }), "No folder");
+    await eventually(() => expect(backend.commands("move_note")[1]).toEqual({
+      input: { id: receipts.id, folderId: null },
+    }));
+  });
+});

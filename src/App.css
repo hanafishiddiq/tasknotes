@@ -1168,16 +1168,57 @@ button.folder-disclosure:hover:not(:disabled) {
   min-width: 0;
   overflow: hidden;
 }
-.note-save-state {
+/* The open Note's toolbar: folder and pin on the left, save state on the right. */
+.note-toolbar {
   display: flex;
   flex: none;
   align-items: center;
+  gap: 4px;
+  height: 52px;
+  padding: 0 12px 0 16px;
+}
+.note-folder-picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 26px;
+  padding: 0 4px 0 10px;
+  border-radius: 13px;
+  background: var(--field);
+  color: var(--text-2);
+  font-size: 12px;
+}
+.note-folder-picker svg {
+  flex: none;
+  color: var(--accent);
+}
+.note-folder-picker select {
+  min-width: 0;
+  max-width: 220px;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+}
+.note-toolbar .icon-button[aria-pressed="true"] {
+  color: var(--accent-text);
+}
+.note-save-state {
+  display: flex;
+  flex: 1;
+  align-items: center;
   justify-content: flex-end;
   gap: 6px;
-  height: 52px;
-  padding: 0 20px;
   color: var(--text-3);
   font-size: 12px;
+}
+.note-list-heading {
+  margin: 10px 0 4px;
+  padding: 0 10px;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 700;
 }
 .note-editor-pane .error-banner,
 .note-editor-pane .notice-banner {

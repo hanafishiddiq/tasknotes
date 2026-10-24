@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { LoaderCircle, SquarePen } from "lucide-react";
+import { Folder as FolderIcon, LoaderCircle, Pin, PinOff, SquarePen } from "lucide-react";
 import { errorMessage } from "../lib/error-message";
 import { noteApi, type Note, type NoteScope, type NoteSummary } from "../lib/note-api";
 import type { FolderOption } from "../lib/use-note-folders";
@@ -56,12 +56,25 @@ interface NotesWorkspaceProps {
 }
 
 /** The Notes list beside one open Note, as in Apple Notes. */
-export default function NotesWorkspace({ hidden, scope, scopeName }: NotesWorkspaceProps) {
+/** An edited Note goes to the top of its group: pinned Notes stay above the rest. */
+function placeEdited(list: NoteSummary[], item: NoteSummary): NoteSummary[] {
+  const rest = list.filter((other) => other.id !== item.id);
+  const firstUnpinned = rest.findIndex((other) => !other.pinned);
+  const at = item.pinned ? 0 : firstUnpinned === -1 ? rest.length : firstUnpinned;
+  return [...rest.slice(0, at), item, ...rest.slice(at)];
+}
+
+export default function NotesWorkspace({ hidden, scope, scopeName, folders }: NotesWorkspaceProps) {
   const [notes, setNotes] = useState<NoteSummary[]>([]);
   // Where the next page of older Notes starts; null once every Note is listed.
   const [moreCursor, setMoreCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
+  // Where the open Note lives and whether it is pinned, as the core last said.
+  const [placement, setPlacement] = useState<{ folderId: string | null; pinned: boolean }>(
+    { folderId: null, pinned: false },
+  );
+  const [placing, setPlacing] = useState(false);
   // The editor remounts only when another Note or a new draft is opened,
   // never when a draft becomes a stored Note, so typing is not interrupted.
   const [editor, setEditor] = useState<{ key: number; markdown: string } | null>(null);
@@ -85,6 +98,7 @@ export default function NotesWorkspace({ hidden, scope, scopeName }: NotesWorksp
     saved.current = next;
     dirty.current = false;
     setOpenId(next.id);
+    setPlacement({ folderId: next.folderId, pinned: next.pinned });
     setEditor((current) => ({ key: (current?.key ?? 0) + 1, markdown: next.markdown }));
   }
 
@@ -140,7 +154,7 @@ export default function NotesWorkspace({ hidden, scope, scopeName }: NotesWorksp
           : await noteApi.update(base.id, markdown, base.revision);
         saved.current = savedFrom(note);
         setOpenId(note.id);
-        setNotes((current) => [summary(note), ...current.filter((item) => item.id !== note.id)]);
+        setNotes((current) => placeEdited(current, summary(note)));
         setError(null);
         return true;
       } catch (reason) {
@@ -226,7 +240,7 @@ export default function NotesWorkspace({ hidden, scope, scopeName }: NotesWorksp
       conflicted.current = false;
       setConflict(false);
       setOpenId(note.id);
-      setNotes((current) => [summary(note), ...current]);
+      setNotes((current) => placeEdited(current, summary(note)));
       // Typing that landed while the new Note was being stored is saved next.
       if (dirty.current) edited();
     } catch (reason) {
@@ -234,6 +248,31 @@ export default function NotesWorkspace({ hidden, scope, scopeName }: NotesWorksp
       setError("Couldn't save this Note: " + errorMessage(reason));
     } finally {
       setSaving(false);
+    }
+  }
+
+  /** The first page again, in the core's order, after the open Note was placed elsewhere. */
+  async function refreshList() {
+    const page = await noteApi.list(null, scopeRef.current);
+    setNotes(page.items);
+    setMoreCursor(page.nextCursor);
+  }
+
+  /** Pins or moves the open Note. Placement never changes its text or revision. */
+  async function place(change: (id: string) => Promise<Note>) {
+    const id = saved.current.id;
+    if (id === null || placing) return;
+    setPlacing(true);
+    try {
+      const note = await change(id);
+      saved.current = { ...saved.current, folderId: note.folderId, pinned: note.pinned };
+      setPlacement({ folderId: note.folderId, pinned: note.pinned });
+      setError(null);
+      await refreshList().catch((reason) => setError("Couldn't refresh the Notes list: " + errorMessage(reason)));
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setPlacing(false);
     }
   }
 
@@ -252,8 +291,11 @@ export default function NotesWorkspace({ hidden, scope, scopeName }: NotesWorksp
           </button>
         </header>
         <ul className="note-list-items" aria-label="Notes">
-          {notes.map((note) => (
+          {notes.map((note, index) => (
             <li key={note.id}>
+              {note.pinned && index === 0 && <h2 className="note-list-heading">Pinned</h2>}
+              {!note.pinned && index > 0 && notes[index - 1].pinned &&
+                <h2 className="note-list-heading">Notes</h2>}
               <button type="button" className="note-list-item"
                 aria-current={openId === note.id ? "true" : undefined}
                 onClick={() => void openNote(note.id)}>
@@ -270,8 +312,30 @@ export default function NotesWorkspace({ hidden, scope, scopeName }: NotesWorksp
         )}
       </section>
       <section className="note-editor-pane" aria-label="Note editor">
-        <div className="note-save-state" role="status">
-          {saving && <><LoaderCircle className="spin" size={13} aria-hidden="true" /> Saving…</>}
+        <div className="note-toolbar">
+          <label className="note-folder-picker">
+            <FolderIcon size={14} aria-hidden="true" />
+            <select aria-label="Folder" value={placement.folderId ?? ""}
+              disabled={openId === null || placing}
+              onChange={(event) => {
+                const folderId = event.target.value || null;
+                void place((id) => noteApi.move(id, folderId));
+              }}>
+              <option value="">No folder</option>
+              {folders.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+              {/* A folder not loaded in the sidebar still shows as the current one. */}
+              {placement.folderId !== null && !folders.some((option) => option.id === placement.folderId) &&
+                <option value={placement.folderId}>Current folder</option>}
+            </select>
+          </label>
+          <button className="icon-button" type="button" disabled={openId === null || placing}
+            aria-label={placement.pinned ? "Unpin note" : "Pin note"} aria-pressed={placement.pinned}
+            onClick={() => { const pinned = !placement.pinned; void place((id) => noteApi.setPinned(id, pinned)); }}>
+            {placement.pinned ? <PinOff size={16} aria-hidden="true" /> : <Pin size={16} aria-hidden="true" />}
+          </button>
+          <div className="note-save-state" role="status">
+            {saving && <><LoaderCircle className="spin" size={13} aria-hidden="true" /> Saving…</>}
+          </div>
         </div>
         {error && <div role="alert" className="error-banner"><span>{error}</span></div>}
         {conflict && (
