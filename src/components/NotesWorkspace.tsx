@@ -27,8 +27,14 @@ function summary(note: Note): NoteSummary {
   return { id: note.id, title: note.title, revision: note.revision, updatedAt: note.updatedAt };
 }
 
+interface NotesWorkspaceProps {
+  hidden: boolean;
+  /** A Note to open, asked for from elsewhere; a new count asks again. */
+  request?: { noteId: string; count: number } | null;
+}
+
 /** The Notes list beside one open Note, as in Apple Notes. */
-export default function NotesWorkspace({ hidden }: { hidden: boolean }) {
+export default function NotesWorkspace({ hidden, request = null }: NotesWorkspaceProps) {
   const [notes, setNotes] = useState<NoteSummary[]>([]);
   // Where the next page of older Notes starts; null once every Note is listed.
   const [moreCursor, setMoreCursor] = useState<string | null>(null);
@@ -75,6 +81,11 @@ export default function NotesWorkspace({ hidden }: { hidden: boolean }) {
       window.clearTimeout(timer.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (request) void openNote(request.noteId);
+    // A repeated request for the same Note opens it again only when count changes.
+  }, [request?.count]);
 
   // flush reads only refs, so the first render's copy stays current.
   useEffect(() => saveBeforeQuit(flush), []);

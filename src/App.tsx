@@ -33,6 +33,8 @@ export default function App() {
   const [workspace, setWorkspace] = useState<"tasks" | "notes">("tasks");
   // Once opened, Notes stay mounted so a pending autosave survives visiting Tasks.
   const [notesOpened, setNotesOpened] = useState(false);
+  // A Note asked for from elsewhere (a Task's linked Notes); the counter repeats a request.
+  const [noteRequest, setNoteRequest] = useState<{ noteId: string; count: number } | null>(null);
   const [lists, setLists] = useState<TaskList[]>([]);
   const [listCursor, setListCursor] = useState<string | null>(null);
   const [busyList, setBusyList] = useState(false);
@@ -126,6 +128,11 @@ export default function App() {
   function openNotes() {
     setNotesOpened(true);
     setWorkspace("notes");
+  }
+
+  function openLinkedNote(noteId: string) {
+    setNoteRequest((current) => ({ noteId, count: (current?.count ?? 0) + 1 }));
+    openNotes();
   }
 
   function navigate(next: TaskView) {
@@ -687,6 +694,7 @@ export default function App() {
                           today={today}
                           onMove={(listId) => moveTask(task, listId)}
                           onUpdateDetails={(tags, dueDate) => updateDetails(task, tags, dueDate)}
+                          onOpenNote={openLinkedNote}
                         />
                       ))}
                     </section>
@@ -719,7 +727,7 @@ export default function App() {
       {notesOpened && (
         <Suspense fallback={workspace === "notes" &&
           <div className="loading-state" role="status"><LoaderCircle className="spin" size={16} /> Loading notes...</div>}>
-          <NotesWorkspace hidden={workspace !== "notes"} />
+          <NotesWorkspace hidden={workspace !== "notes"} request={noteRequest} />
         </Suspense>
       )}
     </div>

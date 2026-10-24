@@ -9,6 +9,7 @@ import type {
   ProgressDraft,
 } from "../lib/task-api";
 import TaskProgressHistory from "./TaskProgressHistory";
+import TaskLinkedNotes from "./TaskLinkedNotes";
 import { deadlineStatus } from "../lib/deadlines";
 import {
   STATUS_ORDER,
@@ -45,6 +46,7 @@ interface TaskRowProps {
   today: string;
   onMove: (listId: string | null) => Promise<void>;
   onUpdateDetails: (tags: string[], dueDate: string | null) => Promise<void>;
+  onOpenNote: (noteId: string) => void;
 }
 
 export default function TaskRow({
@@ -59,6 +61,7 @@ export default function TaskRow({
   today,
   onMove,
   onUpdateDetails,
+  onOpenNote,
 }: TaskRowProps) {
   const [draftTitle, setDraftTitle] = useState(task.title);
   const [draftDescription, setDraftDescription] = useState(task.description);
@@ -461,6 +464,7 @@ export default function TaskRow({
               Save or discard the progress update before changing another field.
             </p>
           )}
+          <TaskLinkedNotes taskId={task.id} onOpenNote={onOpenNote} />
           <TaskProgressHistory taskId={task.id} revision={task.revision} />
         </section>
       )}

@@ -1,3 +1,4 @@
+use tasknotes_core::links::{LinkPage, LinkedNote, LinkedTask, NoteLink};
 use tasknotes_core::notes::{CreateNote, Note, NotePage, UpdateNote};
 use tasknotes_core::tasks::{
     ChangeTask, CreateList, CreateTask, List, ListPage, MoveTask, Priority, ProgressHistoryPage,
@@ -147,6 +148,48 @@ fn update_note(store: State<'_, TaskStore>, input: UpdateNote) -> Result<Note, S
     store.update_note(input).map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+fn link_note(
+    store: State<'_, TaskStore>,
+    task_id: String,
+    note_id: String,
+) -> Result<NoteLink, String> {
+    store
+        .link_note(&task_id, &note_id)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn unlink_note(store: State<'_, TaskStore>, link_id: String) -> Result<NoteLink, String> {
+    store
+        .unlink_note(&link_id)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn list_task_notes(
+    store: State<'_, TaskStore>,
+    task_id: String,
+    limit: u32,
+    cursor: Option<String>,
+) -> Result<LinkPage<LinkedNote>, String> {
+    store
+        .list_task_notes(&task_id, limit, cursor.as_deref())
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn list_note_tasks(
+    store: State<'_, TaskStore>,
+    note_id: String,
+    limit: u32,
+    cursor: Option<String>,
+) -> Result<LinkPage<LinkedTask>, String> {
+    store
+        .list_note_tasks(&note_id, limit, cursor.as_deref())
+        .map_err(|error| error.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -184,6 +227,10 @@ pub fn run() {
             get_note,
             create_note,
             update_note,
+            link_note,
+            unlink_note,
+            list_task_notes,
+            list_note_tasks,
             quit::quit_ready
         ])
         .run(tauri::generate_context!())
