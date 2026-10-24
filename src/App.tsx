@@ -24,7 +24,7 @@ const SEARCH_DELAY_MS = 250;
 
 function sameFilters(a: TaskFilters, b: TaskFilters): boolean {
   return a.text.trim() === b.text.trim() && a.tag.trim() === b.tag.trim() &&
-    a.status === b.status && a.priority === b.priority;
+    a.status === b.status && a.priority === b.priority && a.taskId === b.taskId;
 }
 
 export default function App() {
@@ -128,6 +128,16 @@ export default function App() {
   function openNotes() {
     setNotesOpened(true);
     setWorkspace("notes");
+  }
+
+  /** Shows one Task, expanded, as when it is opened from a Note it is linked to. */
+  function openLinkedTask(taskId: string) {
+    if (busyList || creating || savingId || loadingMore) return;
+    navigate({ kind: "all" });
+    setSearchDraft("");
+    setTagDraft("");
+    applyFilters({ ...NO_FILTERS, taskId });
+    setExpandedId(taskId);
   }
 
   function openLinkedNote(noteId: string) {
@@ -621,6 +631,15 @@ export default function App() {
               )}
             </form>
 
+            {filters.taskId && (
+              <div role="status" aria-label="Linked Task" className="notice-banner">
+                <span>Showing one Task linked to a Note</span>
+                <button className="button button-small" type="button" onClick={clearFilters}>
+                  Show all tasks
+                </button>
+              </div>
+            )}
+
             {createdHidden && (
               <div role="status" aria-label="Task hidden by filters" className="notice-banner">
                 <span>Task added, but hidden by the current search or filters</span>
@@ -727,7 +746,7 @@ export default function App() {
       {notesOpened && (
         <Suspense fallback={workspace === "notes" &&
           <div className="loading-state" role="status"><LoaderCircle className="spin" size={16} /> Loading notes...</div>}>
-          <NotesWorkspace hidden={workspace !== "notes"} request={noteRequest} />
+          <NotesWorkspace hidden={workspace !== "notes"} request={noteRequest} onOpenTask={openLinkedTask} />
         </Suspense>
       )}
     </div>

@@ -63,7 +63,9 @@ class Backend {
       case "list_progress_entries": return { items: [], nextCursor: null };
       case "quit_ready": return null;
       case "list_tasks": {
-        const items = args.taskId ? this.tasks.filter((t) => t.id === args.taskId) : this.tasks;
+        const text = String(args.text ?? "").toLowerCase();
+        const items = this.tasks.filter((t) => (!args.taskId || t.id === args.taskId) &&
+          t.title.toLowerCase().includes(text));
         return { items: items.map((t) => ({ ...t })), nextCursor: null };
       }
       case "list_notes": {
@@ -186,6 +188,81 @@ describe("Task–Note links from a Task", () => {
     await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(1));
     expect(backend.links.filter((l) => l.unlinkedAt === null).map((l) => l.id)).toEqual([original.id]);
     expect(screen.queryByRole("status", { name: "Unlinked" })).not.toBeInTheDocument();
+  });
+});
+
+async function openNotesView() {
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(await screen.findByRole("button", { name: "All notes" }));
+  return user;
+}
+
+const linkedTasks = () => screen.findByRole("list", { name: "Linked Tasks" });
+
+describe("Task–Note links from a Note", () => {
+  it("lists the Note's linked Tasks and opens one on its own, expanded", async () => {
+    backend.task("task-1", "Book the ferry");
+    backend.task("task-2", "Pack the bags");
+    backend.note("note-1", "Trip plan");
+    backend.link("task-1", "note-1");
+    const user = await openNotesView();
+
+    const list = await linkedTasks();
+    await waitFor(() => expect(within(list).getAllByRole("listitem").map((li) => li.textContent))
+      .toEqual([expect.stringContaining("Book the ferry")]));
+    await user.click(within(list).getByRole("button", { name: /^Book the ferry/ }));
+
+    await screen.findByRole("region", { name: "Task details" });
+    const tasks = screen.getByRole("region", { name: "Your tasks" });
+    expect(within(tasks).getAllByRole("article").map((a) => a.getAttribute("aria-label"))).toEqual(["Book the ferry"]);
+    expect(backend.commands("list_tasks").slice(-1)[0]).toMatchObject({ taskId: "task-1" });
+
+    await user.click(screen.getByRole("button", { name: "Show all tasks" }));
+    await waitFor(() => expect(within(tasks).getAllByRole("article")).toHaveLength(2));
+  });
+
+  it("links a Task found by search, once", async () => {
+    backend.task("task-1", "Book the ferry");
+    backend.task("task-2", "Pack the bags");
+    backend.note("note-1", "Trip plan");
+    backend.link("task-1", "note-1");
+    const user = await openNotesView();
+    const list = await linkedTasks();
+    await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(1));
+
+    await user.click(screen.getByRole("button", { name: "Link a Task" }));
+    // Both Tasks match; the one already linked is not offered again.
+    await user.type(screen.getByRole("searchbox", { name: "Find a Task to link" }), "the");
+    const picker = await screen.findByRole("list", { name: "Tasks to link" });
+    await waitFor(() => expect(within(picker).getAllByRole("button").map((b) => b.textContent))
+      .toEqual([expect.stringContaining("Pack the bags")]));
+    await user.click(within(picker).getByRole("button", { name: /^Pack the bags/ }));
+
+    await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(2));
+    expect(within(list).getByRole("button", { name: /^Pack the bags/ })).toBeInTheDocument();
+    expect(backend.commands("link_note")).toEqual([{ taskId: "task-2", noteId: "note-1" }]);
+    expect(screen.queryByRole("list", { name: "Tasks to link" })).not.toBeInTheDocument();
+  });
+
+  it("unlinks a Task without touching either side, and Undo brings the same link back", async () => {
+    backend.task("task-1", "Book the ferry");
+    backend.note("note-1", "Trip plan");
+    const original = backend.link("task-1", "note-1");
+    const user = await openNotesView();
+    const list = await linkedTasks();
+    await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(1));
+
+    await user.click(within(list).getByRole("button", { name: "Unlink Book the ferry" }));
+
+    await waitFor(() => expect(within(list).queryAllByRole("listitem")).toHaveLength(0));
+    expect(screen.getByRole("status", { name: "Unlinked" })).toHaveTextContent("Unlinked “Book the ferry”");
+    const writes = ["update_note", "update_task", "change_task", "record_progress"];
+    expect(backend.calls.filter((c) => writes.includes(c.command))).toEqual([]);
+
+    await user.click(screen.getByRole("button", { name: "Undo unlink" }));
+    await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(1));
+    expect(backend.links.filter((l) => l.unlinkedAt === null).map((l) => l.id)).toEqual([original.id]);
   });
 });
 

@@ -4,6 +4,7 @@ import { errorMessage } from "../lib/error-message";
 import { noteApi, type Note, type NoteSummary } from "../lib/note-api";
 import { saveBeforeQuit } from "../lib/quit";
 import NoteEditor, { type NoteEditorHandle } from "./NoteEditor";
+import NoteLinkedTasks from "./NoteLinkedTasks";
 
 // Typing settles before an autosave reaches the core.
 export const NOTE_AUTOSAVE_MS = 600;
@@ -31,10 +32,11 @@ interface NotesWorkspaceProps {
   hidden: boolean;
   /** A Note to open, asked for from elsewhere; a new count asks again. */
   request?: { noteId: string; count: number } | null;
+  onOpenTask: (taskId: string) => void;
 }
 
 /** The Notes list beside one open Note, as in Apple Notes. */
-export default function NotesWorkspace({ hidden, request = null }: NotesWorkspaceProps) {
+export default function NotesWorkspace({ hidden, request = null, onOpenTask }: NotesWorkspaceProps) {
   const [notes, setNotes] = useState<NoteSummary[]>([]);
   // Where the next page of older Notes starts; null once every Note is listed.
   const [moreCursor, setMoreCursor] = useState<string | null>(null);
@@ -264,6 +266,8 @@ export default function NotesWorkspace({ hidden, request = null }: NotesWorkspac
             </span>
           </div>
         )}
+        {/* A draft has nothing to link until its first character stores it. */}
+        {openId !== null && <NoteLinkedTasks noteId={openId} onOpenTask={onOpenTask} />}
         {editor && (
           <NoteEditor key={editor.key} initialMarkdown={editor.markdown} onEdit={edited} editorRef={editorRef} />
         )}

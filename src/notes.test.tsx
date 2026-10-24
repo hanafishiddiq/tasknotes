@@ -92,6 +92,7 @@ beforeEach(() => {
   invokeMock.mockImplementation(async (command, args) => {
     if (command === "list_lists" || command === "list_tasks") return { items: [], nextCursor: null };
     if (command === "quit_ready") return null;
+    if (command === "list_note_tasks") return { items: [], nextCursor: null };
     return backend.handle(command, (args ?? {}) as Record<string, unknown>);
   });
 });
