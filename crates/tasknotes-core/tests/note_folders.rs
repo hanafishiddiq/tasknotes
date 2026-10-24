@@ -81,6 +81,18 @@ fn a_v6_database_keeps_its_notes_and_gains_folders() {
     );
     assert_eq!(kept.folder_id, None);
     assert!(!kept.pinned);
+    // Notes written before v7 are searchable straight away.
+    let hits = store
+        .query_notes(
+            &tasknotes_core::notes::NoteQuery {
+                text: "passport".into(),
+                ..Default::default()
+            },
+            10,
+            None,
+        )
+        .unwrap();
+    assert_eq!(hits.items.len(), 1);
     assert_eq!(folder(&store, "Travel", None).name, "Travel");
 }
 

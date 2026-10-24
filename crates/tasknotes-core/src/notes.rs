@@ -5,7 +5,7 @@ use rusqlite::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::search::fingerprint;
+use crate::search::{fingerprint, search_terms};
 use crate::tasks::{TaskError, TaskStore, current_millis};
 
 /// A standalone document stored as canonical Markdown (ADR-0003).
@@ -258,6 +258,20 @@ fn without_marks(text: &str) -> String {
     out
 }
 
+/// A search snippet as the editor would show the words: block markers,
+/// inline marks and link targets dropped, lines run together.
+fn plain_snippet(raw: &str) -> String {
+    let words: Vec<String> = raw
+        .lines()
+        .map(|line| without_marks(&without_link_targets(without_block_marker(line.trim()))))
+        .collect();
+    words
+        .join(" ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 struct After {
     pinned: bool,
     time: i64,
@@ -427,7 +441,8 @@ impl TaskStore {
             NoteScope::All => "all".to_owned(),
             NoteScope::Folder(id) => format!("folder:{id}"),
         };
-        let key = fingerprint(&[&folder_key]);
+        let terms = search_terms(&query.text)?;
+        let key = fingerprint(&[&folder_key, &terms.join(" ")]);
         let after = cursor.map(|value| parse_cursor(value, &key)).transpose()?;
 
         let mut values: Vec<Value> = Vec::new();
@@ -436,6 +451,20 @@ impl TaskStore {
             format!("?{}", values.len())
         };
         let mut filters = vec!["1".to_owned()];
+        // All words must match; each is a quoted prefix term, so user text
+        // never reaches FTS5 query syntax.
+        let (source, snippet) = if terms.is_empty() {
+            ("notes n", "NULL")
+        } else {
+            filters.push(format!(
+                "notes_fts MATCH {}",
+                bind(Value::Text(terms.join(" ")))
+            ));
+            (
+                "notes_fts JOIN notes n ON n.rowid = notes_fts.rowid",
+                "snippet(notes_fts, 0, char(2), char(3), '…', 12)",
+            )
+        };
         if let NoteScope::Folder(id) = &query.folder {
             filters.push(format!("n.folder_id = {}", bind(Value::Text(id.clone()))));
         }
@@ -450,8 +479,8 @@ impl TaskStore {
         }
         let page_size = bind(Value::Integer(i64::from(limit) + 1));
         let sql = format!(
-            "SELECT n.id, n.title, n.revision, n.updated_at, n.folder_id, n.pinned
-             FROM notes n WHERE {}
+            "SELECT n.id, n.title, n.revision, n.updated_at, n.folder_id, n.pinned, {snippet}
+             FROM {source} WHERE {}
              ORDER BY n.pinned DESC, n.updated_at DESC, n.id DESC LIMIT {page_size}",
             filters.join(" AND ")
         );
@@ -470,7 +499,9 @@ impl TaskStore {
                     updated_at: row.get(3)?,
                     folder_id: row.get(4)?,
                     pinned: row.get(5)?,
-                    snippet: None,
+                    snippet: row
+                        .get::<_, Option<String>>(6)?
+                        .map(|raw| plain_snippet(&raw)),
                 })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
