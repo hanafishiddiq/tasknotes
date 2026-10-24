@@ -45,3 +45,12 @@ Open, to settle with the owner when this ticket starts:
 - Name rules among sibling folders (unique or not, case handling).
 - How Removed and restore treat a folder's subfolders and Notes (Ticket 09).
 - How the sidebar shows the tree (expand/collapse, remembered state) within bounded rendering.
+
+## Owner decisions — open items settled (2026-10-25)
+
+Han chose, when this ticket started:
+- **Maximum nesting depth:** 5 levels (a top-level folder is level 1). Deeper creates/moves are refused by the core.
+- **Opening a folder:** lists only the Notes directly in that folder, not Notes from its subfolders. Search still finds Notes in every folder.
+- **Sibling names:** unique among siblings of the same parent, compared case-insensitively ("Rapat" and "rapat" cannot share a parent). Same name under different parents is allowed.
+- **Sidebar tree:** expand/collapse per folder, and the expanded state is remembered across restarts.
+- Still deferred to Ticket 09: how Removed and restore treat a folder's subfolders and Notes.
