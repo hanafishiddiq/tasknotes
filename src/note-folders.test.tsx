@@ -97,6 +97,37 @@ describe("nested Note Folders", () => {
       .toHaveLength(4));
   });
 
+  it("moves through the folder tree with the arrow keys", async () => {
+    backend.folder("Home");
+    const work = backend.folder("Work");
+    backend.folder("Meetings", work);
+    const user = await openNotes();
+    const home = await within(folderTree()).findByRole("button", { name: "Home" });
+    const workButton = within(folderTree()).getByRole("button", { name: "Work" });
+
+    home.focus();
+    await user.keyboard("{ArrowDown}");
+    expect(workButton).toHaveFocus();
+    // Right opens a closed folder, then steps into it.
+    await user.keyboard("{ArrowRight}");
+    const meetings = await within(folderTree()).findByRole("button", { name: "Meetings" });
+    expect(workButton).toHaveFocus();
+    expect(within(folderTree()).getByRole("button", { name: "Collapse Work" })).toHaveAttribute("aria-expanded", "true");
+    await user.keyboard("{ArrowRight}");
+    expect(meetings).toHaveFocus();
+    // Left from a folder with nothing open goes to its parent; again, closes it.
+    await user.keyboard("{ArrowLeft}");
+    expect(workButton).toHaveFocus();
+    await user.keyboard("{ArrowLeft}");
+    await eventually(() => expect(within(folderTree()).queryByRole("button", { name: "Meetings" })).not.toBeInTheDocument());
+    expect(workButton).toHaveFocus();
+    await user.keyboard("{ArrowUp}");
+    expect(home).toHaveFocus();
+    // Return opens the focused folder.
+    await user.keyboard("{Enter}");
+    await eventually(() => expect(screen.getByRole("heading", { level: 1, name: "Home" })).toBeInTheDocument());
+  });
+
   it("renames and moves a folder, and shows the core's reason when a move is refused", async () => {
     const work = backend.folder("Work");
     backend.folder("Home");

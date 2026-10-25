@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type KeyboardEvent } from "react";
 import {
   Check, ChevronDown, ChevronRight, Folder, FolderInput, FolderPlus, Pencil, Plus, X,
 } from "lucide-react";
@@ -49,6 +49,30 @@ export default function NoteFolderTree({ folders, currentId, disabled, onOpen }:
     if (await folders.create(newName, null)) setNewName("");
   }
 
+  /**
+   * Arrow keys as in a tree: Up and Down move between the folders shown,
+   * Right opens a closed folder or steps into an open one, Left closes an
+   * open folder or steps out to its parent.
+   */
+  function onKeyDown(event: KeyboardEvent<HTMLUListElement>) {
+    const target = event.target as HTMLElement;
+    const id = target.dataset.folderId;
+    const folder = id ? folders.byId.get(id) : undefined;
+    if (!folder || !["ArrowDown", "ArrowUp", "ArrowRight", "ArrowLeft"].includes(event.key)) return;
+    event.preventDefault();
+    const shown = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("button[data-folder-id]")];
+    const at = shown.indexOf(target as HTMLButtonElement);
+    const open = folder.hasChildren && folders.isExpanded(folder.id);
+    if (event.key === "ArrowDown") shown[at + 1]?.focus();
+    else if (event.key === "ArrowUp") shown[at - 1]?.focus();
+    else if (event.key === "ArrowRight") {
+      // An open folder's first subfolder is the next one shown.
+      if (open) shown[at + 1]?.focus();
+      else if (folder.hasChildren) void folders.toggle(folder);
+    } else if (open) void folders.toggle(folder);
+    else shown.find((button) => button.dataset.folderId === folder.parentId)?.focus();
+  }
+
   function rows(parentId: string | null, depth: number) {
     const level = folders.level(parentId);
     if (!level) return null;
@@ -79,6 +103,7 @@ export default function NoteFolderTree({ folders, currentId, disabled, onOpen }:
                 ) : (
                   <>
                     <button type="button" className="folder" disabled={disabled} aria-label={folder.name}
+                      data-folder-id={folder.id}
                       aria-current={currentId === folder.id ? "page" : undefined}
                       onClick={() => onOpen(folder)}>
                       <Folder size={17} aria-hidden="true" /><span className="folder-name">{folder.name}</span>
@@ -149,7 +174,7 @@ export default function NoteFolderTree({ folders, currentId, disabled, onOpen }:
             onClick={folders.dismissError}><X size={13} /></button>
         </div>
       )}
-      <ul className="folder-tree" aria-label="Folders">{rows(null, 0)}</ul>
+      <ul className="folder-tree" aria-label="Folders" onKeyDown={onKeyDown}>{rows(null, 0)}</ul>
       <form className="folder-form folder-form--new" onSubmit={(event) => void createTopLevel(event)}>
         <Plus size={16} aria-hidden="true" />
         <input aria-label="New folder name" placeholder="New Folder" maxLength={100}
