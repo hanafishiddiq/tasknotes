@@ -2,7 +2,9 @@
 
 use std::path::Path;
 
-use tasknotes_core::note_folders::CreateNoteFolder;
+use tasknotes_core::note_folders::{
+    CreateNoteFolder, MoveNoteFolder, NoteFolder, RenameNoteFolder,
+};
 use tasknotes_core::notes::{
     CreateNote, MoveNote, Note, NoteQuery, NoteScope, SetNotePinned, UpdateNote,
 };
@@ -476,4 +478,229 @@ fn a_note_in_removed_cannot_be_changed_until_it_is_restored() {
         store.get_note(&draft.id).unwrap().unwrap().markdown,
         "# Letter"
     );
+}
+
+fn folder(store: &TaskStore, name: &str, parent: Option<&NoteFolder>) -> NoteFolder {
+    store
+        .create_note_folder(CreateNoteFolder {
+            name: name.into(),
+            parent_id: parent.map(|p| p.id.clone()),
+        })
+        .unwrap()
+}
+
+fn note_at(store: &TaskStore, markdown: &str, folder: &NoteFolder) -> Note {
+    store
+        .create_note(CreateNote {
+            markdown: markdown.into(),
+            folder_id: Some(folder.id.clone()),
+        })
+        .unwrap()
+}
+
+fn folder_names(store: &TaskStore, parent: Option<&NoteFolder>) -> Vec<String> {
+    store
+        .list_note_folders(parent.map(|p| p.id.as_str()), 100, None)
+        .unwrap()
+        .items
+        .into_iter()
+        .map(|f| f.name)
+        .collect()
+}
+
+fn all_notes(store: &TaskStore) -> Vec<String> {
+    note_titles(store, NoteQuery::default())
+}
+
+#[test]
+fn removing_a_folder_hides_its_subtree_and_restoring_it_keeps_individually_removed_items_removed() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("f.db"));
+    let work = folder(&store, "Work", None);
+    let meetings = folder(&store, "Meetings", Some(&work));
+    let archive = folder(&store, "Archive", Some(&work));
+    let plan = note_at(&store, "# Plan", &work);
+    let standup = note_at(&store, "# Standup notes", &meetings);
+    let old = note_at(&store, "# Old agenda", &meetings);
+    let old = store
+        .set_note_removed(set(&old.id, old.revision, true))
+        .unwrap();
+    let archive = store
+        .set_note_folder_removed(set(&archive.id, archive.revision, true))
+        .unwrap();
+    note(&store, "# Loose note");
+    let follow = task(&store, "Send standup summary");
+    store.link_note(&follow.id, &standup.id).unwrap();
+
+    let work = store
+        .set_note_folder_removed(set(&work.id, work.revision, true))
+        .unwrap();
+    assert!(work.removed);
+    assert_eq!(all_notes(&store), vec!["Loose note"]);
+    assert!(folder_names(&store, None).is_empty());
+    assert!(matches!(
+        store.query_notes(
+            &NoteQuery {
+                folder: NoteScope::Folder(meetings.id.clone()),
+                ..Default::default()
+            },
+            10,
+            None
+        ),
+        Err(TaskError::NoteFolderRemoved)
+    ));
+    assert!(
+        note_titles(
+            &store,
+            NoteQuery {
+                text: "standup".into(),
+                ..Default::default()
+            }
+        )
+        .is_empty()
+    );
+    assert!(
+        store
+            .list_task_notes(&follow.id, 50, None)
+            .unwrap()
+            .items
+            .is_empty()
+    );
+    // Hidden, not Removed: their own disposition is untouched.
+    assert!(!store.get_note(&plan.id).unwrap().unwrap().removed);
+    assert!(
+        !store
+            .get_note_folder(&meetings.id)
+            .unwrap()
+            .unwrap()
+            .removed
+    );
+    // Nothing comes back on its own while the folder above it is in Removed.
+    assert!(matches!(
+        store.set_note_removed(set(&old.id, old.revision, false)),
+        Err(TaskError::NoteFolderRemoved)
+    ));
+    assert!(matches!(
+        store.set_note_folder_removed(set(&archive.id, archive.revision, false)),
+        Err(TaskError::NoteFolderRemoved)
+    ));
+
+    store
+        .set_note_folder_removed(set(&work.id, work.revision, false))
+        .unwrap();
+    assert_eq!(folder_names(&store, None), vec!["Work"]);
+    assert_eq!(folder_names(&store, Some(&work)), vec!["Meetings"]);
+    assert_eq!(all_notes(&store).len(), 3);
+    assert!(!all_notes(&store).contains(&"Old agenda".to_owned()));
+    assert_eq!(
+        store
+            .list_task_notes(&follow.id, 50, None)
+            .unwrap()
+            .items
+            .len(),
+        1
+    );
+    assert!(store.get_note(&old.id).unwrap().unwrap().removed);
+    assert!(store.get_note_folder(&archive.id).unwrap().unwrap().removed);
+    // Now they can come back.
+    store
+        .set_note_removed(set(&old.id, old.revision, false))
+        .unwrap();
+    store
+        .set_note_folder_removed(set(&archive.id, archive.revision, false))
+        .unwrap();
+    assert_eq!(
+        folder_names(&store, Some(&work)),
+        vec!["Archive", "Meetings"]
+    );
+}
+
+#[test]
+fn nothing_can_be_put_into_or_changed_inside_a_removed_folder() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("f.db"));
+    let home = folder(&store, "Home", None);
+    let garden = folder(&store, "Garden", Some(&home));
+    let seeds = note_at(&store, "# Seeds", &garden);
+    let loose = note(&store, "# Loose");
+    let home = store
+        .set_note_folder_removed(set(&home.id, home.revision, true))
+        .unwrap();
+    let refused = |result: Result<(), TaskError>| {
+        assert!(
+            matches!(result, Err(TaskError::NoteFolderRemoved)),
+            "{result:?}"
+        )
+    };
+    refused(unit(store.create_note(CreateNote {
+        markdown: "# New".into(),
+        folder_id: Some(garden.id.clone()),
+    })));
+    refused(unit(store.create_note_folder(CreateNoteFolder {
+        name: "Beds".into(),
+        parent_id: Some(garden.id.clone()),
+    })));
+    refused(unit(store.move_note(MoveNote {
+        id: loose.id.clone(),
+        folder_id: Some(garden.id.clone()),
+    })));
+    refused(unit(store.update_note(UpdateNote {
+        id: seeds.id.clone(),
+        markdown: "# Seeds 2".into(),
+        expected_revision: seeds.revision,
+    })));
+    refused(unit(store.rename_note_folder(RenameNoteFolder {
+        id: garden.id.clone(),
+        expected_revision: garden.revision,
+        name: "Yard".into(),
+    })));
+    refused(unit(store.move_note_folder(MoveNoteFolder {
+        id: garden.id.clone(),
+        expected_revision: garden.revision,
+        parent_id: None,
+    })));
+    refused(unit(store.rename_note_folder(RenameNoteFolder {
+        id: home.id.clone(),
+        expected_revision: home.revision,
+        name: "House".into(),
+    })));
+    refused(unit(store.list_note_folders(Some(&garden.id), 10, None)));
+}
+
+#[test]
+fn a_removed_folder_frees_its_name_and_cannot_be_restored_over_an_active_sibling() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("f.db"));
+    let first = folder(&store, "Ideas", None);
+    assert!(matches!(
+        store.set_note_folder_removed(set(&first.id, first.revision + 1, true)),
+        Err(TaskError::NoteFolderRevisionConflict)
+    ));
+    let first = store
+        .set_note_folder_removed(set(&first.id, first.revision, true))
+        .unwrap();
+    assert!(matches!(
+        store.set_note_folder_removed(set(&first.id, first.revision, true)),
+        Err(TaskError::RemovedUnchanged)
+    ));
+    let second = folder(&store, "ideas", None);
+    assert!(matches!(
+        store.set_note_folder_removed(set(&first.id, first.revision, false)),
+        Err(TaskError::NoteFolderNameConflict)
+    ));
+    store
+        .rename_note_folder(RenameNoteFolder {
+            id: second.id.clone(),
+            expected_revision: second.revision,
+            name: "Ideas 2".into(),
+        })
+        .unwrap();
+    store
+        .set_note_folder_removed(set(&first.id, first.revision, false))
+        .unwrap();
+    assert_eq!(folder_names(&store, None), vec!["Ideas", "Ideas 2"]);
+}
+
+fn unit<T>(result: Result<T, TaskError>) -> Result<(), TaskError> {
+    result.map(|_| ())
 }
