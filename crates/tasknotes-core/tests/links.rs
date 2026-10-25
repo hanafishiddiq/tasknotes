@@ -23,6 +23,7 @@ fn note(store: &TaskStore, markdown: &str) -> Note {
     store
         .create_note(CreateNote {
             markdown: markdown.into(),
+            folder_id: None,
         })
         .unwrap()
 }
@@ -304,7 +305,23 @@ fn v6_database(db: &Path) -> (Task, Note) {
     );
     Connection::open(db)
         .unwrap()
-        .execute_batch("DROP TABLE task_note_links; PRAGMA user_version = 6;")
+        // Undo v7 (links) and v8 (folders, pins, Note search): notes back in its v6 shape.
+        .execute_batch(
+            "DROP TABLE task_note_links; DROP TABLE notes_fts;
+             CREATE TABLE notes_v6 (
+                id TEXT PRIMARY KEY NOT NULL,
+                markdown TEXT NOT NULL,
+                title TEXT NOT NULL,
+                revision INTEGER NOT NULL CHECK(revision >= 1),
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+             );
+             INSERT INTO notes_v6 SELECT id, markdown, title, revision, created_at, updated_at FROM notes;
+             DROP TABLE notes; ALTER TABLE notes_v6 RENAME TO notes;
+             CREATE INDEX notes_updated_order ON notes(updated_at DESC, id DESC);
+             DROP TABLE note_folders;
+             PRAGMA user_version = 6;",
+        )
         .unwrap();
     kept
 }
@@ -317,7 +334,7 @@ fn a_v6_database_gains_links_without_touching_its_tasks_or_notes() {
 
     let store = store_at(&db);
 
-    assert_eq!(version(&db), 7);
+    assert_eq!(version(&db), 8);
     assert_eq!(store.get_task(&old_task.id).unwrap().unwrap(), old_task);
     assert_eq!(store.get_note(&old_note.id).unwrap().unwrap(), old_note);
     store.link_note(&old_task.id, &old_note.id).unwrap();
@@ -356,7 +373,7 @@ fn a_failed_v7_migration_rolls_back_and_keeps_the_v6_database_usable() {
         .execute_batch("DROP TABLE task_note_links_note_order;")
         .unwrap();
     let store = store_at(&db);
-    assert_eq!(version(&db), 7);
+    assert_eq!(version(&db), 8);
     assert_eq!(store.get_task(&old_task.id).unwrap().unwrap(), old_task);
     assert_eq!(store.get_note(&old_note.id).unwrap().unwrap(), old_note);
 }

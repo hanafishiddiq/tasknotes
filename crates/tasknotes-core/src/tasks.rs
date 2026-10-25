@@ -77,6 +77,22 @@ pub enum TaskError {
     InvalidNoteCursor,
     #[error("This Note changed elsewhere; your text was not saved over it")]
     NoteRevisionConflict,
+    #[error("Folder name cannot be empty, contain control characters or exceed 100 characters")]
+    InvalidNoteFolderName,
+    #[error("A folder with this name already exists here")]
+    NoteFolderNameConflict,
+    #[error("Folder not found")]
+    NoteFolderNotFound,
+    #[error("Folders can be nested at most 5 levels deep")]
+    NoteFolderTooDeep,
+    #[error("A folder can't be moved into itself or one of its subfolders")]
+    NoteFolderCycle,
+    #[error("This folder changed elsewhere; reload before saving")]
+    NoteFolderRevisionConflict,
+    #[error("This folder is already there with this name")]
+    NoteFolderUnchanged,
+    #[error("Invalid folder page cursor")]
+    InvalidNoteFolderCursor,
     #[error("This link was not found or is already unlinked")]
     LinkNotFound,
     #[error("Invalid Note Link page cursor")]
@@ -339,7 +355,7 @@ impl TaskStore {
         let mut connection = Connection::open(path)?;
         connection.busy_timeout(BUSY_TIMEOUT)?;
         let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        if version > 7 {
+        if version > 8 {
             return Err(TaskError::UnsupportedSchema(version));
         }
 
@@ -453,6 +469,14 @@ impl TaskStore {
         if version < 7 {
             let migration = connection.transaction()?;
             crate::links::migrate_v7(&migration)?;
+            migration.commit()?;
+        }
+        if version < 8 {
+            let migration = connection.transaction()?;
+            crate::note_folders::migrate_v8(&migration)?;
+            crate::notes::migrate_v8(&migration)?;
+            crate::organization::refold_tags(&migration)?;
+            migration.execute_batch("PRAGMA user_version = 8;")?;
             migration.commit()?;
         }
         Ok(Self {

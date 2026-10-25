@@ -272,6 +272,55 @@ textarea:disabled {
 .sidebar-link:hover:not(:disabled) {
   color: var(--text);
 }
+/* Note Folder tree: rows indent per level; the disclosure column keeps names aligned. */
+.folder-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.folder-tree .folder-row .folder {
+  padding-left: 4px;
+  padding-right: 76px;
+}
+.folder-disclosure {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  height: 28px;
+  border-radius: 5px;
+  color: var(--text-3);
+}
+button.folder-disclosure:hover:not(:disabled) {
+  color: var(--text);
+}
+.folder-form--nested {
+  width: auto;
+}
+.folder-form--nested svg {
+  color: var(--text-2);
+}
+.folder-form select {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 5px;
+  background: var(--field);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+.sidebar-error[role="alert"] {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+}
 .sidebar-spacer {
   flex: 1;
   min-height: 16px;
@@ -584,6 +633,54 @@ textarea:disabled {
   font-weight: 400;
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
+}
+
+/* Global search: a few matching Notes above the Tasks, title over a snippet. */
+.note-hits {
+  margin: 0 0 20px;
+}
+.note-hits-list {
+  margin: 0 0 6px;
+  padding: 0;
+  list-style: none;
+}
+.note-hit {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 7px;
+  text-align: left;
+  color: var(--text);
+}
+.note-hit:hover {
+  background: var(--hover);
+}
+.note-hit svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--accent);
+}
+.note-hit-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.note-hit-title {
+  overflow: hidden;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.note-hits-empty {
+  margin: 0;
+  padding: 4px 10px;
+  color: var(--text-3);
+}
+.note-hits .button {
+  margin-left: 38px;
 }
 
 /* Rows: Notes list cells */
@@ -1255,16 +1352,103 @@ textarea:disabled {
   min-width: 0;
   overflow: hidden;
 }
-.note-save-state {
+/* The open Note's toolbar: folder and pin on the left, save state on the right. */
+.note-toolbar {
   display: flex;
   flex: none;
   align-items: center;
+  gap: 4px;
+  height: 52px;
+  padding: 0 12px 0 16px;
+}
+.note-folder-picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 26px;
+  padding: 0 4px 0 10px;
+  border-radius: 13px;
+  background: var(--field);
+  color: var(--text-2);
+  font-size: 12px;
+}
+.note-folder-picker svg {
+  flex: none;
+  color: var(--accent);
+}
+.note-folder-picker select {
+  min-width: 0;
+  max-width: 220px;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+}
+.note-toolbar .icon-button[aria-pressed="true"] {
+  color: var(--accent-text);
+}
+.note-save-state {
+  display: flex;
+  flex: 1;
+  align-items: center;
   justify-content: flex-end;
   gap: 6px;
-  height: 52px;
-  padding: 0 20px;
   color: var(--text-3);
   font-size: 12px;
+}
+.note-search {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  margin: 0 10px 8px;
+  padding: 0 8px;
+  border-radius: 7px;
+  background: var(--field);
+  color: var(--text-3);
+}
+.note-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+}
+.note-search:focus-within {
+  outline: 2px solid var(--focus);
+}
+.note-list-empty {
+  margin: 12px 18px;
+  color: var(--text-3);
+}
+.note-list-snippet {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--text-2);
+  font-size: 12px;
+}
+.note-list-snippet mark {
+  background: transparent;
+  color: var(--accent-text);
+  font-weight: 700;
+}
+/* On the gold selection, accent text would vanish: the snippet takes the selection text color. */
+.note-list-item[aria-current="true"] .note-list-snippet,
+.note-list-item[aria-current="true"] .note-list-snippet mark {
+  color: inherit;
+}
+.note-list-heading {
+  margin: 10px 0 4px;
+  padding: 0 10px;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 700;
 }
 .note-editor-pane .error-banner,
 .note-editor-pane .notice-banner {

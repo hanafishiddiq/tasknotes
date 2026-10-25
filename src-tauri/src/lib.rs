@@ -1,5 +1,10 @@
 use tasknotes_core::links::{LinkPage, LinkedNote, LinkedTask, NoteLink};
-use tasknotes_core::notes::{CreateNote, Note, NotePage, UpdateNote};
+use tasknotes_core::note_folders::{
+    CreateNoteFolder, MoveNoteFolder, NoteFolder, NoteFolderPage, RenameNoteFolder,
+};
+use tasknotes_core::notes::{
+    CreateNote, MoveNote, Note, NotePage, NoteQuery, NoteScope, SetNotePinned, UpdateNote,
+};
 use tasknotes_core::tasks::{
     ChangeTask, CreateList, CreateTask, List, ListPage, MoveTask, Priority, ProgressHistoryPage,
     RecordProgress, RenameList, SetListRemoved, SortMode, Task, TaskPage, TaskQuery, TaskStore,
@@ -127,9 +132,15 @@ fn list_notes(
     store: State<'_, TaskStore>,
     limit: u32,
     cursor: Option<String>,
+    folder: Option<NoteScope>,
+    text: Option<String>,
 ) -> Result<NotePage, String> {
+    let query = NoteQuery {
+        text: text.unwrap_or_default(),
+        folder: folder.unwrap_or_default(),
+    };
     store
-        .list_notes(limit, cursor.as_deref())
+        .query_notes(&query, limit, cursor.as_deref())
         .map_err(|error| error.to_string())
 }
 
@@ -141,6 +152,60 @@ fn get_note(store: State<'_, TaskStore>, id: String) -> Result<Option<Note>, Str
 #[tauri::command]
 fn create_note(store: State<'_, TaskStore>, input: CreateNote) -> Result<Note, String> {
     store.create_note(input).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn move_note(store: State<'_, TaskStore>, input: MoveNote) -> Result<Note, String> {
+    store.move_note(input).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn set_note_pinned(store: State<'_, TaskStore>, input: SetNotePinned) -> Result<Note, String> {
+    store
+        .set_note_pinned(input)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn list_note_folders(
+    store: State<'_, TaskStore>,
+    parent_id: Option<String>,
+    limit: u32,
+    cursor: Option<String>,
+) -> Result<NoteFolderPage, String> {
+    store
+        .list_note_folders(parent_id.as_deref(), limit, cursor.as_deref())
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn create_note_folder(
+    store: State<'_, TaskStore>,
+    input: CreateNoteFolder,
+) -> Result<NoteFolder, String> {
+    store
+        .create_note_folder(input)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn rename_note_folder(
+    store: State<'_, TaskStore>,
+    input: RenameNoteFolder,
+) -> Result<NoteFolder, String> {
+    store
+        .rename_note_folder(input)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn move_note_folder(
+    store: State<'_, TaskStore>,
+    input: MoveNoteFolder,
+) -> Result<NoteFolder, String> {
+    store
+        .move_note_folder(input)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -234,6 +299,12 @@ pub fn run() {
             get_note,
             create_note,
             update_note,
+            move_note,
+            set_note_pinned,
+            list_note_folders,
+            create_note_folder,
+            rename_note_folder,
+            move_note_folder,
             link_note,
             unlink_note,
             restore_link,

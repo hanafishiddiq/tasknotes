@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import {
   Check, Folder, Inbox, ListChecks, Moon, NotebookText, Pencil,
   Plus, RotateCcw, Sun, Trash2, X,
@@ -10,6 +10,10 @@ interface TaskSidebarProps {
   view: TaskView;
   /** The Notes workspace is showing instead of a Task view. */
   notesActive: boolean;
+  /** Notes are showing every Note rather than one folder. */
+  allNotesCurrent: boolean;
+  /** The Note Folder tree, once Notes have been opened. */
+  noteFolders?: ReactNode;
   lists: TaskList[];
   listError: string | null;
   /** Tasks on the current page, or null when the count is not known. */
@@ -29,7 +33,7 @@ interface TaskSidebarProps {
 }
 
 export default function TaskSidebar({
-  view, notesActive, lists, listError, shownCount, hasMoreTasks, hasMoreLists, busy,
+  view, notesActive, allNotesCurrent, noteFolders, lists, listError, shownCount, hasMoreTasks, hasMoreLists, busy,
   theme, onToggleTheme, onNavigate, onOpenNotes, onCreateList, onRenameList, onRemoveList,
   onRestoreList, onLoadMoreLists,
 }: TaskSidebarProps) {
@@ -142,10 +146,11 @@ export default function TaskSidebar({
         <button type="button" disabled={busy}
           aria-label="All notes"
           className="folder"
-          aria-current={notesActive ? "page" : undefined}
+          aria-current={allNotesCurrent ? "page" : undefined}
           onClick={onOpenNotes}>
           <NotebookText size={17} aria-hidden="true" /><span className="folder-name">All notes</span>
         </button>
+        {noteFolders}
       </nav>
 
       <div className="sidebar-spacer" />

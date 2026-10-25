@@ -47,6 +47,7 @@ beforeEach(() => {
   invokeMock.mockReset();
   invokeMock.mockImplementation(async (command, args) => {
     if (command === "list_lists") return { items: [], nextCursor: null };
+    if (command === "list_notes") return { items: [], nextCursor: null };
     if (command === "list_tasks") {
       listCalls.push(args as ListArgs);
       return respond(args as ListArgs);
@@ -68,7 +69,7 @@ describe("Task search and filters", () => {
     await screen.findByRole("article", { name: "Quarterly budget" });
     expect(listCalls[0]).toEqual({ limit: 50, cursor: null });
 
-    await user.type(screen.getByRole("searchbox", { name: "Search tasks" }), "budget");
+    await user.type(screen.getByRole("searchbox", { name: "Search tasks and notes" }), "budget");
     await waitFor(() => expect(lastListCall()).toEqual({ limit: 50, cursor: null, text: "budget" }));
     expect(await screen.findByRole("article", { name: "Quarterly budget" })).toBeInTheDocument();
     expect(screen.queryByRole("article", { name: "Renew lease" })).not.toBeInTheDocument();
@@ -83,14 +84,14 @@ describe("Task search and filters", () => {
     await user.selectOptions(screen.getByRole("combobox", { name: "Filter by status" }), "in_progress");
     await user.selectOptions(screen.getByRole("combobox", { name: "Filter by priority" }), "high");
     await user.type(screen.getByRole("textbox", { name: "Filter by tag" }), "Home");
-    await user.type(screen.getByRole("searchbox", { name: "Search tasks" }), "lease");
+    await user.type(screen.getByRole("searchbox", { name: "Search tasks and notes" }), "lease");
     await waitFor(() => expect(lastListCall()).toEqual({
       limit: 50, cursor: null, text: "lease", status: "in_progress", priority: "high", tag: "Home",
     }));
 
     await user.click(screen.getByRole("button", { name: "Clear search and filters" }));
     await waitFor(() => expect(lastListCall()).toEqual({ limit: 50, cursor: null }));
-    expect(screen.getByRole("searchbox", { name: "Search tasks" })).toHaveValue("");
+    expect(screen.getByRole("searchbox", { name: "Search tasks and notes" })).toHaveValue("");
     expect(screen.getByRole("combobox", { name: "Filter by status" })).toHaveValue("");
     expect(screen.getByRole("textbox", { name: "Filter by tag" })).toHaveValue("");
   });
@@ -100,7 +101,7 @@ describe("Task search and filters", () => {
     render(<App />);
     await screen.findByRole("article", { name: "Quarterly budget" });
 
-    await user.type(screen.getByRole("searchbox", { name: "Search tasks" }), "zebra");
+    await user.type(screen.getByRole("searchbox", { name: "Search tasks and notes" }), "zebra");
     expect(await screen.findByRole("heading", { name: "No matching tasks" })).toBeInTheDocument();
     expect(screen.queryByText("Your list is clear")).not.toBeInTheDocument();
 
@@ -117,7 +118,7 @@ describe("Task search and filters", () => {
     render(<App />);
     await screen.findByRole("article", { name: "Quarterly budget" });
 
-    const search = screen.getByRole("searchbox", { name: "Search tasks" });
+    const search = screen.getByRole("searchbox", { name: "Search tasks and notes" });
     await user.type(search, "rene");
     await waitFor(() => expect(lastListCall().text).toBe("rene"));
     await user.type(search, "w");
@@ -150,7 +151,7 @@ describe("Task search and filters", () => {
     const user = userEvent.setup();
     render(<App />);
     await screen.findByRole("article", { name: "Quarterly budget" });
-    const search = screen.getByRole("searchbox", { name: "Search tasks" });
+    const search = screen.getByRole("searchbox", { name: "Search tasks and notes" });
     await user.type(search, "ren");
     await waitFor(() => expect(lastListCall().text).toBe("ren"));
     await screen.findByRole("article", { name: "Renew lease" });
@@ -262,6 +263,7 @@ describe("Task search and filters", () => {
     };
     invokeMock.mockImplementation(async (command, args) => {
       if (command === "list_lists") return { items: [], nextCursor: null };
+      if (command === "list_notes") return { items: [], nextCursor: null };
       if (command === "list_tasks") {
         listCalls.push(args as ListArgs);
         return respond(args as ListArgs);
@@ -293,7 +295,7 @@ describe("Task search and filters", () => {
     render(<App />);
     await screen.findByRole("article", { name: "Quarterly budget" });
 
-    await user.type(screen.getByRole("searchbox", { name: "Search tasks" }), "a b c d e f g h i j k l m n o p q");
+    await user.type(screen.getByRole("searchbox", { name: "Search tasks and notes" }), "a b c d e f g h i j k l m n o p q");
     expect(await screen.findByRole("alert")).toHaveTextContent("Search can use at most 16 words");
     expect(screen.queryByRole("heading", { name: "Couldn't load your tasks" })).not.toBeInTheDocument();
     const section = screen.getByRole("region", { name: "Your tasks" });

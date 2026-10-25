@@ -73,7 +73,7 @@ pub(crate) fn migrate_v5(migration: &Transaction) -> Result<(), TaskError> {
 /// Split user text into plain words. Each becomes a quoted prefix term, so the
 /// input can never reach FTS5 query syntax. Extra words are refused rather than
 /// dropped, so a result never silently ignores part of the search.
-fn search_terms(text: &str) -> Result<Vec<String>, TaskError> {
+pub(crate) fn search_terms(text: &str) -> Result<Vec<String>, TaskError> {
     let terms: Vec<_> = text
         .split(|c: char| !c.is_alphanumeric())
         .filter(|word| !word.is_empty())
@@ -86,7 +86,7 @@ fn search_terms(text: &str) -> Result<Vec<String>, TaskError> {
 }
 
 /// FNV-1a: binds a cursor to the exact query that produced it.
-fn fingerprint(parts: &[&str]) -> String {
+pub(crate) fn fingerprint(parts: &[&str]) -> String {
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
     for byte in parts.join("\u{0}").bytes() {
         hash ^= u64::from(byte);
@@ -138,7 +138,10 @@ impl TaskStore {
             return Err(TaskError::InvalidPageSize);
         }
         let terms = search_terms(&query.text)?;
-        let tag_fold = query.tag.as_deref().map(|tag| tag.trim().to_lowercase());
+        let tag_fold = query
+            .tag
+            .as_deref()
+            .map(|tag| crate::organization::tag_fold(tag.trim()));
         let sort = query.sort;
         let key = fingerprint(&[
             sort.as_cursor(),

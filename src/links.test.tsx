@@ -34,7 +34,9 @@ class Backend {
 
   note(id: string, title: string): Note {
     const stamp = ++this.clock;
-    const note = { id, markdown: `# ${title}`, title, revision: 1, createdAt: stamp, updatedAt: stamp };
+    const note = {
+      id, markdown: `# ${title}`, title, revision: 1, createdAt: stamp, updatedAt: stamp, folderId: null, pinned: false,
+    };
     this.notes.set(id, note);
     return note;
   }
@@ -65,6 +67,7 @@ class Backend {
     switch (command) {
       case "list_lists": return { items: [], nextCursor: null };
       case "list_progress_entries": return { items: [], nextCursor: null };
+      case "list_note_folders": return { items: [], nextCursor: null };
       case "quit_ready": return null;
       case "change_task": {
         const input = args.input as { id: string; priority: Task["priority"] };
@@ -83,7 +86,9 @@ class Backend {
       }
       case "list_notes": {
         const items = [...this.notes.values()].sort((a, b) => b.updatedAt - a.updatedAt)
-          .map(({ id, title, revision, updatedAt }) => ({ id, title, revision, updatedAt }));
+          .map(({ id, title, revision, updatedAt }) => ({
+            id, title, revision, updatedAt, folderId: null, pinned: false, snippet: null,
+          }));
         return { items, nextCursor: null };
       }
       case "get_note": return this.notes.get(args.id as string) ?? null;
