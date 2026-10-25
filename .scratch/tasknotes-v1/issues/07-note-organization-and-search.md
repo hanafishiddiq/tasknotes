@@ -59,7 +59,7 @@ Han chose, when this ticket started:
 
 Plan: `docs/plans/ticket-07-note-organization-search-2026-10-25.md`. All tests use synthetic fixtures; the owner's database was never opened.
 
-**Schema v7** (`note_folders::migrate_v7`, one transaction, self-contained so it can be renumbered when Ticket 08's schema step merges): `note_folders` (parent, name, Unicode-folded name, revision; unique `(parent, folded name)`), `notes.folder_id`, `notes.pinned`, list indexes `(pinned, updated_at, id)` overall and per folder, and `notes_fts` (FTS5, external content, triggers on insert/update/delete, rebuilt from existing Notes). No folder `removed_at` yet: Ticket 09 decides how Removed treats a subtree.
+**Schema v8** (`note_folders::migrate_v8`, one transaction; written as v7 and renumbered to v8 when the integration branch brought Ticket 08's v7 `task_note_links`, which runs first): `note_folders` (parent, name, Unicode-folded name, revision; unique `(parent, folded name)`), `notes.folder_id`, `notes.pinned`, list indexes `(pinned, updated_at, id)` overall and per folder, and `notes_fts` (FTS5, external content, triggers on insert/update/delete, rebuilt from existing Notes). No folder `removed_at` yet: Ticket 09 decides how Removed treats a subtree.
 
 **Core (Rust, shared by desktop, CLI and MCP):**
 - Folders — `tests/note_folders.rs` (9): `a_v6_database_keeps_its_notes_and_gains_folders` (also: old Notes searchable), `a_failed_v7_migration_rolls_back_and_keeps_the_v6_database_usable`, `folders_nest_and_the_tree_survives_reopening_the_store`, `sibling_names_are_unique_ignoring_case_but_may_repeat_under_other_parents` (incl. "Één"/"één"), `a_sixth_level_folder_is_refused`, `folder_pages_are_bounded_and_never_repeat_or_skip`, `a_folder_cannot_move_into_itself_or_any_of_its_subfolders`, `a_move_is_refused_when_the_moved_subtree_would_pass_five_levels`, `moving_or_renaming_respects_names_at_the_destination_and_the_revision`.
@@ -106,3 +106,11 @@ Run a build with `TASKNOTES_DEV_DATA_DIR` pointing at a fresh folder (never the 
 10. Click a Note in the list, then use the Up/Down arrow keys: focus moves between Notes; Return opens one.
 11. Go to All tasks and type the same word in the toolbar search: a "Notes" section shows at most 5 matches above the Tasks. Click one: Notes opens on it with the search filled in. With more than 5 matches, "Show all matching notes" opens the full list.
 12. Check both themes (sidebar bottom): folder rows, the Pinned heading, highlighted snippet words and the editor toolbar stay readable, and the selected Note's snippet is readable on the gold selection.
+
+## Merge of `integration/tasknotes-v1-07-18` (c10e536, Ticket 08) — 2026-10-25
+
+- Schema renumbered: Ticket 08's `task_note_links` stays v7; this ticket's step is now v8 (`migrate_v8`, runner maximum 8). A failed v8 step leaves v7 committed (`a_failed_v8_migration_rolls_back_and_keeps_the_database_usable`). Ticket 08's v6 fixture in `tests/links.rs` now also rebuilds `notes` in its v6 shape and drops the v8 objects; current-version asserts are 8.
+- One request into Notes for both tickets: `NotesRequest { seq, search, openId }`. Global search sends its text; a Task's linked Note sends an empty search and the Note to open, so both go through the same list-race guard. Opening a linked Note shows All notes.
+- Test stand-ins: the shared Note stand-in answers `list_note_tasks`; `links.test.tsx` gained `folderId`, `pinned`, `snippet` and `list_note_folders`; the locale-safe paging assertion keeps Ticket 08's `noteButton` helper.
+
+**Checks after the merge, in this worktree:** `pnpm test` 148 Vitest tests in 13 files (two runs); `pnpm typecheck`; `pnpm build` (main chunk 283 kB, Notes chunk 325 kB); `cargo test` core 90 and Tauri 1; core and Tauri `cargo clippy --all-targets -- -D warnings`; both `cargo fmt --all -- --check`.

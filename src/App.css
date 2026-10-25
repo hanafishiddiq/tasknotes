@@ -1130,6 +1130,142 @@ button.folder-disclosure:hover:not(:disabled) {
   margin-top: 22px;
 }
 
+/* Task–Note links: a quiet list on the Task page and above an open Note */
+.linked-section {
+  margin-top: 18px;
+}
+.linked-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 700;
+}
+.linked-items {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.linked-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-bottom: 1px solid var(--sep);
+}
+.linked-item:last-child {
+  border-bottom: 0;
+}
+.linked-open {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 28px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.linked-open svg {
+  flex: none;
+  color: var(--text-3);
+}
+.linked-open:hover:not(:disabled),
+.linked-unlink:hover:not(:disabled) {
+  background: var(--hover);
+}
+.linked-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.linked-status {
+  flex: none;
+  margin-left: auto;
+  color: var(--text-3);
+  font-size: 12px;
+}
+.linked-unlink {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+.linked-add,
+.linked-picker-actions .text-link,
+.linked-undo .text-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent-text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.linked-undo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin-top: 6px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+.linked-undo .text-link {
+  margin-top: 0;
+}
+.linked-picker {
+  margin-top: 6px;
+  padding: 4px 8px 8px;
+  border-radius: 8px;
+  background: var(--field);
+}
+.linked-picker-actions {
+  display: flex;
+  gap: 12px;
+}
+.linked-search {
+  width: 100%;
+  margin-top: 4px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+.linked-empty,
+.linked-section .inline-error {
+  margin: 6px 0 0;
+  color: var(--text-3);
+  font-size: 12px;
+}
+.linked-section .inline-error {
+  color: var(--red);
+}
+.note-editor-pane .linked-section {
+  flex: none;
+  margin: 0 32px 12px;
+}
+
 /* Notes workspace: the Note list beside the open Note */
 .main-view[hidden],
 .notes-workspace[hidden] {
@@ -1479,6 +1615,7 @@ button.folder-disclosure:hover:not(:disabled) {
   .note-placeholder {
     left: 16px;
   }
+  .note-editor-pane .linked-section,
   .note-editor-pane .error-banner,
   .note-editor-pane .notice-banner {
     margin: 0 16px 12px;
@@ -1552,6 +1689,8 @@ button.folder-disclosure:hover:not(:disabled) {
   .folder,
   .button,
   .icon-button,
+  .linked-open,
+  .linked-unlink,
   .toolbar-sort {
     transition: background-color 120ms ease-out;
   }

@@ -60,9 +60,9 @@ pub struct NoteFolderPage {
 
 const TOKENIZER: &str = "tokenize='unicode61 remove_diacritics 2'";
 
-/// Schema v7: Note Folders, pinned Notes and the Note search index. Kept in one
+/// Schema v8: Note Folders, pinned Notes and the Note search index. Kept in one
 /// self-contained step so it can be renumbered when sibling schema steps merge.
-pub(crate) fn migrate_v7(migration: &Transaction) -> Result<(), TaskError> {
+pub(crate) fn migrate_v8(migration: &Transaction) -> Result<(), TaskError> {
     migration.execute_batch(&format!(
         "CREATE TABLE note_folders (
             id TEXT PRIMARY KEY NOT NULL,
@@ -95,7 +95,7 @@ pub(crate) fn migrate_v7(migration: &Transaction) -> Result<(), TaskError> {
          CREATE TRIGGER notes_fts_delete AFTER DELETE ON notes BEGIN
            INSERT INTO notes_fts(notes_fts, rowid, markdown) VALUES ('delete', old.rowid, old.markdown);
          END;
-         PRAGMA user_version = 7;"
+         PRAGMA user_version = 8;"
     ))?;
     Ok(())
 }

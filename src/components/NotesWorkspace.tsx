@@ -6,6 +6,7 @@ import type { FolderOption } from "../lib/use-note-folders";
 import { saveBeforeQuit } from "../lib/quit";
 import NoteEditor, { type NoteEditorHandle } from "./NoteEditor";
 import NoteSnippet from "./NoteSnippet";
+import NoteLinkedTasks from "./NoteLinkedTasks";
 
 // Typing settles before an autosave reaches the core.
 export const NOTE_AUTOSAVE_MS = 600;
@@ -48,9 +49,12 @@ function summary(note: Note): NoteSummary {
 
 const scopeKey = (scope: NoteScope) => scope.kind === "folder" ? scope.folderId : "";
 
-/** Global search asks Notes to show a search, and optionally open one of its Notes. */
+/**
+ * Asked for from elsewhere: global search shows its search here, optionally
+ * opening one match; a Task's linked Note opens with an empty search.
+ */
 export interface NotesRequest {
-  /** A new number for every request, so the same search can be asked twice. */
+  /** A new number for every request, so the same request can be made twice. */
   seq: number;
   search: string;
   openId: string | null;
@@ -65,6 +69,7 @@ interface NotesWorkspaceProps {
   /** Loaded folders, for moving the open Note. */
   folders: FolderOption[];
   request: NotesRequest | null;
+  onOpenTask: (taskId: string) => void;
 }
 
 /** The Notes list beside one open Note, as in Apple Notes. */
@@ -86,7 +91,9 @@ function placeEdited(list: NoteSummary[], item: NoteSummary): NoteSummary[] {
   return [...rest.slice(0, at), item, ...rest.slice(at)];
 }
 
-export default function NotesWorkspace({ hidden, scope, scopeName, folders, request }: NotesWorkspaceProps) {
+export default function NotesWorkspace({
+  hidden, scope, scopeName, folders, request, onOpenTask,
+}: NotesWorkspaceProps) {
   const [notes, setNotes] = useState<NoteSummary[]>([]);
   // Where the next page of older Notes starts; null once every Note is listed.
   const [moreCursor, setMoreCursor] = useState<string | null>(null);
@@ -447,6 +454,8 @@ export default function NotesWorkspace({ hidden, scope, scopeName, folders, requ
             </span>
           </div>
         )}
+        {/* A draft has nothing to link until its first character stores it. */}
+        {openId !== null && <NoteLinkedTasks noteId={openId} shown={!hidden} onOpenTask={onOpenTask} />}
         {editor && (
           <NoteEditor key={editor.key} initialMarkdown={editor.markdown} onEdit={edited} editorRef={editorRef} />
         )}

@@ -492,7 +492,7 @@ fn v2_database_upgrades_without_losing_completed_task_and_previous_progress() {
     let version: i64 = conn
         .pragma_query_value(None, "user_version", |row| row.get(0))
         .unwrap();
-    assert_eq!(version, 7);
+    assert_eq!(version, 8);
 }
 
 #[test]

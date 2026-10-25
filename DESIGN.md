@@ -302,6 +302,9 @@ Apple Notes columns: the folder sidebar, a Note list, then the editor.
 - **Editor:** a borderless sheet centered at 720px with 32px side padding (16px at 720px and below). Note text is a reading size above Body Page: 15px/1.55, headings 24, 19, 16 and 15px at 700. Checklist items draw an 18px circle that fills with the accent and an ink tick when done; quotes take a 3px folder-selected bar and secondary text; code is monospace on field gray (6px radius for blocks, 5px inline).
 - **Banners:** save errors use the error banner; "changed somewhere else" uses the notice banner with its two choices as small buttons.
 
+### Task–Note Links
+A quiet list, styled like the progress history: a Label Strong heading ("Notes" on the Task page, "Tasks" above an open Note), then 28px rows of a tertiary icon and a single-line title (a Task also shows its work status in tertiary text), separated by hairlines. Each row has a 22px unlink "x" in tertiary gray; hover is hover gray. "Link a Note" / "Link a Task" is an accent-text link that opens a field-gray picker (8px radius): recent Notes, or a search field over Tasks. Unlinking leaves a one-line notice, "Unlinked "Title". The Note itself is unchanged." with an accent-text Undo. Opening a linked Task shows it alone, expanded, under a notice banner with "Show all tasks".
+
 ## Do's and Don'ts
 
 ### Do:

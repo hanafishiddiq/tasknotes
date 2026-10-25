@@ -69,6 +69,8 @@ export class NoteBackend {
       return page(all, args);
     }
     if (command === "get_note") return this.notes.get(args.id as string) ?? null;
+    // An open Note lists its linked Tasks (Ticket 08); these tests link none.
+    if (command === "list_note_tasks") return { items: [], nextCursor: null };
     if (command === "create_note") {
       const { markdown } = args.input as { markdown: string };
       return this.write({

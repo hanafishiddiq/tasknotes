@@ -26,6 +26,7 @@ beforeEach(() => {
   invokeMock.mockImplementation(async (command, args) => {
     if (command === "list_lists" || command === "list_tasks") return { items: [], nextCursor: null };
     if (command === "quit_ready") return null;
+    if (command === "list_note_tasks") return { items: [], nextCursor: null };
     return backend.handle(command, (args ?? {}) as Record<string, unknown>);
   });
 });
@@ -34,6 +35,12 @@ afterEach(() => cleanup());
 
 /** The desktop shell asks the page before it quits (Cmd+Q, closing the window). */
 const quitRequested = (ticket = 1) => tauriEvents.emit(QUIT_REQUESTED, ticket);
+
+/** A Note list button by its title alone; the date beside it follows the machine's locale. */
+function noteButton(list: HTMLElement, title: string) {
+  return within(list).queryAllByRole("button")
+    .find((button) => button.querySelector(".note-list-title")?.textContent === title);
+}
 
 async function openNotes() {
   const user = userEvent.setup();
@@ -298,13 +305,12 @@ describe("standalone Notes", () => {
     const user = await openNotes();
     const list = await screen.findByRole("list", { name: "Notes" });
     await waitFor(() => expect(within(list).getAllByRole("button")).toHaveLength(50));
-    // By title text: the date beside it is locale-formatted ("Jan 1" or "1 Jan").
-    expect(within(list).queryByText("Note 1", { exact: true })).not.toBeInTheDocument();
+    expect(noteButton(list, "Note 1")).toBeUndefined();
 
     await user.click(screen.getByRole("button", { name: "Load more Notes" }));
     await waitFor(() => expect(within(list).getAllByRole("button")).toHaveLength(51));
     expect(screen.queryByRole("button", { name: "Load more Notes" })).not.toBeInTheDocument();
-    await user.click(within(list).getByText("Note 1", { exact: true }));
+    await user.click(noteButton(list, "Note 1")!);
     await waitFor(() => expect(screen.getByRole("textbox", { name: "Note text" })).toHaveTextContent("Note 1"));
   });
 

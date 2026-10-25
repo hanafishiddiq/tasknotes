@@ -43,7 +43,8 @@ fn v6_database(db: &Path) {
     Connection::open(db)
         .unwrap()
         .execute_batch(
-            "DROP TRIGGER notes_fts_insert; DROP TRIGGER notes_fts_update;
+            "DROP TABLE task_note_links;
+             DROP TRIGGER notes_fts_insert; DROP TRIGGER notes_fts_update;
              DROP TRIGGER notes_fts_delete; DROP TABLE notes_fts;
              DROP INDEX notes_all_order; DROP INDEX notes_folder_order;
              DROP TABLE notes; DROP TABLE note_folders;
@@ -70,7 +71,7 @@ fn a_v6_database_keeps_its_notes_and_gains_folders() {
     v6_database(&db);
 
     let store = store_at(&db);
-    assert_eq!(version(&db), 7);
+    assert_eq!(version(&db), 8);
     let kept = store
         .get_note("00000000-0000-4000-8000-0000000000aa")
         .unwrap()
@@ -81,7 +82,7 @@ fn a_v6_database_keeps_its_notes_and_gains_folders() {
     );
     assert_eq!(kept.folder_id, None);
     assert!(!kept.pinned);
-    // Notes written before v7 are searchable straight away.
+    // Notes written before v8 are searchable straight away.
     let hits = store
         .query_notes(
             &tasknotes_core::notes::NoteQuery {
@@ -97,7 +98,7 @@ fn a_v6_database_keeps_its_notes_and_gains_folders() {
 }
 
 #[test]
-fn a_failed_v7_migration_rolls_back_and_keeps_the_v6_database_usable() {
+fn a_failed_v8_migration_rolls_back_and_keeps_the_database_usable() {
     let dir = tempfile::tempdir().unwrap();
     let db = dir.path().join("collision.db");
     v6_database(&db);
@@ -108,7 +109,8 @@ fn a_failed_v7_migration_rolls_back_and_keeps_the_v6_database_usable() {
         .unwrap();
 
     assert!(TaskStore::open(&db).is_err());
-    assert_eq!(version(&db), 6);
+    // The v7 step (Task–Note links) commits on its own; only v8 rolls back.
+    assert_eq!(version(&db), 7);
     let half_done: bool = Connection::open(&db)
         .unwrap()
         .query_row(
@@ -124,7 +126,7 @@ fn a_failed_v7_migration_rolls_back_and_keeps_the_v6_database_usable() {
         .execute_batch("DROP TABLE notes_fts;")
         .unwrap();
     let store = store_at(&db);
-    assert_eq!(version(&db), 7);
+    assert_eq!(version(&db), 8);
     assert!(
         store
             .get_note("00000000-0000-4000-8000-0000000000aa")

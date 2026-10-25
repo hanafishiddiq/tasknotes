@@ -12,7 +12,7 @@ Owner instruction 2026-10-25: start Ticket 07 on `integration/tasknotes-v1-07-18
 
 ## Design
 
-**Schema v7 (forward-only, one transaction, self-contained in `note_folders::migrate_v7`).** Ticket 08 adds its own schema step on a sibling branch; whichever merges second renumbers its step (a two-line change: the `PRAGMA user_version` in the step and the runner's maximum).
+**Schema v8 (forward-only, one transaction, self-contained in `note_folders::migrate_v8`).** Written as v7; renumbered to v8 on 2026-10-25 when the integration branch brought Ticket 08's v7 (`task_note_links`), which runs first.
 - `note_folders(id, parent_id → note_folders, name, name_fold, revision, created_at, updated_at)`. `name_fold` is the Unicode lower-case name (SQLite `NOCASE` folds ASCII only), as Tags do. A unique index on `(coalesce(parent_id, ''), name_fold)` backs the sibling rule the core checks first. No `removed_at` yet: how Removed treats a subtree is still open (Ticket 09), so that ticket adds the column with its rules.
 - `notes.folder_id` (NULL = not in a folder) and `notes.pinned` (0/1). Indexes `(pinned DESC, updated_at DESC, id DESC)` for All notes and `(folder_id, pinned DESC, updated_at DESC, id DESC)` for one folder; the v6 `notes_updated_order` index is replaced.
 - `notes_fts`: FTS5 over the Markdown, external content (`content='notes'`), same tokenizer as Task search (`unicode61 remove_diacritics 2`), kept in sync by triggers so every future writer (CLI, MCP) maintains it; rebuilt from existing Notes in the migration.
@@ -31,7 +31,7 @@ Owner instruction 2026-10-25: start Ticket 07 on `integration/tasknotes-v1-07-18
 
 ## Vertical TDD slices
 
-1. Core: v6 → v7 migration (Notes intact, failed migration rolls back), create and list nested folders, sibling names, depth limit on create.
+1. Core: v6 → v7/v8 migration (Notes intact, failed migration rolls back), create and list nested folders, sibling names, depth limit on create.
 2. Core: move a folder — cycle refusal, depth limit counting the moved subtree, name clash at the destination, revision check.
 3. Core: Notes in folders and pins — create in a folder, move, pin/unpin, ordering and paging per scope, persisted across reopen.
 4. Core: Note search — titles and body, edits reflected, empty Notes, every folder, snippets, foreign cursors; large synthetic fixture stays page-bounded.
@@ -44,7 +44,7 @@ Owner instruction 2026-10-25: start Ticket 07 on `integration/tasknotes-v1-07-18
 
 ## Risks
 
-- Schema v7 is forward-only like v4–v6: no build may open the owner's database without a verified backup.
+- Schema v8 is forward-only like v4–v6: no build may open the owner's database without a verified backup.
 - `notes_fts` keys on `notes.rowid`, like the Task indexes key on `tasks.rowid`. `VACUUM` may renumber rowids of tables without an `INTEGER PRIMARY KEY`; Ticket 13 (backup/restore) and Ticket 17 should rebuild the FTS indexes after any `VACUUM` (`INSERT INTO notes_fts(notes_fts) VALUES('rebuild')`).
 - Broad one-letter prefixes match many Notes; the page is bounded but SQLite sorts all matches. Ticket 17 measures this.
 - Native GUI QA is not run in this ticket; a click-checklist for the owner is in the ticket.

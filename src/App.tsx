@@ -30,7 +30,7 @@ const SEARCH_DELAY_MS = 250;
 
 function sameFilters(a: TaskFilters, b: TaskFilters): boolean {
   return a.text.trim() === b.text.trim() && a.tag.trim() === b.tag.trim() &&
-    a.status === b.status && a.priority === b.priority;
+    a.status === b.status && a.priority === b.priority && a.taskId === b.taskId;
 }
 
 export default function App() {
@@ -43,9 +43,12 @@ export default function App() {
   // The folder tree loads with Notes, keeping Task startup independent of it.
   const noteFolders = useNoteFolders(notesOpened);
   // Global search: the first few matching Notes beside the Tasks, never their bodies.
+  // notesRequest also carries a Note opened from a Task's linked Notes.
   const [noteHits, setNoteHits] = useState<NotePage | null>(null);
   const [noteHitsFailed, setNoteHitsFailed] = useState(false);
   const [notesRequest, setNotesRequest] = useState<NotesRequest | null>(null);
+  // A linked Task asked for while the Task view was busy.
+  const [pendingLinkedTask, setPendingLinkedTask] = useState<string | null>(null);
   const [lists, setLists] = useState<TaskList[]>([]);
   const [listCursor, setListCursor] = useState<string | null>(null);
   const [busyList, setBusyList] = useState(false);
@@ -154,6 +157,13 @@ export default function App() {
     return () => void stop.then((unlisten) => unlisten());
   }, []);
 
+  useEffect(() => {
+    if (pendingLinkedTask && !(busyList || creating || savingId || loadingMore)) {
+      openLinkedTask(pendingLinkedTask);
+    }
+    // openLinkedTask reads the same busy flags listed here.
+  }, [pendingLinkedTask, busyList, creating, savingId, loadingMore]);
+
   function resetTaskPages() {
     requestGeneration.current += 1;
     setCurrentPageCursor(null);
@@ -171,6 +181,27 @@ export default function App() {
     setNotesRequest((previous) => ({
       seq: (previous?.seq ?? 0) + 1, search: filters.text.trim(), openId,
     }));
+    openNotes(ALL_NOTES);
+  }
+
+  /** Shows one Task, expanded, as when it is opened from a Note it is linked to. */
+  function openLinkedTask(taskId: string) {
+    if (busyList || creating || savingId || loadingMore) {
+      // Opened once the Task view has finished its current change.
+      setPendingLinkedTask(taskId);
+      setWorkspace("tasks");
+      return;
+    }
+    setPendingLinkedTask(null);
+    navigate({ kind: "all" });
+    setSearchDraft("");
+    setTagDraft("");
+    applyFilters({ ...NO_FILTERS, taskId });
+    setExpandedId(taskId);
+  }
+
+  function openLinkedNote(noteId: string) {
+    setNotesRequest((previous) => ({ seq: (previous?.seq ?? 0) + 1, search: "", openId: noteId }));
     openNotes(ALL_NOTES);
   }
 
@@ -667,6 +698,22 @@ export default function App() {
               )}
             </form>
 
+            {pendingLinkedTask && (
+              <div role="status" aria-label="Opening linked Task" className="notice-banner">
+                <LoaderCircle className="spin" size={14} aria-hidden="true" />
+                <span>Opening the linked Task once the current change is saved…</span>
+              </div>
+            )}
+
+            {filters.taskId && (
+              <div role="status" aria-label="Linked Task" className="notice-banner">
+                <span>Showing one Task linked to a Note</span>
+                <button className="button button-small" type="button" onClick={clearFilters}>
+                  Show all tasks
+                </button>
+              </div>
+            )}
+
             {createdHidden && (
               <div role="status" aria-label="Task hidden by filters" className="notice-banner">
                 <span>Task added, but hidden by the current search or filters</span>
@@ -772,6 +819,8 @@ export default function App() {
                           today={today}
                           onMove={(listId) => moveTask(task, listId)}
                           onUpdateDetails={(tags, dueDate) => updateDetails(task, tags, dueDate)}
+                          onOpenNote={openLinkedNote}
+                          shown={workspace === "tasks"}
                         />
                       ))}
                     </section>
@@ -807,7 +856,7 @@ export default function App() {
           <NotesWorkspace hidden={workspace !== "notes"} scope={noteScope}
             scopeName={noteScope.kind === "folder"
               ? noteFolders.byId.get(noteScope.folderId)?.name ?? "Folder" : "Notes"}
-            folders={noteFolders.options} request={notesRequest} />
+            folders={noteFolders.options} request={notesRequest} onOpenTask={openLinkedTask} />
         </Suspense>
       )}
     </div>

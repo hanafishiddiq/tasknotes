@@ -34,3 +34,8 @@
 ## Comments
 
 **2026-10-22:** Note Folders can be nested (owner decision, see Ticket 07). Define and test how removing and restoring a folder treats its subfolders and Notes. The List rule (children hidden without changing their own Removed disposition) is the natural default, to be confirmed with the owner.
+
+**2026-10-25 — owner decision (Han):** Removing a Note Folder follows the List rule. Its subfolders and Notes are hidden with it without changing their own Removed disposition. Restoring the folder brings them back, except any subfolder or Note that had been moved to Removed on its own, which stays in Removed.
+
+**2026-10-25 — from Ticket 08 (coordinator decision):** A Note's linked Tasks leave out any Task hidden by Removed (its own `removed_at`, or a Removed List); the link row is kept. Restoring the Task or its List must bring these links back into view on the Note (covered today for Lists by `a_note_lists_no_task_hidden_by_removed_and_shows_it_again_on_restore`). Decide here how a Task's linked Notes treat Removed Notes.
+
