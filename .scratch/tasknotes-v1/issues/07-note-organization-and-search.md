@@ -114,3 +114,21 @@ Run a build with `TASKNOTES_DEV_DATA_DIR` pointing at a fresh folder (never the 
 - Test stand-ins: the shared Note stand-in answers `list_note_tasks`; `links.test.tsx` gained `folderId`, `pinned`, `snippet` and `list_note_folders`; the locale-safe paging assertion keeps Ticket 08's `noteButton` helper.
 
 **Checks after the merge, in this worktree:** `pnpm test` 148 Vitest tests in 13 files (two runs); `pnpm typecheck`; `pnpm build` (main chunk 283 kB, Notes chunk 325 kB); `cargo test` core 90 and Tauri 1; core and Tauri `cargo clippy --all-targets -- -D warnings`; both `cargo fmt --all -- --check`.
+
+## Independent review (2026-10-25): REQUEST CHANGES — fixes
+
+| Finding | Fix | Evidence |
+| --- | --- | --- |
+| MAJOR: `snippet()` ran for every match before ORDER BY/LIMIT (reviewer: 3,000 × 100 KB Notes, 88 s vs 61 ms) | The page's rows are chosen first; snippets are cut only for them (`f0627d0`) | `search_snippets_cost_the_page_not_every_match` (150 Notes of ~100 KB): page of 1 ≈ 3 ms vs page of 100 ≈ 50 ms; on the old code both ≈ 71 ms and the test fails. Reviewer's bench, release, 500 × ~100 KB with the word ~3,000 times per Note: first page of 50 in 1.3 s (about 13 s before). The rest is FTS5 choosing a fragment among many hits per Note; Ticket 17 should measure it |
+| Minor: names folded with `to_lowercase()` only | One shared fold `text_fold::fold` (NFD, full case folding via `caseless`, NFC) for Tags, the Tag filter and sibling Folder names; the v8 step re-folds stored Tags and merges Tags that now fold alike (first spelling kept, every Task keeps the Tag once; only the duplicate Tag row goes) (`e0ebe27`). Folder folds need no recompute: v8 creates the table | `tags_match_with_full_case_folding_in_any_unicode_form`, `opening_a_v7_database_merges_tags_that_now_fold_alike` (fails with the re-fold skipped), Folder cases Straße/STRASSE, ΣΑΣ/σας, é NFC/NFD in `sibling_names_are_unique_ignoring_case_but_may_repeat_under_other_parents`. New deps: `caseless` 0.2.2, `unicode-normalization` 0.1.26 |
+| Minor: "!!!" listed every Note; client regex repeated the word rule | The core returns an empty page for non-blank text without words; the App regex is gone (`daec63b`) | `search_finds_titles_and_markdown_content_in_every_folder` (now RED before the fix), UI `asks the core even for text without words, which matches no Notes` |
+| Nit: v8 Note parts lived in `note_folders.rs` | v8 split by owner: `note_folders::migrate_v8` (tree), `notes::migrate_v8` (columns, indexes, FTS), `organization::refold_tags`; the runner sets `user_version = 8` in the same transaction (`e0ebe27`) | Migration and rollback tests unchanged and green |
+| Nit: Tauri `create_note` took `folder_id` beside its input | `CreateNote { markdown, folder_id }`; `create_note_in_folder` removed (`a25f02e`) | Core and UI tests assert the new shape |
+| Nit: misplaced/unclear comments in `NotesWorkspace.tsx`; glossary "Folder" | Fixed; glossary term is now Note Folder (`a25f02e`) | — |
+| Spec gap: keyboard navigation in the folder tree | Up/Down move, Right opens or steps in, Left closes or steps out to the parent (`3b6f153`) | `moves through the folder tree with the arrow keys` (fails with Left-to-parent removed) |
+
+**Extra scope kept (owner may decide):** renaming a folder was not asked for in the ticket; it stays, with the same name rules and revision check as moves.
+
+**Owner click-checklist addition:** in the sidebar tree, use Up/Down/Right/Left on folders as above; create "Straße" and then "STRASSE" in one parent and expect the name clash.
+
+**Checks after the fixes, in this worktree:** `pnpm test` 150 Vitest tests in 13 files (two runs); `pnpm typecheck`; `pnpm build` (main chunk 283 kB, Notes chunk 325 kB); `cargo test` core 93 and Tauri 1; core and Tauri `cargo clippy --all-targets -- -D warnings`; both `cargo fmt --all -- --check`.
