@@ -21,12 +21,10 @@ fn folder(store: &TaskStore, name: &str, parent: Option<&NoteFolder>) -> NoteFol
 
 fn note_in(store: &TaskStore, markdown: &str, folder: Option<&NoteFolder>) -> Note {
     store
-        .create_note_in_folder(
-            CreateNote {
-                markdown: markdown.into(),
-            },
-            folder.map(|f| f.id.as_str()),
-        )
+        .create_note(CreateNote {
+            markdown: markdown.into(),
+            folder_id: folder.map(|f| f.id.clone()),
+        })
         .unwrap()
 }
 

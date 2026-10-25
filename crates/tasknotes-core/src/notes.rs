@@ -28,6 +28,9 @@ pub struct Note {
 #[serde(rename_all = "camelCase")]
 pub struct CreateNote {
     pub markdown: String,
+    /// The folder to create the Note in; None for no folder.
+    #[serde(default)]
+    pub folder_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -346,15 +349,8 @@ fn read_note(row: &Row<'_>) -> rusqlite::Result<Note> {
 
 impl TaskStore {
     pub fn create_note(&self, input: CreateNote) -> Result<Note, TaskError> {
-        self.create_note_in_folder(input, None)
-    }
-
-    pub fn create_note_in_folder(
-        &self,
-        input: CreateNote,
-        folder_id: Option<&str>,
-    ) -> Result<Note, TaskError> {
         check_length(&input.markdown)?;
+        let folder_id = input.folder_id.as_deref();
         let now = current_millis()?;
         let mut conn = self.connect()?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;

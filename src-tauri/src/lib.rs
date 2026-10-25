@@ -150,14 +150,8 @@ fn get_note(store: State<'_, TaskStore>, id: String) -> Result<Option<Note>, Str
 }
 
 #[tauri::command]
-fn create_note(
-    store: State<'_, TaskStore>,
-    input: CreateNote,
-    folder_id: Option<String>,
-) -> Result<Note, String> {
-    store
-        .create_note_in_folder(input, folder_id.as_deref())
-        .map_err(|error| error.to_string())
+fn create_note(store: State<'_, TaskStore>, input: CreateNote) -> Result<Note, String> {
+    store.create_note(input).map_err(|error| error.to_string())
 }
 
 #[tauri::command]

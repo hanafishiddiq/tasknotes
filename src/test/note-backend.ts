@@ -75,10 +75,10 @@ export class NoteBackend {
     // An open Note lists its linked Tasks (Ticket 08); these tests link none.
     if (command === "list_note_tasks") return { items: [], nextCursor: null };
     if (command === "create_note") {
-      const { markdown } = args.input as { markdown: string };
+      const { markdown, folderId } = args.input as { markdown: string; folderId?: string | null };
       return this.write({
         id: `note-${this.nextId++}`, markdown, title: firstLine(markdown), revision: 1,
-        folderId: (args.folderId as string | null | undefined) ?? null, pinned: false,
+        folderId: folderId ?? null, pinned: false,
       });
     }
     if (command === "update_note") {

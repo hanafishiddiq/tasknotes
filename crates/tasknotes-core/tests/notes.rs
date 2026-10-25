@@ -13,6 +13,7 @@ fn note(store: &TaskStore, markdown: &str) -> Note {
     store
         .create_note(CreateNote {
             markdown: markdown.into(),
+            folder_id: None,
         })
         .unwrap()
 }
@@ -188,7 +189,8 @@ fn an_oversized_write_is_refused_and_the_last_saved_version_stays() {
     let too_large = format!("{largest}!");
     assert!(matches!(
         store.create_note(CreateNote {
-            markdown: too_large.clone()
+            markdown: too_large.clone(),
+            folder_id: None,
         }),
         Err(TaskError::NoteTooLong)
     ));

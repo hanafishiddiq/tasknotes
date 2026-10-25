@@ -23,6 +23,7 @@ fn note(store: &TaskStore, markdown: &str) -> Note {
     store
         .create_note(CreateNote {
             markdown: markdown.into(),
+            folder_id: None,
         })
         .unwrap()
 }

@@ -70,7 +70,7 @@ export const noteApi = {
   },
 
   create(markdown: string, folderId: string | null = null): Promise<Note> {
-    return invoke("create_note", { input: { markdown }, folderId });
+    return invoke("create_note", { input: { markdown, folderId } });
   },
 
   update(id: string, markdown: string, expectedRevision: number): Promise<Note> {

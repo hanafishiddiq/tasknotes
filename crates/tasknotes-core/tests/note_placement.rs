@@ -21,12 +21,10 @@ fn folder(store: &TaskStore, name: &str, parent: Option<&NoteFolder>) -> NoteFol
 
 fn note_in(store: &TaskStore, markdown: &str, folder: Option<&NoteFolder>) -> Note {
     store
-        .create_note_in_folder(
-            CreateNote {
-                markdown: markdown.into(),
-            },
-            folder.map(|f| f.id.as_str()),
-        )
+        .create_note(CreateNote {
+            markdown: markdown.into(),
+            folder_id: folder.map(|f| f.id.clone()),
+        })
         .unwrap()
 }
 
@@ -81,12 +79,10 @@ fn a_folder_lists_only_the_notes_directly_in_it_and_all_notes_lists_every_note()
     assert_eq!(summary.folder_id.as_deref(), Some(meetings.id.as_str()));
     assert!(summary.snippet.is_none());
 
-    let missing = store.create_note_in_folder(
-        CreateNote {
-            markdown: "Nowhere".into(),
-        },
-        Some("00000000-0000-4000-8000-000000000000"),
-    );
+    let missing = store.create_note(CreateNote {
+        markdown: "Nowhere".into(),
+        folder_id: Some("00000000-0000-4000-8000-000000000000".into()),
+    });
     assert!(matches!(missing, Err(TaskError::NoteFolderNotFound)));
     assert!(matches!(
         store.query_notes(

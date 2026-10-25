@@ -88,7 +88,7 @@ describe("nested Note Folders", () => {
     await user.click(screen.getByRole("textbox", { name: "Note text" }));
     await user.keyboard("Budget review");
     await eventually(() => expect(backend.commands("create_note")).toEqual([
-      { input: { markdown: "Budget review" }, folderId: work.id },
+      { input: { markdown: "Budget review", folderId: work.id } },
     ]));
 
     // All notes lists every Note again.

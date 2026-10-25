@@ -80,7 +80,7 @@ describe("standalone Notes", () => {
 
     await user.click(editor);
     await user.type(editor, "Buy oat milk");
-    await eventually(() => expect(backend.commands("create_note")).toEqual([{ input: { markdown: "Buy oat milk" }, folderId: null }]));
+    await eventually(() => expect(backend.commands("create_note")).toEqual([{ input: { markdown: "Buy oat milk", folderId: null } }]));
     const list = screen.getByRole("list", { name: "Notes" });
     await waitFor(() => expect(within(list).getAllByRole("button")[0]).toHaveTextContent("Buy oat milk"));
     expect(within(list).getAllByRole("button")[0]).toHaveAttribute("aria-current", "true");

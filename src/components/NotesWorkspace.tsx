@@ -16,8 +16,9 @@ const NOTE_SEARCH_MS = 250;
 const EDITED = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
 
 /**
- * What the open editor was loaded from or last saved as; `id` is null for an
- * unsaved draft, which is stored in `folderId` once typed.
+ * What the open editor was loaded from or last saved as. For an unsaved draft
+ * `id` is null and `folderId` is the folder the Note will be created in once
+ * its first character is typed.
  */
 interface Saved {
   id: string | null;
@@ -72,7 +73,6 @@ interface NotesWorkspaceProps {
   onOpenTask: (taskId: string) => void;
 }
 
-/** The Notes list beside one open Note, as in Apple Notes. */
 /** Arrow keys move focus between the Notes in the list. */
 function moveFocus(event: KeyboardEvent<HTMLUListElement>) {
   if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
@@ -91,6 +91,7 @@ function placeEdited(list: NoteSummary[], item: NoteSummary): NoteSummary[] {
   return [...rest.slice(0, at), item, ...rest.slice(at)];
 }
 
+/** The Notes list beside one open Note, as in Apple Notes. */
 export default function NotesWorkspace({
   hidden, scope, scopeName, folders, request, onOpenTask,
 }: NotesWorkspaceProps) {
@@ -194,7 +195,10 @@ export default function NotesWorkspace({
       });
   }, [searchText]);
 
-  // Runs after the scope and search effects, so a request that also changed the scope wins.
+  // A request from global search or a Task's linked Note: show its search and
+  // open its Note. Declared after the scope and search effects on purpose:
+  // effects run in order, so when a request also changes the scope (or mounts
+  // this component), its list and open Note replace theirs.
   useEffect(() => {
     if (!request) return;
     searchRef.current = request.search;
