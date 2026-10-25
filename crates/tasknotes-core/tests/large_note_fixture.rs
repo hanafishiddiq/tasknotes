@@ -139,3 +139,69 @@ fn large_note_collections_list_and_search_in_bounded_pages() {
     assert_eq!(search.items.len(), 50);
     assert!(search.items.iter().all(|item| item.snippet.is_some()));
 }
+
+/// Snippets are cut only for the Notes on the page, not for every match:
+/// with long bodies, cutting one per match made the first page take seconds.
+#[test]
+fn search_snippets_cost_the_page_not_every_match() {
+    const LONG_NOTES: usize = 150;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("long-notes.db");
+    drop(TaskStore::open(&path).unwrap());
+    // About 100 KB per Note, the matched word near the end of each.
+    let body = format!(
+        "{} lease renewal",
+        "filler words for a long body ".repeat(3_500)
+    );
+    let mut conn = Connection::open(&path).unwrap();
+    let tx = conn.transaction().unwrap();
+    for n in 0..LONG_NOTES {
+        tx.execute(
+            "INSERT INTO notes(id, markdown, title, revision, created_at, updated_at)
+             VALUES (?1, ?2, ?3, 1, ?4, ?4)",
+            params![
+                id(n),
+                format!("# Long {n}\n\n{body}"),
+                format!("Long {n}"),
+                n as i64 + 1
+            ],
+        )
+        .unwrap();
+    }
+    tx.commit().unwrap();
+    let store = TaskStore::open(&path).unwrap();
+    let query = NoteQuery {
+        text: "lease".into(),
+        ..NoteQuery::default()
+    };
+
+    // Best of three runs, so a busy machine does not decide the result.
+    let timed = |limit: u32| {
+        (0..3)
+            .map(|_| {
+                let started = Instant::now();
+                let page = store.query_notes(&query, limit, None).unwrap();
+                (started.elapsed(), page)
+            })
+            .min_by_key(|(elapsed, _)| *elapsed)
+            .unwrap()
+    };
+    let (page_of_one, one) = timed(1);
+    let (page_of_hundred, hundred) = timed(100);
+    println!("1 hit: {page_of_one:?}, 100 hits: {page_of_hundred:?} of {LONG_NOTES} matches");
+    assert_eq!(one.items.len(), 1);
+    assert_eq!(hundred.items.len(), 100);
+    assert!(
+        hundred.items[99]
+            .snippet
+            .as_deref()
+            .unwrap()
+            .contains("\u{2}lease\u{3}")
+    );
+    // When a snippet is cut for every match, a page of one costs as much as a
+    // page of a hundred; cut for the page only, it is many times cheaper.
+    assert!(
+        page_of_one * 3 < page_of_hundred,
+        "a 1-Note page took {page_of_one:?}, a 100-Note page {page_of_hundred:?}"
+    );
+}

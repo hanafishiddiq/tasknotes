@@ -453,17 +453,15 @@ impl TaskStore {
         let mut filters = vec!["1".to_owned()];
         // All words must match; each is a quoted prefix term, so user text
         // never reaches FTS5 query syntax.
-        let (source, snippet) = if terms.is_empty() {
-            ("notes n", "NULL")
+        let match_terms = terms.join(" ");
+        let source = if terms.is_empty() {
+            "notes n"
         } else {
             filters.push(format!(
                 "notes_fts MATCH {}",
-                bind(Value::Text(terms.join(" ")))
+                bind(Value::Text(match_terms.clone()))
             ));
-            (
-                "notes_fts JOIN notes n ON n.rowid = notes_fts.rowid",
-                "snippet(notes_fts, 0, char(2), char(3), '…', 12)",
-            )
+            "notes_fts JOIN notes n ON n.rowid = notes_fts.rowid"
         };
         if let NoteScope::Folder(id) = &query.folder {
             filters.push(format!("n.folder_id = {}", bind(Value::Text(id.clone()))));
@@ -479,7 +477,7 @@ impl TaskStore {
         }
         let page_size = bind(Value::Integer(i64::from(limit) + 1));
         let sql = format!(
-            "SELECT n.id, n.title, n.revision, n.updated_at, n.folder_id, n.pinned, {snippet}
+            "SELECT n.id, n.title, n.revision, n.updated_at, n.folder_id, n.pinned, n.rowid
              FROM {source} WHERE {}
              ORDER BY n.pinned DESC, n.updated_at DESC, n.id DESC LIMIT {page_size}",
             filters.join(" AND ")
@@ -490,23 +488,38 @@ impl TaskStore {
             crate::note_folders::require_folder(&conn, id)?;
         }
         let mut stmt = conn.prepare(&sql)?;
-        let mut items = stmt
+        let mut rows = stmt
             .query_map(params_from_iter(values), |row| {
-                Ok(NoteSummary {
+                let summary = NoteSummary {
                     id: row.get(0)?,
                     title: row.get(1)?,
                     revision: row.get(2)?,
                     updated_at: row.get(3)?,
                     folder_id: row.get(4)?,
                     pinned: row.get(5)?,
-                    snippet: row
-                        .get::<_, Option<String>>(6)?
-                        .map(|raw| plain_snippet(&raw)),
-                })
+                    snippet: None,
+                };
+                Ok((summary, row.get::<_, i64>(6)?))
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
-        let next_cursor = if items.len() > limit as usize {
-            items.pop();
+        let more = rows.len() > limit as usize;
+        rows.truncate(limit as usize);
+        // Snippets only for the page: cutting one reads the whole Note, so
+        // doing it for every match before LIMIT cost seconds on long Notes.
+        if !terms.is_empty() {
+            let mut cut = conn.prepare(
+                "SELECT snippet(notes_fts, 0, char(2), char(3), '…', 12)
+                 FROM notes_fts WHERE notes_fts MATCH ?1 AND rowid = ?2",
+            )?;
+            for (summary, rowid) in &mut rows {
+                summary.snippet = cut
+                    .query_row(params![match_terms, *rowid], |row| row.get::<_, String>(0))
+                    .optional()?
+                    .map(|raw| plain_snippet(&raw));
+            }
+        }
+        let items: Vec<NoteSummary> = rows.into_iter().map(|(summary, _)| summary).collect();
+        let next_cursor = if more {
             items.last().map(|last| {
                 format!(
                     "n2|{key}|{}|{}|{}",
