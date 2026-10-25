@@ -82,14 +82,6 @@ fn read_link(row: &Row<'_>) -> rusqlite::Result<NoteLink> {
     })
 }
 
-fn exists(conn: &Connection, table: &str, id: &str) -> Result<bool, TaskError> {
-    Ok(conn.query_row(
-        &format!("SELECT EXISTS(SELECT 1 FROM {table} WHERE id = ?1)"),
-        params![id],
-        |row| row.get(0),
-    )?)
-}
-
 fn parse_cursor(value: &str) -> Result<(i64, String), TaskError> {
     let mut fields = value.split('|');
     match (fields.next(), fields.next(), fields.next(), fields.next()) {
@@ -115,7 +107,14 @@ struct Side {
 const NOTES_OF_TASK: Side = Side {
     owner: "task_id",
     select: "n.id, n.title, n.updated_at",
-    join: "JOIN notes n ON n.id = l.note_id",
+    // Notes hidden by Removed (their own, or a Removed folder above them) are
+    // left out; the link row stays, so restoring brings the Note back here.
+    join: concat!(
+        "JOIN notes n ON n.id = l.note_id AND n.removed_at IS NULL
+         AND (n.folder_id IS NULL OR n.folder_id NOT IN (",
+        hidden_folders!(),
+        "))"
+    ),
 };
 
 const TASKS_OF_NOTE: Side = Side {
@@ -181,9 +180,7 @@ impl TaskStore {
         let mut conn = self.connect()?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         crate::removed::require_writable_task(&tx, task_id)?;
-        if !exists(&tx, "notes", note_id)? {
-            return Err(TaskError::NoteNotFound);
-        }
+        crate::removed::require_writable_note(&tx, note_id)?;
         let link = tx.query_row(
             &format!(
                 "INSERT INTO task_note_links ({COLUMNS})

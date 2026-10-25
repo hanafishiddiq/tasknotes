@@ -2,7 +2,10 @@
 
 use std::path::Path;
 
-use tasknotes_core::notes::{CreateNote, Note};
+use tasknotes_core::note_folders::CreateNoteFolder;
+use tasknotes_core::notes::{
+    CreateNote, MoveNote, Note, NoteQuery, NoteScope, SetNotePinned, UpdateNote,
+};
 use tasknotes_core::removed::SetRemoved;
 use tasknotes_core::tasks::{
     ChangeTask, CreateList, CreateTask, List, MoveTask, RecordProgress, SetListRemoved, Task,
@@ -250,5 +253,227 @@ fn a_task_in_removed_cannot_be_changed_until_it_is_restored() {
     assert_eq!(
         (kept.title.as_str(), kept.progress, kept.revision),
         ("Renew passport", 0, revision)
+    );
+}
+
+fn version(db: &Path) -> i64 {
+    rusqlite::Connection::open(db)
+        .unwrap()
+        .pragma_query_value(None, "user_version", |r| r.get(0))
+        .unwrap()
+}
+
+/// A database exactly as schema v8 left it, holding one Note in one folder.
+fn v8_database(db: &Path) -> (String, String) {
+    let store = store_at(db);
+    let travel = store
+        .create_note_folder(CreateNoteFolder {
+            name: "Travel".into(),
+            parent_id: None,
+        })
+        .unwrap();
+    let packing = store
+        .create_note(CreateNote {
+            markdown: "# Packing list\n\nPassport".into(),
+            folder_id: Some(travel.id.clone()),
+        })
+        .unwrap();
+    drop(store);
+    rusqlite::Connection::open(db)
+        .unwrap()
+        .execute_batch(
+            "DROP INDEX tasks_removed_order; DROP INDEX notes_removed_order;
+             DROP INDEX lists_removed_order; DROP INDEX note_folders_removed_order;
+             DROP INDEX note_folders_sibling_name;
+             ALTER TABLE notes DROP COLUMN removed_at;
+             ALTER TABLE note_folders DROP COLUMN removed_at;
+             CREATE UNIQUE INDEX note_folders_sibling_name
+               ON note_folders(coalesce(parent_id, ''), name_fold);
+             PRAGMA user_version = 8;",
+        )
+        .unwrap();
+    (travel.id, packing.id)
+}
+
+#[test]
+fn a_v8_database_keeps_its_notes_and_folders_and_gains_removed() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("v8.db");
+    let (folder_id, note_id) = v8_database(&db);
+    assert_eq!(version(&db), 8);
+
+    let store = store_at(&db);
+    assert_eq!(version(&db), 9);
+    let kept = store.get_note(&note_id).unwrap().unwrap();
+    assert_eq!(kept.folder_id.as_deref(), Some(folder_id.as_str()));
+    assert!(!kept.removed);
+    assert!(!store.get_note_folder(&folder_id).unwrap().unwrap().removed);
+    store
+        .set_note_removed(set(&note_id, kept.revision, true))
+        .unwrap();
+}
+
+#[test]
+fn a_failed_v9_migration_rolls_back_and_keeps_the_database_usable() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("collision.db");
+    let (_, note_id) = v8_database(&db);
+    // The columns are added first; the index name then collides.
+    rusqlite::Connection::open(&db)
+        .unwrap()
+        .execute_batch("CREATE TABLE notes_removed_order(collision INTEGER);")
+        .unwrap();
+
+    assert!(TaskStore::open(&db).is_err());
+    assert_eq!(version(&db), 8);
+    let half_done: bool = rusqlite::Connection::open(&db)
+        .unwrap()
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('notes') WHERE name = 'removed_at')",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(
+        !half_done,
+        "notes.removed_at must roll back with the migration"
+    );
+
+    rusqlite::Connection::open(&db)
+        .unwrap()
+        .execute_batch("DROP TABLE notes_removed_order;")
+        .unwrap();
+    let store = store_at(&db);
+    assert_eq!(version(&db), 9);
+    assert!(store.get_note(&note_id).unwrap().is_some());
+}
+
+fn note_titles(store: &TaskStore, query: NoteQuery) -> Vec<String> {
+    store
+        .query_notes(&query, 100, None)
+        .unwrap()
+        .items
+        .into_iter()
+        .map(|n| n.title)
+        .collect()
+}
+
+#[test]
+fn a_removed_note_leaves_lists_search_and_links_and_restore_brings_it_back() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("n.db"));
+    let work = store
+        .create_note_folder(CreateNoteFolder {
+            name: "Work".into(),
+            parent_id: None,
+        })
+        .unwrap();
+    let minutes = store
+        .create_note(CreateNote {
+            markdown: "# Meeting minutes\n\nBudget agreed".into(),
+            folder_id: Some(work.id.clone()),
+        })
+        .unwrap();
+    note(&store, "# Shopping");
+    let follow_up = task(&store, "Send follow-up");
+    let link = store.link_note(&follow_up.id, &minutes.id).unwrap();
+
+    let removed = store
+        .set_note_removed(set(&minutes.id, minutes.revision, true))
+        .unwrap();
+    assert!(removed.removed);
+    assert_eq!(removed.updated_at, minutes.updated_at, "not an edit");
+    assert_eq!(note_titles(&store, NoteQuery::default()), vec!["Shopping"]);
+    assert!(
+        note_titles(
+            &store,
+            NoteQuery {
+                folder: NoteScope::Folder(work.id.clone()),
+                ..Default::default()
+            }
+        )
+        .is_empty()
+    );
+    assert!(
+        note_titles(
+            &store,
+            NoteQuery {
+                text: "budget".into(),
+                ..Default::default()
+            }
+        )
+        .is_empty()
+    );
+    assert!(
+        store
+            .list_task_notes(&follow_up.id, 50, None)
+            .unwrap()
+            .items
+            .is_empty()
+    );
+
+    let restored = store
+        .set_note_removed(set(&minutes.id, removed.revision, false))
+        .unwrap();
+    assert_eq!(restored.markdown, minutes.markdown);
+    assert_eq!(restored.folder_id.as_deref(), Some(work.id.as_str()));
+    assert_eq!(
+        note_titles(
+            &store,
+            NoteQuery {
+                text: "budget".into(),
+                ..Default::default()
+            }
+        ),
+        vec!["Meeting minutes"]
+    );
+    let linked = store
+        .list_task_notes(&follow_up.id, 50, None)
+        .unwrap()
+        .items;
+    assert_eq!(linked.len(), 1);
+    assert_eq!(linked[0].link_id, link.id);
+}
+
+#[test]
+fn a_note_in_removed_cannot_be_changed_until_it_is_restored() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("n.db"));
+    let draft = note(&store, "# Letter");
+    assert!(matches!(
+        store.set_note_removed(set(&draft.id, draft.revision + 1, true)),
+        Err(TaskError::NoteRevisionConflict)
+    ));
+    let removed = store
+        .set_note_removed(set(&draft.id, draft.revision, true))
+        .unwrap();
+    assert!(matches!(
+        store.set_note_removed(set(&draft.id, removed.revision, true)),
+        Err(TaskError::RemovedUnchanged)
+    ));
+    let refused = |result: Result<Note, TaskError>| {
+        assert!(matches!(result, Err(TaskError::NoteRemoved)), "{result:?}")
+    };
+    refused(store.update_note(UpdateNote {
+        id: draft.id.clone(),
+        markdown: "# Changed".into(),
+        expected_revision: removed.revision,
+    }));
+    refused(store.move_note(MoveNote {
+        id: draft.id.clone(),
+        folder_id: None,
+    }));
+    refused(store.set_note_pinned(SetNotePinned {
+        id: draft.id.clone(),
+        pinned: true,
+    }));
+    let errand = task(&store, "Post the letter");
+    assert!(matches!(
+        store.link_note(&errand.id, &draft.id),
+        Err(TaskError::NoteRemoved)
+    ));
+    assert_eq!(
+        store.get_note(&draft.id).unwrap().unwrap().markdown,
+        "# Letter"
     );
 }

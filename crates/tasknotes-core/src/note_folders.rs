@@ -24,6 +24,8 @@ pub struct NoteFolder {
     pub updated_at: i64,
     /// Whether the sidebar can expand this folder.
     pub has_children: bool,
+    /// In Removed (ADR-0002); its subfolders and Notes are hidden with it.
+    pub removed: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -97,7 +99,8 @@ fn name_fold(name: &str) -> String {
 }
 
 const FOLDER_COLUMNS: &str = "f.id, f.parent_id, f.name, f.revision, f.created_at, f.updated_at,
-    EXISTS(SELECT 1 FROM note_folders c WHERE coalesce(c.parent_id, '') = f.id)";
+    EXISTS(SELECT 1 FROM note_folders c WHERE coalesce(c.parent_id, '') = f.id
+      AND c.removed_at IS NULL), f.removed_at";
 
 fn read_folder(row: &Row<'_>) -> rusqlite::Result<NoteFolder> {
     Ok(NoteFolder {
@@ -108,6 +111,7 @@ fn read_folder(row: &Row<'_>) -> rusqlite::Result<NoteFolder> {
         created_at: row.get(4)?,
         updated_at: row.get(5)?,
         has_children: row.get(6)?,
+        removed: row.get::<_, Option<i64>>(7)?.is_some(),
     })
 }
 
@@ -330,7 +334,7 @@ impl TaskStore {
         let mut folds = Vec::new();
         while let Some(row) = rows.next()? {
             items.push(read_folder(row)?);
-            folds.push(row.get::<_, String>(7)?);
+            folds.push(row.get::<_, String>(8)?);
         }
         let next_cursor = if items.len() > limit as usize {
             items.pop();

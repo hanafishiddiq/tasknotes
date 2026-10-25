@@ -71,6 +71,10 @@ pub enum TaskError {
     TaskRemoved,
     #[error("This Task's List is in Removed; restore the List first")]
     TaskListRemoved,
+    #[error("This Note is in Removed; restore it before changing it")]
+    NoteRemoved,
+    #[error("This folder, or a folder it is in, is in Removed; restore that folder first")]
+    NoteFolderRemoved,
     #[error("This item is already in the requested state")]
     RemovedUnchanged,
     #[error("Revision conflict: the Task has changed; reload before saving")]
@@ -364,7 +368,7 @@ impl TaskStore {
         let mut connection = Connection::open(path)?;
         connection.busy_timeout(BUSY_TIMEOUT)?;
         let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        if version > 8 {
+        if version > 9 {
             return Err(TaskError::UnsupportedSchema(version));
         }
 
@@ -486,6 +490,11 @@ impl TaskStore {
             crate::notes::migrate_v8(&migration)?;
             crate::organization::refold_tags(&migration)?;
             migration.execute_batch("PRAGMA user_version = 8;")?;
+            migration.commit()?;
+        }
+        if version < 9 {
+            let migration = connection.transaction()?;
+            crate::removed::migrate_v9(&migration)?;
             migration.commit()?;
         }
         Ok(Self {

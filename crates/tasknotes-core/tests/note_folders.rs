@@ -43,7 +43,8 @@ fn v6_database(db: &Path) {
     Connection::open(db)
         .unwrap()
         .execute_batch(
-            "DROP TABLE task_note_links;
+            "DROP INDEX tasks_removed_order; DROP INDEX lists_removed_order;
+             DROP TABLE task_note_links;
              DROP TRIGGER notes_fts_insert; DROP TRIGGER notes_fts_update;
              DROP TRIGGER notes_fts_delete; DROP TABLE notes_fts;
              DROP INDEX notes_all_order; DROP INDEX notes_folder_order;
@@ -71,7 +72,7 @@ fn a_v6_database_keeps_its_notes_and_gains_folders() {
     v6_database(&db);
 
     let store = store_at(&db);
-    assert_eq!(version(&db), 8);
+    assert_eq!(version(&db), 9);
     let kept = store
         .get_note("00000000-0000-4000-8000-0000000000aa")
         .unwrap()
@@ -126,7 +127,7 @@ fn a_failed_v8_migration_rolls_back_and_keeps_the_database_usable() {
         .execute_batch("DROP TABLE notes_fts;")
         .unwrap();
     let store = store_at(&db);
-    assert_eq!(version(&db), 8);
+    assert_eq!(version(&db), 9);
     assert!(
         store
             .get_note("00000000-0000-4000-8000-0000000000aa")
