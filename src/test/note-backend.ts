@@ -57,7 +57,10 @@ export class NoteBackend {
     }
     if (command === "list_notes") {
       const scope = (args.folder as NoteScope | undefined) ?? { kind: "all" };
-      const words = String(args.text ?? "").toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+      const text = String(args.text ?? "");
+      const words = text.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+      // As in the core: text without words ("!!!") matches nothing.
+      if (text.trim() && words.length === 0) return { items: [], nextCursor: null };
       const all: NoteSummary[] = [...this.notes.values()]
         .filter((note) => scope.kind === "all" || note.folderId === scope.folderId)
         .filter((note) => words.every((word) => note.markdown.toLowerCase().includes(word)))

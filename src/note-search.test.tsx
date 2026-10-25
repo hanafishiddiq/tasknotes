@@ -127,6 +127,17 @@ describe("global search", () => {
     await eventually(() => expect(screen.queryByRole("region", { name: "Matching notes" })).not.toBeInTheDocument());
   });
 
+  it("asks the core even for text without words, which matches no Notes", async () => {
+    backend.seed("Groceries", "Groceries");
+    const user = userEvent.setup();
+    render(<App />);
+    await user.type(await screen.findByRole("searchbox", { name: "Search tasks and notes" }), "!!!");
+    await eventually(() => expect(within(hits()).getByText("No matching notes")).toBeInTheDocument());
+    expect(backend.commands("list_notes")).toEqual([
+      { limit: 5, cursor: null, folder: { kind: "all" }, text: "!!!" },
+    ]);
+  });
+
   it("opens a matching Note in Notes with the same search", async () => {
     const plan = backend.seed("Quarterly plan\n\nCall the landlord", "Quarterly plan");
     backend.seed("Groceries", "Groceries");

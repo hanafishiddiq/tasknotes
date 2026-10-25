@@ -102,8 +102,18 @@ fn search_finds_titles_and_markdown_content_in_every_folder() {
         "snippet {snippet:?}"
     );
     assert!(!snippet.contains("**"), "snippet {snippet:?}");
-    // Text with no words in it searches nothing and lists every Note.
-    let listed = store.query_notes(&text(" *** "), 100, None).unwrap();
+    // Text with no words in it matches nothing, rather than listing every Note.
+    for nothing in ["!!!", " *** ", "#"] {
+        let page = store.query_notes(&text(nothing), 100, None).unwrap();
+        assert!(
+            page.items.is_empty(),
+            "{nothing:?} matched {:?}",
+            page.items
+        );
+        assert!(page.next_cursor.is_none());
+    }
+    // Blank text is no search at all: every Note, without snippets.
+    let listed = store.query_notes(&text("   "), 100, None).unwrap();
     assert_eq!(listed.items.len(), 4);
     assert!(listed.items.iter().all(|item| item.snippet.is_none()));
 }

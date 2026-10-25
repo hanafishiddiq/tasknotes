@@ -444,6 +444,14 @@ impl TaskStore {
         let terms = search_terms(&query.text)?;
         let key = fingerprint(&[&folder_key, &terms.join(" ")]);
         let after = cursor.map(|value| parse_cursor(value, &key)).transpose()?;
+        // Text with no words in it ("!!!") is a search that matches nothing,
+        // not a request to list every Note.
+        if terms.is_empty() && !query.text.trim().is_empty() {
+            return Ok(NotePage {
+                items: Vec::new(),
+                next_cursor: None,
+            });
+        }
 
         let mut values: Vec<Value> = Vec::new();
         let mut bind = |value: Value| {

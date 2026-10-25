@@ -117,8 +117,8 @@ export default function App() {
 
   useEffect(() => {
     const text = filters.text.trim();
-    // Text without a letter or digit searches nothing.
-    if (!/[\p{L}\p{N}]/u.test(text)) {
+    // Only blank text is no search; the core decides what the words are.
+    if (!text) {
       setNoteHits(null);
       setNoteHitsFailed(false);
       return;
