@@ -635,6 +635,54 @@ button.folder-disclosure:hover:not(:disabled) {
   font-variant-numeric: tabular-nums;
 }
 
+/* Global search: a few matching Notes above the Tasks, title over a snippet. */
+.note-hits {
+  margin: 0 0 20px;
+}
+.note-hits-list {
+  margin: 0 0 6px;
+  padding: 0;
+  list-style: none;
+}
+.note-hit {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 7px;
+  text-align: left;
+  color: var(--text);
+}
+.note-hit:hover {
+  background: var(--hover);
+}
+.note-hit svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--accent);
+}
+.note-hit-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.note-hit-title {
+  overflow: hidden;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.note-hits-empty {
+  margin: 0;
+  padding: 4px 10px;
+  color: var(--text-3);
+}
+.note-hits .button {
+  margin-left: 38px;
+}
+
 /* Rows: Notes list cells */
 .task-card {
   position: relative;

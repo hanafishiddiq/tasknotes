@@ -51,5 +51,8 @@ A reversible association between a Task and a Note; removing the association doe
 **Folder**:
 A category that organizes Notes independently from Task Lists. A Folder can contain other Folders, so Folders form a tree.
 
+**Pinned**:
+A Note kept above the other Notes in every Note list it appears in. Pinning, like moving a Note to another Folder, changes where it is shown, not what it says.
+
 **Audit Entry**:
 An immutable dated record that an official Tasknotes interface made or attempted a consequential change.

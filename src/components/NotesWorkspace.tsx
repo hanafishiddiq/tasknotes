@@ -5,6 +5,7 @@ import { ALL_NOTES, noteApi, type Note, type NoteScope, type NoteSummary } from 
 import type { FolderOption } from "../lib/use-note-folders";
 import { saveBeforeQuit } from "../lib/quit";
 import NoteEditor, { type NoteEditorHandle } from "./NoteEditor";
+import NoteSnippet from "./NoteSnippet";
 
 // Typing settles before an autosave reaches the core.
 export const NOTE_AUTOSAVE_MS = 600;
@@ -47,6 +48,14 @@ function summary(note: Note): NoteSummary {
 
 const scopeKey = (scope: NoteScope) => scope.kind === "folder" ? scope.folderId : "";
 
+/** Global search asks Notes to show a search, and optionally open one of its Notes. */
+export interface NotesRequest {
+  /** A new number for every request, so the same search can be asked twice. */
+  seq: number;
+  search: string;
+  openId: string | null;
+}
+
 interface NotesWorkspaceProps {
   hidden: boolean;
   /** Every Note, or the Notes directly in one folder. */
@@ -55,19 +64,10 @@ interface NotesWorkspaceProps {
   scopeName: string;
   /** Loaded folders, for moving the open Note. */
   folders: FolderOption[];
+  request: NotesRequest | null;
 }
 
 /** The Notes list beside one open Note, as in Apple Notes. */
-/** A search snippet with its matched words (between U+0002 and U+0003) marked. */
-function Snippet({ text }: { text: string }) {
-  const parts = text.split(/[\u0002\u0003]/);
-  return (
-    <span className="note-list-snippet">
-      {parts.map((part, index) => index % 2 === 1 ? <mark key={index}>{part}</mark> : part)}
-    </span>
-  );
-}
-
 /** Arrow keys move focus between the Notes in the list. */
 function moveFocus(event: KeyboardEvent<HTMLUListElement>) {
   if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
@@ -86,7 +86,7 @@ function placeEdited(list: NoteSummary[], item: NoteSummary): NoteSummary[] {
   return [...rest.slice(0, at), item, ...rest.slice(at)];
 }
 
-export default function NotesWorkspace({ hidden, scope, scopeName, folders }: NotesWorkspaceProps) {
+export default function NotesWorkspace({ hidden, scope, scopeName, folders, request }: NotesWorkspaceProps) {
   const [notes, setNotes] = useState<NoteSummary[]>([]);
   // Where the next page of older Notes starts; null once every Note is listed.
   const [moreCursor, setMoreCursor] = useState<string | null>(null);
@@ -186,6 +186,28 @@ export default function NotesWorkspace({ hidden, scope, scopeName, folders }: No
         if (generation === listGeneration.current) setError("Search couldn't run: " + errorMessage(reason));
       });
   }, [searchText]);
+
+  // Runs after the scope and search effects, so a request that also changed the scope wins.
+  useEffect(() => {
+    if (!request) return;
+    searchRef.current = request.search;
+    setSearchDraft(request.search);
+    setSearchText(request.search);
+    const generation = ++listGeneration.current;
+    listPage(null)
+      .then(async (page) => {
+        if (generation !== listGeneration.current) return;
+        setNotes(page.items);
+        setMoreCursor(page.nextCursor);
+        // Without a chosen Note, the first match opens unless something is already open.
+        const target = request.openId ??
+          (saved.current.id === null && !dirty.current ? page.items[0]?.id : undefined);
+        if (target) await openNote(target);
+      })
+      .catch((reason) => {
+        if (generation === listGeneration.current) setError("Search couldn't run: " + errorMessage(reason));
+      });
+  }, [request?.seq]);
 
   // flush reads only refs, so the first render's copy stays current.
   useEffect(() => saveBeforeQuit(flush), []);
@@ -372,7 +394,7 @@ export default function NotesWorkspace({ hidden, scope, scopeName, folders }: No
                 onClick={() => void openNote(note.id)}>
                 <span className="note-list-title">{note.title}</span>
                 <span className="note-list-date">{EDITED.format(note.updatedAt)}</span>
-                {note.snippet && <Snippet text={note.snippet} />}
+                {note.snippet && <NoteSnippet text={note.snippet} />}
               </button>
             </li>
           ))}

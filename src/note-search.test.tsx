@@ -101,3 +101,58 @@ describe("searching Notes", () => {
     await eventually(() => expect(screen.getByRole("textbox", { name: "Note text" })).toHaveTextContent("Second"));
   });
 });
+
+describe("global search", () => {
+  const taskSearch = () => screen.getByRole("searchbox", { name: "Search tasks and notes" });
+  const hits = () => screen.getByRole("region", { name: "Matching notes" });
+
+  it("shows matching Notes beside the Tasks without loading any Note body", async () => {
+    const work = backend.folder("Work");
+    backend.seed("Quarterly plan\n\nCall the landlord", "Quarterly plan", { folderId: work.id });
+    backend.seed("Groceries", "Groceries");
+    const user = userEvent.setup();
+    render(<App />);
+    await user.type(await screen.findByRole("searchbox", { name: "Search tasks and notes" }), "landlord");
+
+    await eventually(() => expect(within(hits()).getByRole("button", { name: /Quarterly plan/ })).toBeInTheDocument());
+    expect(within(hits()).getByText("landlord", { selector: "mark" })).toBeInTheDocument();
+    expect(within(hits()).queryByText("Groceries")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "No matching tasks" })).toBeInTheDocument();
+    expect(backend.commands("list_notes")).toEqual([
+      { limit: 5, cursor: null, folder: { kind: "all" }, text: "landlord" },
+    ]);
+    expect(backend.commands("get_note")).toHaveLength(0);
+    // Filters alone search no Notes.
+    await user.clear(taskSearch());
+    await eventually(() => expect(screen.queryByRole("region", { name: "Matching notes" })).not.toBeInTheDocument());
+  });
+
+  it("opens a matching Note in Notes with the same search", async () => {
+    const plan = backend.seed("Quarterly plan\n\nCall the landlord", "Quarterly plan");
+    backend.seed("Groceries", "Groceries");
+    const user = userEvent.setup();
+    render(<App />);
+    await user.type(await screen.findByRole("searchbox", { name: "Search tasks and notes" }), "landlord");
+    await user.click(await within(await screen.findByRole("region", { name: "Matching notes" }))
+      .findByRole("button", { name: /Quarterly plan/ }));
+
+    await eventually(() => expect(screen.getByRole("textbox", { name: "Note text" }))
+      .toHaveTextContent("Call the landlord"));
+    expect(screen.getByRole("searchbox", { name: "Search notes" })).toHaveValue("landlord");
+    await eventually(() => expect(titles()).toEqual(["Quarterly plan"]));
+    expect(backend.commands("get_note")).toEqual([{ id: plan.id }]);
+    expect(screen.getByRole("button", { name: "All notes" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("offers every match in Notes when there are more than fit beside the Tasks", async () => {
+    for (let n = 1; n <= 7; n += 1) backend.seed(`Plan ${n}`, `Plan ${n}`);
+    const user = userEvent.setup();
+    render(<App />);
+    await user.type(await screen.findByRole("searchbox", { name: "Search tasks and notes" }), "plan");
+    await eventually(() => expect(within(hits()).getAllByRole("button", { name: /^Plan/ })).toHaveLength(5));
+
+    await user.click(within(hits()).getByRole("button", { name: "Show all matching notes" }));
+    await eventually(() => expect(titles()).toHaveLength(7));
+    expect(screen.getByRole("searchbox", { name: "Search notes" })).toHaveValue("plan");
+  });
+});

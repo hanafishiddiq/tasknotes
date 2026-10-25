@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from "react";
 import {
-  ArrowDownWideNarrow, CheckCircle2, LoaderCircle, LockKeyhole, Search, SearchX, SquarePen, Tag,
+  ArrowDownWideNarrow, CheckCircle2, LoaderCircle, LockKeyhole, NotebookText, Search, SearchX, SquarePen,
+  Tag,
 } from "lucide-react";
 import {
   taskApi, NO_FILTERS, TASK_PAGE_SIZE, type Task, type TaskList, type TaskView,
@@ -14,9 +15,11 @@ import { useLocalCalendarDay } from "./lib/use-local-calendar-day";
 import { useTheme } from "./lib/use-theme";
 import { errorMessage } from "./lib/error-message";
 import { listenForQuit } from "./lib/quit";
-import { ALL_NOTES, type NoteScope } from "./lib/note-api";
+import { ALL_NOTES, noteApi, type NotePage, type NoteScope } from "./lib/note-api";
+import type { NotesRequest } from "./components/NotesWorkspace";
 import { useNoteFolders } from "./lib/use-note-folders";
 import NoteFolderTree from "./components/NoteFolderTree";
+import NoteSnippet from "./components/NoteSnippet";
 import "./App.css";
 
 // The rich-text editor loads only when Notes are first opened, keeping Task startup light.
@@ -39,6 +42,10 @@ export default function App() {
   const [noteScope, setNoteScope] = useState<NoteScope>(ALL_NOTES);
   // The folder tree loads with Notes, keeping Task startup independent of it.
   const noteFolders = useNoteFolders(notesOpened);
+  // Global search: the first few matching Notes beside the Tasks, never their bodies.
+  const [noteHits, setNoteHits] = useState<NotePage | null>(null);
+  const [noteHitsFailed, setNoteHitsFailed] = useState(false);
+  const [notesRequest, setNotesRequest] = useState<NotesRequest | null>(null);
   const [lists, setLists] = useState<TaskList[]>([]);
   const [listCursor, setListCursor] = useState<string | null>(null);
   const [busyList, setBusyList] = useState(false);
@@ -106,6 +113,29 @@ export default function App() {
   }, [searchDraft, tagDraft]);
 
   useEffect(() => {
+    const text = filters.text.trim();
+    // Text without a letter or digit searches nothing.
+    if (!/[\p{L}\p{N}]/u.test(text)) {
+      setNoteHits(null);
+      setNoteHitsFailed(false);
+      return;
+    }
+    let active = true;
+    noteApi.search(text)
+      .then((page) => {
+        if (!active) return;
+        setNoteHits(page);
+        setNoteHitsFailed(false);
+      })
+      .catch(() => {
+        if (!active) return;
+        setNoteHits(null);
+        setNoteHitsFailed(true);
+      });
+    return () => { active = false; };
+  }, [filters.text]);
+
+  useEffect(() => {
     let active = true;
     taskApi.lists().then((page) => {
       if (!active) return;
@@ -134,6 +164,14 @@ export default function App() {
     setNotesOpened(true);
     setWorkspace("notes");
     setNoteScope(scope);
+  }
+
+  /** Shows a global search in Notes, opening one of its Notes when given. */
+  function searchInNotes(openId: string | null) {
+    setNotesRequest((previous) => ({
+      seq: (previous?.seq ?? 0) + 1, search: filters.text.trim(), openId,
+    }));
+    openNotes(ALL_NOTES);
   }
 
   function navigate(next: TaskView) {
@@ -521,7 +559,7 @@ export default function App() {
             <input
               id="task-search"
               type="search"
-              aria-label="Search tasks"
+              aria-label="Search tasks and notes"
               placeholder="Search"
               maxLength={200}
               value={searchDraft}
@@ -643,6 +681,38 @@ export default function App() {
               {refreshError && <button className="button button-small" type="button" onClick={retryFirstLoad}>Refresh list</button>}
             </div>}
 
+            {(noteHits || noteHitsFailed) && (
+              <section className="note-hits" aria-label="Matching notes">
+                <h3 className="task-group-heading">Notes</h3>
+                {noteHitsFailed ? (
+                  <p className="note-hits-empty">Notes couldn't be searched.</p>
+                ) : noteHits && noteHits.items.length === 0 ? (
+                  <p className="note-hits-empty">No matching notes</p>
+                ) : noteHits && (
+                  <>
+                    <ul className="note-hits-list">
+                      {noteHits.items.map((hit) => (
+                        <li key={hit.id}>
+                          <button type="button" className="note-hit" onClick={() => searchInNotes(hit.id)}>
+                            <NotebookText size={15} aria-hidden="true" />
+                            <span className="note-hit-text">
+                              <span className="note-hit-title">{hit.title}</span>
+                              {hit.snippet && <NoteSnippet text={hit.snippet} />}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                    {noteHits.nextCursor && (
+                      <button className="button button-small" type="button" onClick={() => searchInNotes(null)}>
+                        Show all matching notes
+                      </button>
+                    )}
+                  </>
+                )}
+              </section>
+            )}
+
             <section className="task-section" aria-label="Your tasks">
               {loading ? (
                 <div className="loading-state" role="status"><LoaderCircle className="spin" size={16} /> Loading your tasks...</div>
@@ -737,7 +807,7 @@ export default function App() {
           <NotesWorkspace hidden={workspace !== "notes"} scope={noteScope}
             scopeName={noteScope.kind === "folder"
               ? noteFolders.byId.get(noteScope.folderId)?.name ?? "Folder" : "Notes"}
-            folders={noteFolders.options} />
+            folders={noteFolders.options} request={notesRequest} />
         </Suspense>
       )}
     </div>
