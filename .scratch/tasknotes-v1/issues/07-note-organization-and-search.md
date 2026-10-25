@@ -132,3 +132,5 @@ Run a build with `TASKNOTES_DEV_DATA_DIR` pointing at a fresh folder (never the 
 **Owner click-checklist addition:** in the sidebar tree, use Up/Down/Right/Left on folders as above; create "Straße" and then "STRASSE" in one parent and expect the name clash.
 
 **Checks after the fixes, in this worktree:** `pnpm test` 150 Vitest tests in 13 files (two runs); `pnpm typecheck`; `pnpm build` (main chunk 283 kB, Notes chunk 325 kB); `cargo test` core 93 and Tauri 1; core and Tauri `cargo clippy --all-targets -- -D warnings`; both `cargo fmt --all -- --check`.
+
+**2026-10-25 — owner decision (Han):** Merging Tags whose names are equal under full Unicode case folding during the v8 upgrade is accepted. Every Task keeps the Tag; only the second spelling of the Tag name disappears.
