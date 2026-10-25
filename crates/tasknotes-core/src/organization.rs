@@ -275,6 +275,7 @@ impl TaskStore {
             )
             .optional()?
             .ok_or(TaskError::NotFound)?;
+        crate::removed::require_writable_task(&tx, &before.id)?;
         hydrate_tags(&tx, std::slice::from_mut(&mut before))?;
         if before.revision != input.expected_revision {
             return Err(TaskError::RevisionConflict);
@@ -331,6 +332,7 @@ impl TaskStore {
             )
             .optional()?
             .ok_or(TaskError::NotFound)?;
+        crate::removed::require_writable_task(&tx, &old.id)?;
         if old.revision != input.expected_revision {
             return Err(TaskError::RevisionConflict);
         }

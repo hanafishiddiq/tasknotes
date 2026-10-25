@@ -180,9 +180,7 @@ impl TaskStore {
         let now = current_millis()?;
         let mut conn = self.connect()?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        if !exists(&tx, "tasks", task_id)? {
-            return Err(TaskError::NotFound);
-        }
+        crate::removed::require_writable_task(&tx, task_id)?;
         if !exists(&tx, "notes", note_id)? {
             return Err(TaskError::NoteNotFound);
         }

@@ -67,6 +67,12 @@ pub enum TaskError {
     InvalidProgress,
     #[error("Invalid work status/progress transition: {0}")]
     InvalidTransition(&'static str),
+    #[error("This Task is in Removed; restore it before changing it")]
+    TaskRemoved,
+    #[error("This Task's List is in Removed; restore the List first")]
+    TaskListRemoved,
+    #[error("This item is already in the requested state")]
+    RemovedUnchanged,
     #[error("Revision conflict: the Task has changed; reload before saving")]
     RevisionConflict,
     #[error("Note not found")]
@@ -201,6 +207,8 @@ pub struct Task {
     pub revision: i64,
     pub created_at: i64,
     pub updated_at: i64,
+    /// In Removed (ADR-0002): a disposition beside the work status, never a deletion.
+    pub removed: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -337,10 +345,11 @@ pub(crate) fn read_task(row: &Row<'_>) -> rusqlite::Result<Task> {
         revision: row.get(6)?,
         created_at: row.get(7)?,
         updated_at: row.get(8)?,
+        removed: row.get::<_, Option<i64>>(12)?.is_some(),
     })
 }
 
-pub(crate) const COLUMNS: &str = "id, title, description, status, priority, progress, revision, created_at, updated_at, next_step, list_id, due_date";
+pub(crate) const COLUMNS: &str = "id, title, description, status, priority, progress, revision, created_at, updated_at, next_step, list_id, due_date, removed_at";
 
 /// How long a write waits for another process (the CLI, MCP) holding the database lock.
 pub const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -522,6 +531,7 @@ impl TaskStore {
             revision: 1,
             created_at: now,
             updated_at: now,
+            removed: false,
         };
         tx.execute(
             "INSERT INTO tasks
@@ -559,38 +569,25 @@ impl TaskStore {
     pub fn update_task(&self, input: UpdateTask) -> Result<Task, TaskError> {
         let (title, description) = validated_text(&input.title, &input.description)?;
         let now = current_millis()?;
-        let conn = self.connect()?;
+        let mut conn = self.connect()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        crate::removed::require_writable_task(&tx, &input.id)?;
         let sql = format!(
             "UPDATE tasks SET title = ?1, description = ?2,
               revision = revision + 1, updated_at = max(updated_at + 1, ?5)
              WHERE id = ?3 AND revision = ?4 RETURNING {COLUMNS}"
         );
-        let updated = conn
+        let mut task = tx
             .query_row(
                 &sql,
                 params![title, description, input.id, input.expected_revision, now],
                 read_task,
             )
-            .optional()?;
-
-        match updated {
-            Some(mut task) => {
-                crate::organization::hydrate_tags(&conn, std::slice::from_mut(&mut task))?;
-                Ok(task)
-            }
-            None => {
-                let exists: bool = conn.query_row(
-                    "SELECT EXISTS(SELECT 1 FROM tasks WHERE id = ?1)",
-                    params![input.id],
-                    |row| row.get(0),
-                )?;
-                Err(if exists {
-                    TaskError::RevisionConflict
-                } else {
-                    TaskError::NotFound
-                })
-            }
-        }
+            .optional()?
+            .ok_or(TaskError::RevisionConflict)?;
+        crate::organization::hydrate_tags(&tx, std::slice::from_mut(&mut task))?;
+        tx.commit()?;
+        Ok(task)
     }
 
     /// Applies a status, priority, or percentage change atomically under the same
@@ -653,10 +650,11 @@ impl TaskStore {
             format!("SELECT {COLUMNS}, previous_incomplete_progress FROM tasks WHERE id = ?1");
         let current = transaction
             .query_row(&sql, params![input.id], |row| {
-                Ok((read_task(row)?, row.get::<_, u8>(12)?))
+                Ok((read_task(row)?, row.get::<_, u8>(13)?))
             })
             .optional()?;
         let (before, mut previous_incomplete) = current.ok_or(TaskError::NotFound)?;
+        crate::removed::require_writable_task(&transaction, &before.id)?;
         if before.revision != input.expected_revision {
             return Err(TaskError::RevisionConflict);
         }
