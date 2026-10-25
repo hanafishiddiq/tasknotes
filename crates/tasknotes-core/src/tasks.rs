@@ -75,6 +75,8 @@ pub enum TaskError {
     NoteRemoved,
     #[error("This folder, or a folder it is in, is in Removed; restore that folder first")]
     NoteFolderRemoved,
+    #[error("Invalid Removed page cursor")]
+    InvalidRemovedCursor,
     #[error("This item is already in the requested state")]
     RemovedUnchanged,
     #[error("Revision conflict: the Task has changed; reload before saving")]

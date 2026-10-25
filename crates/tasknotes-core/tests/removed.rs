@@ -8,7 +8,7 @@ use tasknotes_core::note_folders::{
 use tasknotes_core::notes::{
     CreateNote, MoveNote, Note, NoteQuery, NoteScope, SetNotePinned, UpdateNote,
 };
-use tasknotes_core::removed::SetRemoved;
+use tasknotes_core::removed::{RemovedKind, SetRemoved};
 use tasknotes_core::tasks::{
     ChangeTask, CreateList, CreateTask, List, MoveTask, RecordProgress, SetListRemoved, Task,
     TaskError, TaskQuery, TaskStore, UpdateTask, UpdateTaskDetails, WorkStatus,
@@ -703,4 +703,70 @@ fn a_removed_folder_frees_its_name_and_cannot_be_restored_over_an_active_sibling
 
 fn unit<T>(result: Result<T, TaskError>) -> Result<(), TaskError> {
     result.map(|_| ())
+}
+
+fn pause() {
+    std::thread::sleep(std::time::Duration::from_millis(3));
+}
+
+#[test]
+fn the_removed_view_lists_every_kind_newest_first_in_bounded_pages() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("r.db"));
+    let trip = list(&store, "Trip");
+    let tickets = task_in(&store, "Buy tickets", &trip);
+    task_in(&store, "Pack bags", &trip);
+    let draft = note(&store, "# Draft speech");
+    let recipes = folder(&store, "Recipes", None);
+    note_at(&store, "# Soup", &recipes);
+    task(&store, "Still active");
+
+    store
+        .set_task_removed(set(&tickets.id, tickets.revision, true))
+        .unwrap();
+    pause();
+    store
+        .set_note_removed(set(&draft.id, draft.revision, true))
+        .unwrap();
+    pause();
+    store
+        .set_note_folder_removed(set(&recipes.id, recipes.revision, true))
+        .unwrap();
+    pause();
+    set_list(&store, &trip, true);
+
+    let first = store.list_removed(3, None).unwrap();
+    let seen: Vec<(RemovedKind, &str)> = first
+        .items
+        .iter()
+        .map(|item| (item.kind, item.title.as_str()))
+        .collect();
+    assert_eq!(
+        seen,
+        vec![
+            (RemovedKind::List, "Trip"),
+            (RemovedKind::NoteFolder, "Recipes"),
+            (RemovedKind::Note, "Draft speech"),
+        ]
+    );
+    assert!(first.items.iter().all(|item| !item.in_removed_container));
+    let rest = store.list_removed(3, first.next_cursor.as_deref()).unwrap();
+    assert_eq!(
+        rest.items.len(),
+        1,
+        "children only hidden by a container are not listed"
+    );
+    assert_eq!(rest.items[0].kind, RemovedKind::Task);
+    assert_eq!(rest.items[0].id, tickets.id);
+    assert!(rest.items[0].in_removed_container, "its List is in Removed");
+    assert!(rest.next_cursor.is_none());
+
+    assert!(matches!(
+        store.list_removed(0, None),
+        Err(TaskError::InvalidPageSize)
+    ));
+    assert!(matches!(
+        store.list_removed(10, Some("not-a-cursor")),
+        Err(TaskError::InvalidRemovedCursor)
+    ));
 }

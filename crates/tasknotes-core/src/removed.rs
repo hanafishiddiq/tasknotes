@@ -4,7 +4,8 @@
 //! container leaves anything Removed on its own in Removed.
 
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::notes::{Note, read_note};
 use crate::tasks::{COLUMNS, Task, TaskError, TaskStore, current_millis, read_task};
@@ -78,6 +79,82 @@ pub struct SetRemoved {
     pub removed: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RemovedKind {
+    Task,
+    Note,
+    List,
+    NoteFolder,
+}
+
+impl RemovedKind {
+    fn from_sql(value: &str) -> Option<Self> {
+        match value {
+            "task" => Some(Self::Task),
+            "note" => Some(Self::Note),
+            "list" => Some(Self::List),
+            "note_folder" => Some(Self::NoteFolder),
+            _ => None,
+        }
+    }
+}
+
+/// One restorable record as the Removed view lists it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemovedItem {
+    pub kind: RemovedKind,
+    pub id: String,
+    /// A Task's or Note's title, a List's or folder's name.
+    pub title: String,
+    /// The revision a restore must name.
+    pub revision: i64,
+    pub removed_at: i64,
+    /// Its List, or a folder above it, is in Removed too: that comes back first.
+    pub in_removed_container: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemovedPage {
+    pub items: Vec<RemovedItem>,
+    pub next_cursor: Option<String>,
+}
+
+/// Everything Removed on its own; what a Removed container merely hides is
+/// not listed, since it comes back with the container.
+const REMOVED_ITEMS: &str = concat!(
+    "SELECT 'task' AS kind, t.id, t.title, t.revision, t.removed_at,
+            coalesce(l.removed_at IS NOT NULL, 0) AS blocked
+       FROM tasks t LEFT JOIN lists l ON l.id = t.list_id WHERE t.removed_at IS NOT NULL
+     UNION ALL
+     SELECT 'note', n.id, n.title, n.revision, n.removed_at,
+            coalesce(n.folder_id IN (",
+    hidden_folders!(),
+    "), 0)
+       FROM notes n WHERE n.removed_at IS NOT NULL
+     UNION ALL
+     SELECT 'list', id, name, revision, removed_at, 0 FROM lists WHERE removed_at IS NOT NULL
+     UNION ALL
+     SELECT 'note_folder', f.id, f.name, f.revision, f.removed_at,
+            coalesce(f.parent_id IN (",
+    hidden_folders!(),
+    "), 0)
+       FROM note_folders f WHERE f.removed_at IS NOT NULL"
+);
+
+fn parse_cursor(value: &str) -> Result<(i64, String), TaskError> {
+    let mut fields = value.split('|');
+    match (fields.next(), fields.next(), fields.next(), fields.next()) {
+        (Some("r1"), Some(time), Some(id), None) if Uuid::parse_str(id).is_ok() => Ok((
+            time.parse().map_err(|_| TaskError::InvalidRemovedCursor)?,
+            id.to_owned(),
+        )),
+        _ => Err(TaskError::InvalidRemovedCursor),
+    }
+}
+
 /// A Task can be written only while it is shown: not in Removed itself and
 /// not in a Removed List.
 pub(crate) fn require_writable_task(conn: &Connection, id: &str) -> Result<(), TaskError> {
@@ -110,6 +187,45 @@ fn task_list_removed(conn: &Connection, task: &Task) -> Result<bool, TaskError> 
 }
 
 impl TaskStore {
+    /// The Removed view: every Task, Note, List and folder Removed on its own,
+    /// most recently removed first, as a bounded keyset page. Nothing in it is
+    /// ever purged; it leaves only by being restored.
+    pub fn list_removed(&self, limit: u32, cursor: Option<&str>) -> Result<RemovedPage, TaskError> {
+        if !(1..=100).contains(&limit) {
+            return Err(TaskError::InvalidPageSize);
+        }
+        let (time, id) = cursor.map(parse_cursor).transpose()?.unzip();
+        let conn = self.connect()?;
+        let mut stmt = conn.prepare(&format!(
+            "SELECT kind, id, title, revision, removed_at, blocked FROM ({REMOVED_ITEMS})
+             WHERE ?1 IS NULL OR (removed_at, id) < (?1, ?2)
+             ORDER BY removed_at DESC, id DESC LIMIT ?3"
+        ))?;
+        let mut items = stmt
+            .query_map(params![time, id, i64::from(limit) + 1], |row| {
+                let kind: String = row.get(0)?;
+                Ok(RemovedItem {
+                    kind: RemovedKind::from_sql(&kind)
+                        .ok_or_else(|| crate::tasks::invalid_db_text(0, kind))?,
+                    id: row.get(1)?,
+                    title: row.get(2)?,
+                    revision: row.get(3)?,
+                    removed_at: row.get(4)?,
+                    in_removed_container: row.get(5)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let next_cursor = if items.len() > limit as usize {
+            items.pop();
+            items
+                .last()
+                .map(|last| format!("r1|{}|{}", last.removed_at, last.id))
+        } else {
+            None
+        };
+        Ok(RemovedPage { items, next_cursor })
+    }
+
     pub fn set_task_removed(&self, input: SetRemoved) -> Result<Task, TaskError> {
         let mut conn = self.connect()?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
