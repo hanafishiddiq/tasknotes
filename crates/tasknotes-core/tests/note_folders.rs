@@ -184,6 +184,26 @@ fn sibling_names_are_unique_ignoring_case_but_may_repeat_under_other_parents() {
         Err(TaskError::NoteFolderNameConflict)
     ));
 
+    // Full case folding in any Unicode form: ß and ss, final and medial
+    // sigma, a precomposed é and e with a combining accent.
+    for (first, second) in [
+        ("Straße", "STRASSE"),
+        ("ΣΑΣ", "σας"),
+        ("école", "e\u{301}cole"),
+    ] {
+        folder(&store, first, None);
+        assert!(
+            matches!(
+                store.create_note_folder(CreateNoteFolder {
+                    name: second.into(),
+                    parent_id: None
+                }),
+                Err(TaskError::NoteFolderNameConflict)
+            ),
+            "{first:?} and {second:?} must clash"
+        );
+    }
+
     // The same name under another parent is allowed.
     assert_eq!(folder(&store, "rapat", Some(&rapat)).name, "rapat");
     for bad in ["", "   ", &"x".repeat(101)] {

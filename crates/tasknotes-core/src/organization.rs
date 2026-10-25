@@ -100,9 +100,51 @@ fn clean_tags(raw: &[String]) -> Result<Vec<String>, TaskError> {
     Ok(clean)
 }
 
-/// Unicode case-folded Tag identity; SQLite NOCASE only folds ASCII.
-fn tag_fold(name: &str) -> String {
-    name.to_lowercase()
+/// A Tag's identity (see `text_fold`).
+pub(crate) fn tag_fold(name: &str) -> String {
+    crate::text_fold::fold(name)
+}
+
+/// Schema v8, Tag part: stored folds become full Unicode folds. Tags that now
+/// fold alike become one: the first stored spelling stays, and every Task
+/// that had either keeps the Tag once. Only the duplicate Tag name goes; no
+/// Task loses a Tag.
+pub(crate) fn refold_tags(tx: &rusqlite::Transaction) -> Result<(), TaskError> {
+    let names: Vec<String> = tx
+        .prepare("SELECT name FROM tags ORDER BY rowid")?
+        .query_map([], |row| row.get(0))?
+        .collect::<rusqlite::Result<_>>()?;
+    let mut kept: HashMap<String, String> = HashMap::new();
+    let mut merged = Vec::new();
+    for name in names {
+        match kept.get(&tag_fold(&name)) {
+            Some(canonical) => merged.push((name, canonical.clone())),
+            None => {
+                kept.insert(tag_fold(&name), name);
+            }
+        }
+    }
+    for (duplicate, canonical) in &merged {
+        tx.execute(
+            "INSERT OR IGNORE INTO task_tags(task_id, tag_name)
+             SELECT task_id, ?2 FROM task_tags WHERE tag_name = ?1",
+            params![duplicate, canonical],
+        )?;
+        tx.execute(
+            "DELETE FROM task_tags WHERE tag_name = ?1",
+            params![duplicate],
+        )?;
+        tx.execute("DELETE FROM tags WHERE name = ?1", params![duplicate])?;
+    }
+    // Unique placeholders first, so no new fold collides with an old one.
+    tx.execute("UPDATE tags SET fold = char(1) || name", [])?;
+    for (fold, name) in &kept {
+        tx.execute(
+            "UPDATE tags SET fold = ?1 WHERE name = ?2",
+            params![fold, name],
+        )?;
+    }
+    Ok(())
 }
 
 /// Validate an ISO date-only value, avoiding midnight UTC/time-zone conversions.

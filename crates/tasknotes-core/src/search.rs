@@ -138,7 +138,10 @@ impl TaskStore {
             return Err(TaskError::InvalidPageSize);
         }
         let terms = search_terms(&query.text)?;
-        let tag_fold = query.tag.as_deref().map(|tag| tag.trim().to_lowercase());
+        let tag_fold = query
+            .tag
+            .as_deref()
+            .map(|tag| crate::organization::tag_fold(tag.trim()));
         let sort = query.sort;
         let key = fingerprint(&[
             sort.as_cursor(),

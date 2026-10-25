@@ -116,6 +116,36 @@ pub(crate) fn migrate_v6(migration: &Transaction) -> Result<(), TaskError> {
     Ok(())
 }
 
+const TOKENIZER: &str = "tokenize='unicode61 remove_diacritics 2'";
+
+/// Schema v8, Note part: a Note's folder and pin, list orders that put pinned
+/// Notes first, and the Note search index, kept by triggers so every writer
+/// of this file (desktop, CLI, MCP) maintains it.
+pub(crate) fn migrate_v8(migration: &Transaction) -> Result<(), TaskError> {
+    migration.execute_batch(&format!(
+        "ALTER TABLE notes ADD COLUMN folder_id TEXT REFERENCES note_folders(id) ON DELETE RESTRICT;
+         ALTER TABLE notes ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0 CHECK(pinned IN (0, 1));
+         DROP INDEX notes_updated_order;
+         CREATE INDEX notes_all_order ON notes(pinned DESC, updated_at DESC, id DESC);
+         CREATE INDEX notes_folder_order ON notes(folder_id, pinned DESC, updated_at DESC, id DESC);
+         CREATE VIRTUAL TABLE notes_fts USING fts5(
+            markdown, content='notes', content_rowid='rowid', {TOKENIZER}
+         );
+         INSERT INTO notes_fts(notes_fts) VALUES('rebuild');
+         CREATE TRIGGER notes_fts_insert AFTER INSERT ON notes BEGIN
+           INSERT INTO notes_fts(rowid, markdown) VALUES (new.rowid, new.markdown);
+         END;
+         CREATE TRIGGER notes_fts_update AFTER UPDATE OF markdown ON notes BEGIN
+           INSERT INTO notes_fts(notes_fts, rowid, markdown) VALUES ('delete', old.rowid, old.markdown);
+           INSERT INTO notes_fts(rowid, markdown) VALUES (new.rowid, new.markdown);
+         END;
+         CREATE TRIGGER notes_fts_delete AFTER DELETE ON notes BEGIN
+           INSERT INTO notes_fts(notes_fts, rowid, markdown) VALUES ('delete', old.rowid, old.markdown);
+         END;"
+    ))?;
+    Ok(())
+}
+
 const MAX_NOTE_CHARS: usize = 200_000;
 const TITLE_CHARS: usize = 100;
 const UNTITLED: &str = "New Note";

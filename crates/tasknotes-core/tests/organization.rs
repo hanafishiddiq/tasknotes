@@ -822,3 +822,85 @@ fn reads_show_the_canonical_spelling_for_older_task_tag_rows() {
         vec!["Work"]
     );
 }
+
+#[test]
+fn tags_match_with_full_case_folding_in_any_unicode_form() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("fold-tags.db"));
+    tag_task(&store, "Street names", &["Straße", "école"]);
+    let later = tag_task(&store, "Shouted", &["STRASSE", "e\u{301}cole"]);
+    // ß folds to ss; a precomposed é and e + combining accent are one Tag.
+    assert_eq!(later.tags, vec!["Straße", "école"]);
+    // Final and medial sigma fold alike, so these are one Tag on one Task.
+    let greek = tag_task(&store, "Greek", &["ΣΑΣ", "σας"]);
+    assert_eq!(greek.tags, vec!["ΣΑΣ"]);
+
+    // The Tag filter folds the same way.
+    let query = tasknotes_core::tasks::TaskQuery {
+        tag: Some("strasse".into()),
+        ..Default::default()
+    };
+    assert_eq!(store.query_tasks(&query, 10, None).unwrap().items.len(), 2);
+}
+
+#[test]
+fn opening_a_v7_database_merges_tags_that_now_fold_alike() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("v7-tags.db");
+    let store = store_at(&db);
+    let first = tag_task(&store, "First", &["Straße"]);
+    let second = store
+        .create_task(CreateTask {
+            title: "Second".into(),
+            description: String::new(),
+        })
+        .unwrap();
+    let both = tag_task(&store, "Both", &["Straße"]);
+    drop(store);
+    // As v7 stored them: lower-cased only, so "STRASSE" was a Tag of its own.
+    let conn = Connection::open(&db).unwrap();
+    conn.execute_batch(&format!(
+        "UPDATE tags SET fold = 'straße' WHERE name = 'Straße';
+         INSERT INTO tags(name, fold) VALUES ('STRASSE', 'strasse');
+         INSERT INTO task_tags(task_id, tag_name) VALUES ('{}', 'STRASSE'), ('{}', 'STRASSE');
+         DROP TABLE notes_fts;
+         CREATE TABLE notes_v6 (
+            id TEXT PRIMARY KEY NOT NULL, markdown TEXT NOT NULL, title TEXT NOT NULL,
+            revision INTEGER NOT NULL CHECK(revision >= 1),
+            created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+         );
+         DROP TABLE task_note_links; DROP TABLE notes; ALTER TABLE notes_v6 RENAME TO notes;
+         CREATE INDEX notes_updated_order ON notes(updated_at DESC, id DESC);
+         CREATE TABLE task_note_links (
+            id TEXT PRIMARY KEY NOT NULL,
+            task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE RESTRICT,
+            note_id TEXT NOT NULL REFERENCES notes(id) ON DELETE RESTRICT,
+            linked_at INTEGER NOT NULL, unlinked_at INTEGER
+         );
+         DROP TABLE note_folders;
+         PRAGMA user_version = 7;",
+        second.id, both.id
+    ))
+    .unwrap();
+    drop(conn);
+
+    let store = store_at(&db);
+    // The first stored spelling stays; every Task keeps its Tag, once.
+    for (task, expected) in [
+        (&first, vec!["Straße"]),
+        (&second, vec!["Straße"]),
+        (&both, vec!["Straße"]),
+    ] {
+        assert_eq!(
+            store.get_task(&task.id).unwrap().unwrap().tags,
+            expected,
+            "{}",
+            task.title
+        );
+    }
+    let query = tasknotes_core::tasks::TaskQuery {
+        tag: Some("STRASSE".into()),
+        ..Default::default()
+    };
+    assert_eq!(store.query_tasks(&query, 10, None).unwrap().items.len(), 3);
+}

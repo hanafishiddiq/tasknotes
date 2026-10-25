@@ -474,6 +474,9 @@ impl TaskStore {
         if version < 8 {
             let migration = connection.transaction()?;
             crate::note_folders::migrate_v8(&migration)?;
+            crate::notes::migrate_v8(&migration)?;
+            crate::organization::refold_tags(&migration)?;
+            migration.execute_batch("PRAGMA user_version = 8;")?;
             migration.commit()?;
         }
         Ok(Self {

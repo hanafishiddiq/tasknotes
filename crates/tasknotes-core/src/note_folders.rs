@@ -58,10 +58,10 @@ pub struct NoteFolderPage {
     pub next_cursor: Option<String>,
 }
 
-const TOKENIZER: &str = "tokenize='unicode61 remove_diacritics 2'";
-
-/// Schema v8: Note Folders, pinned Notes and the Note search index. Kept in one
-/// self-contained step so it can be renumbered when sibling schema steps merge.
+/// Schema v8, folder part: the folder tree. The same step adds Note placement
+/// and search in `notes::migrate_v8` and re-folds Tag names in
+/// `organization::refold_tags`; the runner in `tasks.rs` runs all three in one
+/// transaction.
 pub(crate) fn migrate_v8(migration: &Transaction) -> Result<(), TaskError> {
     migration.execute_batch(&format!(
         "CREATE TABLE note_folders (
@@ -75,27 +75,7 @@ pub(crate) fn migrate_v8(migration: &Transaction) -> Result<(), TaskError> {
             CHECK(parent_id IS NULL OR parent_id <> id)
          );
          CREATE UNIQUE INDEX note_folders_sibling_name
-           ON note_folders(coalesce(parent_id, ''), name_fold);
-         ALTER TABLE notes ADD COLUMN folder_id TEXT REFERENCES note_folders(id) ON DELETE RESTRICT;
-         ALTER TABLE notes ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0 CHECK(pinned IN (0, 1));
-         DROP INDEX notes_updated_order;
-         CREATE INDEX notes_all_order ON notes(pinned DESC, updated_at DESC, id DESC);
-         CREATE INDEX notes_folder_order ON notes(folder_id, pinned DESC, updated_at DESC, id DESC);
-         CREATE VIRTUAL TABLE notes_fts USING fts5(
-            markdown, content='notes', content_rowid='rowid', {TOKENIZER}
-         );
-         INSERT INTO notes_fts(notes_fts) VALUES('rebuild');
-         CREATE TRIGGER notes_fts_insert AFTER INSERT ON notes BEGIN
-           INSERT INTO notes_fts(rowid, markdown) VALUES (new.rowid, new.markdown);
-         END;
-         CREATE TRIGGER notes_fts_update AFTER UPDATE OF markdown ON notes BEGIN
-           INSERT INTO notes_fts(notes_fts, rowid, markdown) VALUES ('delete', old.rowid, old.markdown);
-           INSERT INTO notes_fts(rowid, markdown) VALUES (new.rowid, new.markdown);
-         END;
-         CREATE TRIGGER notes_fts_delete AFTER DELETE ON notes BEGIN
-           INSERT INTO notes_fts(notes_fts, rowid, markdown) VALUES ('delete', old.rowid, old.markdown);
-         END;
-         PRAGMA user_version = 8;"
+           ON note_folders(coalesce(parent_id, ''), name_fold);"
     ))?;
     Ok(())
 }
@@ -111,9 +91,9 @@ fn folder_name(value: &str) -> Result<&str, TaskError> {
     Ok(name)
 }
 
-/// Unicode case-folded identity; SQLite NOCASE only folds ASCII.
+/// A folder name's identity among its siblings (see `text_fold`).
 fn name_fold(name: &str) -> String {
-    name.to_lowercase()
+    crate::text_fold::fold(name)
 }
 
 const FOLDER_COLUMNS: &str = "f.id, f.parent_id, f.name, f.revision, f.created_at, f.updated_at,

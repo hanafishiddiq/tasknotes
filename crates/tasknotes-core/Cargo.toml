@@ -9,6 +9,8 @@ rusqlite = { version = "0.37", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 uuid = { version = "1", features = ["v4"] }
 thiserror = "2"
+caseless = "0.2.2"
+unicode-normalization = "0.1.26"
 
 [dev-dependencies]
 tempfile = "3"

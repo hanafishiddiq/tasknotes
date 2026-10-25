@@ -4,3 +4,4 @@ pub mod notes;
 mod organization;
 mod search;
 pub mod tasks;
+mod text_fold;
