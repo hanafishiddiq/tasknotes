@@ -5,6 +5,7 @@ use tasknotes_core::note_folders::{
 use tasknotes_core::notes::{
     CreateNote, MoveNote, Note, NotePage, NoteQuery, NoteScope, SetNotePinned, UpdateNote,
 };
+use tasknotes_core::removed::{RemovedPage, SetRemoved};
 use tasknotes_core::tasks::{
     ChangeTask, CreateList, CreateTask, List, ListPage, MoveTask, Priority, ProgressHistoryPage,
     RecordProgress, RenameList, SetListRemoved, SortMode, Task, TaskPage, TaskQuery, TaskStore,
@@ -262,6 +263,41 @@ fn list_note_tasks(
         .map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+fn set_task_removed(store: State<'_, TaskStore>, input: SetRemoved) -> Result<Task, String> {
+    store
+        .set_task_removed(input)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn set_note_removed(store: State<'_, TaskStore>, input: SetRemoved) -> Result<Note, String> {
+    store
+        .set_note_removed(input)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn set_note_folder_removed(
+    store: State<'_, TaskStore>,
+    input: SetRemoved,
+) -> Result<NoteFolder, String> {
+    store
+        .set_note_folder_removed(input)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn list_removed(
+    store: State<'_, TaskStore>,
+    limit: u32,
+    cursor: Option<String>,
+) -> Result<RemovedPage, String> {
+    store
+        .list_removed(limit, cursor.as_deref())
+        .map_err(|error| error.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -310,6 +346,10 @@ pub fn run() {
             restore_link,
             list_task_notes,
             list_note_tasks,
+            set_task_removed,
+            set_note_removed,
+            set_note_folder_removed,
+            list_removed,
             quit::quit_ready
         ])
         .run(tauri::generate_context!())
