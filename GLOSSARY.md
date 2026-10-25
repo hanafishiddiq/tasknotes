@@ -24,7 +24,7 @@ A Task that has been started but is not yet Completed, including when temporaril
 A task marked finished; its progress is 100%.
 
 **Removed**:
-A reversible, non-destructive disposition of a task, note, or list, separate from a task's work status.
+A reversible, non-destructive disposition of a task, note, list or Note Folder, separate from a task's work status. Removing a list or folder hides what is inside it without changing their own disposition; Removed items are never purged automatically.
 _Avoid_: Deleted, Permanently Deleted.
 
 **Priority**:

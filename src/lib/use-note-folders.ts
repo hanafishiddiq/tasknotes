@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { errorMessage } from "./error-message";
 import { noteApi, type NoteFolder } from "./note-api";
+import { removedApi } from "./removed-api";
 
 /** Which folders are open in the sidebar; a view preference kept per window, like the theme. */
 export const EXPANDED_FOLDERS_KEY = "tasknotes.noteFolders.expanded";
@@ -156,7 +157,12 @@ export function useNoteFolders(enabled: boolean) {
     return map;
   }, [levels]);
 
+  /** Moves a folder, with everything in it, to Removed. */
+  const remove = (folder: NoteFolder) => write(() => removedApi.removeFolder(folder));
+
   return {
+    reload,
+    remove,
     level: (parentId: string | null): Level | undefined => levels[key(parentId)],
     isExpanded: (id: string) => expanded.has(id),
     byId, options, error, busy, toggle, loadMore, create, rename, move,

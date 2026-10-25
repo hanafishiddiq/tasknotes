@@ -325,11 +325,6 @@ button.folder-disclosure:hover:not(:disabled) {
   flex: 1;
   min-height: 16px;
 }
-.removed-lists {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
 
 /* Main column */
 .main-view {
@@ -614,6 +609,47 @@ button.folder-disclosure:hover:not(:disabled) {
   flex-wrap: wrap;
   justify-content: center;
   gap: 8px;
+}
+
+/* Removed view: restorable items, never purged */
+.removed-hint {
+  margin: 0 0 16px;
+  color: var(--text-3);
+}
+.removed-list {
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+.removed-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--sep);
+  color: var(--text-2);
+}
+.removed-item-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.removed-item-title {
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.removed-item-meta,
+.removed-item-blocked {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.task-remove-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
 }
 
 /* Status groups */

@@ -1,7 +1,7 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import {
   Check, Folder, Inbox, ListChecks, Moon, NotebookText, Pencil,
-  Plus, RotateCcw, Sun, Trash2, X,
+  Plus, Sun, Trash2, X,
 } from "lucide-react";
 import type { TaskList, TaskView } from "../lib/task-api";
 import type { Theme } from "../lib/use-theme";
@@ -10,6 +10,9 @@ interface TaskSidebarProps {
   view: TaskView;
   /** The Notes workspace is showing instead of a Task view. */
   notesActive: boolean;
+  /** The Removed view is showing. */
+  removedActive: boolean;
+  onOpenRemoved: () => void;
   /** Notes are showing every Note rather than one folder. */
   allNotesCurrent: boolean;
   /** The Note Folder tree, once Notes have been opened. */
@@ -28,19 +31,17 @@ interface TaskSidebarProps {
   onCreateList: (name: string) => Promise<boolean>;
   onRenameList: (list: TaskList, name: string) => Promise<boolean>;
   onRemoveList: (list: TaskList) => Promise<void>;
-  onRestoreList: (list: TaskList) => Promise<void>;
   onLoadMoreLists: () => Promise<void>;
 }
 
 export default function TaskSidebar({
-  view, notesActive, allNotesCurrent, noteFolders, lists, listError, shownCount, hasMoreTasks, hasMoreLists, busy,
+  view, notesActive, removedActive, onOpenRemoved, allNotesCurrent, noteFolders, lists, listError, shownCount, hasMoreTasks, hasMoreLists, busy,
   theme, onToggleTheme, onNavigate, onOpenNotes, onCreateList, onRenameList, onRemoveList,
-  onRestoreList, onLoadMoreLists,
+  onLoadMoreLists,
 }: TaskSidebarProps) {
   const [name, setName] = useState("");
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
-  const [removedVisible, setRemovedVisible] = useState(false);
 
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -82,6 +83,13 @@ export default function TaskSidebar({
           onClick={() => onNavigate({ kind: "inbox" })}>
           <Inbox size={17} aria-hidden="true" /><span className="folder-name">Inbox</span>
           {count({ kind: "inbox" })}
+        </button>
+        <button type="button" disabled={busy}
+          aria-label="Removed"
+          className="folder"
+          aria-current={removedActive ? "page" : undefined}
+          onClick={onOpenRemoved}>
+          <Trash2 size={17} aria-hidden="true" /><span className="folder-name">Removed</span>
         </button>
       </nav>
 
@@ -154,25 +162,6 @@ export default function TaskSidebar({
       </nav>
 
       <div className="sidebar-spacer" />
-      {lists.some((list) => list.removed) && (
-        <div className="removed-lists">
-          <button type="button" className="folder folder--quiet"
-            aria-expanded={removedVisible}
-            onClick={() => setRemovedVisible((current) => !current)}>
-            <Trash2 size={16} aria-hidden="true" />
-            <span className="folder-name">{removedVisible ? "Hide removed lists" : "Show removed lists"}</span>
-          </button>
-          {removedVisible && lists.filter((list) => list.removed).map((list) => (
-            <div key={list.id} className="folder-row folder-row--removed">
-              <span className="folder-name">{list.name}</span>
-              <button type="button" className="folder-action folder-action--visible" disabled={busy}
-                aria-label={`Restore ${list.name}`} onClick={() => void onRestoreList(list)}>
-                <RotateCcw size={13} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
       <button type="button" className="folder folder--quiet" onClick={onToggleTheme}
         aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}>
         {theme === "dark" ? <Sun size={16} aria-hidden="true" /> : <Moon size={16} aria-hidden="true" />}
