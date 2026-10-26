@@ -801,3 +801,42 @@ fn an_unlinked_link_cannot_be_brought_back_onto_a_removed_task_or_note() {
         .unwrap();
     assert!(store.restore_link(&link.id).unwrap().unlinked_at.is_none());
 }
+
+#[test]
+fn an_item_hidden_by_a_removed_container_cannot_be_removed_on_its_own() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("h.db"));
+    let trip = list(&store, "Trip");
+    let pack = task_in(&store, "Pack bags", &trip);
+    let work = folder(&store, "Work", None);
+    let meetings = folder(&store, "Meetings", Some(&work));
+    let agenda = note_at(&store, "# Agenda", &meetings);
+    set_list(&store, &trip, true);
+    store
+        .set_note_folder_removed(set(&work.id, work.revision, true))
+        .unwrap();
+
+    // Removing these now would make "Removed on its own" mean nothing:
+    // restoring the container must bring them back.
+    assert!(matches!(
+        store.set_task_removed(set(&pack.id, pack.revision, true)),
+        Err(TaskError::TaskListRemoved)
+    ));
+    assert!(matches!(
+        store.set_note_removed(set(&agenda.id, agenda.revision, true)),
+        Err(TaskError::NoteFolderRemoved)
+    ));
+    assert!(matches!(
+        store.set_note_folder_removed(set(&meetings.id, meetings.revision, true)),
+        Err(TaskError::NoteFolderRemoved)
+    ));
+    assert!(!store.get_task(&pack.id).unwrap().unwrap().removed);
+    assert!(!store.get_note(&agenda.id).unwrap().unwrap().removed);
+    assert!(
+        !store
+            .get_note_folder(&meetings.id)
+            .unwrap()
+            .unwrap()
+            .removed
+    );
+}

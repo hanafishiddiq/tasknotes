@@ -358,7 +358,8 @@ impl TaskStore {
     /// Removes or restores a folder. Its subfolders and Notes are hidden with
     /// it but keep their own disposition, so restoring it leaves anything
     /// Removed on its own in Removed. A folder below a Removed folder cannot
-    /// be restored on its own, nor over an active sibling's name.
+    /// be removed or restored on its own, nor restored over an active
+    /// sibling's name.
     pub fn set_note_folder_removed(&self, input: SetRemoved) -> Result<NoteFolder, TaskError> {
         let mut conn = self.connect()?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -369,10 +370,12 @@ impl TaskStore {
         if old.removed == input.removed {
             return Err(TaskError::RemovedUnchanged);
         }
+        // Below a Removed folder this one is hidden with it; that folder
+        // comes first, whether restoring or removing this one on its own.
+        if let Some(parent) = old.parent_id.as_deref() {
+            require_folder(&tx, parent)?;
+        }
         if !input.removed {
-            if let Some(parent) = old.parent_id.as_deref() {
-                require_folder(&tx, parent)?;
-            }
             require_unique_name(
                 &tx,
                 old.parent_id.as_deref(),

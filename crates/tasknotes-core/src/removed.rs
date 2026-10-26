@@ -243,8 +243,10 @@ impl TaskStore {
         if old.removed == input.removed {
             return Err(TaskError::RemovedUnchanged);
         }
-        // Restoring into a Removed List would leave the Task hidden; the List comes first.
-        if !input.removed && task_list_removed(&tx, &old)? {
+        // While its List is in Removed the Task is hidden with it: restoring
+        // would leave it hidden, and removing it would make it stay in Removed
+        // when the List comes back. The List comes first either way.
+        if task_list_removed(&tx, &old)? {
             return Err(TaskError::TaskListRemoved);
         }
         let now = current_millis()?;
@@ -286,9 +288,9 @@ impl TaskStore {
         if old.removed == input.removed {
             return Err(TaskError::RemovedUnchanged);
         }
-        if !input.removed {
-            note_folder_free(&tx, &old)?;
-        }
+        // Under a Removed folder the Note is hidden with it; the folder comes
+        // first, whether restoring or removing the Note on its own.
+        note_folder_free(&tx, &old)?;
         let now = current_millis()?;
         let changed = tx.query_row(
             &format!(
