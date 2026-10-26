@@ -394,7 +394,13 @@ impl TaskStore {
         // snapshot be private (0600) from its first byte.
         drop(private_file(&partial, true)?);
         let result = (|| {
-            conn.execute("VACUUM INTO ?1", params![partial.to_string_lossy()])?;
+            // VACUUM INTO only reads this database, but SQLite counts it as
+            // a write, which a store's read-only connection refuses.
+            let read_only: bool = conn.pragma_query_value(None, "query_only", |r| r.get(0))?;
+            conn.pragma_update(None, "query_only", false)?;
+            let vacuumed = conn.execute("VACUUM INTO ?1", params![partial.to_string_lossy()]);
+            conn.pragma_update(None, "query_only", read_only)?;
+            vacuumed?;
             File::open(&partial)?.sync_all()?;
             let (size_bytes, sha256) = digest(&partial)?;
             let schema_version: i64 =
@@ -828,6 +834,36 @@ mod tests {
             .map(|&(y, m, d)| day_of(y, m, d) * DAY)
             .collect();
         assert_eq!(retained(&times, TimeZone::UTC), [true, true, true]);
+    }
+
+    /// The Restore Epoch protects a write only when it is checked under the
+    /// write lock (`begin_write`). A store's connection refuses every other
+    /// write, so a deferred `transaction()` or an autocommit statement that
+    /// skips `begin_write` fails in every test that reaches it.
+    #[test]
+    fn a_store_connection_writes_only_through_begin_write() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = TaskStore::open(&dir.path().join("tasknotes.db")).unwrap();
+        let insert = "INSERT INTO lists (id, name, revision, created_at, updated_at)
+                      VALUES (lower(hex(randomblob(8))), 'Synthetic', 1, 0, 0)";
+        let mut conn = store.connect().unwrap();
+        assert!(conn.execute(insert, []).is_err(), "autocommit write");
+        {
+            let deferred = conn.transaction().unwrap();
+            assert!(
+                deferred.execute(insert, []).is_err(),
+                "deferred transaction"
+            );
+        }
+        // Reads and snapshots still work.
+        let lists: i64 = conn
+            .query_row("SELECT count(*) FROM lists", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(lists, 0);
+        store.create_backup().unwrap();
+        let tx = store.begin_write(&mut conn).unwrap();
+        tx.execute(insert, []).unwrap();
+        tx.commit().unwrap();
     }
 
     #[test]

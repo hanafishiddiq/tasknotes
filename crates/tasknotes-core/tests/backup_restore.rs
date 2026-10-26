@@ -667,23 +667,29 @@ fn backups_are_private_to_the_persons_account() {
 }
 
 /// The Restore Epoch protects a write only when it is checked under the
-/// write lock, which `begin_write` does. A write transaction opened any
-/// other way would skip it, so the core's sources may open one only there.
+/// write lock, which `begin_write` does. Two guards make that hold:
+/// a store's `connect()` connection is read-only until `begin_write`
+/// (unit test `a_store_connection_writes_only_through_begin_write`: a
+/// deferred `transaction()` or an autocommit write on it fails), and this
+/// scan: only `begin_write` opens an IMMEDIATE transaction, and connections
+/// that bypass `connect()` are opened only by the store itself (`tasks.rs`:
+/// open, migrate, adopt) and by restore's own steps (`backup.rs`).
 #[test]
 fn every_write_transaction_checks_the_restore_epoch() {
     let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let mut opened = Vec::new();
+    let mut raw = std::collections::BTreeSet::new();
     for entry in std::fs::read_dir(src).unwrap() {
         let path = entry.unwrap().path();
+        let file = path.file_name().unwrap().to_string_lossy().into_owned();
         let text = std::fs::read_to_string(&path).unwrap();
         for (line, code) in text.lines().enumerate() {
             if code.contains("transaction_with_behavior") || code.contains("unchecked_transaction")
             {
-                opened.push(format!(
-                    "{}:{}",
-                    path.file_name().unwrap().to_string_lossy(),
-                    line + 1
-                ));
+                opened.push(format!("{file}:{}", line + 1));
+            }
+            if code.contains("open_connection(") || code.contains("Connection::open") {
+                raw.insert(file.clone());
             }
         }
     }
@@ -693,6 +699,11 @@ fn every_write_transaction_checks_the_restore_epoch() {
         "only begin_write opens a write transaction: {opened:?}"
     );
     assert!(opened[0].starts_with("tasks.rs:"), "{opened:?}");
+    assert_eq!(
+        raw.into_iter().collect::<Vec<_>>(),
+        ["backup.rs", "tasks.rs"],
+        "a connection that skips connect() skips the epoch check"
+    );
 }
 
 /// Review finding (2026-10-26): writes landing between the Pre-restore

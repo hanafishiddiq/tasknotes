@@ -713,22 +713,37 @@ impl TaskStore {
 
     /// A connection for one operation. Refuses with `DatabaseRestored` when
     /// the data was restored from a backup after this store was opened.
+    /// It is read-only (`query_only`) until `begin_write` opens a checked
+    /// write transaction on it, so no write can skip the Restore Epoch.
     pub(crate) fn connect(&self) -> Result<Connection, TaskError> {
         let connection = open_connection(&self.path)?;
         connection.pragma_update(None, "foreign_keys", true)?;
+        connection.pragma_update(None, "query_only", true)?;
         self.require_current_epoch(&connection)?;
         Ok(connection)
     }
 
     /// Every write transaction starts here: it takes the write lock first
     /// and then checks the Restore Epoch under that lock, so a restore can
-    /// never slip in between the check and the write.
+    /// never slip in between the check and the write. A stale store's
+    /// connection stays read-only. What this guarantees: a write on a
+    /// `connect()` connection that never went through `begin_write` fails.
+    /// What it does not: once a `begin_write` transaction has ended, its
+    /// connection stays writable; the core drops each connection at the end
+    /// of the operation and does not write on it again.
     pub(crate) fn begin_write<'c>(
         &self,
         conn: &'c mut Connection,
     ) -> Result<Transaction<'c>, TaskError> {
+        // Taking the write lock is itself a write to a `query_only`
+        // connection. If it fails, the caller returns the error and drops
+        // the connection.
+        conn.pragma_update(None, "query_only", false)?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        self.require_current_epoch(&tx)?;
+        if let Err(stale) = self.require_current_epoch(&tx) {
+            tx.pragma_update(None, "query_only", true)?;
+            return Err(stale);
+        }
         Ok(tx)
     }
 
