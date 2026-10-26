@@ -675,3 +675,159 @@ fn re_sharing_a_note_keeps_what_happened_while_it_was_private_from_ai() {
     );
     assert_eq!(actions(&desktop, Some(&link.id)).len(), 1);
 }
+
+/// Every public read that can reach a Note, called by an AI store against
+/// excluded Notes (one of them also Removed, one linked, both in a folder).
+/// A Note read added to the core belongs in this list: the privacy rule is a
+/// helper each query must call (see `privacy.rs`), so this is the net that
+/// catches one that forgets.
+#[test]
+fn every_ai_facing_note_read_leaves_excluded_notes_out() {
+    use tasknotes_core::note_folders::CreateNoteFolder;
+    use tasknotes_core::notes::{NoteQuery, NoteScope};
+    use tasknotes_core::removed::SetRemoved;
+    const MARKER: &str = "secretmarker";
+    let fx = Fixture::new();
+    let desktop = fx.desktop();
+    let chore = task(&desktop, "Synthetic chore");
+    let folder = desktop
+        .create_note_folder(CreateNoteFolder {
+            name: "Synthetic folder".into(),
+            parent_id: None,
+        })
+        .unwrap();
+    let in_folder = |markdown: &str| {
+        desktop
+            .create_note(CreateNote {
+                markdown: markdown.into(),
+                folder_id: Some(folder.id.clone()),
+            })
+            .unwrap()
+    };
+    let shared = in_folder("# Shared synthetic page");
+    let private = in_folder(&format!("# Private {MARKER} page"));
+    let removed = in_folder(&format!("# Removed {MARKER} page"));
+    desktop.link_note(&chore.id, &shared.id).unwrap();
+    let private_link = desktop.link_note(&chore.id, &private.id).unwrap();
+    desktop
+        .set_note_removed(SetRemoved {
+            id: removed.id.clone(),
+            expected_revision: removed.revision,
+            removed: true,
+        })
+        .unwrap();
+    exclude(&desktop, &private, true).unwrap();
+    exclude(&desktop, &removed, true).unwrap();
+
+    let ai = fx.ai();
+    let search = |text: &str, scope: NoteScope| NoteQuery {
+        text: text.into(),
+        folder: scope,
+    };
+    let folder_scope = NoteScope::Folder(folder.id.clone());
+    let reads: Vec<(&str, String)> = vec![
+        ("get_note", format!("{:?}", ai.get_note(&private.id))),
+        (
+            "get_note removed",
+            format!("{:?}", ai.get_note(&removed.id)),
+        ),
+        ("list_notes", format!("{:?}", ai.list_notes(100, None))),
+        (
+            "query_notes folder",
+            format!(
+                "{:?}",
+                ai.query_notes(&search("", folder_scope.clone()), 100, None)
+            ),
+        ),
+        (
+            "query_notes text",
+            format!(
+                "{:?}",
+                ai.query_notes(&search(MARKER, NoteScope::All), 100, None)
+            ),
+        ),
+        (
+            "list_removed",
+            format!("{:?}", ai.list_removed("", 100, None)),
+        ),
+        (
+            "list_removed text",
+            format!("{:?}", ai.list_removed(MARKER, 100, None)),
+        ),
+        (
+            "list_task_notes",
+            format!("{:?}", ai.list_task_notes(&chore.id, 100, None)),
+        ),
+        (
+            "list_note_tasks",
+            format!("{:?}", ai.list_note_tasks(&private.id, 100, None)),
+        ),
+        ("get_link", format!("{:?}", ai.get_link(&private_link.id))),
+        (
+            "list_note_folders",
+            format!("{:?}", ai.list_note_folders(None, 100, None)),
+        ),
+        (
+            "count_folder_notes",
+            format!("{:?}", ai.count_folder_notes(Some(&folder.id))),
+        ),
+        (
+            "list_audit_entries",
+            format!("{:?}", ai.list_audit_entries(None, 100, None)),
+        ),
+    ];
+    for (name, out) in &reads {
+        for leak in [&private.id, &removed.id, &private_link.id, MARKER] {
+            assert!(!out.contains(leak), "{name} leaked {leak}: {out}");
+        }
+    }
+    assert_eq!(ai.count_folder_notes(Some(&folder.id)).unwrap(), 1);
+    assert_eq!(ai.get_note(&private.id).unwrap(), None);
+    assert_eq!(
+        ai.list_note_tasks(&private.id, 100, None)
+            .unwrap_err()
+            .code(),
+        "not_found"
+    );
+    assert_eq!(
+        ai.list_task_notes(&chore.id, 100, None)
+            .unwrap()
+            .items
+            .len(),
+        1
+    );
+}
+
+/// Stamps never repeat, but for an AI they are derived from what it can see:
+/// an excluded Note edited "in the future" (a clock set back, or the same
+/// millisecond) must not push the AI's own Note and link stamps past it.
+#[test]
+fn ai_note_and_link_stamps_ignore_excluded_notes() {
+    const FUTURE: i64 = 4_000_000_000_000;
+    let fx = Fixture::new();
+    let desktop = fx.desktop();
+    let chore = task(&desktop, "Synthetic chore");
+    let private = note(&desktop, "# Private synthetic page");
+    desktop.link_note(&chore.id, &private.id).unwrap();
+    exclude(&desktop, &private, true).unwrap();
+    let conn = rusqlite::Connection::open(&fx.db).unwrap();
+    conn.execute(
+        "UPDATE notes SET updated_at = ?1 WHERE id = ?2",
+        rusqlite::params![FUTURE, private.id],
+    )
+    .unwrap();
+    conn.execute(
+        "UPDATE task_note_links SET linked_at = ?1",
+        rusqlite::params![FUTURE],
+    )
+    .unwrap();
+
+    let ai = fx.ai();
+    let mine = note(&ai, "# AI synthetic page");
+    assert!(mine.created_at < FUTURE && mine.updated_at < FUTURE);
+    let link = ai.link_note(&chore.id, &mine.id).unwrap();
+    assert!(link.linked_at < FUTURE);
+    // The desktop still never repeats a stamp among everything it sees.
+    let later = note(&desktop, "# Desktop synthetic page");
+    assert_eq!(later.created_at, FUTURE + 1);
+}

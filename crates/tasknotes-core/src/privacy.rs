@@ -8,7 +8,10 @@
 //! themself and sees and edits everything; only it can change the flag.
 //!
 //! Every AI-facing Note read goes through one of the helpers below
-//! (`note_shown_sql`, `require_note_shown`, `ai_audit_filter_sql`).
+//! (`note_shown_sql`, `require_note_shown`, `link_shown_sql`,
+//! `ai_audit_filter_sql`); none writes `exclude_from_ai` itself. A new Note
+//! read that skips them would leak, so `tests/note_privacy.rs` walks every
+//! public Note read with an AI store against an excluded Note.
 //!
 //! Audit history (coordinator decision 2026-10-26, the owner may revisit):
 //! an AI never sees a `note.privacy` entry, nor any entry about a Note, or a
@@ -95,6 +98,15 @@ impl TaskStore {
         } else {
             "1".to_owned()
         }
+    }
+
+    /// SQL that is true when the link aliased `alias` may be shown: a link
+    /// to an excluded Note does not exist to an AI interface.
+    pub(crate) fn link_shown_sql(&self, alias: &str) -> String {
+        format!(
+            "EXISTS (SELECT 1 FROM notes ln WHERE ln.id = {alias}.note_id AND {})",
+            self.note_shown_sql("ln")
+        )
     }
 
     /// Extra `AND …` conditions on `audit_entries` for this interface; empty

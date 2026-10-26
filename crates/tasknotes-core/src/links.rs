@@ -68,11 +68,6 @@ pub(crate) fn migrate_v7(migration: &Transaction) -> Result<(), TaskError> {
 
 const COLUMNS: &str = "id, task_id, note_id, linked_at, unlinked_at";
 
-/// Link stamps never repeat, so lists follow the order links were made even
-/// when several land within one millisecond. `?4` is the current time.
-const NEXT_STAMP: &str =
-    "SELECT max(?4, coalesce(max(linked_at) + 1, 0)) AS stamp FROM task_note_links";
-
 fn read_link(row: &Row<'_>) -> rusqlite::Result<NoteLink> {
     Ok(NoteLink {
         id: row.get(0)?,
@@ -113,11 +108,12 @@ const TASKS_OF_NOTE: Side = Side {
 
 /// One keyset page of active links on one side, most recently linked first.
 /// Columns 0 and 1 are the link's `linked_at` and `id`; `read` sees the rest.
+/// `shown`, when given, is an extra condition on the joined side.
 fn page<T>(
     conn: &Connection,
     side: &Side,
     owner: &str,
-    shown: &str,
+    shown: Option<&str>,
     limit: u32,
     cursor: Option<&str>,
     read: impl Fn(&Row<'_>) -> rusqlite::Result<T>,
@@ -126,9 +122,10 @@ fn page<T>(
         return Err(TaskError::InvalidPageSize);
     }
     let (time, id) = cursor.map(parse_cursor).transpose()?.unzip();
+    let shown = shown.map(|sql| format!("AND {sql}")).unwrap_or_default();
     let mut stmt = conn.prepare(&format!(
         "SELECT l.linked_at, l.id, {} FROM task_note_links l {}
-         WHERE l.{} = ?1 AND l.unlinked_at IS NULL AND {shown} AND {}
+         WHERE l.{} = ?1 AND l.unlinked_at IS NULL {shown} AND {}
          ORDER BY l.linked_at DESC, l.id DESC LIMIT ?4",
         side.select,
         side.join,
@@ -157,6 +154,19 @@ fn page<T>(
 }
 
 impl TaskStore {
+    /// Link stamps never repeat among the links this interface sees, so lists
+    /// follow the order links were made even when several land within one
+    /// millisecond. `?4` is the current time. As for Note stamps, an AI
+    /// interface stamps over links to shared Notes only, so a private Note's
+    /// link time never shows through.
+    fn next_link_stamp_sql(&self) -> String {
+        format!(
+            "SELECT max(?4, coalesce(max(s.linked_at) + 1, 0)) AS stamp
+             FROM task_note_links s WHERE {}",
+            self.link_shown_sql("s")
+        )
+    }
+
     /// Links a Note to a Task. Linking a pair that is already linked returns
     /// that link; a pair unlinked earlier gets its own row back, same ID, with
     /// a fresh stamp so it lists first. Undo is `restore_link`.
@@ -170,11 +180,12 @@ impl TaskStore {
         let link = tx.query_row(
             &format!(
                 "INSERT INTO task_note_links ({COLUMNS})
-                 SELECT ?1, ?2, ?3, stamp, NULL FROM ({NEXT_STAMP}) WHERE true
+                 SELECT ?1, ?2, ?3, stamp, NULL FROM ({}) WHERE true
                  ON CONFLICT(task_id, note_id) DO UPDATE SET unlinked_at = NULL,
                    linked_at = CASE WHEN unlinked_at IS NULL THEN linked_at
                                     ELSE excluded.linked_at END
-                 RETURNING {COLUMNS}"
+                 RETURNING {COLUMNS}",
+                self.next_link_stamp_sql()
             ),
             params![Uuid::new_v4().to_string(), task_id, note_id, now],
             read_link,
@@ -194,10 +205,9 @@ impl TaskStore {
             .query_row(
                 &format!(
                     "UPDATE task_note_links SET unlinked_at = ?2
-                     WHERE id = ?1 AND unlinked_at IS NULL AND EXISTS
-                       (SELECT 1 FROM notes n WHERE n.id = note_id AND {})
+                     WHERE id = ?1 AND unlinked_at IS NULL AND {}
                      RETURNING {COLUMNS}",
-                    self.note_shown_sql("n")
+                    self.link_shown_sql("task_note_links")
                 ),
                 params![link_id, now],
                 read_link,
@@ -218,9 +228,8 @@ impl TaskStore {
         let link = tx
             .query_row(
                 &format!(
-                    "SELECT {COLUMNS} FROM task_note_links WHERE id = ?1 AND EXISTS
-                       (SELECT 1 FROM notes n WHERE n.id = note_id AND {})",
-                    self.note_shown_sql("n")
+                    "SELECT {COLUMNS} FROM task_note_links WHERE id = ?1 AND {}",
+                    self.link_shown_sql("task_note_links")
                 ),
                 params![link_id],
                 read_link,
@@ -252,9 +261,8 @@ impl TaskStore {
             .connect()?
             .query_row(
                 &format!(
-                    "SELECT {COLUMNS} FROM task_note_links WHERE id = ?1 AND EXISTS
-                       (SELECT 1 FROM notes n WHERE n.id = note_id AND {})",
-                    self.note_shown_sql("n")
+                    "SELECT {COLUMNS} FROM task_note_links WHERE id = ?1 AND {}",
+                    self.link_shown_sql("task_note_links")
                 ),
                 params![link_id],
                 read_link,
@@ -275,7 +283,7 @@ impl TaskStore {
             &conn,
             &NOTES_OF_TASK,
             task_id,
-            &shown,
+            Some(&shown),
             limit,
             cursor,
             |row| {
@@ -299,7 +307,7 @@ impl TaskStore {
         let conn = self.connect()?;
         // To an AI interface an excluded Note is missing, Tasks and all.
         self.require_note_shown(&conn, note_id)?;
-        page(&conn, &TASKS_OF_NOTE, note_id, "1", limit, cursor, |row| {
+        page(&conn, &TASKS_OF_NOTE, note_id, None, limit, cursor, |row| {
             let status: String = row.get(4)?;
             Ok(LinkedTask {
                 link_id: row.get(1)?,

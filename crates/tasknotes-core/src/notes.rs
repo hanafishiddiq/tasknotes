@@ -110,10 +110,6 @@ pub struct NotePage {
 pub(crate) const COLUMNS: &str = "id, markdown, title, revision, created_at, updated_at, \
     folder_id, pinned, removed_at, exclude_from_ai";
 
-/// Edit stamps never repeat, so the list follows the order of writes even when
-/// several land within one millisecond. `?4` is the current time.
-const NEXT_STAMP: &str = "SELECT max(?4, coalesce(max(updated_at) + 1, 0)) AS stamp FROM notes";
-
 /// Schema v6: standalone Notes.
 pub(crate) fn migrate_v6(migration: &Transaction) -> Result<(), TaskError> {
     migration.execute_batch(
@@ -362,6 +358,20 @@ pub(crate) fn read_note(row: &Row<'_>) -> rusqlite::Result<Note> {
 }
 
 impl TaskStore {
+    /// Edit stamps never repeat among the Notes this interface sees, so the
+    /// list follows the order of writes even when several land within one
+    /// millisecond. `?4` is the current time. An AI interface stamps over
+    /// shared Notes only: a stamp derived from an excluded Note's edit time
+    /// would let the AI read that time (or that an edit just happened) off
+    /// its own Note. The desktop may then see an AI stamp equal to a private
+    /// Note's; the id breaks the tie in every list.
+    fn next_stamp_sql(&self) -> String {
+        format!(
+            "SELECT max(?4, coalesce(max(s.updated_at) + 1, 0)) AS stamp FROM notes s WHERE {}",
+            self.note_shown_sql("s")
+        )
+    }
+
     pub fn create_note(&self, input: CreateNote) -> Result<Note, TaskError> {
         check_length(&input.markdown)?;
         let folder_id = input.folder_id.as_deref();
@@ -374,7 +384,8 @@ impl TaskStore {
         let note = tx.query_row(
             &format!(
                 "INSERT INTO notes (id, markdown, title, revision, created_at, updated_at, folder_id)
-                 SELECT ?1, ?2, ?3, 1, stamp, stamp, ?5 FROM ({NEXT_STAMP}) RETURNING {COLUMNS}"
+                 SELECT ?1, ?2, ?3, 1, stamp, stamp, ?5 FROM ({}) RETURNING {COLUMNS}",
+                self.next_stamp_sql()
             ),
             params![
                 Uuid::new_v4().to_string(),
@@ -458,8 +469,9 @@ impl TaskStore {
             .query_row(
                 &format!(
                     "UPDATE notes SET markdown = ?1, title = ?2, revision = revision + 1,
-                       updated_at = ({NEXT_STAMP})
-                     WHERE id = ?3 AND revision = ?5 RETURNING {COLUMNS}"
+                       updated_at = ({})
+                     WHERE id = ?3 AND revision = ?5 RETURNING {COLUMNS}",
+                    self.next_stamp_sql()
                 ),
                 params![
                     input.markdown,
