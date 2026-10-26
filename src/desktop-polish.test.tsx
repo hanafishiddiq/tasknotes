@@ -65,6 +65,7 @@ beforeEach(() => {
           .filter((item) => !body.taskId || item.id === body.taskId)
           .filter((item) => !body.listId || item.listId === body.listId)
           .filter((item) => !body.inbox || item.listId === null)
+          .filter((item) => !body.status || item.status === body.status)
           .filter((item) => !body.text || item.title.toLowerCase().includes(String(body.text).toLowerCase()))
           .map(({ removedAt: _, ...item }) => item);
         return { items, nextCursor: null };
@@ -81,6 +82,18 @@ beforeEach(() => {
         list.removed = body.input.removed;
         list.revision++;
         return { ...list };
+      }
+      case "update_task":
+      case "record_progress":
+      case "update_task_details": {
+        const found = tasks.find((item) => item.id === body.input.id)!;
+        if (found.revision !== body.input.expectedRevision) {
+          throw "Revision conflict: the Task has changed; reload before saving";
+        }
+        const { id: _id, expectedRevision: _rev, note: _note, ...fields } = body.input;
+        Object.assign(found, fields, { revision: found.revision + 1, updatedAt: ++clock });
+        const { removedAt: _, ...shown } = found;
+        return { ...shown };
       }
       case "list_removed": return { items: [], nextCursor: null };
       case "list_progress_entries": return { items: [], nextCursor: null };
@@ -231,13 +244,108 @@ describe("Virtualized Task rows", () => {
 
     const row = screen.getByRole("article", { name: "Synthetic task 3" });
     expect(within(row).getByText("Unsaved edits")).toBeInTheDocument();
-    // Far out of view, the row holding unsaved edits stays mounted.
+    // Far out of view the row leaves the page; its edits are kept above it.
     await act(async () => { scrollTasksTo(30 + 50 * 250); });
-    expect(screen.getByRole("article", { name: "Synthetic task 3" })).toBeInTheDocument();
+    expect(screen.queryByRole("article", { name: "Synthetic task 3" })).not.toBeInTheDocument();
     await act(async () => { scrollTasksTo(0); });
+    expect(within(await screen.findByRole("article", { name: "Synthetic task 3" }))
+      .getByText("Unsaved edits")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Open Synthetic task 3" }));
     expect(screen.getByRole("textbox", { name: "Next step" })).toHaveValue("Call the printer");
+  });
+});
+
+describe("Unsaved Task edits", () => {
+  /** What the CLI or MCP would do: change the Task in the store without the window knowing. */
+  function changeElsewhere(id: string, fields: Partial<Task>) {
+    const found = tasks.find((item) => item.id === id)!;
+    Object.assign(found, fields, { revision: found.revision + 1 });
+  }
+
+  async function reloadBySorting(user: ReturnType<typeof userEvent.setup>, sort: "Newest first" | "Highest priority") {
+    await user.selectOptions(screen.getByRole("combobox", { name: "Sort tasks" }), sort);
+    await screen.findByRole("article", { name: tasks[0].title });
+  }
+
+  it("refuses to save a draft over a change made elsewhere, and lets the person discard it", async () => {
+    tasks = [task(1, { revision: 3 }), task(2)];
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open Synthetic task 1" }));
+    const title = screen.getByRole("textbox", { name: "Edit title" });
+    await user.clear(title);
+    await user.type(title, "My draft title");
+
+    changeElsewhere("task-1", { title: "Renamed by CLI" });
+    await reloadBySorting(user, "Newest first");
+
+    // The draft is still there, and says it was typed against an older version.
+    if (!screen.queryByRole("textbox", { name: "Edit title" })) {
+      await user.click(screen.getByRole("button", { name: "Open Renamed by CLI" }));
+    }
+    expect(screen.getByRole("textbox", { name: "Edit title" })).toHaveValue("My draft title");
+    const notice = screen.getByRole("alert", { name: "Changed elsewhere" });
+    expect(notice).toHaveTextContent("changed somewhere else");
+
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    expect(call).toHaveBeenCalledWith("update_task", {
+      input: { id: "task-1", title: "My draft title", description: "", expectedRevision: 3 },
+    });
+    expect(await screen.findByText(/Revision conflict/)).toBeInTheDocument();
+    expect(tasks[0].title).toBe("Renamed by CLI");
+    expect(tasks[0].revision).toBe(4);
+
+    await user.click(within(notice).getByRole("button", { name: "Discard my edits" }));
+    expect(screen.getByRole("textbox", { name: "Edit title" })).toHaveValue("Renamed by CLI");
+    expect(screen.queryByRole("alert", { name: "Changed elsewhere" })).not.toBeInTheDocument();
+  });
+
+  it("keeps a progress draft through a change elsewhere and saves it only once kept on purpose", async () => {
+    tasks = [task(1, { revision: 3, status: "in_progress", progress: 10 })];
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open Synthetic task 1" }));
+    await user.type(screen.getByRole("textbox", { name: "Next step" }), "Call the printer");
+
+    changeElsewhere("task-1", { progress: 60 });
+    await reloadBySorting(user, "Newest first");
+    if (!screen.queryByRole("textbox", { name: "Next step" })) {
+      await user.click(screen.getByRole("button", { name: "Open Synthetic task 1" }));
+    }
+    expect(screen.getByRole("textbox", { name: "Next step" })).toHaveValue("Call the printer");
+    const notice = screen.getByRole("alert", { name: "Changed elsewhere" });
+
+    await user.click(within(notice).getByRole("button", { name: "Keep my edits" }));
+    expect(screen.queryByRole("alert", { name: "Changed elsewhere" })).not.toBeInTheDocument();
+    // Progress shown is the newer saved value; only what was typed is kept.
+    expect(screen.getByRole("spinbutton", { name: "Progress percentage" })).toHaveValue(60);
+    await user.click(screen.getByRole("button", { name: "Save progress update" }));
+    await waitFor(() => expect(call).toHaveBeenCalledWith("record_progress", {
+      input: { id: "task-1", expectedRevision: 4, nextStep: "Call the printer" },
+    }));
+    await waitFor(() => expect(tasks[0].nextStep).toBe("Call the printer"));
+    expect(tasks[0].progress).toBe(60);
+  });
+
+  it("brings a draft back after the Task left the page through a filter, and saves it", async () => {
+    tasks = [task(1), task(2, { status: "in_progress" })];
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open Synthetic task 1" }));
+    await user.type(screen.getByRole("textbox", { name: "Tags" }), "errands");
+
+    await user.selectOptions(screen.getByRole("combobox", { name: "Filter by status" }), "in_progress");
+    await waitFor(() => expect(screen.queryByRole("article", { name: "Synthetic task 1" })).not.toBeInTheDocument());
+    await user.selectOptions(screen.getByRole("combobox", { name: "Filter by status" }), "");
+
+    const row = await screen.findByRole("article", { name: "Synthetic task 1" });
+    expect(within(row).getByText("Unsaved edits")).toBeInTheDocument();
+    await user.click(within(row).getByRole("button", { name: "Open Synthetic task 1" }));
+    expect(screen.getByRole("textbox", { name: "Tags" })).toHaveValue("errands");
+    expect(screen.queryByRole("alert", { name: "Changed elsewhere" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Save tags and deadline" }));
+    await waitFor(() => expect(tasks[0].tags).toEqual(["errands"]));
   });
 });
 

@@ -15,6 +15,7 @@ import VirtualTaskList from "./components/VirtualTaskList";
 import { useLocalCalendarDay } from "./lib/use-local-calendar-day";
 import { useTheme } from "./lib/use-theme";
 import { useShortcuts } from "./lib/use-shortcuts";
+import { useTaskDrafts } from "./lib/use-task-drafts";
 import { errorMessage } from "./lib/error-message";
 import { listenForQuit } from "./lib/quit";
 import {
@@ -97,8 +98,8 @@ export default function App() {
   const [creating, setCreating] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  // Rows holding unsaved edits; the virtualized list keeps them mounted.
-  const [dirtyIds, setDirtyIds] = useState<ReadonlySet<string>>(new Set());
+  // Unsaved Task edits live here, not in the rows, so they outlive a row leaving the page.
+  const drafts = useTaskDrafts();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -473,7 +474,7 @@ export default function App() {
     }
   }
 
-  async function updateTask(task: Task, nextTitle: string, nextDescription: string) {
+  async function updateTask(task: Task, nextTitle: string, nextDescription: string, expectedRevision: number) {
     setSavingId(task.id);
     setError(null);
     try {
@@ -481,10 +482,11 @@ export default function App() {
         id: task.id,
         title: nextTitle,
         description: nextDescription,
-        expectedRevision: task.revision,
+        expectedRevision,
       });
       requestGeneration.current += 1;
       setTasks((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      drafts.set(task.id, undefined);
       setExpandedId(null);
     } catch (reason) {
       setError(errorMessage(reason));
@@ -541,20 +543,17 @@ export default function App() {
     }
   }
 
-  async function changeTask(task: Task, change: TaskChange) {
-    await commitTaskMutation(task, () => taskApi.change({
-      id: task.id,
-      expectedRevision: task.revision,
-      ...change,
-    }));
+  /** A save of typed edits: once it succeeds, the edits it carried are no longer unsaved. */
+  async function saveEdits(task: Task, mutate: () => Promise<Task>) {
+    if (await commitTaskMutation(task, mutate)) drafts.set(task.id, undefined);
   }
 
-  async function recordProgress(task: Task, update: ProgressDraft) {
-    await commitTaskMutation(task, () => taskApi.recordProgress({
-      id: task.id,
-      expectedRevision: task.revision,
-      ...update,
-    }));
+  async function changeTask(task: Task, change: TaskChange, expectedRevision: number) {
+    await saveEdits(task, () => taskApi.change({ id: task.id, expectedRevision, ...change }));
+  }
+
+  async function recordProgress(task: Task, update: ProgressDraft, expectedRevision: number) {
+    await saveEdits(task, () => taskApi.recordProgress({ id: task.id, expectedRevision, ...update }));
   }
 
   async function moveTask(task: Task, listId: string | null) {
@@ -563,10 +562,8 @@ export default function App() {
     }));
   }
 
-  async function updateDetails(task: Task, tags: string[], dueDate: string | null) {
-    await commitTaskMutation(task, () => taskApi.details({
-      id: task.id, expectedRevision: task.revision, tags, dueDate,
-    }));
+  async function updateDetails(task: Task, tags: string[], dueDate: string | null, expectedRevision: number) {
+    await saveEdits(task, () => taskApi.details({ id: task.id, expectedRevision, tags, dueDate }));
   }
 
   async function removeTask(task: Task) {
@@ -596,15 +593,6 @@ export default function App() {
     setUndoing(true);
     void pending.undo().finally(() => setUndoing(false));
     return true;
-  }
-
-  function markDirty(id: string, dirty: boolean) {
-    setDirtyIds((current) => {
-      if (current.has(id) === dirty) return current;
-      const next = new Set(current);
-      if (dirty) next.add(id); else next.delete(id);
-      return next;
-    });
   }
 
   function changeSort(nextSort: SortMode) {
@@ -740,9 +728,7 @@ export default function App() {
     run: () => { focusInTasks("search"); setSearchDraft(text); },
   });
 
-  const keepMounted = useMemo(
-    () => new Set([...dirtyIds, ...(expandedId ? [expandedId] : [])]), [dirtyIds, expandedId],
-  );
+  const keepMounted = useMemo(() => new Set(expandedId ? [expandedId] : []), [expandedId]);
 
   const pageTitle = view.kind === "all" ? "All tasks"
     : view.kind === "inbox" ? "Inbox"
@@ -1010,17 +996,18 @@ export default function App() {
                         expanded={expandedId === task.id}
                         saving={savingId === task.id}
                         onToggle={() => setExpandedId((current) => current === task.id ? null : task.id)}
-                        onSave={(nextTitle, nextDescription) => updateTask(task, nextTitle, nextDescription)}
-                        onChange={(change) => changeTask(task, change)}
-                        onRecordProgress={(update) => recordProgress(task, update)}
+                        onSave={(nextTitle, nextDescription, base) => updateTask(task, nextTitle, nextDescription, base)}
+                        onChange={(change, base) => changeTask(task, change, base)}
+                        onRecordProgress={(update, base) => recordProgress(task, update, base)}
                         lists={lists.filter((list) => !list.removed)}
                         today={today}
                         onMove={(listId) => moveTask(task, listId)}
-                        onUpdateDetails={(tags, dueDate) => updateDetails(task, tags, dueDate)}
+                        onUpdateDetails={(tags, dueDate, base) => updateDetails(task, tags, dueDate, base)}
                         onOpenNote={openLinkedNote}
                         onRemove={() => removeTask(task)}
                         shown={workspace === "tasks"}
-                        onDirtyChange={(dirty) => markDirty(task.id, dirty)}
+                        edits={drafts.get(task.id)}
+                        onEdits={(edits) => drafts.set(task.id, edits)}
                       />
                     )}
                   />
