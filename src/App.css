@@ -612,6 +612,11 @@ button.folder-disclosure:hover:not(:disabled) {
 }
 
 /* Removed view: restorable items, never purged */
+.removed-search {
+  width: 100%;
+  max-width: 320px;
+  margin: 0 0 10px;
+}
 .removed-hint {
   margin: 0 0 16px;
   color: var(--text-3);

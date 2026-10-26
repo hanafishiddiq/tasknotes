@@ -158,7 +158,7 @@ export function useNoteFolders(enabled: boolean) {
   }, [levels]);
 
   /** Moves a folder, with everything in it, to Removed. */
-  const remove = (folder: NoteFolder) => write(() => removedApi.removeFolder(folder));
+  const remove = (folder: NoteFolder) => write(() => removedApi.remove<NoteFolder>("note_folder", folder));
 
   return {
     reload,

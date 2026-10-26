@@ -735,7 +735,7 @@ fn the_removed_view_lists_every_kind_newest_first_in_bounded_pages() {
     pause();
     set_list(&store, &trip, true);
 
-    let first = store.list_removed(3, None).unwrap();
+    let first = store.list_removed("", 3, None).unwrap();
     let seen: Vec<(RemovedKind, &str)> = first
         .items
         .iter()
@@ -750,7 +750,9 @@ fn the_removed_view_lists_every_kind_newest_first_in_bounded_pages() {
         ]
     );
     assert!(first.items.iter().all(|item| !item.in_removed_container));
-    let rest = store.list_removed(3, first.next_cursor.as_deref()).unwrap();
+    let rest = store
+        .list_removed("", 3, first.next_cursor.as_deref())
+        .unwrap();
     assert_eq!(
         rest.items.len(),
         1,
@@ -762,11 +764,11 @@ fn the_removed_view_lists_every_kind_newest_first_in_bounded_pages() {
     assert!(rest.next_cursor.is_none());
 
     assert!(matches!(
-        store.list_removed(0, None),
+        store.list_removed("", 0, None),
         Err(TaskError::InvalidPageSize)
     ));
     assert!(matches!(
-        store.list_removed(10, Some("not-a-cursor")),
+        store.list_removed("", 10, Some("not-a-cursor")),
         Err(TaskError::InvalidRemovedCursor)
     ));
 }
@@ -870,4 +872,76 @@ fn restoring_a_folder_brings_its_note_back_into_a_tasks_linked_notes() {
         .set_note_folder_removed(set(&work.id, work.revision, false))
         .unwrap();
     assert_eq!(linked(&store), vec!["Launch minutes"]);
+}
+
+fn removed_titles(store: &TaskStore, text: &str) -> Vec<String> {
+    store
+        .list_removed(text, 100, None)
+        .unwrap()
+        .items
+        .into_iter()
+        .map(|item| item.title)
+        .collect()
+}
+
+#[test]
+fn the_removed_view_can_be_searched_across_every_kind() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("s.db"));
+    let garden = list(&store, "Garden chores");
+    let seeds = task_in(&store, "Order seeds", &garden);
+    let pruning = task(&store, "Prune roses");
+    let pruning = store
+        .record_progress(RecordProgress {
+            id: pruning.id.clone(),
+            expected_revision: pruning.revision,
+            status: None,
+            progress: Some(20),
+            next_step: None,
+            note: Some("Bought new secateurs".into()),
+        })
+        .unwrap();
+    let diary = note(&store, "# Garden diary\n\nThe tulips came up early.");
+    let plans = folder(&store, "Garden plans", None);
+    let other = note(&store, "# Shopping");
+    store
+        .set_task_removed(set(&seeds.id, seeds.revision, true))
+        .unwrap();
+    store
+        .set_task_removed(set(&pruning.id, pruning.revision, true))
+        .unwrap();
+    store
+        .set_note_removed(set(&diary.id, diary.revision, true))
+        .unwrap();
+    store
+        .set_note_removed(set(&other.id, other.revision, true))
+        .unwrap();
+    store
+        .set_note_folder_removed(set(&plans.id, plans.revision, true))
+        .unwrap();
+    set_list(&store, &garden, true);
+    task(&store, "Garden party invitations");
+
+    let mut found = removed_titles(&store, "garden");
+    found.sort();
+    // Names, Task titles and Note text all match; active items never do.
+    assert_eq!(found, vec!["Garden chores", "Garden diary", "Garden plans"]);
+    assert_eq!(removed_titles(&store, "secateurs"), vec!["Prune roses"]);
+    assert_eq!(removed_titles(&store, "tulip"), vec!["Garden diary"]);
+    assert_eq!(removed_titles(&store, "seeds order"), vec!["Order seeds"]);
+    assert!(removed_titles(&store, "!!!").is_empty());
+    assert_eq!(removed_titles(&store, "  ").len(), 6);
+
+    // Pages stay bounded, and a cursor only continues the search it came from.
+    let first = store.list_removed("garden", 2, None).unwrap();
+    assert_eq!(first.items.len(), 2);
+    let rest = store
+        .list_removed("garden", 2, first.next_cursor.as_deref())
+        .unwrap();
+    assert_eq!(rest.items.len(), 1);
+    assert!(rest.next_cursor.is_none());
+    assert!(matches!(
+        store.list_removed("roses", 2, first.next_cursor.as_deref()),
+        Err(TaskError::InvalidRemovedCursor)
+    ));
 }

@@ -30,34 +30,29 @@ const COMMAND: Record<RemovedKind, string> = {
   note_folder: "set_note_folder_removed",
 };
 
-function setRemoved<T>(kind: RemovedKind, id: string, expectedRevision: number, removed: boolean): Promise<T> {
-  return invoke(COMMAND[kind], { input: { id, expectedRevision, removed } });
+/** Anything that can be moved to Removed: its id and the revision a change must name. */
+export interface Revisioned {
+  id: string;
+  revision: number;
+}
+
+function setRemoved<T>(kind: RemovedKind, item: Revisioned, removed: boolean): Promise<T> {
+  return invoke(COMMAND[kind], { input: { id: item.id, expectedRevision: item.revision, removed } });
 }
 
 // The desktop talks only to the Tauri command seam. What Removed hides, and
 // what may be restored, is decided in Rust. There is no command that deletes.
 export const removedApi = {
-  list(cursor: string | null = null): Promise<RemovedPage> {
-    return invoke("list_removed", { limit: REMOVED_PAGE_SIZE, cursor });
+  /** One page of Removed; `text` searches it (blank lists everything). */
+  list(text = "", cursor: string | null = null): Promise<RemovedPage> {
+    return invoke("list_removed", { text, limit: REMOVED_PAGE_SIZE, cursor });
   },
 
-  restore(item: RemovedItem): Promise<Task | Note | TaskList | NoteFolder> {
-    return setRemoved(item.kind, item.id, item.revision, false);
+  remove<T extends Task | Note | TaskList | NoteFolder>(kind: RemovedKind, item: Revisioned): Promise<T> {
+    return setRemoved(kind, item, true);
   },
 
-  removeTask(task: Task): Promise<Task> {
-    return setRemoved("task", task.id, task.revision, true);
-  },
-
-  restoreTask(task: Task): Promise<Task> {
-    return setRemoved("task", task.id, task.revision, false);
-  },
-
-  removeNote(id: string, revision: number): Promise<Note> {
-    return setRemoved("note", id, revision, true);
-  },
-
-  removeFolder(folder: NoteFolder): Promise<NoteFolder> {
-    return setRemoved("note_folder", folder.id, folder.revision, true);
+  restore<T extends Task | Note | TaskList | NoteFolder>(kind: RemovedKind, item: Revisioned): Promise<T> {
+    return setRemoved(kind, item, false);
   },
 };

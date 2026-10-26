@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Folder, ListChecks, LoaderCircle, NotebookText, RotateCcw, SquareCheck, Trash2 } from "lucide-react";
+import { Folder, ListChecks, LoaderCircle, NotebookText, RotateCcw, Search, SquareCheck, Trash2 } from "lucide-react";
 import { errorMessage } from "../lib/error-message";
 import { removedApi, type RemovedItem, type RemovedKind } from "../lib/removed-api";
 
@@ -11,6 +11,8 @@ const KIND: Record<RemovedKind, { label: string; container: string; icon: typeof
 };
 
 const REMOVED_ON = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
+/** Typing pauses this long before Removed is searched, as in Notes. */
+const REMOVED_SEARCH_MS = 250;
 
 interface RemovedViewProps {
   hidden: boolean;
@@ -31,18 +33,22 @@ export default function RemovedView({ hidden, refreshKey, onRestored }: RemovedV
   const [loadingMore, setLoadingMore] = useState(false);
   const [restoring, setRestoring] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [searchDraft, setSearchDraft] = useState("");
+  const [searchText, setSearchText] = useState("");
+  /** Bumped to ask for the first page again, e.g. after restoring a container. */
+  const [reloadKey, setReloadKey] = useState(0);
 
-  async function reload() {
-    const page = await removedApi.list();
-    setItems(page.items);
-    setCursor(page.nextCursor);
-  }
+  useEffect(() => {
+    const delay = window.setTimeout(() => setSearchText(searchDraft), REMOVED_SEARCH_MS);
+    return () => window.clearTimeout(delay);
+  }, [searchDraft]);
 
+  // The one place the first page is fetched: on showing, on outside changes,
+  // on a new search and after a restore that can unblock other items.
   useEffect(() => {
     if (hidden) return;
     let active = true;
-    setLoading(true);
-    removedApi.list()
+    removedApi.list(searchText)
       .then((page) => {
         if (!active) return;
         setItems(page.items);
@@ -52,13 +58,13 @@ export default function RemovedView({ hidden, refreshKey, onRestored }: RemovedV
       .catch((reason) => { if (active) setError("Couldn't load Removed: " + errorMessage(reason)); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [hidden, refreshKey]);
+  }, [hidden, refreshKey, searchText, reloadKey]);
 
   async function loadMore() {
     if (!cursor || loadingMore) return;
     setLoadingMore(true);
     try {
-      const page = await removedApi.list(cursor);
+      const page = await removedApi.list(searchText, cursor);
       setItems((current) => {
         const seen = new Set(current.map((item) => item.id));
         return [...current, ...page.items.filter((item) => !seen.has(item.id))];
@@ -76,13 +82,11 @@ export default function RemovedView({ hidden, refreshKey, onRestored }: RemovedV
     setRestoring(item.id);
     setError(null);
     try {
-      await removedApi.restore(item);
+      await removedApi.restore(item.kind, item);
       setItems((current) => current.filter((other) => other.id !== item.id));
       onRestored(item);
       // A restored container can make items below it restorable.
-      if (item.kind === "list" || item.kind === "note_folder") {
-        await reload().catch((reason) => setError("Restored, but Removed could not refresh: " + errorMessage(reason)));
-      }
+      if (item.kind === "list" || item.kind === "note_folder") setReloadKey((key) => key + 1);
     } catch (reason) {
       setError(errorMessage(reason));
     } finally {
@@ -95,6 +99,11 @@ export default function RemovedView({ hidden, refreshKey, onRestored }: RemovedV
       <div className="main-scroll">
         <section className="content-wrap" aria-label="Removed items">
           <div className="page-title"><h1>Removed</h1></div>
+          <label className="toolbar-search removed-search">
+            <Search size={15} aria-hidden="true" />
+            <input type="search" aria-label="Search Removed" placeholder="Search Removed" maxLength={200}
+              value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} />
+          </label>
           <p className="removed-hint">
             Removed items stay here until you restore them. Nothing is deleted automatically.
           </p>
@@ -104,7 +113,7 @@ export default function RemovedView({ hidden, refreshKey, onRestored }: RemovedV
           ) : items.length === 0 ? (
             <div className="empty-state">
               <Trash2 size={26} strokeWidth={1.5} aria-hidden="true" />
-              <h3>Nothing in Removed</h3>
+              <h3>{searchText.trim() === "" ? "Nothing in Removed" : "No matching removed items"}</h3>
             </div>
           ) : (
             <ul className="removed-list">

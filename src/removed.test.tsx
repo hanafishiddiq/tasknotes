@@ -77,7 +77,8 @@ beforeEach(() => {
         return { ...list };
       }
       case "list_removed": {
-        const all = listRemoved();
+        const words: string[] = body.text.toLowerCase().split(/\W+/).filter(Boolean);
+        const all = listRemoved().filter((item) => words.every((word) => item.title.toLowerCase().includes(word)));
         const start = body.cursor ? Number(body.cursor) : 0;
         const end = start + body.limit;
         return { items: all.slice(start, end), nextCursor: end < all.length ? String(end) : null };
@@ -188,8 +189,28 @@ describe("Removed and restore", () => {
     const view = await openRemoved(user);
     await within(view).findByText("Old task 59");
     expect(within(view).getAllByRole("listitem")).toHaveLength(50);
-    expect(call).toHaveBeenCalledWith("list_removed", { limit: 50, cursor: null });
+    expect(call).toHaveBeenCalledWith("list_removed", { text: "", limit: 50, cursor: null });
     await user.click(within(view).getByRole("button", { name: "Load more" }));
     await waitFor(() => expect(within(view).getAllByRole("listitem")).toHaveLength(60));
+  });
+
+  it("searches Removed, which ordinary search leaves out", async () => {
+    const user = userEvent.setup();
+    tasks = [
+      { ...base, id: "task-2", title: "Book hotel", removedAt: 800 },
+      { ...base, id: "task-3", title: "Renew passport", removedAt: 900 },
+    ];
+    render(<App />);
+    const view = await openRemoved(user);
+    await within(view).findByText("Renew passport");
+
+    await user.type(within(view).getByRole("searchbox", { name: "Search Removed" }), "hotel");
+    await waitFor(() => expect(within(view).queryByText("Renew passport")).not.toBeInTheDocument());
+    expect(within(view).getByText("Book hotel")).toBeInTheDocument();
+    expect(call).toHaveBeenCalledWith("list_removed", { text: "hotel", limit: 50, cursor: null });
+
+    await user.type(within(view).getByRole("searchbox", { name: "Search Removed" }), " rome");
+    expect(await within(view).findByText("No matching removed items")).toBeInTheDocument();
+    expect(within(view).queryByText("Nothing in Removed")).not.toBeInTheDocument();
   });
 });

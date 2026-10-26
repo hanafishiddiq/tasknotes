@@ -394,7 +394,7 @@ export default function NotesWorkspace({
     if (id === null) return;
     setPlacing(true);
     try {
-      await removedApi.removeNote(id, revision);
+      await removedApi.remove("note", { id, revision });
       const rest = notes.filter((item) => item.id !== id);
       setNotes(rest);
       setError(null);

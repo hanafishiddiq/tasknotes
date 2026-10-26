@@ -514,7 +514,7 @@ export default function App() {
 
   async function removeTask(task: Task) {
     const done: { task?: Task } = {};
-    const saved = await commitTaskMutation(task, async () => (done.task = await removedApi.removeTask(task)));
+    const saved = await commitTaskMutation(task, async () => (done.task = await removedApi.remove<Task>("task", task)));
     if (saved && done.task) {
       setExpandedId(null);
       setLastRemoved(done.task);
@@ -524,7 +524,7 @@ export default function App() {
 
   async function undoRemove(task: Task) {
     setLastRemoved(null);
-    if (await commitTaskMutation(task, () => removedApi.restoreTask(task))) {
+    if (await commitTaskMutation(task, () => removedApi.restore<Task>("task", task))) {
       setRemovedKey((key) => key + 1);
     }
   }

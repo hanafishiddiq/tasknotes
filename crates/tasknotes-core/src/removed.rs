@@ -3,10 +3,12 @@
 //! is inside it without touching their own disposition, so restoring the
 //! container leaves anything Removed on its own in Removed.
 
-use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
+use rusqlite::types::Value;
+use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params, params_from_iter};
 use serde::{Deserialize, Serialize};
 
 use crate::notes::{Note, read_note};
+use crate::search::{fingerprint, parse_time_id_cursor, search_terms};
 use crate::tasks::{COLUMNS, Task, TaskError, TaskStore, current_millis, read_task};
 
 const HIDDEN_FOLDERS: &str = hidden_folders!();
@@ -122,29 +124,27 @@ pub struct RemovedPage {
 }
 
 /// Everything Removed on its own; what a Removed container merely hides is
-/// not listed, since it comes back with the container.
+/// not listed, since it comes back with the container. Each `/*kind*/` marker
+/// takes that kind's search filter.
 const REMOVED_ITEMS: &str = concat!(
     "SELECT 'task' AS kind, t.id, t.title, t.revision, t.removed_at, ",
     task_in_removed_list!("t"),
-    " AS blocked FROM tasks t WHERE t.removed_at IS NOT NULL
+    " AS blocked FROM tasks t WHERE t.removed_at IS NOT NULL /*task*/
      UNION ALL
      SELECT 'note', n.id, n.title, n.revision, n.removed_at, ",
     note_in_hidden_folder!("n"),
     "
-       FROM notes n WHERE n.removed_at IS NOT NULL
+       FROM notes n WHERE n.removed_at IS NOT NULL /*note*/
      UNION ALL
-     SELECT 'list', id, name, revision, removed_at, 0 FROM lists WHERE removed_at IS NOT NULL
+     SELECT 'list', id, name, revision, removed_at, 0 FROM lists
+       WHERE removed_at IS NOT NULL /*list*/
      UNION ALL
      SELECT 'note_folder', f.id, f.name, f.revision, f.removed_at,
             coalesce(f.parent_id IN (",
     hidden_folders!(),
     "), 0)
-       FROM note_folders f WHERE f.removed_at IS NOT NULL"
+       FROM note_folders f WHERE f.removed_at IS NOT NULL /*folder*/"
 );
-
-fn parse_cursor(value: &str) -> Result<(i64, String), TaskError> {
-    crate::search::parse_time_id_cursor(value, "r1", TaskError::InvalidRemovedCursor)
-}
 
 /// A Task can be written only while it is shown: not in Removed itself and
 /// not in a Removed List.
@@ -185,19 +185,78 @@ impl TaskStore {
     /// The Removed view: every Task, Note, List and folder Removed on its own,
     /// most recently removed first, as a bounded keyset page. Nothing in it is
     /// ever purged; it leaves only by being restored.
-    pub fn list_removed(&self, limit: u32, cursor: Option<&str>) -> Result<RemovedPage, TaskError> {
+    ///
+    /// `text` searches it (story 36: ordinary search never shows Removed, this
+    /// is where you include it): every word must match, as a word prefix in a
+    /// Task's fields and Progress Entries or a Note's text, or anywhere in a
+    /// List's or folder's name. Blank text lists everything.
+    pub fn list_removed(
+        &self,
+        text: &str,
+        limit: u32,
+        cursor: Option<&str>,
+    ) -> Result<RemovedPage, TaskError> {
         if !(1..=100).contains(&limit) {
             return Err(TaskError::InvalidPageSize);
         }
-        let (time, id) = cursor.map(parse_cursor).transpose()?.unzip();
+        let terms = search_terms(text)?;
+        // The cursor names the search it continues, so it cannot skip into another.
+        let version = format!("r1.{}", fingerprint(&[&terms.join(" ")]));
+        let after = cursor
+            .map(|value| parse_time_id_cursor(value, &version, TaskError::InvalidRemovedCursor))
+            .transpose()?;
+        // Text with no words in it ("!!!") matches nothing.
+        if terms.is_empty() && !text.trim().is_empty() {
+            return Ok(RemovedPage {
+                items: Vec::new(),
+                next_cursor: None,
+            });
+        }
+
+        let mut values: Vec<Value> = Vec::new();
+        let mut bind = |value: Value| {
+            values.push(value);
+            format!("?{}", values.len())
+        };
+        let (mut task, mut note, mut list, mut folder) =
+            (String::new(), String::new(), String::new(), String::new());
+        for term in &terms {
+            // A term is a quoted FTS prefix (`"word"*`); names match its bare word,
+            // which holds only letters and digits, so LIKE sees no wildcards.
+            let word = bind(Value::Text(term.trim_matches(['"', '*']).to_owned()));
+            let term = bind(Value::Text(term.clone()));
+            task.push_str(&format!(
+                " AND (t.rowid IN (SELECT rowid FROM task_fields_fts WHERE task_fields_fts MATCH {term})
+                   OR t.rowid IN (SELECT task_rowid FROM progress_fts WHERE progress_fts MATCH {term}))"
+            ));
+            note.push_str(&format!(
+                " AND n.rowid IN (SELECT rowid FROM notes_fts WHERE notes_fts MATCH {term})"
+            ));
+            list.push_str(&format!(" AND name LIKE '%' || {word} || '%'"));
+            folder.push_str(&format!(" AND f.name LIKE '%' || {word} || '%'"));
+        }
+        let page_filter = match after {
+            None => "1".to_owned(),
+            Some((time, id)) => format!(
+                "(removed_at, id) < ({}, {})",
+                bind(Value::Integer(time)),
+                bind(Value::Text(id))
+            ),
+        };
+        let limit_param = bind(Value::Integer(i64::from(limit) + 1));
+        let items_sql = REMOVED_ITEMS
+            .replace("/*task*/", &task)
+            .replace("/*note*/", &note)
+            .replace("/*list*/", &list)
+            .replace("/*folder*/", &folder);
         let conn = self.connect()?;
         let mut stmt = conn.prepare(&format!(
-            "SELECT kind, id, title, revision, removed_at, blocked FROM ({REMOVED_ITEMS})
-             WHERE ?1 IS NULL OR (removed_at, id) < (?1, ?2)
-             ORDER BY removed_at DESC, id DESC LIMIT ?3"
+            "SELECT kind, id, title, revision, removed_at, blocked FROM ({items_sql})
+             WHERE {page_filter}
+             ORDER BY removed_at DESC, id DESC LIMIT {limit_param}"
         ))?;
         let mut items = stmt
-            .query_map(params![time, id, i64::from(limit) + 1], |row| {
+            .query_map(params_from_iter(values), |row| {
                 let kind: String = row.get(0)?;
                 Ok(RemovedItem {
                     kind: RemovedKind::from_sql(&kind)
@@ -214,7 +273,7 @@ impl TaskStore {
             items.pop();
             items
                 .last()
-                .map(|last| format!("r1|{}|{}", last.removed_at, last.id))
+                .map(|last| format!("{version}|{}|{}", last.removed_at, last.id))
         } else {
             None
         };

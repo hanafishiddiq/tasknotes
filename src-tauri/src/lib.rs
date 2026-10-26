@@ -290,11 +290,12 @@ fn set_note_folder_removed(
 #[tauri::command]
 fn list_removed(
     store: State<'_, TaskStore>,
+    text: String,
     limit: u32,
     cursor: Option<String>,
 ) -> Result<RemovedPage, String> {
     store
-        .list_removed(limit, cursor.as_deref())
+        .list_removed(&text, limit, cursor.as_deref())
         .map_err(|error| error.to_string())
 }
 
