@@ -313,6 +313,7 @@ fn v9_database(db: &Path) -> String {
             "DROP TRIGGER audit_entries_append_only_update;
              DROP TRIGGER audit_entries_append_only_delete;
              DROP TABLE audit_entries;
+             ALTER TABLE notes DROP COLUMN exclude_from_ai;
              PRAGMA user_version = 9;",
         )
         .unwrap();
@@ -326,7 +327,7 @@ fn a_v9_database_keeps_its_tasks_and_gains_the_audit_log() {
     let id = v9_database(&db);
     assert_eq!(version(&db), 9);
     let store = store_at(&db);
-    assert_eq!(version(&db), 10);
+    assert_eq!(version(&db), tasknotes_core::tasks::SCHEMA_VERSION);
     let kept = store.get_task(&id).unwrap().unwrap();
     assert_eq!(kept.title, "Renew library card");
     assert!(
@@ -385,7 +386,7 @@ fn a_failed_v10_migration_rolls_back_and_keeps_the_database_usable() {
         .execute_batch("DROP TABLE audit_entries_entity;")
         .unwrap();
     let store = store_at(&db);
-    assert_eq!(version(&db), 10);
+    assert_eq!(version(&db), tasknotes_core::tasks::SCHEMA_VERSION);
     assert!(store.get_task(&id).unwrap().is_some());
 }
 

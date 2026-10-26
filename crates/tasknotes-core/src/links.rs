@@ -2,6 +2,7 @@ use rusqlite::{Connection, OptionalExtension, Row, Transaction, TransactionBehav
 use serde::Serialize;
 use uuid::Uuid;
 
+use crate::audit::AuditAction;
 use crate::tasks::{TaskError, TaskStore, WorkStatus, current_millis, invalid_db_text};
 
 /// A reversible association between a Task and a Note (GLOSSARY: Note Link).
@@ -67,11 +68,6 @@ pub(crate) fn migrate_v7(migration: &Transaction) -> Result<(), TaskError> {
 
 const COLUMNS: &str = "id, task_id, note_id, linked_at, unlinked_at";
 
-/// Link stamps never repeat, so lists follow the order links were made even
-/// when several land within one millisecond. `?4` is the current time.
-const NEXT_STAMP: &str =
-    "SELECT max(?4, coalesce(max(linked_at) + 1, 0)) AS stamp FROM task_note_links";
-
 fn read_link(row: &Row<'_>) -> rusqlite::Result<NoteLink> {
     Ok(NoteLink {
         id: row.get(0)?,
@@ -112,10 +108,12 @@ const TASKS_OF_NOTE: Side = Side {
 
 /// One keyset page of active links on one side, most recently linked first.
 /// Columns 0 and 1 are the link's `linked_at` and `id`; `read` sees the rest.
+/// `shown`, when given, is an extra condition on the joined side.
 fn page<T>(
     conn: &Connection,
     side: &Side,
     owner: &str,
+    shown: Option<&str>,
     limit: u32,
     cursor: Option<&str>,
     read: impl Fn(&Row<'_>) -> rusqlite::Result<T>,
@@ -124,9 +122,10 @@ fn page<T>(
         return Err(TaskError::InvalidPageSize);
     }
     let (time, id) = cursor.map(parse_cursor).transpose()?.unzip();
+    let shown = shown.map(|sql| format!("AND {sql}")).unwrap_or_default();
     let mut stmt = conn.prepare(&format!(
         "SELECT l.linked_at, l.id, {} FROM task_note_links l {}
-         WHERE l.{} = ?1 AND l.unlinked_at IS NULL AND {}
+         WHERE l.{} = ?1 AND l.unlinked_at IS NULL {shown} AND {}
          ORDER BY l.linked_at DESC, l.id DESC LIMIT ?4",
         side.select,
         side.join,
@@ -155,6 +154,19 @@ fn page<T>(
 }
 
 impl TaskStore {
+    /// Link stamps never repeat among the links this interface sees, so lists
+    /// follow the order links were made even when several land within one
+    /// millisecond. `?4` is the current time. As for Note stamps, an AI
+    /// interface stamps over links to shared Notes only, so a private Note's
+    /// link time never shows through.
+    fn next_link_stamp_sql(&self) -> String {
+        format!(
+            "SELECT max(?4, coalesce(max(s.linked_at) + 1, 0)) AS stamp
+             FROM task_note_links s WHERE {}",
+            self.link_shown_sql("s")
+        )
+    }
+
     /// Links a Note to a Task. Linking a pair that is already linked returns
     /// that link; a pair unlinked earlier gets its own row back, same ID, with
     /// a fresh stamp so it lists first. Undo is `restore_link`.
@@ -163,19 +175,22 @@ impl TaskStore {
         let mut conn = self.connect()?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         crate::removed::require_writable_task(&tx, task_id)?;
+        self.require_note_shown(&tx, note_id)?;
         crate::removed::require_writable_note(&tx, note_id)?;
         let link = tx.query_row(
             &format!(
                 "INSERT INTO task_note_links ({COLUMNS})
-                 SELECT ?1, ?2, ?3, stamp, NULL FROM ({NEXT_STAMP}) WHERE true
+                 SELECT ?1, ?2, ?3, stamp, NULL FROM ({}) WHERE true
                  ON CONFLICT(task_id, note_id) DO UPDATE SET unlinked_at = NULL,
                    linked_at = CASE WHEN unlinked_at IS NULL THEN linked_at
                                     ELSE excluded.linked_at END
-                 RETURNING {COLUMNS}"
+                 RETURNING {COLUMNS}",
+                self.next_link_stamp_sql()
             ),
             params![Uuid::new_v4().to_string(), task_id, note_id, now],
             read_link,
         )?;
+        self.audit_applied(&tx, AuditAction::LinkCreate, &link.id, None)?;
         tx.commit()?;
         Ok(link)
     }
@@ -184,17 +199,24 @@ impl TaskStore {
     /// (Undo) brings it back with the same ID and place.
     pub fn unlink_note(&self, link_id: &str) -> Result<NoteLink, TaskError> {
         let now = current_millis()?;
-        self.connect()?
+        let mut conn = self.connect()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let link = tx
             .query_row(
                 &format!(
                     "UPDATE task_note_links SET unlinked_at = ?2
-                     WHERE id = ?1 AND unlinked_at IS NULL RETURNING {COLUMNS}"
+                     WHERE id = ?1 AND unlinked_at IS NULL AND {}
+                     RETURNING {COLUMNS}",
+                    self.link_shown_sql("task_note_links")
                 ),
                 params![link_id, now],
                 read_link,
             )
             .optional()?
-            .ok_or(TaskError::LinkNotFound)
+            .ok_or(TaskError::LinkNotFound)?;
+        self.audit_applied(&tx, AuditAction::LinkRemove, &link.id, None)?;
+        tx.commit()?;
+        Ok(link)
     }
 
     /// Undo for an unlink: the link comes back with its original stamp, so
@@ -205,11 +227,15 @@ impl TaskStore {
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let link = tx
             .query_row(
-                &format!("SELECT {COLUMNS} FROM task_note_links WHERE id = ?1"),
+                &format!(
+                    "SELECT {COLUMNS} FROM task_note_links WHERE id = ?1 AND {}",
+                    self.link_shown_sql("task_note_links")
+                ),
                 params![link_id],
                 read_link,
             )
             .optional()?
+            // To an AI interface a link to an excluded Note does not exist.
             .ok_or(TaskError::LinkNotFound)?;
         if link.unlinked_at.is_none() {
             return Ok(link);
@@ -224,15 +250,20 @@ impl TaskStore {
             params![link_id],
             read_link,
         )?;
+        self.audit_applied(&tx, AuditAction::LinkRestore, &link.id, None)?;
         tx.commit()?;
         Ok(link)
     }
 
+    /// To an AI interface a link to an excluded Note does not exist.
     pub fn get_link(&self, link_id: &str) -> Result<Option<NoteLink>, TaskError> {
         Ok(self
             .connect()?
             .query_row(
-                &format!("SELECT {COLUMNS} FROM task_note_links WHERE id = ?1"),
+                &format!(
+                    "SELECT {COLUMNS} FROM task_note_links WHERE id = ?1 AND {}",
+                    self.link_shown_sql("task_note_links")
+                ),
                 params![link_id],
                 read_link,
             )
@@ -247,14 +278,23 @@ impl TaskStore {
         cursor: Option<&str>,
     ) -> Result<LinkPage<LinkedNote>, TaskError> {
         let conn = self.connect()?;
-        page(&conn, &NOTES_OF_TASK, task_id, limit, cursor, |row| {
-            Ok(LinkedNote {
-                link_id: row.get(1)?,
-                note_id: row.get(2)?,
-                title: row.get(3)?,
-                updated_at: row.get(4)?,
-            })
-        })
+        let shown = self.note_shown_sql("n");
+        page(
+            &conn,
+            &NOTES_OF_TASK,
+            task_id,
+            Some(&shown),
+            limit,
+            cursor,
+            |row| {
+                Ok(LinkedNote {
+                    link_id: row.get(1)?,
+                    note_id: row.get(2)?,
+                    title: row.get(3)?,
+                    updated_at: row.get(4)?,
+                })
+            },
+        )
     }
 
     /// Tasks linked to a Note, most recently linked first.
@@ -265,7 +305,9 @@ impl TaskStore {
         cursor: Option<&str>,
     ) -> Result<LinkPage<LinkedTask>, TaskError> {
         let conn = self.connect()?;
-        page(&conn, &TASKS_OF_NOTE, note_id, limit, cursor, |row| {
+        // To an AI interface an excluded Note is missing, Tasks and all.
+        self.require_note_shown(&conn, note_id)?;
+        page(&conn, &TASKS_OF_NOTE, note_id, None, limit, cursor, |row| {
             let status: String = row.get(4)?;
             Ok(LinkedTask {
                 link_id: row.get(1)?,

@@ -288,6 +288,7 @@ fn v8_database(db: &Path) -> (String, String) {
              DROP INDEX lists_removed_order; DROP INDEX note_folders_removed_order;
              DROP INDEX note_folders_sibling_name;
              ALTER TABLE notes DROP COLUMN removed_at;
+             ALTER TABLE notes DROP COLUMN exclude_from_ai;
              ALTER TABLE note_folders DROP COLUMN removed_at;
              CREATE UNIQUE INDEX note_folders_sibling_name
                ON note_folders(coalesce(parent_id, ''), name_fold);
@@ -465,6 +466,7 @@ fn a_note_in_removed_cannot_be_changed_until_it_is_restored() {
     refused(store.move_note(MoveNote {
         id: draft.id.clone(),
         folder_id: None,
+        expected_revision: None,
     }));
     refused(store.set_note_pinned(SetNotePinned {
         id: draft.id.clone(),
@@ -644,6 +646,7 @@ fn nothing_can_be_put_into_or_changed_inside_a_removed_folder() {
     refused(unit(store.move_note(MoveNote {
         id: loose.id.clone(),
         folder_id: Some(garden.id.clone()),
+        expected_revision: None,
     })));
     refused(unit(store.update_note(UpdateNote {
         id: seeds.id.clone(),

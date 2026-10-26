@@ -5,6 +5,7 @@ use rusqlite::{Connection, OptionalExtension, Row, Transaction, TransactionBehav
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::audit::AuditAction;
 use crate::removed::SetRemoved;
 use crate::tasks::{TaskError, TaskStore, current_millis};
 
@@ -255,6 +256,12 @@ impl TaskStore {
             params![id, input.parent_id, name, fold, now],
         )?;
         let created = get_folder(&tx, &id)?.ok_or(TaskError::NoteFolderNotFound)?;
+        self.audit_applied(
+            &tx,
+            AuditAction::FolderCreate,
+            &created.id,
+            created.revision,
+        )?;
         tx.commit()?;
         Ok(created)
     }
@@ -264,6 +271,12 @@ impl TaskStore {
     }
 
     pub fn rename_note_folder(&self, input: RenameNoteFolder) -> Result<NoteFolder, TaskError> {
+        self.audited(AuditAction::FolderRename, input, |input| {
+            self.rename_note_folder_inner(input)
+        })
+    }
+
+    fn rename_note_folder_inner(&self, input: RenameNoteFolder) -> Result<NoteFolder, TaskError> {
         let name = folder_name(&input.name)?;
         let mut conn = self.connect()?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -278,6 +291,12 @@ impl TaskStore {
             Some(&old.id),
         )?;
         let renamed = write_folder(&tx, &old, old.parent_id.as_deref(), name)?;
+        self.audit_applied(
+            &tx,
+            AuditAction::FolderRename,
+            &renamed.id,
+            renamed.revision,
+        )?;
         tx.commit()?;
         Ok(renamed)
     }
@@ -286,6 +305,12 @@ impl TaskStore {
     /// to the top level. Refused when the folder would become its own ancestor
     /// or any folder in its subtree would sit below level 5.
     pub fn move_note_folder(&self, input: MoveNoteFolder) -> Result<NoteFolder, TaskError> {
+        self.audited(AuditAction::FolderMove, input, |input| {
+            self.move_note_folder_inner(input)
+        })
+    }
+
+    fn move_note_folder_inner(&self, input: MoveNoteFolder) -> Result<NoteFolder, TaskError> {
         let mut conn = self.connect()?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let old = current_folder(&tx, &input.id, input.expected_revision)?;
@@ -309,6 +334,7 @@ impl TaskStore {
             Some(&old.id),
         )?;
         let moved = write_folder(&tx, &old, input.parent_id.as_deref(), &old.name)?;
+        self.audit_applied(&tx, AuditAction::FolderMove, &moved.id, moved.revision)?;
         tx.commit()?;
         Ok(moved)
     }
@@ -355,12 +381,75 @@ impl TaskStore {
         Ok(NoteFolderPage { items, next_cursor })
     }
 
+    /// The folder's names from the top level down, joined with `/`, as AI
+    /// interfaces show where a Note lives (owner decision 2026-10-25). A
+    /// name may itself contain `/`; the folder id is the stable reference.
+    pub fn note_folder_path(&self, id: &str) -> Result<String, TaskError> {
+        let conn = self.connect()?;
+        if get_folder(&conn, id)?.is_none() {
+            return Err(TaskError::NoteFolderNotFound);
+        }
+        let mut stmt = conn.prepare(
+            "WITH RECURSIVE up(id, parent_id, name, level) AS (
+                SELECT id, parent_id, name, 1 FROM note_folders WHERE id = ?1
+                UNION ALL
+                SELECT f.id, f.parent_id, f.name, up.level + 1
+                  FROM note_folders f JOIN up ON f.id = up.parent_id
+                 WHERE up.level < ?2
+             ) SELECT name FROM up ORDER BY level DESC",
+        )?;
+        let names = stmt
+            .query_map(params![id, WALK_LIMIT], |row| row.get::<_, String>(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(names.join("/"))
+    }
+
+    /// How many Notes this interface would list directly in the folder (or
+    /// in no folder): not Removed, none while the folder is hidden by Removed, and for an AI interface never a Note
+    /// marked Exclude from AI, so a count cannot reveal one.
+    pub fn count_folder_notes(&self, folder_id: Option<&str>) -> Result<i64, TaskError> {
+        let conn = self.connect()?;
+        if let Some(id) = folder_id {
+            if get_folder(&conn, id)?.is_none() {
+                return Err(TaskError::NoteFolderNotFound);
+            }
+            // A folder hidden by Removed hides its Notes with it.
+            if crate::removed::folder_hidden(&conn, id)? {
+                return Ok(0);
+            }
+        }
+        Ok(conn.query_row(
+            &format!(
+                "SELECT count(*) FROM notes n
+                 WHERE n.folder_id IS ?1 AND n.removed_at IS NULL AND {}",
+                self.note_shown_sql("n")
+            ),
+            params![folder_id],
+            |row| row.get(0),
+        )?)
+    }
+
     /// Removes or restores a folder. Its subfolders and Notes are hidden with
     /// it but keep their own disposition, so restoring it leaves anything
     /// Removed on its own in Removed. A folder below a Removed folder cannot
     /// be removed or restored on its own, nor restored over an active
     /// sibling's name.
     pub fn set_note_folder_removed(&self, input: SetRemoved) -> Result<NoteFolder, TaskError> {
+        let action = if input.removed {
+            AuditAction::FolderRemove
+        } else {
+            AuditAction::FolderRestore
+        };
+        self.audited(action, input, |input| {
+            self.set_note_folder_removed_inner(input, action)
+        })
+    }
+
+    fn set_note_folder_removed_inner(
+        &self,
+        input: SetRemoved,
+        action: AuditAction,
+    ) -> Result<NoteFolder, TaskError> {
         let mut conn = self.connect()?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let old = get_folder(&tx, &input.id)?.ok_or(TaskError::NoteFolderNotFound)?;
@@ -391,6 +480,7 @@ impl TaskStore {
             params![input.removed.then_some(now), now, old.id, old.revision],
         )?;
         let changed = get_folder(&tx, &old.id)?.ok_or(TaskError::NoteFolderNotFound)?;
+        self.audit_applied(&tx, action, &changed.id, changed.revision)?;
         tx.commit()?;
         Ok(changed)
     }

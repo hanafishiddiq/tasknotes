@@ -109,6 +109,7 @@ fn moving_a_note_changes_its_folder_but_not_its_text_revision_or_edit_time() {
         .move_note(MoveNote {
             id: note.id.clone(),
             folder_id: Some(home.id.clone()),
+            expected_revision: None,
         })
         .unwrap();
     assert_eq!(moved.folder_id.as_deref(), Some(home.id.clone()).as_deref());
@@ -132,6 +133,7 @@ fn moving_a_note_changes_its_folder_but_not_its_text_revision_or_edit_time() {
         .move_note(MoveNote {
             id: note.id.clone(),
             folder_id: None,
+            expected_revision: None,
         })
         .unwrap();
     assert_eq!(out.folder_id, None);
@@ -139,6 +141,7 @@ fn moving_a_note_changes_its_folder_but_not_its_text_revision_or_edit_time() {
         store.move_note(MoveNote {
             id: note.id.clone(),
             folder_id: Some("00000000-0000-4000-8000-000000000000".into()),
+            expected_revision: None,
         }),
         Err(TaskError::NoteFolderNotFound)
     ));
@@ -146,6 +149,7 @@ fn moving_a_note_changes_its_folder_but_not_its_text_revision_or_edit_time() {
         store.move_note(MoveNote {
             id: "00000000-0000-4000-8000-000000000000".into(),
             folder_id: None,
+            expected_revision: None,
         }),
         Err(TaskError::NoteNotFound)
     ));
@@ -240,4 +244,38 @@ fn pages_across_pinned_and_unpinned_notes_never_repeat_or_skip() {
         store.query_notes(&scope(None), 101, None),
         Err(TaskError::InvalidPageSize)
     ));
+}
+
+#[test]
+fn a_move_naming_a_stale_revision_is_refused_and_changes_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("t.db"));
+    let work = folder(&store, "Work", None);
+    let note = note_in(&store, "# Synthetic agenda", None);
+    let edited = store
+        .update_note(UpdateNote {
+            id: note.id.clone(),
+            markdown: "# Synthetic agenda, revised".into(),
+            expected_revision: note.revision,
+        })
+        .unwrap();
+    let stale = store.move_note(MoveNote {
+        id: note.id.clone(),
+        folder_id: Some(work.id.clone()),
+        expected_revision: Some(note.revision),
+    });
+    assert!(matches!(stale, Err(TaskError::NoteRevisionConflict)));
+    assert_eq!(store.get_note(&note.id).unwrap().unwrap().folder_id, None);
+    let moved = store
+        .move_note(MoveNote {
+            id: note.id.clone(),
+            folder_id: Some(work.id.clone()),
+            expected_revision: Some(edited.revision),
+        })
+        .unwrap();
+    assert_eq!(moved.folder_id, Some(work.id));
+    assert_eq!(
+        moved.revision, edited.revision,
+        "placement keeps the revision"
+    );
 }

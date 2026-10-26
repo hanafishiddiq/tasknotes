@@ -5,6 +5,7 @@ use rusqlite::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::audit::AuditAction;
 use crate::search::{fingerprint, search_terms};
 use crate::tasks::{TaskError, TaskStore, current_millis};
 
@@ -24,6 +25,9 @@ pub struct Note {
     pub pinned: bool,
     /// In Removed (ADR-0002); never a deletion.
     pub removed: bool,
+    /// Exclude from AI (ADR-0004): AI-facing interfaces treat the Note as
+    /// if it did not exist. Only the desktop sets it.
+    pub exclude_from_ai: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -82,6 +86,11 @@ pub struct MoveNote {
     pub id: String,
     /// None takes the Note out of every folder.
     pub folder_id: Option<String>,
+    /// When given, the move is refused unless the Note is still at this
+    /// revision. AI interfaces always give it; the desktop's placement
+    /// controls act on what is on screen and leave it out.
+    #[serde(default)]
+    pub expected_revision: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -98,12 +107,8 @@ pub struct NotePage {
     pub next_cursor: Option<String>,
 }
 
-pub(crate) const COLUMNS: &str =
-    "id, markdown, title, revision, created_at, updated_at, folder_id, pinned, removed_at";
-
-/// Edit stamps never repeat, so the list follows the order of writes even when
-/// several land within one millisecond. `?4` is the current time.
-const NEXT_STAMP: &str = "SELECT max(?4, coalesce(max(updated_at) + 1, 0)) AS stamp FROM notes";
+pub(crate) const COLUMNS: &str = "id, markdown, title, revision, created_at, updated_at, \
+    folder_id, pinned, removed_at, exclude_from_ai";
 
 /// Schema v6: standalone Notes.
 pub(crate) fn migrate_v6(migration: &Transaction) -> Result<(), TaskError> {
@@ -348,10 +353,25 @@ pub(crate) fn read_note(row: &Row<'_>) -> rusqlite::Result<Note> {
         folder_id: row.get(6)?,
         pinned: row.get(7)?,
         removed: row.get::<_, Option<i64>>(8)?.is_some(),
+        exclude_from_ai: row.get(9)?,
     })
 }
 
 impl TaskStore {
+    /// Edit stamps never repeat among the Notes this interface sees, so the
+    /// list follows the order of writes even when several land within one
+    /// millisecond. `?4` is the current time. An AI interface stamps over
+    /// shared Notes only: a stamp derived from an excluded Note's edit time
+    /// would let the AI read that time (or that an edit just happened) off
+    /// its own Note. The desktop may then see an AI stamp equal to a private
+    /// Note's; the id breaks the tie in every list.
+    fn next_stamp_sql(&self) -> String {
+        format!(
+            "SELECT max(?4, coalesce(max(s.updated_at) + 1, 0)) AS stamp FROM notes s WHERE {}",
+            self.note_shown_sql("s")
+        )
+    }
+
     pub fn create_note(&self, input: CreateNote) -> Result<Note, TaskError> {
         check_length(&input.markdown)?;
         let folder_id = input.folder_id.as_deref();
@@ -364,7 +384,8 @@ impl TaskStore {
         let note = tx.query_row(
             &format!(
                 "INSERT INTO notes (id, markdown, title, revision, created_at, updated_at, folder_id)
-                 SELECT ?1, ?2, ?3, 1, stamp, stamp, ?5 FROM ({NEXT_STAMP}) RETURNING {COLUMNS}"
+                 SELECT ?1, ?2, ?3, 1, stamp, stamp, ?5 FROM ({}) RETURNING {COLUMNS}",
+                self.next_stamp_sql()
             ),
             params![
                 Uuid::new_v4().to_string(),
@@ -375,6 +396,7 @@ impl TaskStore {
             ],
             read_note,
         )?;
+        self.audit_applied(&tx, AuditAction::NoteCreate, &note.id, note.revision)?;
         tx.commit()?;
         Ok(note)
     }
@@ -382,20 +404,32 @@ impl TaskStore {
     /// Placement only: the Markdown, its revision and the edit time stay, so
     /// an editor open on the Note keeps saving without a conflict.
     pub fn move_note(&self, input: MoveNote) -> Result<Note, TaskError> {
+        self.audited(AuditAction::NoteMove, input, |input| {
+            self.move_note_inner(input)
+        })
+    }
+
+    fn move_note_inner(&self, input: MoveNote) -> Result<Note, TaskError> {
         let mut conn = self.connect()?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        self.require_note_shown(&tx, &input.id)?;
         crate::removed::require_writable_note(&tx, &input.id)?;
         if let Some(folder) = input.folder_id.as_deref() {
             crate::note_folders::require_folder(&tx, folder)?;
         }
         let note = tx
             .query_row(
-                &format!("UPDATE notes SET folder_id = ?1 WHERE id = ?2 RETURNING {COLUMNS}"),
-                params![input.folder_id, input.id],
+                &format!(
+                    "UPDATE notes SET folder_id = ?1 WHERE id = ?2
+                       AND (?3 IS NULL OR revision = ?3) RETURNING {COLUMNS}"
+                ),
+                params![input.folder_id, input.id, input.expected_revision],
                 read_note,
             )
             .optional()?
-            .ok_or(TaskError::NoteNotFound)?;
+            // The Note exists (checked above), so only the revision missed.
+            .ok_or(TaskError::NoteRevisionConflict)?;
+        self.audit_applied(&tx, AuditAction::NoteMove, &note.id, note.revision)?;
         tx.commit()?;
         Ok(note)
     }
@@ -404,12 +438,14 @@ impl TaskStore {
     pub fn set_note_pinned(&self, input: SetNotePinned) -> Result<Note, TaskError> {
         let mut conn = self.connect()?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        self.require_note_shown(&tx, &input.id)?;
         crate::removed::require_writable_note(&tx, &input.id)?;
         let note = tx.query_row(
             &format!("UPDATE notes SET pinned = ?1 WHERE id = ?2 RETURNING {COLUMNS}"),
             params![input.pinned, input.id],
             read_note,
         )?;
+        self.audit_applied(&tx, AuditAction::NotePin, &note.id, note.revision)?;
         tx.commit()?;
         Ok(note)
     }
@@ -417,17 +453,25 @@ impl TaskStore {
     /// Saves only over the revision the editor started from; a newer edit wins
     /// and the caller decides what to do with its text.
     pub fn update_note(&self, input: UpdateNote) -> Result<Note, TaskError> {
+        self.audited(AuditAction::NoteUpdate, input, |input| {
+            self.update_note_inner(input)
+        })
+    }
+
+    fn update_note_inner(&self, input: UpdateNote) -> Result<Note, TaskError> {
         check_length(&input.markdown)?;
         let now = current_millis()?;
         let mut conn = self.connect()?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        self.require_note_shown(&tx, &input.id)?;
         crate::removed::require_writable_note(&tx, &input.id)?;
         let updated = tx
             .query_row(
                 &format!(
                     "UPDATE notes SET markdown = ?1, title = ?2, revision = revision + 1,
-                       updated_at = ({NEXT_STAMP})
-                     WHERE id = ?3 AND revision = ?5 RETURNING {COLUMNS}"
+                       updated_at = ({})
+                     WHERE id = ?3 AND revision = ?5 RETURNING {COLUMNS}",
+                    self.next_stamp_sql()
                 ),
                 params![
                     input.markdown,
@@ -440,6 +484,7 @@ impl TaskStore {
             )
             .optional()?
             .ok_or(TaskError::NoteRevisionConflict)?;
+        self.audit_applied(&tx, AuditAction::NoteUpdate, &updated.id, updated.revision)?;
         tx.commit()?;
         Ok(updated)
     }
@@ -482,7 +527,7 @@ impl TaskStore {
             format!("?{}", values.len())
         };
         // Removed Notes, and Notes in a Removed folder or below one, are hidden.
-        let mut filters = vec![note_visible!("n").to_owned()];
+        let mut filters = vec![note_visible!("n").to_owned(), self.note_shown_sql("n")];
         // All words must match; each is a quoted prefix term, so user text
         // never reaches FTS5 query syntax.
         let match_terms = terms.join(" ");
@@ -570,7 +615,10 @@ impl TaskStore {
         Ok(self
             .connect()?
             .query_row(
-                &format!("SELECT {COLUMNS} FROM notes WHERE id = ?1"),
+                &format!(
+                    "SELECT {COLUMNS} FROM notes n WHERE id = ?1 AND {}",
+                    self.note_shown_sql("n")
+                ),
                 params![id],
                 read_note,
             )
