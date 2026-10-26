@@ -30,6 +30,8 @@ import { useNoteFolders } from "./lib/use-note-folders";
 import NoteFolderTree from "./components/NoteFolderTree";
 import NoteSnippet from "./components/NoteSnippet";
 import RemovedView from "./components/RemovedView";
+import ApprovalsView from "./components/ApprovalsView";
+import { usePendingApprovals } from "./lib/use-pending-approvals";
 import SettingsView from "./components/SettingsView";
 import SoundSettings from "./components/SoundSettings";
 import CommandPalette, { type Command } from "./components/CommandPalette";
@@ -51,7 +53,9 @@ function sameFilters(a: TaskFilters, b: TaskFilters): boolean {
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [view, setView] = useState<TaskView>({ kind: "all" });
-  const [workspace, setWorkspace] = useState<"tasks" | "notes" | "removed" | "settings">("tasks");
+  const [workspace, setWorkspace] = useState<"tasks" | "notes" | "removed" | "settings" | "approvals">("tasks");
+  // Bulk Changes an AI client asked for, waiting for the person.
+  const approvals = usePendingApprovals();
   // Bumped after something is moved to Removed, so the Removed view asks again.
   const [removedKey, setRemovedKey] = useState(0);
   // Recent moves to Removed, which Undo (or ⌘Z) brings back newest first.
@@ -250,6 +254,24 @@ export default function App() {
     if (busy) return;
     undo.hideNotice();
     setWorkspace("removed");
+  }
+
+  function openApprovals() {
+    if (busy) return;
+    undo.hideNotice();
+    void approvals.refresh();
+    setWorkspace("approvals");
+  }
+
+  /** After a Bulk Change was decided here: every view and the count ask again. */
+  function bulkDecided(approved: boolean) {
+    void approvals.refresh();
+    if (!approved) return;
+    refreshLists().catch((reason) => setListError("Could not load Lists: " + errorMessage(reason)));
+    retryFirstLoad();
+    if (notesOpened) void noteFolders.refresh();
+    setNotesRefresh((key) => key + 1);
+    setRemovedKey((key) => key + 1);
   }
 
   /** Shows a restored item again wherever it belongs. */
@@ -740,6 +762,8 @@ export default function App() {
       <TaskSidebar
         view={view} notesActive={workspace !== "tasks"} onOpenNotes={() => openNotes()}
         removedActive={workspace === "removed"} onOpenRemoved={openRemoved}
+        pendingApprovals={approvals.count} approvalsActive={workspace === "approvals"}
+        onOpenApprovals={openApprovals}
         allNotesCurrent={workspace === "notes" && noteScope.kind === "all"}
         noteFolders={notesOpened && (
           <NoteFolderTree folders={noteFolders}
@@ -1049,6 +1073,8 @@ export default function App() {
         <SoundSettings sound={sound} />
       </SettingsView>
       <RemovedView hidden={workspace !== "removed"} refreshKey={removedKey} onRestored={restored} />
+      <ApprovalsView hidden={workspace !== "approvals"} refreshKey={approvals.count}
+        onDecided={bulkDecided} />
       {notesOpened && (
         <Suspense fallback={workspace === "notes" &&
           <div className="loading-state" role="status"><LoaderCircle className="spin" size={16} /> Loading notes...</div>}>

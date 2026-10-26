@@ -1,3 +1,4 @@
+use tasknotes_core::bulk::{BulkRequest, PendingBulkRequest};
 use tasknotes_core::links::{LinkPage, LinkedNote, LinkedTask, NoteLink};
 use tasknotes_core::note_folders::{
     CreateNoteFolder, MoveNoteFolder, NoteFolder, NoteFolderPage, RenameNoteFolder,
@@ -321,6 +322,39 @@ fn list_removed(
         .map_err(|error| error.to_string())
 }
 
+/// Bulk Changes an AI interface asked for, waiting for the person (owner
+/// decision A). Only this window approves or declines; the rules are the
+/// core's.
+#[tauri::command]
+fn list_pending_bulk_requests(
+    store: State<'_, TaskStore>,
+) -> Result<Vec<PendingBulkRequest>, String> {
+    store
+        .pending_bulk_requests()
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn count_pending_bulk_requests(store: State<'_, TaskStore>) -> Result<i64, String> {
+    store
+        .count_pending_bulk_requests()
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn approve_bulk_request(store: State<'_, TaskStore>, id: String) -> Result<BulkRequest, String> {
+    store
+        .approve_bulk_request(&id)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn decline_bulk_request(store: State<'_, TaskStore>, id: String) -> Result<BulkRequest, String> {
+    store
+        .decline_bulk_request(&id)
+        .map_err(|error| error.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default();
@@ -386,6 +420,10 @@ pub fn run() {
             set_note_removed,
             set_note_folder_removed,
             list_removed,
+            list_pending_bulk_requests,
+            count_pending_bulk_requests,
+            approve_bulk_request,
+            decline_bulk_request,
             quit::quit_ready,
             #[cfg(desktop)]
             shell::get_shell_settings,

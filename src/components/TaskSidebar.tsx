@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import {
-  Check, Folder, Inbox, ListChecks, Moon, NotebookText, Pencil,
+  Check, ClipboardCheck, Folder, Inbox, ListChecks, Moon, NotebookText, Pencil,
   Plus, Settings, Sun, Trash2, X,
 } from "lucide-react";
 import type { TaskList, TaskView } from "../lib/task-api";
@@ -13,6 +13,10 @@ interface TaskSidebarProps {
   /** The Removed view is showing. */
   removedActive: boolean;
   onOpenRemoved: () => void;
+  /** Bulk Changes waiting for the person; the entry shows while any wait. */
+  pendingApprovals: number;
+  approvalsActive: boolean;
+  onOpenApprovals: () => void;
   settingsActive: boolean;
   onOpenSettings: () => void;
   /** Notes are showing every Note rather than one folder. */
@@ -37,7 +41,7 @@ interface TaskSidebarProps {
 }
 
 export default function TaskSidebar({
-  view, notesActive, removedActive, onOpenRemoved, settingsActive, onOpenSettings, allNotesCurrent, noteFolders, lists, listError, shownCount, hasMoreTasks, hasMoreLists, busy,
+  view, notesActive, removedActive, onOpenRemoved, pendingApprovals, approvalsActive, onOpenApprovals, settingsActive, onOpenSettings, allNotesCurrent, noteFolders, lists, listError, shownCount, hasMoreTasks, hasMoreLists, busy,
   theme, onToggleTheme, onNavigate, onOpenNotes, onCreateList, onRenameList, onRemoveList,
   onLoadMoreLists,
 }: TaskSidebarProps) {
@@ -93,6 +97,17 @@ export default function TaskSidebar({
           onClick={onOpenRemoved}>
           <Trash2 size={17} aria-hidden="true" /><span className="folder-name">Removed</span>
         </button>
+        {(pendingApprovals > 0 || approvalsActive) && (
+          <button type="button" disabled={busy}
+            aria-label={`Waiting for approval, ${pendingApprovals}`}
+            className="folder"
+            aria-current={approvalsActive ? "page" : undefined}
+            onClick={onOpenApprovals}>
+            <ClipboardCheck size={17} aria-hidden="true" />
+            <span className="folder-name">Waiting for approval</span>
+            {pendingApprovals > 0 && <span className="folder-count">{pendingApprovals}</span>}
+          </button>
+        )}
       </nav>
 
       <div className="sidebar-heading">Lists</div>
