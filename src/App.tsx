@@ -20,6 +20,8 @@ import type { NotesRequest } from "./components/NotesWorkspace";
 import { useNoteFolders } from "./lib/use-note-folders";
 import NoteFolderTree from "./components/NoteFolderTree";
 import NoteSnippet from "./components/NoteSnippet";
+import RemovedView from "./components/RemovedView";
+import { removedApi, type RemovedItem } from "./lib/removed-api";
 import "./App.css";
 
 // The rich-text editor loads only when Notes are first opened, keeping Task startup light.
@@ -36,7 +38,13 @@ function sameFilters(a: TaskFilters, b: TaskFilters): boolean {
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [view, setView] = useState<TaskView>({ kind: "all" });
-  const [workspace, setWorkspace] = useState<"tasks" | "notes">("tasks");
+  const [workspace, setWorkspace] = useState<"tasks" | "notes" | "removed">("tasks");
+  // Bumped after something is moved to Removed, so the Removed view asks again.
+  const [removedKey, setRemovedKey] = useState(0);
+  // The Task just moved to Removed, for Undo.
+  const [lastRemoved, setLastRemoved] = useState<Task | null>(null);
+  // Bumped after a Note or folder is restored, so the Notes list asks again.
+  const [notesRefresh, setNotesRefresh] = useState(0);
   // Once opened, Notes stay mounted so a pending autosave survives visiting Tasks.
   const [notesOpened, setNotesOpened] = useState(false);
   const [noteScope, setNoteScope] = useState<NoteScope>(ALL_NOTES);
@@ -200,6 +208,33 @@ export default function App() {
     setExpandedId(taskId);
   }
 
+  function openRemoved() {
+    if (busyList || creating || savingId || loadingMore) return;
+    setWorkspace("removed");
+  }
+
+  /** Shows a restored item again wherever it belongs. */
+  function restored(item: RemovedItem) {
+    if (item.kind === "list") {
+      refreshLists().catch((reason) => setListError("Could not load Lists: " + errorMessage(reason)));
+    }
+    if (item.kind === "task" || item.kind === "list") retryFirstLoad();
+    if (item.kind === "note_folder") {
+      void noteFolders.refresh();
+    }
+    if (item.kind === "note" || item.kind === "note_folder") setNotesRefresh((key) => key + 1);
+  }
+
+  /**
+   * A Removed folder hides its subtree. The Notes list refreshes; if the open
+   * folder is now hidden, the core refuses to list it and the view goes back
+   * to All notes (onScopeHidden).
+   */
+  function folderRemoved() {
+    setRemovedKey((key) => key + 1);
+    setNotesRefresh((key) => key + 1);
+  }
+
   function openLinkedNote(noteId: string) {
     setNotesRequest((previous) => ({ seq: (previous?.seq ?? 0) + 1, search: "", openId: noteId }));
     openNotes(ALL_NOTES);
@@ -208,6 +243,7 @@ export default function App() {
   function navigate(next: TaskView) {
     if (busyList || creating || savingId || loadingMore) return;
     setWorkspace("tasks");
+    setLastRemoved(null);
     if (next.kind === view.kind &&
         (next.kind !== "list" || (view.kind === "list" && next.listId === view.listId))) return;
     setTasks([]);
@@ -284,6 +320,7 @@ export default function App() {
         id: list.id, expectedRevision: list.revision, removed,
       });
       setLists((all) => all.map((item) => item.id === list.id ? updated : item));
+      setRemovedKey((key) => key + 1);
       if (removed && view.kind === "list" && view.listId === list.id) {
         setTasks([]);
         setNextCursor(null);
@@ -396,8 +433,9 @@ export default function App() {
     }
   }
 
-  async function commitTaskMutation(task: Task, mutate: () => Promise<Task>) {
-    if (savingId) return;
+  /** Resolves true once the mutation itself succeeded. */
+  async function commitTaskMutation(task: Task, mutate: () => Promise<Task>): Promise<boolean> {
+    if (savingId) return false;
     setSavingId(task.id);
     setError(null);
     // Paging is disabled while saving, so this is still the visible page.
@@ -417,7 +455,7 @@ export default function App() {
         if (pageCursor !== null && !stayOnPage) {
           page = await taskApi.list(null, latestSort, latestView, latestFilters);
         }
-        if (generation !== requestGeneration.current) return;
+        if (generation !== requestGeneration.current) return true;
         setLoading(false);
         setTasks(page.items);
         if (!stayOnPage) {
@@ -427,15 +465,17 @@ export default function App() {
         setNextCursor(page.nextCursor);
         setRefreshError(false);
       } catch (reason) {
-        if (generation !== requestGeneration.current) return;
+        if (generation !== requestGeneration.current) return true;
         setLoading(false);
         setNextCursor(null);
         resetTaskPages();
         setRefreshError(true);
         setError("Change saved, but the ordered list could not refresh: " + errorMessage(reason));
       }
+      return true;
     } catch (reason) {
       setError(errorMessage(reason));
+      return false;
     } finally {
       setSavingId(null);
     }
@@ -467,6 +507,23 @@ export default function App() {
     await commitTaskMutation(task, () => taskApi.details({
       id: task.id, expectedRevision: task.revision, tags, dueDate,
     }));
+  }
+
+  async function removeTask(task: Task) {
+    const done: { task?: Task } = {};
+    const saved = await commitTaskMutation(task, async () => (done.task = await removedApi.remove<Task>("task", task)));
+    if (saved && done.task) {
+      setExpandedId(null);
+      setLastRemoved(done.task);
+      setRemovedKey((key) => key + 1);
+    }
+  }
+
+  async function undoRemove(task: Task) {
+    setLastRemoved(null);
+    if (await commitTaskMutation(task, () => removedApi.restore<Task>("task", task))) {
+      setRemovedKey((key) => key + 1);
+    }
   }
 
   function changeSort(nextSort: SortMode) {
@@ -564,13 +621,15 @@ export default function App() {
   return (
     <div className="app-shell">
       <TaskSidebar
-        view={view} notesActive={workspace === "notes"} onOpenNotes={() => openNotes()}
+        view={view} notesActive={workspace !== "tasks"} onOpenNotes={() => openNotes()}
+        removedActive={workspace === "removed"} onOpenRemoved={openRemoved}
         allNotesCurrent={workspace === "notes" && noteScope.kind === "all"}
         noteFolders={notesOpened && (
           <NoteFolderTree folders={noteFolders}
             currentId={workspace === "notes" && noteScope.kind === "folder" ? noteScope.folderId : null}
             disabled={busyList || creating || Boolean(savingId) || loadingMore}
-            onOpen={(folder) => openNotes({ kind: "folder", folderId: folder.id })} />
+            onOpen={(folder) => openNotes({ kind: "folder", folderId: folder.id })}
+            onRemoved={folderRemoved} />
         )}
         lists={lists} shownCount={countKnown ? tasks.length : null} hasMoreTasks={Boolean(nextCursor)}
         listError={listError}
@@ -578,11 +637,10 @@ export default function App() {
         theme={theme} onToggleTheme={toggleTheme}
         onNavigate={navigate} onCreateList={createList} onRenameList={renameList}
         onRemoveList={(list) => setListRemoved(list, true)}
-        onRestoreList={(list) => setListRemoved(list, false)}
         onLoadMoreLists={loadMoreLists}
       />
 
-      <main className="main-view" hidden={workspace === "notes"}>
+      <main className="main-view" hidden={workspace !== "tasks"}>
         <header className="toolbar">
           <span className="toolbar-grow" />
           <label className="toolbar-search" htmlFor="task-search">
@@ -714,6 +772,16 @@ export default function App() {
               </div>
             )}
 
+            {lastRemoved && (
+              <div role="status" aria-label="Moved to Removed" className="notice-banner">
+                <span>“{lastRemoved.title}” moved to Removed</span>
+                <button className="button button-small" type="button" disabled={Boolean(savingId)}
+                  onClick={() => void undoRemove(lastRemoved)}>
+                  Undo
+                </button>
+              </div>
+            )}
+
             {createdHidden && (
               <div role="status" aria-label="Task hidden by filters" className="notice-banner">
                 <span>Task added, but hidden by the current search or filters</span>
@@ -820,6 +888,7 @@ export default function App() {
                           onMove={(listId) => moveTask(task, listId)}
                           onUpdateDetails={(tags, dueDate) => updateDetails(task, tags, dueDate)}
                           onOpenNote={openLinkedNote}
+                          onRemove={() => removeTask(task)}
                           shown={workspace === "tasks"}
                         />
                       ))}
@@ -850,13 +919,16 @@ export default function App() {
           </div>
         </div>
       </main>
+      <RemovedView hidden={workspace !== "removed"} refreshKey={removedKey} onRestored={restored} />
       {notesOpened && (
         <Suspense fallback={workspace === "notes" &&
           <div className="loading-state" role="status"><LoaderCircle className="spin" size={16} /> Loading notes...</div>}>
           <NotesWorkspace hidden={workspace !== "notes"} scope={noteScope}
             scopeName={noteScope.kind === "folder"
               ? noteFolders.byId.get(noteScope.folderId)?.name ?? "Folder" : "Notes"}
-            folders={noteFolders.options} request={notesRequest} onOpenTask={openLinkedTask} />
+            folders={noteFolders.options} request={notesRequest} onOpenTask={openLinkedTask}
+            refreshKey={notesRefresh} onRemoved={() => setRemovedKey((key) => key + 1)}
+            onScopeHidden={() => setNoteScope(ALL_NOTES)} />
         </Suspense>
       )}
     </div>

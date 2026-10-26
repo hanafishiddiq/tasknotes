@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type KeyboardEvent } from "react";
 import {
-  Check, ChevronDown, ChevronRight, Folder, FolderInput, FolderPlus, Pencil, Plus, X,
+  Check, ChevronDown, ChevronRight, Folder, FolderInput, FolderPlus, Pencil, Plus, Trash2, X,
 } from "lucide-react";
 import type { NoteFolder } from "../lib/note-api";
 import type { NoteFolders } from "../lib/use-note-folders";
@@ -16,10 +16,12 @@ interface NoteFolderTreeProps {
   currentId: string | null;
   disabled: boolean;
   onOpen: (folder: NoteFolder) => void;
+  /** Called after a folder, with everything in it, was moved to Removed. */
+  onRemoved: (folder: NoteFolder) => void;
 }
 
 /** The Note Folder tree in the sidebar, one bounded page of children per open folder. */
-export default function NoteFolderTree({ folders, currentId, disabled, onOpen }: NoteFolderTreeProps) {
+export default function NoteFolderTree({ folders, currentId, disabled, onOpen, onRemoved }: NoteFolderTreeProps) {
   const [editing, setEditing] = useState<Editing>(null);
   const [draft, setDraft] = useState("");
   const [newName, setNewName] = useState("");
@@ -120,6 +122,11 @@ export default function NoteFolderTree({ folders, currentId, disabled, onOpen }:
                       <button type="button" className="folder-action" disabled={busy}
                         aria-label={`Move ${folder.name}`} onClick={() => start("move", folder)}>
                         <FolderInput size={13} />
+                      </button>
+                      <button type="button" className="folder-action" disabled={busy}
+                        aria-label={`Remove ${folder.name}`}
+                        onClick={() => void folders.remove(folder).then((done) => done && onRemoved(folder))}>
+                        <Trash2 size={13} />
                       </button>
                     </span>
                   </>

@@ -47,6 +47,13 @@ beforeEach(() => {
         list.revision++;
         return { ...list };
       }
+      case "list_removed": return {
+        items: lists.filter((list) => list.removed).map((list) => ({
+          kind: "list", id: list.id, title: list.name, revision: list.revision,
+          removedAt: list.updatedAt, inRemovedContainer: false,
+        })),
+        nextCursor: null,
+      };
       case "list_tasks": {
         const v = body.view?.kind ?? "all";
         const active = lists.filter((list) => !list.removed).map((x) => x.id);
@@ -141,8 +148,9 @@ describe("Inbox, Lists, and Task metadata", () => {
       expect(screen.queryByRole("article", { name: "Prepare launch" })).not.toBeInTheDocument();
     });
     expect(records).toHaveLength(1);
-    await user.click(screen.getByRole("button", { name: "Show removed lists" }));
-    await user.click(screen.getByRole("button", { name: "Restore Project" }));
+    await user.click(screen.getByRole("button", { name: "Removed" }));
+    await user.click(await screen.findByRole("button", { name: "Restore Project" }));
+    await user.click(screen.getByRole("button", { name: "All tasks" }));
     expect(await screen.findByRole("article", { name: "Prepare launch" })).toBeInTheDocument();
     expect(records).toHaveLength(1);
   });

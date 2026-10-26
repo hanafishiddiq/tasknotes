@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { Folder as FolderIcon, LoaderCircle, Pin, PinOff, Search, SquarePen } from "lucide-react";
-import { errorMessage } from "../lib/error-message";
+import { Folder as FolderIcon, LoaderCircle, Pin, PinOff, Search, SquarePen, Trash2 } from "lucide-react";
+import { errorMessage, isFolderRemoved } from "../lib/error-message";
 import { ALL_NOTES, noteApi, type Note, type NoteScope, type NoteSummary } from "../lib/note-api";
 import type { FolderOption } from "../lib/use-note-folders";
 import { saveBeforeQuit } from "../lib/quit";
+import { removedApi } from "../lib/removed-api";
 import NoteEditor, { type NoteEditorHandle } from "./NoteEditor";
 import NoteSnippet from "./NoteSnippet";
 import NoteLinkedTasks from "./NoteLinkedTasks";
@@ -71,6 +72,12 @@ interface NotesWorkspaceProps {
   folders: FolderOption[];
   request: NotesRequest | null;
   onOpenTask: (taskId: string) => void;
+  /** The list asks again whenever this changes, e.g. after a restore. */
+  refreshKey: number;
+  /** Called after the open Note was moved to Removed. */
+  onRemoved: () => void;
+  /** Called when the core says the open folder is now hidden by Removed. */
+  onScopeHidden: () => void;
 }
 
 /** Arrow keys move focus between the Notes in the list. */
@@ -93,7 +100,7 @@ function placeEdited(list: NoteSummary[], item: NoteSummary): NoteSummary[] {
 
 /** The Notes list beside one open Note, as in Apple Notes. */
 export default function NotesWorkspace({
-  hidden, scope, scopeName, folders, request, onOpenTask,
+  hidden, scope, scopeName, folders, request, onOpenTask, refreshKey, onRemoved, onScopeHidden,
 }: NotesWorkspaceProps) {
   const [notes, setNotes] = useState<NoteSummary[]>([]);
   // Where the next page of older Notes starts; null once every Note is listed.
@@ -219,6 +226,18 @@ export default function NotesWorkspace({
         if (generation === listGeneration.current) setError("Search couldn't run: " + errorMessage(reason));
       });
   }, [request?.seq]);
+
+  // A restore elsewhere can bring Notes back into this list.
+  const seenRefresh = useRef(refreshKey);
+  useEffect(() => {
+    if (refreshKey === seenRefresh.current) return;
+    seenRefresh.current = refreshKey;
+    refreshList().catch((reason) => {
+      // The open folder, or one above it, went to Removed: the core decides that.
+      if (scopeRef.current.kind === "folder" && isFolderRemoved(reason)) onScopeHidden();
+      else setError("Couldn't refresh the Notes list: " + errorMessage(reason));
+    });
+  }, [refreshKey]);
 
   // flush reads only refs, so the first render's copy stays current.
   useEffect(() => saveBeforeQuit(flush), []);
@@ -374,6 +393,27 @@ export default function NotesWorkspace({
     }
   }
 
+  /** Moves the open Note to Removed, once its pending text is saved, and opens the next one. */
+  async function removeOpen() {
+    if (saved.current.id === null || placing || !(await flush())) return;
+    const { id, revision } = saved.current;
+    if (id === null) return;
+    setPlacing(true);
+    try {
+      await removedApi.remove("note", { id, revision });
+      const rest = notes.filter((item) => item.id !== id);
+      setNotes(rest);
+      setError(null);
+      onRemoved();
+      const next = rest[0] ? await noteApi.get(rest[0].id) : null;
+      show(next ? savedFrom(next) : draftIn(scopeRef.current));
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setPlacing(false);
+    }
+  }
+
   async function newNote() {
     pickedByPerson.current = true;
     if (await flush()) show(draftIn(scopeRef.current));
@@ -437,6 +477,10 @@ export default function NotesWorkspace({
             aria-label={placement.pinned ? "Unpin note" : "Pin note"} aria-pressed={placement.pinned}
             onClick={() => { const pinned = !placement.pinned; void place((id) => noteApi.setPinned(id, pinned)); }}>
             {placement.pinned ? <PinOff size={16} aria-hidden="true" /> : <Pin size={16} aria-hidden="true" />}
+          </button>
+          <button className="icon-button" type="button" disabled={openId === null || placing}
+            aria-label="Move note to Removed" onClick={() => void removeOpen()}>
+            <Trash2 size={16} aria-hidden="true" />
           </button>
           <div className="note-save-state" role="status">
             {saving && <><LoaderCircle className="spin" size={13} aria-hidden="true" /> Saving…</>}

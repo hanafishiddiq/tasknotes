@@ -64,7 +64,7 @@ fn lists_can_be_created_renamed_and_reopened_without_losing_tasks() {
             .unwrap()
             .pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
             .unwrap(),
-        8
+        9
     );
 }
 
@@ -451,7 +451,7 @@ fn a_v3_database_upgrades_to_v4_without_changing_task_history() {
             .unwrap()
             .pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
             .unwrap(),
-        8
+        9
     );
 }
 
@@ -722,7 +722,7 @@ fn v3_to_v4_migration_failure_rolls_back_ddl_and_preserves_task_history() {
         .unwrap()
         .pragma_query_value(None, "user_version", |r| r.get(0))
         .unwrap();
-    assert_eq!(final_version, 8);
+    assert_eq!(final_version, 9);
 }
 
 fn tag_task(store: &TaskStore, title: &str, tags: &[&str]) -> tasknotes_core::tasks::Task {
@@ -878,6 +878,7 @@ fn opening_a_v7_database_merges_tags_that_now_fold_alike() {
             linked_at INTEGER NOT NULL, unlinked_at INTEGER
          );
          DROP TABLE note_folders;
+         DROP INDEX tasks_removed_order; DROP INDEX lists_removed_order;
          PRAGMA user_version = 7;",
         second.id, both.id
     ))

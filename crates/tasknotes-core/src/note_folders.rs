@@ -5,6 +5,7 @@ use rusqlite::{Connection, OptionalExtension, Row, Transaction, TransactionBehav
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::removed::SetRemoved;
 use crate::tasks::{TaskError, TaskStore, current_millis};
 
 /// A top-level folder is level 1.
@@ -24,6 +25,8 @@ pub struct NoteFolder {
     pub updated_at: i64,
     /// Whether the sidebar can expand this folder.
     pub has_children: bool,
+    /// In Removed (ADR-0002); its subfolders and Notes are hidden with it.
+    pub removed: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -97,7 +100,8 @@ fn name_fold(name: &str) -> String {
 }
 
 const FOLDER_COLUMNS: &str = "f.id, f.parent_id, f.name, f.revision, f.created_at, f.updated_at,
-    EXISTS(SELECT 1 FROM note_folders c WHERE coalesce(c.parent_id, '') = f.id)";
+    EXISTS(SELECT 1 FROM note_folders c WHERE coalesce(c.parent_id, '') = f.id
+      AND c.removed_at IS NULL), f.removed_at";
 
 fn read_folder(row: &Row<'_>) -> rusqlite::Result<NoteFolder> {
     Ok(NoteFolder {
@@ -108,6 +112,7 @@ fn read_folder(row: &Row<'_>) -> rusqlite::Result<NoteFolder> {
         created_at: row.get(4)?,
         updated_at: row.get(5)?,
         has_children: row.get(6)?,
+        removed: row.get::<_, Option<i64>>(7)?.is_some(),
     })
 }
 
@@ -166,7 +171,7 @@ fn require_unique_name(
     let taken: bool = conn.query_row(
         "SELECT EXISTS(SELECT 1 FROM note_folders
           WHERE coalesce(parent_id, '') = coalesce(?1, '') AND name_fold = ?2
-            AND id IS NOT coalesce(?3, ''))",
+            AND id IS NOT coalesce(?3, '') AND removed_at IS NULL)",
         params![parent_id, fold, except],
         |row| row.get(0),
     )?;
@@ -176,11 +181,14 @@ fn require_unique_name(
     Ok(())
 }
 
-/// Verifies a Note's destination folder inside the caller's transaction.
+/// Verifies a folder that is to be shown or written into, inside the
+/// caller's transaction: it exists and neither it nor a folder above it is
+/// in Removed.
 pub(crate) fn require_folder(conn: &Connection, id: &str) -> Result<(), TaskError> {
     match get_folder(conn, id)? {
-        Some(_) => Ok(()),
         None => Err(TaskError::NoteFolderNotFound),
+        Some(_) if crate::removed::folder_hidden(conn, id)? => Err(TaskError::NoteFolderRemoved),
+        Some(_) => Ok(()),
     }
 }
 
@@ -190,6 +198,7 @@ fn current_folder(
     id: &str,
     expected_revision: i64,
 ) -> Result<NoteFolder, TaskError> {
+    require_folder(conn, id)?;
     let folder = get_folder(conn, id)?.ok_or(TaskError::NoteFolderNotFound)?;
     if folder.revision != expected_revision {
         return Err(TaskError::NoteFolderRevisionConflict);
@@ -319,9 +328,12 @@ impl TaskStore {
         let after = cursor.map(|c| parse_cursor(c, parent_key)).transpose()?;
         let (fold, id) = after.unzip();
         let conn = self.connect()?;
+        if let Some(parent) = parent_id {
+            require_folder(&conn, parent)?;
+        }
         let mut stmt = conn.prepare(&format!(
             "SELECT {FOLDER_COLUMNS}, f.name_fold FROM note_folders f
-             WHERE coalesce(f.parent_id, '') = ?1
+             WHERE coalesce(f.parent_id, '') = ?1 AND f.removed_at IS NULL
                AND (?2 IS NULL OR (f.name_fold, f.id) > (?2, ?3))
              ORDER BY f.name_fold, f.id LIMIT ?4"
         ))?;
@@ -330,7 +342,7 @@ impl TaskStore {
         let mut folds = Vec::new();
         while let Some(row) = rows.next()? {
             items.push(read_folder(row)?);
-            folds.push(row.get::<_, String>(7)?);
+            folds.push(row.get::<_, String>(8)?);
         }
         let next_cursor = if items.len() > limit as usize {
             items.pop();
@@ -341,5 +353,45 @@ impl TaskStore {
             None
         };
         Ok(NoteFolderPage { items, next_cursor })
+    }
+
+    /// Removes or restores a folder. Its subfolders and Notes are hidden with
+    /// it but keep their own disposition, so restoring it leaves anything
+    /// Removed on its own in Removed. A folder below a Removed folder cannot
+    /// be removed or restored on its own, nor restored over an active
+    /// sibling's name.
+    pub fn set_note_folder_removed(&self, input: SetRemoved) -> Result<NoteFolder, TaskError> {
+        let mut conn = self.connect()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let old = get_folder(&tx, &input.id)?.ok_or(TaskError::NoteFolderNotFound)?;
+        if old.revision != input.expected_revision {
+            return Err(TaskError::NoteFolderRevisionConflict);
+        }
+        if old.removed == input.removed {
+            return Err(TaskError::RemovedUnchanged);
+        }
+        // Below a Removed folder this one is hidden with it; that folder
+        // comes first, whether restoring or removing this one on its own.
+        if let Some(parent) = old.parent_id.as_deref() {
+            require_folder(&tx, parent)?;
+        }
+        if !input.removed {
+            require_unique_name(
+                &tx,
+                old.parent_id.as_deref(),
+                &name_fold(&old.name),
+                Some(&old.id),
+            )?;
+        }
+        let now = current_millis()?;
+        tx.execute(
+            "UPDATE note_folders SET removed_at = ?1, revision = revision + 1,
+               updated_at = max(updated_at + 1, ?2)
+             WHERE id = ?3 AND revision = ?4",
+            params![input.removed.then_some(now), now, old.id, old.revision],
+        )?;
+        let changed = get_folder(&tx, &old.id)?.ok_or(TaskError::NoteFolderNotFound)?;
+        tx.commit()?;
+        Ok(changed)
     }
 }

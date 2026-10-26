@@ -82,26 +82,8 @@ fn read_link(row: &Row<'_>) -> rusqlite::Result<NoteLink> {
     })
 }
 
-fn exists(conn: &Connection, table: &str, id: &str) -> Result<bool, TaskError> {
-    Ok(conn.query_row(
-        &format!("SELECT EXISTS(SELECT 1 FROM {table} WHERE id = ?1)"),
-        params![id],
-        |row| row.get(0),
-    )?)
-}
-
 fn parse_cursor(value: &str) -> Result<(i64, String), TaskError> {
-    let mut fields = value.split('|');
-    match (fields.next(), fields.next(), fields.next(), fields.next()) {
-        (Some("k1"), Some(time), Some(id), None) => {
-            let time = time
-                .parse::<i64>()
-                .map_err(|_| TaskError::InvalidLinkCursor)?;
-            Uuid::parse_str(id).map_err(|_| TaskError::InvalidLinkCursor)?;
-            Ok((time, id.to_owned()))
-        }
-        _ => Err(TaskError::InvalidLinkCursor),
-    }
+    crate::search::parse_time_id_cursor(value, "k1", TaskError::InvalidLinkCursor)
 }
 
 /// Which way a list of links is read: `owner` is the column holding the
@@ -115,7 +97,9 @@ struct Side {
 const NOTES_OF_TASK: Side = Side {
     owner: "task_id",
     select: "n.id, n.title, n.updated_at",
-    join: "JOIN notes n ON n.id = l.note_id",
+    // Notes hidden by Removed (their own, or a Removed folder above them) are
+    // left out; the link row stays, so restoring brings the Note back here.
+    join: concat!("JOIN notes n ON n.id = l.note_id AND ", note_visible!("n")),
 };
 
 const TASKS_OF_NOTE: Side = Side {
@@ -123,9 +107,7 @@ const TASKS_OF_NOTE: Side = Side {
     select: "t.id, t.title, t.status",
     // Tasks hidden by Removed (their own, or their List's) are left out; the
     // link row stays, so restoring brings the Task back into this list.
-    join: "JOIN tasks t ON t.id = l.task_id AND t.removed_at IS NULL
-           AND (t.list_id IS NULL OR EXISTS (
-             SELECT 1 FROM lists WHERE lists.id = t.list_id AND lists.removed_at IS NULL))",
+    join: concat!("JOIN tasks t ON t.id = l.task_id AND ", task_visible!("t")),
 };
 
 /// One keyset page of active links on one side, most recently linked first.
@@ -180,12 +162,8 @@ impl TaskStore {
         let now = current_millis()?;
         let mut conn = self.connect()?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        if !exists(&tx, "tasks", task_id)? {
-            return Err(TaskError::NotFound);
-        }
-        if !exists(&tx, "notes", note_id)? {
-            return Err(TaskError::NoteNotFound);
-        }
+        crate::removed::require_writable_task(&tx, task_id)?;
+        crate::removed::require_writable_note(&tx, note_id)?;
         let link = tx.query_row(
             &format!(
                 "INSERT INTO task_note_links ({COLUMNS})
@@ -221,18 +199,33 @@ impl TaskStore {
 
     /// Undo for an unlink: the link comes back with its original stamp, so
     /// it returns to the place it had. An active link is returned unchanged.
+    /// An unlinked link stays unlinked while its Task or Note is Removed.
     pub fn restore_link(&self, link_id: &str) -> Result<NoteLink, TaskError> {
-        self.connect()?
+        let mut conn = self.connect()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let link = tx
             .query_row(
-                &format!(
-                    "UPDATE task_note_links SET unlinked_at = NULL
-                     WHERE id = ?1 RETURNING {COLUMNS}"
-                ),
+                &format!("SELECT {COLUMNS} FROM task_note_links WHERE id = ?1"),
                 params![link_id],
                 read_link,
             )
             .optional()?
-            .ok_or(TaskError::LinkNotFound)
+            .ok_or(TaskError::LinkNotFound)?;
+        if link.unlinked_at.is_none() {
+            return Ok(link);
+        }
+        crate::removed::require_writable_task(&tx, &link.task_id)?;
+        crate::removed::require_writable_note(&tx, &link.note_id)?;
+        let link = tx.query_row(
+            &format!(
+                "UPDATE task_note_links SET unlinked_at = NULL
+                 WHERE id = ?1 RETURNING {COLUMNS}"
+            ),
+            params![link_id],
+            read_link,
+        )?;
+        tx.commit()?;
+        Ok(link)
     }
 
     pub fn get_link(&self, link_id: &str) -> Result<Option<NoteLink>, TaskError> {

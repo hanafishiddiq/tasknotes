@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
-import { CalendarDays, Check, Folder, LoaderCircle, Tag } from "lucide-react";
+import { CalendarDays, Check, Folder, LoaderCircle, Tag, Trash2 } from "lucide-react";
 import type {
   Task,
   TaskList,
@@ -47,6 +47,8 @@ interface TaskRowProps {
   onMove: (listId: string | null) => Promise<void>;
   onUpdateDetails: (tags: string[], dueDate: string | null) => Promise<void>;
   onOpenNote: (noteId: string) => void;
+  /** Moves the Task to Removed; restoring it later brings back everything. */
+  onRemove: () => Promise<void>;
   /** False while the Notes workspace covers the Task view. */
   shown: boolean;
 }
@@ -64,6 +66,7 @@ export default function TaskRow({
   onMove,
   onUpdateDetails,
   onOpenNote,
+  onRemove,
   shown,
 }: TaskRowProps) {
   const [draftTitle, setDraftTitle] = useState(task.title);
@@ -469,6 +472,12 @@ export default function TaskRow({
           )}
           <TaskLinkedNotes taskId={task.id} shown={shown} onOpenNote={onOpenNote} />
           <TaskProgressHistory taskId={task.id} revision={task.revision} />
+          <div className="task-remove-row">
+            <button type="button" className="button button-small" disabled={!canChangeSelectors}
+              onClick={() => void onRemove()}>
+              <Trash2 size={13} aria-hidden="true" /> Move to Removed
+            </button>
+          </div>
         </section>
       )}
     </article>

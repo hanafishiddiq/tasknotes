@@ -22,6 +22,8 @@ pub struct Note {
     /// None when the Note is not in a folder.
     pub folder_id: Option<String>,
     pub pinned: bool,
+    /// In Removed (ADR-0002); never a deletion.
+    pub removed: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -96,7 +98,8 @@ pub struct NotePage {
     pub next_cursor: Option<String>,
 }
 
-const COLUMNS: &str = "id, markdown, title, revision, created_at, updated_at, folder_id, pinned";
+pub(crate) const COLUMNS: &str =
+    "id, markdown, title, revision, created_at, updated_at, folder_id, pinned, removed_at";
 
 /// Edit stamps never repeat, so the list follows the order of writes even when
 /// several land within one millisecond. `?4` is the current time.
@@ -334,7 +337,7 @@ fn parse_cursor(value: &str, key: &str) -> Result<After, TaskError> {
     })
 }
 
-fn read_note(row: &Row<'_>) -> rusqlite::Result<Note> {
+pub(crate) fn read_note(row: &Row<'_>) -> rusqlite::Result<Note> {
     Ok(Note {
         id: row.get(0)?,
         markdown: row.get(1)?,
@@ -344,6 +347,7 @@ fn read_note(row: &Row<'_>) -> rusqlite::Result<Note> {
         updated_at: row.get(5)?,
         folder_id: row.get(6)?,
         pinned: row.get(7)?,
+        removed: row.get::<_, Option<i64>>(8)?.is_some(),
     })
 }
 
@@ -380,6 +384,7 @@ impl TaskStore {
     pub fn move_note(&self, input: MoveNote) -> Result<Note, TaskError> {
         let mut conn = self.connect()?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        crate::removed::require_writable_note(&tx, &input.id)?;
         if let Some(folder) = input.folder_id.as_deref() {
             crate::note_folders::require_folder(&tx, folder)?;
         }
@@ -397,14 +402,16 @@ impl TaskStore {
 
     /// Placement only, like a move; pinning twice is harmless.
     pub fn set_note_pinned(&self, input: SetNotePinned) -> Result<Note, TaskError> {
-        self.connect()?
-            .query_row(
-                &format!("UPDATE notes SET pinned = ?1 WHERE id = ?2 RETURNING {COLUMNS}"),
-                params![input.pinned, input.id],
-                read_note,
-            )
-            .optional()?
-            .ok_or(TaskError::NoteNotFound)
+        let mut conn = self.connect()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        crate::removed::require_writable_note(&tx, &input.id)?;
+        let note = tx.query_row(
+            &format!("UPDATE notes SET pinned = ?1 WHERE id = ?2 RETURNING {COLUMNS}"),
+            params![input.pinned, input.id],
+            read_note,
+        )?;
+        tx.commit()?;
+        Ok(note)
     }
 
     /// Saves only over the revision the editor started from; a newer edit wins
@@ -412,8 +419,10 @@ impl TaskStore {
     pub fn update_note(&self, input: UpdateNote) -> Result<Note, TaskError> {
         check_length(&input.markdown)?;
         let now = current_millis()?;
-        let conn = self.connect()?;
-        let updated = conn
+        let mut conn = self.connect()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        crate::removed::require_writable_note(&tx, &input.id)?;
+        let updated = tx
             .query_row(
                 &format!(
                     "UPDATE notes SET markdown = ?1, title = ?2, revision = revision + 1,
@@ -429,22 +438,10 @@ impl TaskStore {
                 ],
                 read_note,
             )
-            .optional()?;
-        match updated {
-            Some(note) => Ok(note),
-            None => {
-                let exists: bool = conn.query_row(
-                    "SELECT EXISTS(SELECT 1 FROM notes WHERE id = ?1)",
-                    params![input.id],
-                    |row| row.get(0),
-                )?;
-                Err(if exists {
-                    TaskError::NoteRevisionConflict
-                } else {
-                    TaskError::NoteNotFound
-                })
-            }
-        }
+            .optional()?
+            .ok_or(TaskError::NoteRevisionConflict)?;
+        tx.commit()?;
+        Ok(updated)
     }
 
     /// Every Note, pinned first, then most recently edited, as a bounded keyset page.
@@ -484,7 +481,8 @@ impl TaskStore {
             values.push(value);
             format!("?{}", values.len())
         };
-        let mut filters = vec!["1".to_owned()];
+        // Removed Notes, and Notes in a Removed folder or below one, are hidden.
+        let mut filters = vec![note_visible!("n").to_owned()];
         // All words must match; each is a quoted prefix term, so user text
         // never reaches FTS5 query syntax.
         let match_terms = terms.join(" ");

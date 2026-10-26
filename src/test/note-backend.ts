@@ -10,6 +10,8 @@ export class NoteBackend {
   notes = new Map<string, Note>();
   folders = new Map<string, NoteFolder>();
   calls: { command: string; args: unknown }[] = [];
+  /** When each Removed Note or folder was removed; the record itself stays. */
+  removedAt = new Map<string, number>();
   /** The next call of a command throws this message, as the core would. */
   refusals = new Map<string, string>();
   private clock = 1_000;
@@ -44,8 +46,21 @@ export class NoteBackend {
   }
 
   private withChildren(folder: NoteFolder): NoteFolder {
-    const hasChildren = [...this.folders.values()].some((other) => other.parentId === folder.id);
+    const hasChildren = [...this.folders.values()]
+      .some((other) => other.parentId === folder.id && !this.removedAt.has(other.id));
     return { ...folder, hasChildren };
+  }
+
+  /** A folder that is Removed or sits below a Removed folder, as the core hides it. */
+  folderHidden(id: string | null): boolean {
+    for (let at = id; at !== null; at = this.folders.get(at)?.parentId ?? null) {
+      if (this.removedAt.has(at)) return true;
+    }
+    return false;
+  }
+
+  private noteShown(note: Note): boolean {
+    return !this.removedAt.has(note.id) && !this.folderHidden(note.folderId);
   }
 
   handle(command: string, args: Record<string, unknown>) {
@@ -61,7 +76,12 @@ export class NoteBackend {
       const words = text.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
       // As in the core: text without words ("!!!") matches nothing.
       if (text.trim() && words.length === 0) return { items: [], nextCursor: null };
+      // As in the core: a folder hidden by Removed cannot be listed.
+      if (scope.kind === "folder" && this.folderHidden(scope.folderId)) {
+        throw "This folder, or a folder it is in, is in Removed; restore that folder first";
+      }
       const all: NoteSummary[] = [...this.notes.values()]
+        .filter((note) => this.noteShown(note))
         .filter((note) => scope.kind === "all" || note.folderId === scope.folderId)
         .filter((note) => words.every((word) => note.markdown.toLowerCase().includes(word)))
         .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt - a.updatedAt)
@@ -104,7 +124,7 @@ export class NoteBackend {
     if (command === "list_note_folders") {
       const parentId = (args.parentId as string | null | undefined) ?? null;
       const items = [...this.folders.values()]
-        .filter((folder) => folder.parentId === parentId)
+        .filter((folder) => folder.parentId === parentId && !this.removedAt.has(folder.id))
         .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()))
         .map((folder) => this.withChildren(folder));
       return page(items, args);
@@ -127,6 +147,34 @@ export class NoteBackend {
       };
       this.folders.set(next.id, next);
       return this.withChildren(next);
+    }
+    if (command === "set_note_removed" || command === "set_note_folder_removed") {
+      const input = args.input as { id: string; expectedRevision: number; removed: boolean };
+      const isNote = command === "set_note_removed";
+      const current = isNote ? this.notes.get(input.id) : this.folders.get(input.id);
+      if (!current) throw isNote ? "Note not found" : "Folder not found";
+      if (current.revision !== input.expectedRevision) {
+        throw isNote ? "This Note changed elsewhere; your text was not saved over it"
+          : "This folder changed elsewhere; reload before saving";
+      }
+      if (input.removed) this.removedAt.set(input.id, ++this.clock);
+      else this.removedAt.delete(input.id);
+      const next = { ...current, revision: current.revision + 1 };
+      if (isNote) this.notes.set(next.id, next as Note);
+      else this.folders.set(next.id, next as NoteFolder);
+      return isNote ? next : this.withChildren(next as NoteFolder);
+    }
+    if (command === "list_removed") {
+      const items = [...this.removedAt.entries()].map(([id, removedAt]) => {
+        const note = this.notes.get(id);
+        const folder = this.folders.get(id);
+        const parent = note ? note.folderId : folder!.parentId;
+        return {
+          kind: note ? "note" : "note_folder", id, title: note ? note.title : folder!.name,
+          revision: (note ?? folder)!.revision, removedAt, inRemovedContainer: this.folderHidden(parent),
+        };
+      }).sort((a, b) => b.removedAt - a.removedAt);
+      return page(items, args);
     }
     throw new Error("Unexpected Note command: " + command);
   }
