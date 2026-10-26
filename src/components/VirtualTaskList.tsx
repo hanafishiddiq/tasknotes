@@ -19,8 +19,8 @@ interface VirtualTaskListProps {
   /** The element that scrolls the Task view. */
   scrollRef: RefObject<HTMLElement | null>;
   /**
-   * Tasks that must stay mounted however far away the view scrolls: the open
-   * one and any holding unsaved edits, so nothing typed is ever thrown away.
+   * Tasks that must stay mounted however far away the view scrolls (the open
+   * one). Unsaved edits are kept above the rows, so they never depend on this.
    */
   keepMounted: ReadonlySet<string>;
   renderTask: (task: Task) => ReactNode;
@@ -54,7 +54,7 @@ function measureShown(
 ): number {
   const size = measureElement(element, entry, instance);
   if (size > 0) return size;
-  return element.tagName === "H3" ? HEADING_ESTIMATE : ROW_ESTIMATE;
+  return (element as HTMLElement).dataset.heading !== undefined ? HEADING_ESTIMATE : ROW_ESTIMATE;
 }
 /**
  * The Task rows of the current page, rendered only near what is on screen.
@@ -66,21 +66,23 @@ export default function VirtualTaskList({
 }: VirtualTaskListProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const [scrollMargin, setScrollMargin] = useState(0);
-  // The row keyboard focus is moving to; it stays mounted until focus lands.
-  const [focusTarget, setFocusTarget] = useState<{ id: string; seq: number } | null>(null);
+  // The row keyboard focus is moving to, until focus lands there.
+  const [focusTarget, setFocusTarget] = useState<string | null>(null);
+  // The row holding focus now; it stays mounted however far the list scrolls.
+  const [focusedId, setFocusedId] = useState<string | null>(null);
 
-  const items = useMemo<Item[]>(() => STATUS_ORDER.flatMap((status) => {
+  const items = useMemo(() => STATUS_ORDER.flatMap((status): Item[] => {
     const group = tasks.filter((task) => task.status === status);
     if (group.length === 0) return [];
     return [
-      { kind: "heading", status, count: group.length } as Item,
+      { kind: "heading", status, count: group.length },
       ...group.map((task): Item => ({ kind: "task", task })),
     ];
   }), [tasks]);
 
   const pinned = useMemo(() => items.flatMap((item, index) =>
-    item.kind === "task" && (keepMounted.has(item.task.id) || item.task.id === focusTarget?.id)
-      ? [index] : []), [items, keepMounted, focusTarget]);
+    item.kind === "task" && (keepMounted.has(item.task.id) || item.task.id === focusTarget || item.task.id === focusedId)
+      ? [index] : []), [items, keepMounted, focusTarget, focusedId]);
 
   const rangeExtractor = useCallback((range: Range) => {
     const visible = defaultRangeExtractor(range);
@@ -104,6 +106,9 @@ export default function VirtualTaskList({
   });
 
   // Capture, banners and Note matches sit above the rows in the same scroll area.
+  // No dependency list on purpose: any of them can change height, and each such
+  // change re-renders this list. Reading offsets is cheap, and state is only set
+  // when the margin really moved, so this cannot loop.
   useLayoutEffect(() => {
     const list = listRef.current;
     const area = scrollRef.current;
@@ -116,18 +121,12 @@ export default function VirtualTaskList({
     if (margin !== scrollMargin) setScrollMargin(margin);
   });
 
-  useLayoutEffect(() => {
-    if (!focusTarget) return;
-    listRef.current
-      ?.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(focusTarget.id)}"] .task-open`)
-      ?.focus();
-  }, [focusTarget]);
-
   function focusTask(id: string) {
     const index = items.findIndex((item) => item.kind === "task" && item.task.id === id);
     if (index < 0) return;
-    virtualizer.scrollToIndex(index, { align: "auto" });
-    setFocusTarget((previous) => ({ id, seq: (previous?.seq ?? 0) + 1 }));
+    // Always instant: a smooth scroll would ignore Reduce Motion, which CSS cannot reach here.
+    virtualizer.scrollToIndex(index, { align: "auto", behavior: "auto" });
+    setFocusTarget(id);
   }
 
   // Up/Down/Home/End move between rows (headings are skipped); Escape closes the open Task.
@@ -157,6 +156,17 @@ export default function VirtualTaskList({
   const virtualItems = virtualizer.getVirtualItems();
   const total = virtualizer.getTotalSize();
 
+  // The target row is pinned, so it enters the page within a render or two of
+  // being asked for; once focus lands there it is let go.
+  useLayoutEffect(() => {
+    if (!focusTarget) return;
+    const row = listRef.current
+      ?.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(focusTarget)}"] .task-open`);
+    if (!row) return;
+    row.focus();
+    setFocusTarget(null);
+  }, [focusTarget, virtualItems]);
+
   // Group what is rendered into its status sections, with spacers for the rest.
   const sections: { status: WorkStatus; children: ReactNode[] }[] = [];
   let previousEnd = scrollMargin;
@@ -175,7 +185,7 @@ export default function VirtualTaskList({
     }
     previousEnd = virtual.end;
     section.children.push(item.kind === "heading" ? (
-      <h3 key={virtual.key} data-index={virtual.index}
+      <h3 key={virtual.key} data-index={virtual.index} data-heading=""
         // Space above a later group is part of its heading, so it is measured.
         className={`task-group-heading ${virtual.index > 0 ? "task-group-heading--later" : ""}`}
         ref={virtualizer.measureElement}>
@@ -192,7 +202,12 @@ export default function VirtualTaskList({
   const tail = Math.max(0, total + scrollMargin - previousEnd);
 
   return (
-    <div className="task-list" ref={listRef} onKeyDown={onKeyDown}>
+    <div className="task-list" ref={listRef} onKeyDown={onKeyDown}
+      onFocus={(event) => setFocusedId(
+        (event.target as HTMLElement).closest<HTMLElement>("[data-task-id]")?.dataset.taskId ?? null)}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocusedId(null);
+      }}>
       {sections.map(({ status, children }) => (
         <section key={status} className="task-group" aria-label={`${STATUS_VIEW[status].label} tasks`}>
           {children}

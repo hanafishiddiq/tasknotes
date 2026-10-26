@@ -171,7 +171,7 @@ function withLayout() {
     get(this: HTMLElement) {
       if (this.classList.contains("main-scroll")) return 600;
       if (this.dataset.index !== undefined) {
-        if (this.tagName === "H3") return 30;
+        if (this.dataset.heading !== undefined) return 30;
         return this.querySelector(".task-editor") ? 400 : 50;
       }
       return 0;
@@ -374,6 +374,27 @@ describe("Keyboard navigation in the Task list", () => {
     expect(await screen.findByRole("button", { name: "Open Synthetic task 201" })).toHaveFocus();
     await user.keyboard("{Home}");
     expect(await screen.findByRole("button", { name: "Open Synthetic task 1" })).toHaveFocus();
+  });
+
+  it("scrolls to an off-screen Task instantly, so Reduce Motion holds for script scrolling too", async () => {
+    const scrollTo = vi.fn(function (this: HTMLElement, options?: ScrollToOptions | number) {
+      if (typeof options === "object" && options.top !== undefined) this.scrollTop = options.top;
+    });
+    const original = HTMLElement.prototype.scrollTo;
+    HTMLElement.prototype.scrollTo = scrollTo as unknown as typeof original;
+    try {
+      const user = userEvent.setup();
+      render(<App />);
+      (await screen.findByRole("button", { name: "Open Synthetic task 1" })).focus();
+      await user.keyboard("{End}");
+      expect(await screen.findByRole("button", { name: "Open Synthetic task 201" })).toHaveFocus();
+      expect(scrollTo).toHaveBeenCalled();
+      for (const [options] of scrollTo.mock.calls) {
+        expect((options as ScrollToOptions).behavior).not.toBe("smooth");
+      }
+    } finally {
+      HTMLElement.prototype.scrollTo = original;
+    }
   });
 
   it("opens with Return and closes with Escape, handing focus back to the row", async () => {
