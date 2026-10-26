@@ -19,7 +19,8 @@ import { useTaskDrafts } from "./lib/use-task-drafts";
 import { useUndo } from "./lib/use-undo";
 import { errorMessage } from "./lib/error-message";
 import { listenForQuit } from "./lib/quit";
-import { listenForQuickCapture } from "./lib/shell-api";
+import { listenForQuickCapture, shellApi } from "./lib/shell-api";
+import { newTaskKeys } from "./lib/shortcuts";
 import {
   ALL_NOTES, noteApi, type Note, type NoteFolder, type NotePage, type NoteScope,
 } from "./lib/note-api";
@@ -192,9 +193,12 @@ export default function App() {
 
   useEffect(() => {
     if (!focusRequest || workspace !== "tasks") return;
-    (focusRequest.field === "capture" ? titleInput.current : searchInput.current)?.focus();
+    const target = focusRequest.field === "capture" ? titleInput.current : searchInput.current;
+    // A Quick Capture asked for while the list is still loading waits for the field.
+    if (target?.disabled) return;
+    target?.focus();
     setFocusRequest(null);
-  }, [focusRequest, workspace]);
+  }, [focusRequest, workspace, loading, creating, savingId]);
 
   function resetTaskPages() {
     requestGeneration.current += 1;
@@ -695,6 +699,12 @@ export default function App() {
     return () => void stop.then((unlisten) => unlisten());
   }, []);
 
+  // A saved Quick Capture shortcut another app took since the last launch: said once, never blocking.
+  const [launchNotice, setLaunchNotice] = useState<string | null>(null);
+  useEffect(() => {
+    shellApi.takeLaunchNotice().then(setLaunchNotice).catch(() => {});
+  }, []);
+
   const commands = buildCommands({
     lists, undoTitle: undo.next?.title ?? null, appearance: appearance.preference,
     navigate, openNotes: () => openNotes(), openRemoved, openSettings, focusInTasks,
@@ -858,6 +868,21 @@ export default function App() {
                 </div>
               )}
             </form>
+
+            {launchNotice && (
+              <div role="status" aria-label="Quick Capture shortcut" className="notice-banner">
+                <span>{launchNotice} {newTaskKeys} still creates a task.</span>
+                <div className="notice-actions">
+                  <button className="button button-small" type="button"
+                    onClick={() => { setLaunchNotice(null); openSettings(); }}>
+                    Open Settings
+                  </button>
+                  <button className="button button-small" type="button" onClick={() => setLaunchNotice(null)}>
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            )}
 
             {pendingLinkedTask && (
               <div role="status" aria-label="Opening linked Task" className="notice-banner">

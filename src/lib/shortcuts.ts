@@ -28,3 +28,6 @@ export const SHORTCUTS: Shortcut[] = [
   { keys: "Return", label: "Open or close the task" },
   { keys: "Esc", label: "Close the open task" },
 ];
+
+/** How Settings and notices name the New task shortcut. */
+export const newTaskKeys = SHORTCUTS.find((shortcut) => shortcut.command?.action === "newTask")!.keys;

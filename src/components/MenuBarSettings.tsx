@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import {
-  acceleratorFromKey, shellApi, type QuickCaptureStatus, type ShellView, type ShortcutProblem,
+  acceleratorFromKey, shellApi, type QuickCaptureStatus, type ShellView,
 } from "../lib/shell-api";
 import { errorMessage } from "../lib/error-message";
+import { newTaskKeys } from "../lib/shortcuts";
 
 interface MenuBarSettingsProps {
   /** Settings is on screen; the shell's settings are read the first time it is. */
@@ -44,6 +45,8 @@ export default function MenuBarSettings({ active }: MenuBarSettingsProps) {
       return view;
     } catch (reason) {
       setSaveError(errorMessage(reason));
+      // Show what the shell really has, so no checkbox claims a change that was undone.
+      shellApi.get().then((view) => setLoading({ kind: "ready", view })).catch(() => {});
       return null;
     }
   }
@@ -78,25 +81,28 @@ export default function MenuBarSettings({ active }: MenuBarSettingsProps) {
     if (view?.quickCapture.state === "active") stopRecording();
   }
 
+  const heading = loading.kind === "ready"
+    ? `${capitalized(loading.view.trayPlace)} and Quick Capture` : "Quick Capture";
+
   return (
     <section className="settings-section" aria-labelledby="settings-menu-bar">
-      <h2 className="settings-heading" id="settings-menu-bar">Menu bar and Quick Capture</h2>
+      <h2 className="settings-heading" id="settings-menu-bar">{heading}</h2>
       {loading.kind === "missing" && (
-        <p className="settings-hint">Menu bar and Quick Capture are not available on this device.</p>
+        <p className="settings-hint">These settings are not available on this device.</p>
       )}
       {loading.kind === "ready" && (
         <>
+          {loading.view.settingsUnreadable && (
+            <p className="settings-hint" role="status">
+              Tasknotes could not read these saved settings, so the defaults are in use. Changing a setting saves them again.
+            </p>
+          )}
           <label className="settings-choice">
             <input type="checkbox" checked={loading.view.keepInMenuBar}
               onChange={(event) => change(() => shellApi.setKeepInMenuBar(event.target.checked))} />
-            <span>Keep Tasknotes in the menu bar</span>
+            <span>Keep Tasknotes in the {loading.view.trayPlace}</span>
           </label>
-          <p className="settings-hint">
-            {!loading.view.keepInMenuBar ? "Closing the window quits Tasknotes."
-              : loading.view.menuBarUnavailable
-                ? "Tasknotes could not show its menu-bar item here, so closing the window still quits."
-                : "Closing the window leaves Tasknotes in the menu bar. Choose Quit Tasknotes there, or press ⌘Q, to quit."}
-          </p>
+          <p className="settings-hint">{loading.view.closeHint}</p>
 
           <label className="settings-choice">
             <input ref={toggle} type="checkbox"
@@ -128,17 +134,8 @@ export default function MenuBarSettings({ active }: MenuBarSettingsProps) {
   );
 }
 
-function problemText(problem: ShortcutProblem): string {
-  switch (problem.kind) {
-    case "needsTwoModifiers":
-      return "Use at least two modifier keys (⌃ ⌥ ⇧ ⌘) with a letter, number or Space, or a function key on its own. A single modifier would take over shortcuts other apps use, like ⌘C, and Tasknotes' own ⌘N.";
-    case "reservedBySystem":
-      return `macOS uses this for ${problem.usedFor}. Pick another combination.`;
-    case "unsupportedKey":
-      return "Media keys cannot be used. Pick another key.";
-    case "invalid":
-      return "Record a key combination to turn Quick Capture on.";
-  }
+function capitalized(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 function statusLines(status: QuickCaptureStatus): string[] {
@@ -147,11 +144,8 @@ function statusLines(status: QuickCaptureStatus): string[] {
     case "active":
       return [];
     case "unavailable":
-      return [`${status.label} is already used by another app or by macOS, or the system refused it. Pick another combination.`,
-        ...(status.current ? [`${status.current} still opens Quick Capture.`] : [])];
     case "rejected":
-      return [problemText(status.problem),
-        ...(status.current ? [`${status.current} still opens Quick Capture.`] : [])];
+      return [status.reason, ...(status.current ? [`${status.current} still opens Quick Capture.`] : [])];
   }
 }
 
@@ -166,7 +160,7 @@ function QuickCaptureHint({ view, recording }: { view: ShellView; recording: boo
     return (
       <div className="settings-hint settings-hint--error" role="status">
         {problems.map((line) => <p key={line}>{line}</p>)}
-        <p>⌘N still creates a task inside Tasknotes.</p>
+        <p>{newTaskKeys} still creates a task inside Tasknotes.</p>
       </div>
     );
   }
@@ -175,7 +169,7 @@ function QuickCaptureHint({ view, recording }: { view: ShellView; recording: boo
     <p className="settings-hint">
       {view.rememberedLabel
         ? `Off. ${view.rememberedLabel} is kept for when you turn it back on.`
-        : "Off. ⌘N creates a task inside Tasknotes."}
+        : `Off. ${newTaskKeys} creates a task inside Tasknotes.`}
     </p>
   );
 }
