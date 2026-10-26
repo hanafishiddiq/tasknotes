@@ -164,7 +164,14 @@ export function useNoteFolders(enabled: boolean) {
   }, [levels]);
 
   /** Moves a folder, with everything in it, to Removed. */
-  const remove = (folder: NoteFolder) => write(() => removedApi.remove<NoteFolder>("note_folder", folder));
+  /** Moves a folder to Removed; resolves to the folder as it now is, or null if refused. */
+  const remove = async (folder: NoteFolder): Promise<NoteFolder | null> => {
+    let removed: NoteFolder | null = null;
+    const done = await write(async () => {
+      removed = await removedApi.remove<NoteFolder>("note_folder", folder);
+    });
+    return done ? removed : null;
+  };
 
   return {
     refresh,

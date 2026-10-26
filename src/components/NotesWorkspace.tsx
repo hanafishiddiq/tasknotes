@@ -74,8 +74,8 @@ interface NotesWorkspaceProps {
   onOpenTask: (taskId: string) => void;
   /** The list asks again whenever this changes, e.g. after a restore. */
   refreshKey: number;
-  /** Called after the open Note was moved to Removed. */
-  onRemoved: () => void;
+  /** Called after the open Note was moved to Removed, with the Note as it is now. */
+  onRemoved: (note: Note) => void;
   /** Called when the core says the open folder is now hidden by Removed. */
   onScopeHidden: () => void;
 }
@@ -400,11 +400,11 @@ export default function NotesWorkspace({
     if (id === null) return;
     setPlacing(true);
     try {
-      await removedApi.remove("note", { id, revision });
+      const removed = await removedApi.remove<Note>("note", { id, revision });
       const rest = notes.filter((item) => item.id !== id);
       setNotes(rest);
       setError(null);
-      onRemoved();
+      onRemoved(removed);
       const next = rest[0] ? await noteApi.get(rest[0].id) : null;
       show(next ? savedFrom(next) : draftIn(scopeRef.current));
     } catch (reason) {

@@ -62,6 +62,30 @@ describe("Removed Notes and folders", () => {
     await eventually(() => expect(within(noteList()).getByRole("button", { name: /Packing list/ })).toBeInTheDocument());
   });
 
+  it("brings a Note or a folder back with Undo right after moving it to Removed", async () => {
+    const work = backend.folder("Work");
+    const packing = backend.seed("# Packing list", "Packing list");
+    const user = await openNotes();
+    await eventually(() => expect(within(noteList()).getByRole("button", { name: /Packing list/ }))
+      .toHaveAttribute("aria-current", "true"));
+
+    await user.click(screen.getByRole("button", { name: "Move note to Removed" }));
+    const notice = await screen.findByRole("status", { name: "Moved to Removed" });
+    expect(notice).toHaveTextContent("“Packing list” moved to Removed");
+    await user.click(within(notice).getByRole("button", { name: "Undo" }));
+    await eventually(() => expect(backend.commands("set_note_removed")).toEqual([
+      { input: { id: packing.id, expectedRevision: 1, removed: true } },
+      { input: { id: packing.id, expectedRevision: 2, removed: false } },
+    ]));
+    await eventually(() => expect(within(noteList()).getByRole("button", { name: /Packing list/ })).toBeInTheDocument());
+
+    await user.click(await within(folderTree()).findByRole("button", { name: "Remove Work" }));
+    await eventually(() => expect(within(folderTree()).queryByRole("button", { name: "Work" })).not.toBeInTheDocument());
+    await user.keyboard("{Meta>}z{/Meta}");
+    await eventually(() => expect(within(folderTree()).getByRole("button", { name: "Work" })).toBeInTheDocument());
+    expect(backend.removedAt.has(work.id)).toBe(false);
+  });
+
   it("moves a folder with its Notes to Removed and leaves the folder's view", async () => {
     const work = backend.folder("Work");
     backend.seed("# Loose note", "Loose note");

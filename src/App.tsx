@@ -14,9 +14,12 @@ import TaskSidebar from "./components/TaskSidebar";
 import VirtualTaskList from "./components/VirtualTaskList";
 import { useLocalCalendarDay } from "./lib/use-local-calendar-day";
 import { useTheme } from "./lib/use-theme";
+import { useShortcuts } from "./lib/use-shortcuts";
 import { errorMessage } from "./lib/error-message";
 import { listenForQuit } from "./lib/quit";
-import { ALL_NOTES, noteApi, type NotePage, type NoteScope } from "./lib/note-api";
+import {
+  ALL_NOTES, noteApi, type Note, type NoteFolder, type NotePage, type NoteScope,
+} from "./lib/note-api";
 import type { NotesRequest } from "./components/NotesWorkspace";
 import { useNoteFolders } from "./lib/use-note-folders";
 import NoteFolderTree from "./components/NoteFolderTree";
@@ -37,14 +40,22 @@ function sameFilters(a: TaskFilters, b: TaskFilters): boolean {
     a.status === b.status && a.priority === b.priority && a.taskId === b.taskId;
 }
 
+/** A move to Removed that can still be taken back. */
+interface Undoable {
+  title: string;
+  undo: () => Promise<void>;
+}
+
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [view, setView] = useState<TaskView>({ kind: "all" });
   const [workspace, setWorkspace] = useState<"tasks" | "notes" | "removed" | "settings">("tasks");
   // Bumped after something is moved to Removed, so the Removed view asks again.
   const [removedKey, setRemovedKey] = useState(0);
-  // The Task just moved to Removed, for Undo.
-  const [lastRemoved, setLastRemoved] = useState<Task | null>(null);
+  // The last move to Removed, which Undo (or ⌘Z) brings back.
+  const [undoable, setUndoable] = useState<Undoable | null>(null);
+  const [undoing, setUndoing] = useState(false);
+  const [undoError, setUndoError] = useState<string | null>(null);
   // Bumped after a Note or folder is restored, so the Notes list asks again.
   const [notesRefresh, setNotesRefresh] = useState(0);
   // Once opened, Notes stay mounted so a pending autosave survives visiting Tasks.
@@ -184,6 +195,7 @@ export default function App() {
   }
 
   function openNotes(scope: NoteScope = ALL_NOTES) {
+    setUndoable(null);
     setNotesOpened(true);
     setWorkspace("notes");
     setNoteScope(scope);
@@ -215,16 +227,20 @@ export default function App() {
 
   function openSettings() {
     if (busyList || creating || savingId || loadingMore) return;
+    setUndoable(null);
     setWorkspace("settings");
   }
 
   function openRemoved() {
     if (busyList || creating || savingId || loadingMore) return;
+    setUndoable(null);
     setWorkspace("removed");
   }
 
   /** Shows a restored item again wherever it belongs. */
   function restored(item: RemovedItem) {
+    // What Undo would bring back may be the very item just restored.
+    setUndoable(null);
     if (item.kind === "list") {
       refreshLists().catch((reason) => setListError("Could not load Lists: " + errorMessage(reason)));
     }
@@ -240,9 +256,30 @@ export default function App() {
    * folder is now hidden, the core refuses to list it and the view goes back
    * to All notes (onScopeHidden).
    */
-  function folderRemoved() {
+  function folderRemoved(folder: NoteFolder) {
     setRemovedKey((key) => key + 1);
     setNotesRefresh((key) => key + 1);
+    setUndoable({
+      title: folder.name,
+      undo: () => restoreNoteItem("note_folder", folder),
+    });
+  }
+
+  function noteRemoved(note: Note) {
+    setRemovedKey((key) => key + 1);
+    setUndoable({ title: note.title, undo: () => restoreNoteItem("note", note) });
+  }
+
+  /** Undo for a Note or folder: restore it, then let Notes and the folder tree ask again. */
+  async function restoreNoteItem(kind: "note" | "note_folder", item: Note | NoteFolder) {
+    try {
+      await removedApi.restore(kind, item);
+      if (kind === "note_folder") await noteFolders.refresh();
+      setNotesRefresh((key) => key + 1);
+      setRemovedKey((key) => key + 1);
+    } catch (reason) {
+      setUndoError("Couldn't undo: " + errorMessage(reason));
+    }
   }
 
   function openLinkedNote(noteId: string) {
@@ -253,7 +290,7 @@ export default function App() {
   function navigate(next: TaskView) {
     if (busyList || creating || savingId || loadingMore) return;
     setWorkspace("tasks");
-    setLastRemoved(null);
+    setUndoable(null);
     if (next.kind === view.kind &&
         (next.kind !== "list" || (view.kind === "list" && next.listId === view.listId))) return;
     setTasks([]);
@@ -331,6 +368,7 @@ export default function App() {
       });
       setLists((all) => all.map((item) => item.id === list.id ? updated : item));
       setRemovedKey((key) => key + 1);
+      setUndoable(removed ? { title: updated.name, undo: () => setListRemoved(updated, false) } : null);
       if (removed && view.kind === "list" && view.listId === list.id) {
         setTasks([]);
         setNextCursor(null);
@@ -524,16 +562,28 @@ export default function App() {
     const saved = await commitTaskMutation(task, async () => (done.task = await removedApi.remove<Task>("task", task)));
     if (saved && done.task) {
       setExpandedId(null);
-      setLastRemoved(done.task);
+      const removed = done.task;
+      setUndoable({
+        title: removed.title,
+        undo: async () => {
+          if (await commitTaskMutation(removed, () => removedApi.restore<Task>("task", removed))) {
+            setRemovedKey((key) => key + 1);
+          }
+        },
+      });
       setRemovedKey((key) => key + 1);
     }
   }
 
-  async function undoRemove(task: Task) {
-    setLastRemoved(null);
-    if (await commitTaskMutation(task, () => removedApi.restore<Task>("task", task))) {
-      setRemovedKey((key) => key + 1);
-    }
+  /** Runs the pending Undo once; the notice goes away whether or not it succeeds. */
+  function runUndo(): boolean {
+    if (!undoable || undoing) return false;
+    const pending = undoable;
+    setUndoable(null);
+    setUndoError(null);
+    setUndoing(true);
+    void pending.undo().finally(() => setUndoing(false));
+    return true;
   }
 
   function markDirty(id: string, dirty: boolean) {
@@ -619,6 +669,14 @@ export default function App() {
       setLoadingMore(false);
     }
   }
+
+  useShortcuts({
+    palette: () => undefined,
+    newTask: () => undefined,
+    search: () => undefined,
+    settings: () => undefined,
+    undo: runUndo,
+  });
 
   const keepMounted = useMemo(
     () => new Set([...dirtyIds, ...(expandedId ? [expandedId] : [])]), [dirtyIds, expandedId],
@@ -791,16 +849,6 @@ export default function App() {
               </div>
             )}
 
-            {lastRemoved && (
-              <div role="status" aria-label="Moved to Removed" className="notice-banner">
-                <span>“{lastRemoved.title}” moved to Removed</span>
-                <button className="button button-small" type="button" disabled={Boolean(savingId)}
-                  onClick={() => void undoRemove(lastRemoved)}>
-                  Undo
-                </button>
-              </div>
-            )}
-
             {createdHidden && (
               <div role="status" aria-label="Task hidden by filters" className="notice-banner">
                 <span>Task added, but hidden by the current search or filters</span>
@@ -948,9 +996,26 @@ export default function App() {
             scopeName={noteScope.kind === "folder"
               ? noteFolders.byId.get(noteScope.folderId)?.name ?? "Folder" : "Notes"}
             folders={noteFolders.options} request={notesRequest} onOpenTask={openLinkedTask}
-            refreshKey={notesRefresh} onRemoved={() => setRemovedKey((key) => key + 1)}
+            refreshKey={notesRefresh} onRemoved={noteRemoved}
             onScopeHidden={() => setNoteScope(ALL_NOTES)} />
         </Suspense>
+      )}
+      {undoError && !undoable && (
+        <div role="alert" className="undo-bar undo-bar--error">
+          <span>{undoError}</span>
+          <button className="button button-small" type="button" onClick={() => setUndoError(null)}>
+            Dismiss
+          </button>
+        </div>
+      )}
+      {undoable && (
+        <div role="status" aria-label="Moved to Removed" className="undo-bar">
+          <span>“{undoable.title}” moved to Removed</span>
+          <button className="button button-small" type="button" disabled={undoing || Boolean(savingId)}
+            onClick={runUndo}>
+            Undo
+          </button>
+        </div>
       )}
     </div>
   );

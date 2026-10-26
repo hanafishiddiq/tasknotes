@@ -108,7 +108,32 @@ textarea:disabled {
 .app-shell {
   display: grid;
   grid-template-columns: 210px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
   height: 100vh;
+}
+.app-shell > .sidebar {
+  grid-column: 1;
+  grid-row: 1 / -1;
+}
+.app-shell > :not(.sidebar):not(.undo-bar) {
+  grid-column: 2;
+  grid-row: 1;
+}
+/* Undo sits in the window's last row, flat and in flow: nothing floats. */
+.undo-bar {
+  grid-column: 2;
+  grid-row: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 16px;
+  border-top: 1px solid var(--sep);
+  color: var(--text-2);
+  background: var(--hover);
+}
+.undo-bar--error {
+  color: var(--red);
 }
 
 /* Sidebar: Notes-style folder list */
@@ -1736,7 +1761,19 @@ kbd {
   }
   .app-shell {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+  .app-shell > .sidebar {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .app-shell > :not(.sidebar):not(.undo-bar) {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .undo-bar {
+    grid-column: 1;
+    grid-row: 3;
   }
   .sidebar {
     flex-direction: row;

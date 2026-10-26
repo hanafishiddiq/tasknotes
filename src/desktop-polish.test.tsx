@@ -283,3 +283,41 @@ describe("Keyboard navigation in the Task list", () => {
     expect(screen.getByRole("button", { name: "Open Synthetic task 2" })).toHaveFocus();
   });
 });
+
+describe("Undo", () => {
+  it("undoes moving a List to Removed with Undo or Cmd+Z", async () => {
+    lists = [{ id: "list-1", name: "Errands", revision: 1, removed: false, createdAt: 1, updatedAt: 1 } as TaskList];
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("Your list is clear");
+    await user.click(screen.getByRole("button", { name: "Remove Errands" }));
+    const notice = await screen.findByRole("status", { name: "Moved to Removed" });
+    expect(notice).toHaveTextContent("“Errands” moved to Removed");
+    expect(screen.queryByRole("button", { name: "Errands" })).not.toBeInTheDocument();
+
+    await user.keyboard("{Meta>}z{/Meta}");
+    expect(await screen.findByRole("button", { name: "Errands" })).toBeInTheDocument();
+    expect(lists[0].removed).toBe(false);
+    expect(call).toHaveBeenCalledWith("set_list_removed", {
+      input: { id: "list-1", expectedRevision: 2, removed: false },
+    });
+    expect(screen.queryByRole("status", { name: "Moved to Removed" })).not.toBeInTheDocument();
+  });
+
+  it("leaves Cmd+Z to a text field that is being typed in", async () => {
+    tasks = [task(1)];
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open Synthetic task 1" }));
+    await user.click(screen.getByRole("button", { name: "Move to Removed" }));
+    await screen.findByRole("status", { name: "Moved to Removed" });
+    await user.click(screen.getByRole("textbox", { name: "Task title" }));
+    await user.keyboard("{Meta>}z{/Meta}");
+    expect(tasks[0].removedAt).not.toBeNull();
+
+    await user.click(screen.getByRole("heading", { name: "All tasks" }));
+    await user.keyboard("{Meta>}z{/Meta}");
+    expect(await screen.findByRole("article", { name: "Synthetic task 1" })).toBeInTheDocument();
+    expect(tasks[0].removedAt).toBeNull();
+  });
+});
