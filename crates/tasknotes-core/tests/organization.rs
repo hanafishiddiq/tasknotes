@@ -430,7 +430,7 @@ fn a_v3_database_upgrades_to_v4_without_changing_task_history() {
                     previous_progress,progress,note,next_step,created_at)
              VALUES('bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb','{id}','ready','in_progress',
                     0,42,'Historic note','Finish audit',123);
-             DROP TABLE IF EXISTS audit_entries;
+             DROP TABLE IF EXISTS audit_entries; DROP TABLE IF EXISTS bulk_requests;
              PRAGMA user_version=3;"
         )).unwrap();
     }
@@ -660,7 +660,7 @@ fn v3_to_v4_migration_failure_rolls_back_ddl_and_preserves_task_history() {
              -- Deliberate synthetic name collision encountered *after* v4 List DDL
              -- and ALTER TABLE in the transaction, to prove that partial writes roll back.
              CREATE TABLE tags(name TEXT PRIMARY KEY);
-             DROP TABLE IF EXISTS audit_entries;
+             DROP TABLE IF EXISTS audit_entries; DROP TABLE IF EXISTS bulk_requests;
              PRAGMA user_version = 3;"
         )).unwrap();
     }
@@ -881,7 +881,7 @@ fn opening_a_v7_database_merges_tags_that_now_fold_alike() {
          );
          DROP TABLE note_folders;
          DROP INDEX tasks_removed_order; DROP INDEX lists_removed_order;
-         DROP TABLE IF EXISTS audit_entries;
+         DROP TABLE IF EXISTS audit_entries; DROP TABLE IF EXISTS bulk_requests;
          PRAGMA user_version = 7;",
         second.id, both.id
     ))

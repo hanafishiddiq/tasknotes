@@ -292,7 +292,7 @@ fn v8_database(db: &Path) -> (String, String) {
              ALTER TABLE note_folders DROP COLUMN removed_at;
              CREATE UNIQUE INDEX note_folders_sibling_name
                ON note_folders(coalesce(parent_id, ''), name_fold);
-             DROP TABLE IF EXISTS audit_entries;
+             DROP TABLE IF EXISTS audit_entries; DROP TABLE IF EXISTS bulk_requests;
              PRAGMA user_version = 8;",
         )
         .unwrap();

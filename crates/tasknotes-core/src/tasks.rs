@@ -18,6 +18,10 @@ pub use crate::search::{TaskQuery, TaskScope};
 pub struct TaskStore {
     path: PathBuf,
     interface: Interface,
+    /// Set only while the desktop applies a Bulk Change an AI interface
+    /// asked for: the person approved it, so changes are recorded under the
+    /// desktop, but the AI's privacy rules still hold (`bulk`).
+    requested_by: Option<Interface>,
 }
 
 #[derive(Debug, Error)]
@@ -126,12 +130,21 @@ pub enum TaskError {
         position: usize,
         error: Box<TaskError>,
     },
-    #[error(
-        "Something in this preview changed since it was made; nothing was changed. Preview again"
-    )]
+    #[error("Something in this request changed since it was made; nothing was changed. Ask again")]
     StalePreview,
-    #[error("This preview has expired; nothing was changed. Preview again")]
+    #[error("This request has expired; nothing was changed. Ask again")]
     PreviewExpired,
+    /// Removing a List or Note Folder that holds anything, through an AI
+    /// interface, waits for the person's approval (owner decision B). The
+    /// message never says how much it holds.
+    #[error(
+        "Removing this needs the person's approval in Tasknotes; request it with a bulk preview"
+    )]
+    NeedsApproval,
+    #[error("Bulk Change request not found")]
+    BulkRequestNotFound,
+    #[error("This request has already been decided")]
+    BulkRequestDecided,
     /// A refusal whose Audit Entry could not be written; see `audit_unrecorded`.
     #[error("{0}")]
     AuditUnrecorded(Box<TaskError>),
@@ -191,9 +204,8 @@ impl TaskError {
             | InvalidLinkCursor
             | InvalidAuditCursor
             | InvalidListCursor => "invalid_cursor",
-            NotFound | ListNotFound | NoteNotFound | NoteFolderNotFound | LinkNotFound => {
-                "not_found"
-            }
+            NotFound | ListNotFound | NoteNotFound | NoteFolderNotFound | LinkNotFound
+            | BulkRequestNotFound => "not_found",
             RevisionConflict | NoteRevisionConflict | NoteFolderRevisionConflict => {
                 "revision_conflict"
             }
@@ -202,10 +214,12 @@ impl TaskError {
             }
             ListNameConflict | NoteFolderNameConflict => "name_conflict",
             InvalidTransition(_) => "invalid_transition",
-            TaskUnchanged | ListUnchanged | RemovedUnchanged | NoteFolderUnchanged => "unchanged",
+            TaskUnchanged | ListUnchanged | RemovedUnchanged | NoteFolderUnchanged
+            | BulkRequestDecided => "unchanged",
             AuditUnrecorded(refusal) => refusal.code(),
             BulkItemRefused { error, .. } => error.code(),
             StalePreview | PreviewExpired => "stale_preview",
+            NeedsApproval => "needs_approval",
             NotAuthorized => "not_trusted",
             DesktopOnly => "desktop_only",
             UnsupportedSchema(_) => "unsupported_schema",
@@ -443,6 +457,36 @@ fn read_task_with_tags(conn: &Connection, id: &str) -> Result<Option<Task>, Task
     Ok(task)
 }
 
+/// The checks a status, priority, progress or Next Step change needs before
+/// any data is read (also made by bulk status changes); returns the trimmed
+/// progress note.
+pub(crate) fn checked_change(
+    input: &ChangeTask,
+    next_step: Option<&str>,
+    note: Option<String>,
+) -> Result<String, TaskError> {
+    let note = note.unwrap_or_default();
+    if note.chars().count() > 10_000 {
+        return Err(TaskError::ProgressNoteTooLong);
+    }
+    let note = note.trim().to_owned();
+    if next_step.is_some_and(|value| value.chars().count() > 4_000) {
+        return Err(TaskError::NextStepTooLong);
+    }
+    if input.status.is_none()
+        && input.priority.is_none()
+        && input.progress.is_none()
+        && next_step.is_none()
+        && note.is_empty()
+    {
+        return Err(TaskError::EmptyProgressUpdate);
+    }
+    if input.progress.is_some_and(|progress| progress > 100) {
+        return Err(TaskError::InvalidProgress);
+    }
+    Ok(note)
+}
+
 pub(crate) fn current_millis() -> Result<i64, TaskError> {
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -500,7 +544,9 @@ pub(crate) fn read_task(row: &Row<'_>) -> rusqlite::Result<Task> {
 pub(crate) const COLUMNS: &str = "id, title, description, status, priority, progress, revision, created_at, updated_at, next_step, list_id, due_date, removed_at";
 
 /// The database schema this core reads and writes.
-pub const SCHEMA_VERSION: i64 = 12;
+/// v13 is Ticket 13's (backups), built in parallel; Bulk Change requests
+/// take v14 and are renumbered if needed when the branches meet.
+pub const SCHEMA_VERSION: i64 = 14;
 
 /// How long a write waits for another process (the CLI, MCP) holding the database lock.
 pub const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -659,9 +705,15 @@ impl TaskStore {
             crate::privacy::migrate_v12(&migration)?;
             migration.commit()?;
         }
+        if version < 14 {
+            let migration = connection.transaction()?;
+            crate::bulk::migrate_v14(&migration)?;
+            migration.commit()?;
+        }
         Ok(Self {
             path: path.to_path_buf(),
             interface: Interface::Desktop,
+            requested_by: None,
         })
     }
 
@@ -676,6 +728,19 @@ impl TaskStore {
 
     pub fn interface(&self) -> Interface {
         self.interface
+    }
+
+    /// The AI interface whose approved Bulk Change this store is applying.
+    pub(crate) fn requested_by(&self) -> Option<Interface> {
+        self.requested_by
+    }
+
+    /// This desktop store, applying what `requester` asked for.
+    pub(crate) fn acting_for(&self, requester: Interface) -> Self {
+        Self {
+            requested_by: (requester != Interface::Desktop).then_some(requester),
+            ..self.clone()
+        }
     }
 
     pub(crate) fn connect(&self) -> Result<Connection, TaskError> {
@@ -839,29 +904,7 @@ impl TaskStore {
         next_step: Option<String>,
         note: Option<String>,
     ) -> Result<Task, TaskError> {
-        let note = note.unwrap_or_default();
-        if note.chars().count() > 10_000 {
-            return Err(TaskError::ProgressNoteTooLong);
-        }
-        let note = note.trim().to_owned();
-        if next_step
-            .as_ref()
-            .is_some_and(|value| value.chars().count() > 4_000)
-        {
-            return Err(TaskError::NextStepTooLong);
-        }
-        if input.status.is_none()
-            && input.priority.is_none()
-            && input.progress.is_none()
-            && next_step.is_none()
-            && note.is_empty()
-        {
-            return Err(TaskError::EmptyProgressUpdate);
-        }
-        if input.progress.is_some_and(|progress| progress > 100) {
-            return Err(TaskError::InvalidProgress);
-        }
-
+        let note = checked_change(&input, next_step.as_deref(), note)?;
         let mut conn = self.connect()?;
         let transaction = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let updated = self.apply_task_change_in(&transaction, action, input, next_step, note)?;

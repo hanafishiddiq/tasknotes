@@ -18,7 +18,6 @@ pub enum Interface {
     #[default]
     Desktop,
     Cli,
-    /// Reserved for the MCP adapter (Ticket 12).
     Mcp,
 }
 
@@ -31,7 +30,7 @@ impl Interface {
         }
     }
 
-    fn from_sql(value: &str) -> Option<Self> {
+    pub(crate) fn from_sql(value: &str) -> Option<Self> {
         match value {
             "desktop" => Some(Self::Desktop),
             "cli" => Some(Self::Cli),
@@ -88,6 +87,9 @@ actions! {
     LinkCreate => "link.create",
     LinkRemove => "link.remove",
     LinkRestore => "link.restore",
+    BulkRequest => "bulk.request",
+    BulkApprove => "bulk.approve",
+    BulkDecline => "bulk.decline",
 }
 
 impl AuditAction {
@@ -105,6 +107,7 @@ impl AuditAction {
                 "note_folders"
             }
             LinkCreate | LinkRemove | LinkRestore => "task_note_links",
+            BulkRequest | BulkApprove | BulkDecline => "bulk_requests",
         }
     }
 }
@@ -148,6 +151,9 @@ pub struct AuditEntry {
     pub error_code: Option<String>,
     /// The revision a change produced, or the stale one a rejected change named.
     pub revision: Option<i64>,
+    /// For a change the person approved in the desktop (`interface` is
+    /// then `desktop`): the AI interface that asked for it.
+    pub requested_by: Option<Interface>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -190,12 +196,20 @@ struct NewAuditEntry<'a> {
     revision: Option<i64>,
 }
 
-fn insert(conn: &Connection, interface: Interface, entry: &NewAuditEntry) -> Result<(), TaskError> {
+/// Who an entry is recorded under: the interface, and for an approved Bulk
+/// Change the AI interface that asked for it.
+type Recorder = (Interface, Option<Interface>);
+
+fn insert(
+    conn: &Connection,
+    (interface, requested_by): Recorder,
+    entry: &NewAuditEntry,
+) -> Result<(), TaskError> {
     conn.execute(
         &format!(
             "INSERT INTO audit_entries (id, created_at, interface, action, entity_id, outcome,
-                                        error_code, revision, hidden_from_ai)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, {})",
+                                        error_code, revision, requested_by, hidden_from_ai)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, {})",
             crate::privacy::hidden_at_record_sql("?4", "?5")
         ),
         params![
@@ -207,6 +221,7 @@ fn insert(conn: &Connection, interface: Interface, entry: &NewAuditEntry) -> Res
             entry.outcome.as_str(),
             entry.error_code,
             entry.revision,
+            requested_by.map(Interface::as_str),
         ],
     )?;
     Ok(())
@@ -222,7 +237,7 @@ fn meaningful_rejection(error: &TaskError) -> bool {
 /// an arbitrary string the caller passed as an id.
 fn insert_rejection(
     conn: &Connection,
-    interface: Interface,
+    recorder: Recorder,
     entry: &NewAuditEntry,
 ) -> Result<(), TaskError> {
     let table = entry.action.entity_table();
@@ -232,7 +247,7 @@ fn insert_rejection(
         |row| row.get(0),
     )?;
     if exists {
-        insert(conn, interface, entry)?;
+        insert(conn, recorder, entry)?;
     }
     Ok(())
 }
@@ -274,6 +289,32 @@ impl Revisioned for crate::notes::MoveNote {
 }
 
 impl TaskStore {
+    fn recorder(&self) -> Recorder {
+        (self.interface(), self.requested_by())
+    }
+
+    /// Record a refusal about an entity in `conn`, outside any change: a
+    /// stale Bulk Change approval names only the request.
+    pub(crate) fn audit_rejected(
+        &self,
+        conn: &Connection,
+        action: AuditAction,
+        entity_id: &str,
+        error_code: &'static str,
+    ) -> Result<(), TaskError> {
+        insert_rejection(
+            conn,
+            self.recorder(),
+            &NewAuditEntry {
+                action,
+                entity_id,
+                outcome: AuditOutcome::Rejected,
+                error_code: Some(error_code),
+                revision: None,
+            },
+        )
+    }
+
     /// Record an applied change inside the transaction that makes it, so the
     /// change and its Audit Entry commit or roll back together.
     pub(crate) fn audit_applied(
@@ -286,7 +327,7 @@ impl TaskStore {
         let revision = revision.into();
         insert(
             tx,
-            self.interface(),
+            self.recorder(),
             &NewAuditEntry {
                 action,
                 entity_id,
@@ -323,7 +364,7 @@ impl TaskStore {
                 };
                 match self
                     .connect()
-                    .and_then(|conn| insert_rejection(&conn, self.interface(), &entry))
+                    .and_then(|conn| insert_rejection(&conn, self.recorder(), &entry))
                 {
                     Ok(()) => Err(error),
                     Err(_) => Err(TaskError::AuditUnrecorded(Box::new(error))),
@@ -368,7 +409,8 @@ impl TaskStore {
         };
         let private = self.ai_audit_filter_sql();
         let mut statement = conn.prepare(&format!(
-            "SELECT id, created_at, interface, action, entity_id, outcome, error_code, revision
+            "SELECT id, created_at, interface, action, entity_id, outcome, error_code, revision,
+                    requested_by
              FROM audit_entries
              WHERE (?1 IS NULL OR entity_id = ?1) AND (?2 IS NULL OR sequence < ?2) {private}
              ORDER BY sequence DESC LIMIT ?3"
@@ -390,6 +432,13 @@ impl TaskStore {
                         .ok_or_else(|| crate::tasks::invalid_db_text(5, outcome))?,
                     error_code: row.get(6)?,
                     revision: row.get(7)?,
+                    requested_by: match row.get::<_, Option<String>>(8)? {
+                        None => None,
+                        Some(value) => Some(
+                            Interface::from_sql(&value)
+                                .ok_or_else(|| crate::tasks::invalid_db_text(8, value))?,
+                        ),
+                    },
                 })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;

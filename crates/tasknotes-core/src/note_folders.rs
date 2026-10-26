@@ -130,6 +130,17 @@ fn get_folder(conn: &Connection, id: &str) -> Result<Option<NoteFolder>, TaskErr
         .optional()?)
 }
 
+/// Whether the folder holds any subfolder or Note, in Removed or not, and
+/// whatever the Note's Exclude from AI flag.
+pub(crate) fn folder_holds_anything(conn: &Connection, id: &str) -> Result<bool, TaskError> {
+    Ok(conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM note_folders WHERE parent_id = ?1)
+             OR EXISTS(SELECT 1 FROM notes WHERE folder_id = ?1)",
+        params![id],
+        |row| row.get(0),
+    )?)
+}
+
 /// The folder's own level plus every ancestor: a top-level folder is 1.
 /// The walk also lists the ancestors, which is how a cycle is detected.
 fn ancestors(conn: &Connection, id: &str) -> Result<Vec<String>, TaskError> {
@@ -452,7 +463,27 @@ impl TaskStore {
     ) -> Result<NoteFolder, TaskError> {
         let mut conn = self.connect()?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let old = get_folder(&tx, &input.id)?.ok_or(TaskError::NoteFolderNotFound)?;
+        let removing = input.removed;
+        let changed = self.set_note_folder_removed_in(&tx, input, action)?;
+        // Owner decision B: through an AI interface, a folder holding any
+        // subfolder or Note waits for approval (`bulk`). Notes marked Exclude
+        // from AI count too, and the refusal never says how many there are.
+        if removing && self.needs_approval_to_empty() && folder_holds_anything(&tx, &changed.id)? {
+            return Err(TaskError::NeedsApproval);
+        }
+        tx.commit()?;
+        Ok(changed)
+    }
+
+    /// The change inside the caller's write transaction (also used by an
+    /// approved Bulk Change); the caller commits.
+    pub(crate) fn set_note_folder_removed_in(
+        &self,
+        tx: &Transaction,
+        input: SetRemoved,
+        action: AuditAction,
+    ) -> Result<NoteFolder, TaskError> {
+        let old = get_folder(tx, &input.id)?.ok_or(TaskError::NoteFolderNotFound)?;
         if old.revision != input.expected_revision {
             return Err(TaskError::NoteFolderRevisionConflict);
         }
@@ -462,11 +493,11 @@ impl TaskStore {
         // Below a Removed folder this one is hidden with it; that folder
         // comes first, whether restoring or removing this one on its own.
         if let Some(parent) = old.parent_id.as_deref() {
-            require_folder(&tx, parent)?;
+            require_folder(tx, parent)?;
         }
         if !input.removed {
             require_unique_name(
-                &tx,
+                tx,
                 old.parent_id.as_deref(),
                 &name_fold(&old.name),
                 Some(&old.id),
@@ -479,9 +510,8 @@ impl TaskStore {
              WHERE id = ?3 AND revision = ?4",
             params![input.removed.then_some(now), now, old.id, old.revision],
         )?;
-        let changed = get_folder(&tx, &old.id)?.ok_or(TaskError::NoteFolderNotFound)?;
-        self.audit_applied(&tx, action, &changed.id, changed.revision)?;
-        tx.commit()?;
+        let changed = get_folder(tx, &old.id)?.ok_or(TaskError::NoteFolderNotFound)?;
+        self.audit_applied(tx, action, &changed.id, changed.revision)?;
         Ok(changed)
     }
 }

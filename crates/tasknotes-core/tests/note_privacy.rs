@@ -78,6 +78,8 @@ fn a_v10_database_keeps_its_notes_visible_to_ai_after_gaining_the_flag() {
     conn.execute_batch(
         "ALTER TABLE notes DROP COLUMN exclude_from_ai;
          ALTER TABLE audit_entries DROP COLUMN hidden_from_ai;
+         ALTER TABLE audit_entries DROP COLUMN requested_by;
+         DROP TABLE bulk_requests;
          PRAGMA user_version = 10;",
     )
     .unwrap();
