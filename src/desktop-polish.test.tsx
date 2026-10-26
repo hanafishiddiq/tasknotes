@@ -412,6 +412,32 @@ describe("Undo", () => {
     expect(screen.queryByRole("status", { name: "Moved to Removed" })).not.toBeInTheDocument();
   });
 
+  it("undoes recent removals newest first, even after moving between views", async () => {
+    tasks = [task(1, { title: "Alpha" }), task(2, { title: "Bravo" })];
+    const user = userEvent.setup();
+    render(<App />);
+    for (const name of ["Alpha", "Bravo"]) {
+      await user.click(await screen.findByRole("button", { name: `Open ${name}` }));
+      await user.click(screen.getByRole("button", { name: "Move to Removed" }));
+      await waitFor(() => expect(screen.queryByRole("article", { name })).not.toBeInTheDocument());
+    }
+    expect(screen.getByRole("status", { name: "Moved to Removed" })).toHaveTextContent("“Bravo” moved to Removed");
+
+    await user.click(screen.getByRole("button", { name: "Inbox" }));
+    await user.click(screen.getByRole("button", { name: "All tasks" }));
+    await screen.findByText("Your list is clear");
+
+    await user.keyboard("{Meta>}z{/Meta}");
+    expect(await screen.findByRole("article", { name: "Bravo" })).toBeInTheDocument();
+    expect(tasks[0].removedAt).not.toBeNull();
+    await user.keyboard("{Meta>}z{/Meta}");
+    expect(await screen.findByRole("article", { name: "Alpha" })).toBeInTheDocument();
+    expect(tasks.every((item) => item.removedAt === null)).toBe(true);
+    // Nothing left to undo: Cmd+Z does nothing more.
+    await user.keyboard("{Meta>}z{/Meta}");
+    expect(call.mock.calls.filter(([command]) => command === "set_task_removed")).toHaveLength(4);
+  });
+
   it("leaves Cmd+Z to a text field that is being typed in", async () => {
     tasks = [task(1)];
     const user = userEvent.setup();

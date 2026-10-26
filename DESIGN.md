@@ -309,7 +309,7 @@ A page like Removed: the Headline "Settings", then Label Strong section names ("
 A 560px sheet on the sidebar gray, 72px from the top of the window, with a 1px hairline edge and 8px radius; no shadow and no dimmed backdrop. A search field (accent underline when focused) over 28px command rows: label left, its group ("Go to", "Actions") right in tertiary gray. The highlighted row takes the selected-row color. Free text adds a last row, "Search for "text"".
 
 ### Undo Notice
-After anything moves to Removed, a flat bar in the window's last row (under the main column, beside the sidebar): hover-gray fill, hairline top, secondary text ""Title" moved to Removed" and a small Undo button. It stays in flow (never floats) and leaves on the next navigation; ⌘Z outside a text field does the same Undo.
+After anything moves to Removed, a flat bar in the window's last row (under the main column, beside the sidebar): hover-gray fill, hairline top, secondary text ""Title" moved to Removed" and a small Undo button. It stays in flow (never floats) and the bar leaves on the next navigation, but the last 10 moves to Removed stay undoable, newest first: ⌘Z outside a text field, or Undo in the ⌘K palette, takes back the newest even after moving between views.
 
 ### Virtualized Task Rows
 Only rows near the visible part of the list are in the page; spacers stand in for the rest, so scrolling, row heights and group headings look exactly as if every row were there. The space above a later status group belongs to its heading (`task-group-heading--later`) so it is measured. A closed row still holding typed text says "Unsaved edits" in italic secondary gray in its metadata.
