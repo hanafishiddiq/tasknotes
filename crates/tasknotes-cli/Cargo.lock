@@ -343,6 +343,7 @@ dependencies = [
  "caseless",
  "rusqlite",
  "serde",
+ "serde_json",
  "thiserror",
  "unicode-normalization",
  "uuid",

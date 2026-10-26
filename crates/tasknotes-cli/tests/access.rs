@@ -1,4 +1,5 @@
-//! Q47: the CLI works only after the person grants local access.
+//! Q47: the CLI works only after the person has explicitly set up access
+//! from a terminal. This is a configuration step, not a security barrier.
 
 mod common;
 
@@ -47,7 +48,10 @@ fn a_damaged_trust_file_is_not_trust() {
 
 #[test]
 fn a_person_at_a_terminal_who_types_allow_grants_access_privately() {
-    use tasknotes_cli::access::{Environment, cli_trusted, grant};
+    use tasknotes_cli::access::{Environment, grant};
+    use tasknotes_core::ai_access::is_authorized;
+    use tasknotes_core::audit::Interface;
+    let cli_trusted = |data: &std::path::Path| is_authorized(data, Interface::Cli);
     let dir = tempfile::tempdir().unwrap();
     let data = dir.path().join("data");
     let terminal = Environment {

@@ -10,6 +10,7 @@ use std::ffi::OsString;
 use std::path::Path;
 
 use serde_json::{Value, json};
+use tasknotes_core::ai_access;
 use tasknotes_core::audit::Interface;
 use tasknotes_core::removed::SetRemoved;
 use tasknotes_core::tasks::{
@@ -81,9 +82,8 @@ fn dispatch(
     if !matches!(noun, "task" | "list" | "audit") {
         return Err(CliError::invalid(USAGE));
     }
-    // Refuse before the database is opened, created or migrated.
-    access::require_trust(&data_dir)?;
-    let store = TaskStore::open_as(&data_dir.join(access::DATABASE_FILE), Interface::Cli)?;
+    // The core refuses before the database is opened, created or migrated.
+    let store = ai_access::open_authorized(&data_dir, Interface::Cli)?;
     match noun {
         "task" => task_command(&store, verb, words),
         "list" => list_command(&store, verb, words),
@@ -98,7 +98,7 @@ const NO_FLAGS: Spec = flags(&[], 0);
 
 fn access_status(data_dir: &Path) -> Value {
     contract::success_item(json!({
-        "cli": access::cli_trusted(data_dir),
+        "cli": ai_access::is_authorized(data_dir, Interface::Cli),
         "data_dir": data_dir.display().to_string(),
     }))
 }

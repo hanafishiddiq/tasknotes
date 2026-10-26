@@ -34,7 +34,7 @@ impl CliError {
     pub fn not_trusted() -> Self {
         Self::new(
             "not_trusted",
-            "Tasknotes CLI access has not been granted on this Mac. \
+            "Tasknotes CLI access has not been set up for this data directory. \
              The person using Tasknotes can run `tasknotes access grant` in a terminal.",
         )
     }
@@ -55,7 +55,11 @@ impl CliError {
 
 impl From<TaskError> for CliError {
     fn from(error: TaskError) -> Self {
-        Self::new(error.code(), error.to_string())
+        match error {
+            // Tell the person how to grant access from this interface.
+            TaskError::NotAuthorized => Self::not_trusted(),
+            error => Self::new(error.code(), error.to_string()),
+        }
     }
 }
 

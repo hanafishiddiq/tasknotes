@@ -1,20 +1,17 @@
-//! Where the data lives, and whether the person has granted CLI access (Q47).
-//!
-//! Access is an interface authorization boundary, not protection from a
-//! same-user process that edits files directly (ADR-0004).
+//! Where the data lives, and the terminal step by which the person grants
+//! CLI access. Reading and checking the access configuration is the core's
+//! (`tasknotes_core::ai_access`), so the MCP adapter applies the same rule.
 
 use std::ffi::OsString;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use serde_json::Value;
+use tasknotes_core::ai_access;
+use tasknotes_core::audit::Interface;
 
 use crate::contract::CliError;
 
 /// The desktop app's identifier; its OS data directory holds `tasknotes.db`.
-const APP_IDENTIFIER: &str = "store.adamaja.tasknotes";
-pub const DATABASE_FILE: &str = "tasknotes.db";
-pub const TRUST_FILE: &str = "ai-access.json";
+pub const APP_IDENTIFIER: &str = "store.adamaja.tasknotes";
 
 /// What the process was started with, so tests never depend on the real
 /// environment.
@@ -54,28 +51,13 @@ pub fn data_dir(flag: Option<&str>, env: &Environment) -> Result<PathBuf, CliErr
     Ok(base.join(APP_IDENTIFIER))
 }
 
-/// Granted only by a well-formed file saying exactly `"cli": true`.
-pub fn cli_trusted(data_dir: &Path) -> bool {
-    let Ok(text) = std::fs::read_to_string(data_dir.join(TRUST_FILE)) else {
-        return false;
-    };
-    let Ok(value) = serde_json::from_str::<Value>(&text) else {
-        return false;
-    };
-    value["schema_version"] == 1 && value["cli"] == true
-}
-
-pub fn require_trust(data_dir: &Path) -> Result<(), CliError> {
-    if cli_trusted(data_dir) {
-        Ok(())
-    } else {
-        Err(CliError::not_trusted())
-    }
-}
-
-/// Grant access, but only to a person at an interactive terminal who types
-/// `allow`. AI clients normally run commands without a terminal, so they
-/// cannot grant themselves access through this command.
+/// Record the person's decision to authorize the CLI, but only from an
+/// interactive terminal where they type `allow`.
+///
+/// This is an explicit configuration step, not a security barrier: it keeps
+/// an AI client from being authorized by accident, but any process with a
+/// terminal, or with same-user access to the data directory, can bypass it
+/// (Q47, ADR-0004). The desktop window has no switch for it yet.
 pub fn grant(
     data_dir: &Path,
     env: &Environment,
@@ -91,22 +73,9 @@ pub fn grant(
     if answer.trim() != "allow" {
         return Err(CliError::new("not_trusted", "Access was not granted"));
     }
-    std::fs::create_dir_all(data_dir)
-        .map_err(|e| CliError::new("storage_unavailable", e.to_string()))?;
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
-    #[cfg(unix)]
-    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-    options
-        .open(data_dir.join(TRUST_FILE))
-        .and_then(|mut file| file.write_all(br#"{"schema_version":1,"cli":true}"#))
-        .map_err(|e| CliError::new("storage_unavailable", e.to_string()))
+    Ok(ai_access::set_authorized(data_dir, Interface::Cli, true)?)
 }
 
 pub fn revoke(data_dir: &Path) -> Result<(), CliError> {
-    match std::fs::remove_file(data_dir.join(TRUST_FILE)) {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(CliError::new("storage_unavailable", e.to_string())),
-    }
+    Ok(ai_access::set_authorized(data_dir, Interface::Cli, false)?)
 }

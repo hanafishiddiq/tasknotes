@@ -118,6 +118,8 @@ pub enum TaskError {
     InvalidLinkCursor,
     #[error("Invalid Audit Entry page cursor")]
     InvalidAuditCursor,
+    #[error("This AI interface has not been authorized for Tasknotes data")]
+    NotAuthorized,
     #[error("Unsupported database schema version {0}; refusing to modify a newer database")]
     UnsupportedSchema(i64),
     #[error("Unable to open local storage: {0}")]
@@ -174,6 +176,7 @@ impl TaskError {
             ListNameConflict | NoteFolderNameConflict => "name_conflict",
             InvalidTransition(_) => "invalid_transition",
             TaskUnchanged | ListUnchanged | RemovedUnchanged | NoteFolderUnchanged => "unchanged",
+            NotAuthorized => "not_trusted",
             UnsupportedSchema(_) => "unsupported_schema",
             Io(_) | Sqlite(_) | Clock => "storage_unavailable",
         }
