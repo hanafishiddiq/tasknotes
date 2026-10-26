@@ -1,5 +1,5 @@
 //! Where the data lives, and the terminal step by which the person grants
-//! CLI access. Reading and checking the access configuration is the core's
+//! CLI or MCP access. Reading and checking the access configuration is the core's
 //! (`tasknotes_core::ai_access`), so the MCP adapter applies the same rule.
 
 use std::ffi::OsString;
@@ -51,8 +51,9 @@ pub fn data_dir(flag: Option<&str>, env: &Environment) -> Result<PathBuf, CliErr
     Ok(base.join(APP_IDENTIFIER))
 }
 
-/// Record the person's decision to authorize the CLI, but only from an
-/// interactive terminal where they type `allow`.
+/// Record the person's decision to authorize one AI interface (the CLI, or
+/// local MCP clients), but only from an interactive terminal where they type
+/// `allow`. `confirm` is told which interface it is asking about.
 ///
 /// This is an explicit configuration step, not a security barrier: it keeps
 /// an AI client from being authorized by accident, but any process with a
@@ -60,8 +61,9 @@ pub fn data_dir(flag: Option<&str>, env: &Environment) -> Result<PathBuf, CliErr
 /// (Q47, ADR-0004). The desktop window has no switch for it yet.
 pub fn grant(
     data_dir: &Path,
+    interface: Interface,
     env: &Environment,
-    confirm: impl FnOnce() -> std::io::Result<String>,
+    confirm: impl FnOnce(Interface) -> std::io::Result<String>,
 ) -> Result<(), CliError> {
     if !env.stdin_is_terminal {
         return Err(CliError::new(
@@ -69,15 +71,16 @@ pub fn grant(
             "Access can only be granted from an interactive terminal by the person using Tasknotes",
         ));
     }
-    let answer = confirm().map_err(|e| CliError::new("storage_unavailable", e.to_string()))?;
+    let answer =
+        confirm(interface).map_err(|e| CliError::new("storage_unavailable", e.to_string()))?;
     if answer.trim() != "allow" {
         return Err(CliError::new("not_trusted", "Access was not granted"));
     }
-    Ok(ai_access::set_authorized(data_dir, Interface::Cli, true)?)
+    Ok(ai_access::set_authorized(data_dir, interface, true)?)
 }
 
-pub fn revoke(data_dir: &Path) -> Result<(), CliError> {
-    Ok(ai_access::set_authorized(data_dir, Interface::Cli, false)?)
+pub fn revoke(data_dir: &Path, interface: Interface) -> Result<(), CliError> {
+    Ok(ai_access::set_authorized(data_dir, interface, false)?)
 }
 
 #[cfg(test)]

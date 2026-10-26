@@ -1,6 +1,6 @@
 //! The versioned JSON contract AI clients read (`CONTRACT_VERSION` 1, sent as
-//! `schema_version`). Ticket 12's
-//! MCP adapter is meant to reuse these shapes so both interfaces agree.
+//! `schema_version`). The MCP adapter (`tasknotes-mcp`) returns these same
+//! envelopes and shapes, so both AI interfaces agree.
 //!
 //! Success: `{"schema_version":1,"ok":true,"item":{..}}`, or for a page
 //! `{"schema_version":1,"ok":true,"items":[..],"next_cursor":null|".."}`.
@@ -15,7 +15,7 @@ use tasknotes_core::links::{LinkedNote, LinkedTask, NoteLink};
 use tasknotes_core::note_folders::NoteFolder;
 use tasknotes_core::notes::{Note, NoteSummary};
 use tasknotes_core::removed::RemovedItem;
-use tasknotes_core::tasks::{List, ProgressEntry, Task, TaskError};
+use tasknotes_core::tasks::{List, ProgressEntry, Task, TaskError, TaskStore};
 
 /// The version of this JSON contract, sent as `schema_version` in every
 /// envelope. Not the database schema (`tasknotes_core::tasks::SCHEMA_VERSION`).
@@ -178,6 +178,39 @@ pub fn note_summary(note: &NoteSummary, folder_path: Option<String>) -> Value {
         "pinned": note.pinned,
         "snippet": note.snippet.as_deref().map(|s| s.replace(['\u{2}', '\u{3}'], "")),
     })
+}
+
+/// The `folder_path` an AI interface shows for a Note in `folder_id`.
+pub fn folder_path_of(
+    store: &TaskStore,
+    folder_id: Option<&str>,
+) -> Result<Option<String>, CliError> {
+    Ok(folder_id.map(|id| store.note_folder_path(id)).transpose()?)
+}
+
+/// A Note with its folder path, read through `store`.
+pub fn note_read(store: &TaskStore, item: &Note) -> Result<Value, CliError> {
+    Ok(note(
+        item,
+        folder_path_of(store, item.folder_id.as_deref())?,
+    ))
+}
+
+/// A listed or found Note with its folder path, read through `store`.
+pub fn note_summary_read(store: &TaskStore, item: &NoteSummary) -> Result<Value, CliError> {
+    Ok(note_summary(
+        item,
+        folder_path_of(store, item.folder_id.as_deref())?,
+    ))
+}
+
+/// A folder with its path and the Notes this interface may see in it.
+pub fn folder_read(store: &TaskStore, item: &NoteFolder) -> Result<Value, CliError> {
+    Ok(folder(
+        item,
+        store.note_folder_path(&item.id)?,
+        store.count_folder_notes(Some(&item.id))?,
+    ))
 }
 
 /// `path` is the names from the top level down joined with `/`;
