@@ -1,6 +1,6 @@
 # Ticket 12 — MCP stdio integration and safe bulk mutations: plan (2026-10-26)
 
-Started on the owner's instruction (Tickets 05–18 autonomy: Draft PR per ticket, AI review gate, no merge, synthetic data only). Built on `integration/tasknotes-v1-07-18` at a05b6ec (Tickets 07–11, 14–16). Ticket 13 (backup/restore/export) is built in parallel; this ticket needed no schema change (still v12).
+Started on the owner's instruction (Tickets 05–18 autonomy: Draft PR per ticket, AI review gate, no merge, synthetic data only). Built on `integration/tasknotes-v1-07-18` at a05b6ec (Tickets 07–11, 14–16). Ticket 13 (backup/restore/export) is built in parallel; this ticket first needed no schema change; the 2026-10-26 owner decisions added schema v14 (`bulk_requests`, `audit_entries.requested_by`), leaving v13 to Ticket 13.
 
 ## Scope
 
@@ -8,9 +8,10 @@ A local MCP server, `tasknotes-mcp`, that a trusted AI client starts over stdio.
 
 ## Test seams (pre-agreed in the spec, Q48)
 
-1. **Core interface** (`crates/tasknotes-core/tests/bulk.rs`): preview, apply, stale-preview guard, expiry, selection limits, Exclude from AI, interface binding.
+1. **Core interface** (`crates/tasknotes-core/tests/bulk.rs`): request, desktop-only approve/decline, persisted requests, stale guard (items and target List), generic stale audit, 24 h expiry, selection limits, Exclude from AI, container removals needing approval, status-change parity with `change_task`.
 2. **Adapter contract** (`crates/tasknotes-mcp/tests/*.rs`): every test spawns the real `tasknotes-mcp` binary against a temporary data directory and speaks newline-delimited JSON-RPC 2.0 (`initialize`, `notifications/initialized`, `tools/list`, `tools/call`). The desktop side is the core store opened directly on the same file.
-3. **CLI** (`crates/tasknotes-cli/tests/access.rs`): `access grant|revoke --mcp`.
+3. **CLI** (`crates/tasknotes-cli/tests/access.rs`, `bulk.rs`): `access grant|revoke --mcp`; `bulk preview|status`, `needs_approval`.
+4. **Desktop** (`src/approvals.test.tsx`, Vitest over the Tauri command seam): Waiting for approval count, preview, Approve, Decline, stale, folder contents, refresh on focus.
 
 ## Decisions (saya pilih X karena Y; owner may revisit)
 
@@ -20,17 +21,18 @@ A local MCP server, `tasknotes-mcp`, that a trusted AI client starts over stdio.
 - **Tool results**: each `tools/call` result carries the envelope as `structuredContent` and as one text block (for clients that read only text), with `isError` = `!ok`. Envelope `schema_version` stays 1.
 - **Authorization (Q47)**: the person runs `tasknotes access grant --mcp` in a terminal and types `allow` (same rule as the CLI; `revoke --mcp`, and `access status` now shows `cli` and `mcp`). CLI access does not imply MCP access. The server answers `initialize` and `tools/list` without it (discovery reveals no data), but **every `tools/call` checks `ai_access::is_authorized(dir, Mcp)` before its arguments are read**, then opens the store with `ai_access::open_authorized(dir, Interface::Mcp)`, which refuses before the database is opened, created or migrated. Checking per call means a revoke applies to the next call without restarting the client. Refusal: `not_trusted`, message names `tasknotes access grant --mcp`.
 - **Data directory**: `--data-dir DIR`, else `TASKNOTES_DATA_DIR`, else the desktop's directory (`tasknotes_cli::access::data_dir`). stdout carries only protocol messages; diagnostics go to stderr.
-- **Calls run one at a time** (a mutex around each call, on a blocking section). Found by a test: pipelined calls on a fresh data directory raced in the first `TaskStore::open` and one got `database is locked`. The core is synchronous SQLite with short transactions, so serializing costs nothing noticeable for one client.
-- **Tool set (41)**: `task_list|get|create|update|change|progress|details|move|remove|restore|history|notes`, `list_list|create|rename|remove|restore`, `note_list|get|create|update|move|remove|restore|tasks`, `folder_list|get|create|rename|move|remove|restore`, `link_create|get|remove|restore`, `removed_list`, `audit_list`, `bulk_preview`, `bulk_confirm`. Arguments mirror the CLI flags in snake_case (`revision`, `list_id`/`inbox`, `folder_id`/`no_folder`, `parent_id`/`top`, `deadline: null` clears, `tags: []` clears). Every argument object has `additionalProperties: false`; unknown fields, wrong types and unknown enum values are `invalid_input`. Read tools carry `readOnlyHint`; write tools `destructiveHint: false` (nothing is ever deleted). There is no tool for Exclude from AI or Pin (desktop-only, as in the CLI).
-- **What counts as a high-risk bulk change**: any single request that changes several items: remove / restore / move / set status of Tasks, remove / restore of Notes (1–100 distinct ids). These only exist as `bulk_preview` → `bulk_confirm`. Single-item tools need no confirmation (they name a revision and are reversible). Removing one List or Note Folder hides what is inside it, but it is one reversible change restored by one restore, so saya pilih tetap tool satu item (sama seperti CLI), bukan lewat preview.
-- **Preview → confirm design (rules in core `tasknotes_core::bulk`, token in the adapter)**:
-  - `preview_bulk` runs the whole change in one `BEGIN IMMEDIATE` transaction through the same per-item code as single changes, then rolls back. The preview is therefore exactly what would happen, and is refused (naming the item: `Item 2: …`, with the item's own code) if any one item would be.
-  - It returns a `BulkPlan` that only the core can construct: action, each id with the revision it had, the interface, the time.
-  - `apply_bulk` replays the plan in one transaction against those revisions and commits all or nothing. Any refusal during apply (an item edited, removed, excluded from AI, or the target List removed) becomes `stale_preview` with a generic message that names no item, so a Note excluded in between is not singled out. Storage errors stay `storage_unavailable`. Plans expire after 10 minutes (`BULK_PREVIEW_TTL_MS`) and apply only through the interface that made them.
-  - The MCP adapter keeps plans in memory behind a random 128-bit token, per server process (session), at most 16 unconfirmed. A token is spent on the first `bulk_confirm`, whether it applies or is refused; unknown, reused or other-session tokens are `stale_preview`. Nothing is persisted; a restarted server forgets its previews.
-  - Each applied item gets its ordinary Audit Entry (`task.remove`, `task.move`, …) in the same transaction. A preview writes no Audit Entry (rolled back); a stale confirm is not audited.
-  - Note items in previews omit `markdown` so 100 Notes stay small.
-- **Malformed requests**: unknown tool → JSON-RPC `-32602 "Unknown tool: …"`; unknown method → `-32601`; a `tools/call` without a name or with non-object arguments → JSON-RPC error; lines that are not JSON-RPC 2.0 get at most an id-less `-32600`/`-32700` error (rmcp behaviour) and the server keeps serving.
+- **Only opening the store is serialized** (a mutex around `open_authorized`). Found by a test: pipelined calls on a fresh data directory raced in the first `TaskStore::open`/migration and one got `database is locked`. After opening, each call uses its own connection and waits out SQLite's busy timeout like the CLI and desktop do (review fix 5; the pipelined test still passes, 15/15 repeated runs).
+- **Tool set (40)**: `task_list|get|create|update|change|progress|details|move|remove|restore|history|notes`, `list_list|create|rename|remove|restore`, `note_list|get|create|update|move|remove|restore|tasks`, `folder_list|get|create|rename|move|remove|restore`, `link_create|get|remove|restore`, `removed_list`, `audit_list`, `bulk_preview`, `bulk_status` (exact set asserted in `protocol.rs`). Tools live in `tools_task.rs`, `tools_note.rs`, `tools_bulk.rs` over `tools.rs`. Arguments mirror the CLI flags in snake_case (`revision`, `list_id`/`inbox`, `folder_id`/`no_folder`, `parent_id`/`top`, `deadline: null` clears, `tags: []` clears). Every argument object has `additionalProperties: false`; unknown fields, wrong types and unknown enum values are `invalid_input`. Read tools carry `readOnlyHint`; write tools `destructiveHint: false` (nothing is ever deleted). There is no tool for Exclude from AI or Pin (desktop-only, as in the CLI).
+- **Bulk Changes need the person's approval in the desktop (owner decisions A and B, Han 2026-10-26; replaces the earlier preview → token → confirm design).** An AI (CLI or MCP) can only ask; no AI path can apply a Bulk Change, and the rule is the core's (`tasknotes_core::bulk`), so it holds for every AI interface:
+  - What needs approval: one request that removes / restores / moves / sets the status of several Tasks, or removes / restores several Notes (1–100 distinct ids); and, through an AI interface, removing a List or Note Folder that holds anything (any Task; any subfolder or Note, Removed or not, Exclude from AI included). `list_remove` / `folder_remove` (and the CLI's `list|folder remove`) on such a container answer `needs_approval` (CLI exit 5) without saying how much it holds; an empty one is still removed directly. Restores stay direct.
+  - `request_bulk` (MCP `bulk_preview`, CLI `tasknotes bulk preview --action A --id ID…`) runs the whole change in one `BEGIN IMMEDIATE` transaction through the same per-item code as single changes and rolls it back, so the preview is exactly what would happen, refused (`Item 2: …`, with the item's code) if any item would be. It then stores a pending request in `bulk_requests` (schema v14; v13 is Ticket 13's, renumber at merge if needed): action, every id with the revision it had and, for a move to a List, that List's revision. Requests live in the database, so they wait while the desktop is closed and survive the MCP server. They expire after 24 h (`BULK_REQUEST_TTL_MS`).
+  - The answer to the AI: `request_id`, `status: pending`, the action (with `list_id` / `status`), `count`, times, a `message` saying it waits for the person in the Tasknotes app, and each item before/after (Notes without `markdown`). For a List or folder removal: no `count` and no `items`, only that it waits.
+  - `bulk_status` (CLI `tasknotes bulk status ID`) reports `pending`, `applied`, `declined`, `stale` or `expired`. `bulk_confirm` and the in-memory tokens are gone.
+  - The desktop's **Waiting for approval** view (sidebar entry with a count while anything waits; asked on start, on focus and every 30 s) shows each request as one sentence plus everything it changes or would hide, private Notes marked "Excluded from AI". Approve replays the stored plan in one transaction, all or nothing, under the AI's privacy rules (a Note excluded since makes it stale). Item Audit Entries are recorded under `desktop` with `requested_by` naming the AI; the request has `bulk.request` (AI), `bulk.approve` / `bulk.decline` (desktop) entries. If anything named, or the move's target List (renamed, removed, any revision change), changed since the request, nothing is applied, the request becomes `stale`, and **one generic Audit Entry** (`bulk.approve`, rejected, `stale_preview`, entity = the request id, no revision) records the refusal, naming no item, so a Note excluded in between is not singled out. A stale request offers only Decline.
+  - Residual signal, accepted by decision B: an AI can tell that a folder whose AI-visible contents are empty still holds something (excluded Notes), because removing it needs approval instead of succeeding. It never learns how many, or which.
+  - Bulk status changes go through `change_task`'s own pre-checks (`checked_change`) and transition code; a test compares twins changed one at a time and through approval.
+- **Arguments:** `tasknotes_cli::bulk::BulkArgs`, a serde-tagged enum (`action` + per-action fields), shared by CLI and MCP; action names are the core's serde names (no string tables). The MCP tool advertises a flat object schema built from it (clients reject a root `oneOf`). One move-target rule, `contract::destination` ("exactly one of list_id or inbox: true" / "--list ID or --inbox"), serves single moves, note/folder moves and bulk moves.
+- **Malformed requests**: unknown tool → JSON-RPC `-32602 "Unknown tool: …"`; unknown method → `-32601`; a `tools/call` without a name or with non-object arguments → JSON-RPC error; a line that is not JSON gets no reply at all (rmcp, like the other official SDKs, skips it) and the next request is answered (`malformed.rs`); JSON that is not JSON-RPC 2.0 gets an id-less `-32600`; the server keeps serving.
 
 ## Client setup
 
@@ -55,7 +57,7 @@ Claude Desktop (`~/Library/Application Support/Claude/claude_desktop_config.json
 }
 ```
 
-Add `"args": ["--data-dir", "/path/to/data"]` to use another data directory. The client starts the process; nothing listens on a port, and the desktop window need not be open.
+Add `"args": ["--data-dir", "/path/to/data"]` to use another data directory. The client starts the process; nothing listens on a port, and the desktop window need not be open. Bulk Changes (and removing a List or folder that holds anything) are only *requested* through MCP; they apply after you approve them in Tasknotes under **Waiting for approval**, which you can do whenever you next open the app.
 
 ## Vertical TDD slices
 
@@ -66,11 +68,23 @@ Add `"args": ["--data-dir", "/path/to/data"]` to use another data directory. The
 5. MCP: Exclude from AI negative controls — every Note- or link-naming tool answers byte-identically (after masking the id) for an excluded Note and an unused id; listings, search, folder counts, Task links, Removed view and audit leave it out; no flag in output, unknown `exclude_from_ai` argument refused; stderr empty. Mutation check: opening the store as the desktop made 2 of the 3 privacy tests fail.
 6. MCP: malformed lines, unknown method/tool, bad arguments; pipelined calls (red: `database is locked`, fixed by serializing).
 7. Core: bulk preview/apply/stale/expiry/limits/privacy/interface.
-8. MCP: `bulk_preview`/`bulk_confirm` incl. stale-preview refusal after a desktop edit, spent and cross-session tokens, excluded Notes.
+8. MCP: `bulk_preview`/`bulk_status` over the persisted request; desktop approval, decline and staleness seen from MCP; no approving tool; excluded Notes; private folder reveals nothing.
+9. Desktop: Waiting for approval view.
+
+## Review fixes and owner decisions (2026-10-26)
+
+1. Stale approvals record one generic `bulk.approve` refusal about the request (core `a_change_after_the_request_makes_it_stale_with_a_generic_audit_entry`, `bulk_notes_respect_exclude_from_ai_like_single_changes`).
+2. CLI shares the flow: `tasknotes bulk preview|status` over `tasknotes_cli::bulk`, used by MCP too (CLI `tests/bulk.rs`).
+3. A move binds its target List's revision; renaming or removing it makes the request stale (core `renaming_or_removing_the_target_list_makes_a_move_stale`, MCP `moves_bind_the_target_list_and_use_the_shared_target_rule`).
+4. Tool count is 40 (exact set asserted); a non-JSON line gets no reply and the server answers the next request.
+5. Shared move-target rule; `BulkAction` is a serde enum and `BulkArgs` a tagged enum; tools split by noun; mutex narrowed to opening; bulk status changes share `checked_change`.
+6. **Open:** Ticket 13 integration (`ensure_daily_backup` at MCP start-up and periodically, bulk writes through the epoch-checked `begin_write`, MCP refused during restore, schema renumbering) waits for Ticket 13 to merge into `integration/tasknotes-v1-07-18`.
 
 ## Evidence (implementer's own runs, 2026-10-26)
 
-`crates/tasknotes-core` cargo test 146 passed; `crates/tasknotes-cli` 34 passed; `crates/tasknotes-mcp` 24 passed (6 stdio test files); `src-tauri` 41 passed; `cargo clippy --all-targets -- -D warnings` and `cargo fmt --check` clean in all four; `pnpm test` 233 passed; `pnpm build` ok.
+First pass: core 146, CLI 34, MCP 24, src-tauri 41, `pnpm test` 233.
+
+After review fixes and owner decisions (implementer's runs): `crates/tasknotes-core` cargo test 151 passed; `crates/tasknotes-cli` 38; `crates/tasknotes-mcp` 25 (1 unit + 24 stdio); `src-tauri` 41; `cargo clippy --all-targets -- -D warnings` and `cargo fmt --check` clean in all four; `pnpm test` 239 passed (23 files, incl. `src/approvals.test.tsx`); `pnpm typecheck` and `pnpm build` ok. A mutation check (Approve left enabled for a stale request) failed the stale UI test as expected.
 
 ## Not claimed / open
 
