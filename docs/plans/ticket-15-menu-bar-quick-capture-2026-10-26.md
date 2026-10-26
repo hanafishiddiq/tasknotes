@@ -37,3 +37,10 @@ Tickets 16 (sound) and 11 (Note CLI privacy) run in parallel. This ticket touche
 ## Not done here
 
 - No native launch was run: an isolated QA bundle (separate bundle identifier and data folder) was not set up in this worktree, and launching the shared identifier could touch the owner's WebView storage. The ticket carries a click-checklist.
+
+## Review fixes (2026-10-26)
+
+- Per-platform words and rules in `src-tauri/src/platform.rs`; every branch compiles and is tested on any host.
+- `src-tauri/src/shell_state.rs` is the testable shell state: one `ShellSettings`, saves that roll back on failure, the recorded tray outcome behind the close decision, the queued Quick Capture and the one-time launch notice. `shell.rs` is the Tauri glue only.
+- New commands `take_quick_capture` and `take_launch_notice`; the page collects both on mount.
+- New seams under test: `shell_state` unit tests against real temporary files (a data folder replaced by a file makes saves fail) and the fake shortcut table; React tests for shell-worded reasons, reset notice, refresh after errors, launch notice and cold start.

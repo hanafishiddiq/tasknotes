@@ -20,7 +20,7 @@
 
 - [ ] Verify native macOS tray/shortcut behavior through manual and supported automated acceptance checks.
 - [x] Relevant tests pass and evidence is recorded here. *(see Comments, 2026-10-26)*
-- [ ] Run `/code-review` and address findings before marking complete.
+- [x] Run `/code-review` and address findings before marking complete. *(findings fixed, see Comments 2026-10-26 — review fixes; native checks remain open)*
 
 ## Delivery guardrails
 
@@ -56,5 +56,27 @@ Native click-checklist for Han (synthetic data only: a debug build with `TASKNOT
 4. Tick "Open Quick Capture with a global shortcut", press ⌃⌥Space: the hint reads "Press ⌃⌥Space in any app to add a task." Switch to Safari, press ⌃⌥Space: Tasknotes comes forward with the New task field focused; type a title, Return: the Task appears in All tasks. Also try it with the window hidden in menu-bar mode, and New Task… from the menu-bar item.
 5. Quit and relaunch: both settings are still on, the menu-bar icon is there without opening Settings, and ⌃⌥Space works from another app straight away. Untick both, relaunch: no menu-bar icon, ⌃⌥Space does nothing, the hint says the combination is kept.
 6. Conflicts: record ⌘N → refused, with the two-modifier explanation and "⌘N still creates a task inside Tasknotes."; press Esc and check ⌘N still focuses New task. Record ⌘⇧4 → "macOS uses this for Screenshots". Record a combination another running app already holds globally (e.g. one set in Raycast/Alfred): "already used by another app or by macOS…", the previous shortcut keeps working. While recording, ⌘K/⌘F do nothing.
-7. Edit `shell-settings.json` in the test data folder to `{ broken`, relaunch: the app opens with defaults (closing quits); change a setting and the file is rewritten valid.
+7. Edit `shell-settings.json` in the test data folder to `{ broken`, relaunch: the app opens with defaults (closing quits), and Settings shows "Tasknotes could not read these saved settings, so the defaults are in use. Changing a setting saves them again." Change a setting: the line disappears and the file is rewritten valid.
+8. Launch notice: turn Quick Capture on with ⌃⌥Space and quit. In another app (e.g. Raycast/Alfred) bind ⌃⌥Space globally, relaunch Tasknotes: the Task view shows one banner "Quick Capture could not use ⌃⌥Space: it is already used by another app or by macOS, or the system refused it. Choose another shortcut in Settings. ⌘N still creates a task." with Open Settings and Dismiss. Creating a Task works with the banner up; Dismiss removes it; Open Settings opens the section with the same reason. Reload the page (⌘R in a debug build): the banner does not come back until the next launch.
+9. Cold start: with Quick Capture on, quit, then launch Tasknotes and press ⌃⌥Space straight away while the window is still loading: once the list appears the New task field is focused (the press is not lost).
+10. Rain with menu-bar mode (Ticket 16): with Ambient rain on, close the window in menu-bar mode: rain keeps playing; Open Tasknotes or ⌃⌥Space brings the window back with rain still playing. Untick menu-bar mode and close the window: the rain fades out and the app quits; with menu-bar mode on, Quit Tasknotes in the menu-bar item fades it out too.
 
+
+**2026-10-26 — review fixes (implementer, Ticket 15).** Status unchanged. Integration tip 930764d (Ticket 16 sound) merged in; Settings keeps both sections (Sound, then Menu bar and Quick Capture).
+
+What each code-review finding became:
+
+1. Platform: new `platform.rs` (`Platform::Mac / Windows / Other`, chosen by `cfg!` so every branch compiles and is tested on any host). Reserved-shortcut lists, key labels (`⌃⌥Space` vs `Ctrl+Alt+Space`, `Win+` on Windows, Return/Enter, Delete/Backspace), the system name in refusals, the tray place ("menu bar" / "notification area" / "system tray") and the Quit keys (⌘Q / Ctrl+Q) are per platform. No "macOS" text reaches another system. Module `cfg(desktop)` gates and the macOS-only Dock reopen are kept.
+2. No duplicated rules: refusal reasons and the close hint are worded in Rust (`ShortcutProblem::reason`, `unavailable_reason`, `ShellState::view`); Settings shows them. The New task keys come from `SHORTCUTS` (`newTaskKeys` in `src/lib/shortcuts.ts`).
+3. Unreadable `shell-settings.json`: Settings shows a calm status line that the defaults are in use until a setting is saved again.
+4. Persistence: `ShellState::set_keep_in_menu_bar` and `set_quick_capture` both undo the change on a failed save (the shortcut registration included, via `QuickCapture::restore`) and return the error; the tray is only synced after a successful save. Settings re-reads the shell after any error.
+5. Launch-time failure: the shell keeps a one-time launch notice (`take_launch_notice`); the Task view shows it once as a non-blocking banner with Open Settings / Dismiss and the New task keys. Task creation is unaffected (test).
+6. Cold start: a press (or the tray's New Task…) is queued in `ShellState`; the page collects it with `take_quick_capture` after its listener is ready and on each event, so it is neither lost nor doubled. A capture during loading waits for the New task field to be enabled.
+7. Tray: `build_tray` fails without an icon; `ShellState` records whether the item was really built and decides closing from that, so closing quits when it was not.
+8. Smells: `ShellState` holds one `ShellSettings` (QuickCapture no longer keeps its own copy); the remembered label is computed in `QuickCapture::view`; the run-event closure became `on_run_event(app, event)`.
+
+Ticket 16 seam: hiding to the menu bar tells the page nothing, so rain keeps playing (Ticket 16 engine test plus new App test in `src/sound.test.tsx`); closing with menu-bar mode off and the tray's Quit go through `quit::request`, which emits the quit request the Ticket 16 saver fades on (its App test). The Rust glue between closing and that event is build-checked only.
+
+Evidence (implementer's own runs, after the merge): `cargo test` in `src-tauri` 41 passed (24 before; quick_capture and the new `shell_state` tests); `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check`, `cargo build` clean. `pnpm test` 21 files / 231 tests passed; `pnpm typecheck` and `pnpm build` clean.
+
+Not verified: compiling for Windows or Linux targets (only `aarch64-apple-darwin` is installed; `cargo check` ran for the host only, though every platform branch is compiled and tested there); Linux tray (libappindicator) not built; no native launch (checklist below, items 8–10 new).
