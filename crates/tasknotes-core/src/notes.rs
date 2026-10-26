@@ -24,6 +24,9 @@ pub struct Note {
     pub pinned: bool,
     /// In Removed (ADR-0002); never a deletion.
     pub removed: bool,
+    /// Exclude from AI (ADR-0004): AI-facing interfaces treat the Note as
+    /// if it did not exist. Only the desktop sets it.
+    pub exclude_from_ai: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -98,8 +101,8 @@ pub struct NotePage {
     pub next_cursor: Option<String>,
 }
 
-pub(crate) const COLUMNS: &str =
-    "id, markdown, title, revision, created_at, updated_at, folder_id, pinned, removed_at";
+pub(crate) const COLUMNS: &str = "id, markdown, title, revision, created_at, updated_at, \
+    folder_id, pinned, removed_at, exclude_from_ai";
 
 /// Edit stamps never repeat, so the list follows the order of writes even when
 /// several land within one millisecond. `?4` is the current time.
@@ -348,6 +351,7 @@ pub(crate) fn read_note(row: &Row<'_>) -> rusqlite::Result<Note> {
         folder_id: row.get(6)?,
         pinned: row.get(7)?,
         removed: row.get::<_, Option<i64>>(8)?.is_some(),
+        exclude_from_ai: row.get(9)?,
     })
 }
 
@@ -570,7 +574,10 @@ impl TaskStore {
         Ok(self
             .connect()?
             .query_row(
-                &format!("SELECT {COLUMNS} FROM notes WHERE id = ?1"),
+                &format!(
+                    "SELECT {COLUMNS} FROM notes n WHERE id = ?1 AND {}",
+                    self.note_shown_sql("n")
+                ),
                 params![id],
                 read_note,
             )

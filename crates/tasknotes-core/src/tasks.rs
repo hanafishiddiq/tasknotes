@@ -123,6 +123,8 @@ pub enum TaskError {
     AuditUnrecorded(Box<TaskError>),
     #[error("This AI interface has not been authorized for Tasknotes data")]
     NotAuthorized,
+    #[error("Only the person, in the Tasknotes window, can change this")]
+    DesktopOnly,
     #[error("Unsupported database schema version {0}; refusing to modify a newer database")]
     UnsupportedSchema(i64),
     #[error("Unable to open local storage: {0}")]
@@ -188,6 +190,7 @@ impl TaskError {
             TaskUnchanged | ListUnchanged | RemovedUnchanged | NoteFolderUnchanged => "unchanged",
             AuditUnrecorded(refusal) => refusal.code(),
             NotAuthorized => "not_trusted",
+            DesktopOnly => "desktop_only",
             UnsupportedSchema(_) => "unsupported_schema",
             Io(_) | Sqlite(_) | Clock => "storage_unavailable",
         }
@@ -471,7 +474,7 @@ pub(crate) fn read_task(row: &Row<'_>) -> rusqlite::Result<Task> {
 pub(crate) const COLUMNS: &str = "id, title, description, status, priority, progress, revision, created_at, updated_at, next_step, list_id, due_date, removed_at";
 
 /// The database schema this core reads and writes.
-pub const SCHEMA_VERSION: i64 = 10;
+pub const SCHEMA_VERSION: i64 = 11;
 
 /// How long a write waits for another process (the CLI, MCP) holding the database lock.
 pub const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -618,6 +621,11 @@ impl TaskStore {
         if version < 10 {
             let migration = connection.transaction()?;
             crate::audit::migrate_v10(&migration)?;
+            migration.commit()?;
+        }
+        if version < 11 {
+            let migration = connection.transaction()?;
+            crate::privacy::migrate_v11(&migration)?;
             migration.commit()?;
         }
         Ok(Self {

@@ -288,6 +288,7 @@ fn v8_database(db: &Path) -> (String, String) {
              DROP INDEX lists_removed_order; DROP INDEX note_folders_removed_order;
              DROP INDEX note_folders_sibling_name;
              ALTER TABLE notes DROP COLUMN removed_at;
+             ALTER TABLE notes DROP COLUMN exclude_from_ai;
              ALTER TABLE note_folders DROP COLUMN removed_at;
              CREATE UNIQUE INDEX note_folders_sibling_name
                ON note_folders(coalesce(parent_id, ''), name_fold);
