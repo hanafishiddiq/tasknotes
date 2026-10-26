@@ -1,3 +1,4 @@
+/// <reference types="node" />
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -6,6 +7,7 @@ import { describe, expect, it } from "vitest";
  * jsdom applies no stylesheet, so focus, motion and contrast rules are checked
  * on App.css itself. The native click-checklist in Ticket 14 covers how they look.
  */
+// Vitest hands CSS imports back empty, so read the file itself.
 const css = readFileSync(resolve(__dirname, "App.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
 
 interface Rule { selector: string; body: string; media: string | null }
