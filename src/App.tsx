@@ -14,6 +14,7 @@ import TaskSidebar from "./components/TaskSidebar";
 import VirtualTaskList from "./components/VirtualTaskList";
 import { useLocalCalendarDay } from "./lib/use-local-calendar-day";
 import { useTheme } from "./lib/use-theme";
+import { useSound } from "./lib/sound/use-sound";
 import { useShortcuts } from "./lib/use-shortcuts";
 import { useTaskDrafts } from "./lib/use-task-drafts";
 import { useUndo } from "./lib/use-undo";
@@ -28,6 +29,7 @@ import NoteFolderTree from "./components/NoteFolderTree";
 import NoteSnippet from "./components/NoteSnippet";
 import RemovedView from "./components/RemovedView";
 import SettingsView from "./components/SettingsView";
+import SoundSettings from "./components/SoundSettings";
 import CommandPalette, { type Command } from "./components/CommandPalette";
 import { buildCommands } from "./lib/app-commands";
 import { removedApi, type RemovedItem } from "./lib/removed-api";
@@ -98,6 +100,7 @@ export default function App() {
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
   const appearance = useTheme();
+  const sound = useSound();
   // A Task view change in flight: moving elsewhere waits until it settles.
   const busy = busyList || creating || Boolean(savingId) || loadingMore;
   const titleInput = useRef<HTMLInputElement>(null);
@@ -425,6 +428,7 @@ export default function App() {
         { title, description },
         view.kind === "list" ? view.listId : undefined,
       );
+      sound.play("create");
       const generation = ++requestGeneration.current;
       const { sort: latestSort, view: latestView, filters: latestFilters } = currentQuery.current;
       // Clear only after the actual write succeeds; retry must not create a
@@ -497,6 +501,8 @@ export default function App() {
     const startCursor = currentPageCursor;
     try {
       const updated = await mutate();
+      // The core decides completion (status or 100% progress); the cue follows its answer.
+      if (task.status !== "completed" && updated.status === "completed") sound.play("complete");
       const generation = ++requestGeneration.current;
       const { sort: latestSort, view: latestView, filters: latestFilters } = currentQuery.current;
       // A cursor belongs to the query that produced it; a new query starts on page 1.
@@ -1002,7 +1008,9 @@ export default function App() {
         </div>
       </main>
       <SettingsView hidden={workspace !== "settings"} preference={appearance.preference}
-        onPreference={appearance.setPreference} />
+        onPreference={appearance.setPreference}>
+        <SoundSettings sound={sound} />
+      </SettingsView>
       <RemovedView hidden={workspace !== "removed"} refreshKey={removedKey} onRestored={restored} />
       {notesOpened && (
         <Suspense fallback={workspace === "notes" &&
