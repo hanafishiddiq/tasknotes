@@ -81,6 +81,23 @@ pub enum AuditOutcome {
     Rejected,
 }
 
+impl AuditOutcome {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Applied => "applied",
+            Self::Rejected => "rejected",
+        }
+    }
+
+    fn from_sql(value: &str) -> Option<Self> {
+        match value {
+            "applied" => Some(Self::Applied),
+            "rejected" => Some(Self::Rejected),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct AuditEntry {
     /// Append order; also the page cursor.
@@ -128,15 +145,16 @@ pub(crate) fn migrate_v10(migration: &Transaction) -> Result<(), TaskError> {
     Ok(())
 }
 
-fn insert(
-    conn: &Connection,
-    interface: Interface,
+/// One entry to append; the store adds the id, time and interface.
+struct NewAuditEntry<'a> {
     action: AuditAction,
-    entity_id: &str,
+    entity_id: &'a str,
     outcome: AuditOutcome,
-    error_code: Option<&str>,
-    revision: Option<i64>,
-) -> Result<(), TaskError> {
+    error_code: Option<&'static str>,
+    revision: i64,
+}
+
+fn insert(conn: &Connection, interface: Interface, entry: &NewAuditEntry) -> Result<(), TaskError> {
     conn.execute(
         "INSERT INTO audit_entries
            (id, created_at, interface, action, entity_id, outcome, error_code, revision)
@@ -145,14 +163,11 @@ fn insert(
             Uuid::new_v4().to_string(),
             current_millis()?,
             interface.as_str(),
-            action.as_str(),
-            entity_id,
-            match outcome {
-                AuditOutcome::Applied => "applied",
-                AuditOutcome::Rejected => "rejected",
-            },
-            error_code,
-            revision,
+            entry.action.as_str(),
+            entry.entity_id,
+            entry.outcome.as_str(),
+            entry.error_code,
+            entry.revision,
         ],
     )?;
     Ok(())
@@ -163,6 +178,33 @@ fn insert(
 fn meaningful_rejection(error: &TaskError) -> bool {
     matches!(error.code(), "revision_conflict" | "removed")
 }
+
+/// A change request that names the entity it changes and the revision the
+/// caller last read; `audited` records a refusal against them.
+pub(crate) trait Revisioned {
+    fn target(&self) -> (&str, i64);
+}
+
+macro_rules! revisioned {
+    ($($input:ty),+ $(,)?) => {
+        $(impl Revisioned for $input {
+            fn target(&self) -> (&str, i64) {
+                (&self.id, self.expected_revision)
+            }
+        })+
+    };
+}
+
+revisioned!(
+    crate::tasks::UpdateTask,
+    crate::tasks::ChangeTask,
+    crate::tasks::RecordProgress,
+    crate::organization::UpdateTaskDetails,
+    crate::organization::MoveTask,
+    crate::organization::RenameList,
+    crate::organization::SetListRemoved,
+    crate::removed::SetRemoved,
+);
 
 impl TaskStore {
     /// Record an applied change inside the transaction that makes it, so the
@@ -177,41 +219,45 @@ impl TaskStore {
         insert(
             tx,
             self.interface(),
-            action,
-            entity_id,
-            AuditOutcome::Applied,
-            None,
-            Some(revision),
+            &NewAuditEntry {
+                action,
+                entity_id,
+                outcome: AuditOutcome::Applied,
+                error_code: None,
+                revision,
+            },
         )
     }
 
     /// Run a change; when it is refused for a meaningful reason, record the
     /// refusal in its own transaction (the failed one has rolled back). The
     /// caller always gets the original error, even if recording fails.
-    pub(crate) fn audited<T>(
+    pub(crate) fn audited<I: Revisioned, T>(
         &self,
         action: AuditAction,
-        entity_id: &str,
-        expected_revision: i64,
-        change: impl FnOnce() -> Result<T, TaskError>,
+        input: I,
+        change: impl FnOnce(I) -> Result<T, TaskError>,
     ) -> Result<T, TaskError> {
-        let result = change();
+        let (entity_id, revision) = {
+            let (id, revision) = input.target();
+            (id.to_owned(), revision)
+        };
+        let result = change(input);
         if let Err(error) = &result
             && meaningful_rejection(error)
             && !entity_id.is_empty()
             && entity_id.len() <= 64
         {
-            let _ = self.connect().and_then(|conn| {
-                insert(
-                    &conn,
-                    self.interface(),
-                    action,
-                    entity_id,
-                    AuditOutcome::Rejected,
-                    Some(error.code()),
-                    Some(expected_revision),
-                )
-            });
+            let entry = NewAuditEntry {
+                action,
+                entity_id: &entity_id,
+                outcome: AuditOutcome::Rejected,
+                error_code: Some(error.code()),
+                revision,
+            };
+            let _ = self
+                .connect()
+                .and_then(|conn| insert(&conn, self.interface(), &entry));
         }
         result
     }
@@ -258,11 +304,8 @@ impl TaskStore {
                     action: AuditAction::from_sql(&action)
                         .ok_or_else(|| crate::tasks::invalid_db_text(4, action))?,
                     entity_id: row.get(5)?,
-                    outcome: match outcome.as_str() {
-                        "applied" => AuditOutcome::Applied,
-                        "rejected" => AuditOutcome::Rejected,
-                        _ => return Err(crate::tasks::invalid_db_text(6, outcome)),
-                    },
+                    outcome: AuditOutcome::from_sql(&outcome)
+                        .ok_or_else(|| crate::tasks::invalid_db_text(6, outcome))?,
                     error_code: row.get(7)?,
                     revision: row.get(8)?,
                 })

@@ -287,8 +287,7 @@ impl TaskStore {
         } else {
             AuditAction::TaskRestore
         };
-        let (id, revision) = (input.id.clone(), input.expected_revision);
-        self.audited(action, &id, revision, || {
+        self.audited(action, input, |input| {
             self.set_task_removed_inner(input, action)
         })
     }

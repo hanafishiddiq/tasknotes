@@ -688,21 +688,13 @@ impl TaskStore {
     }
 
     pub fn update_task(&self, input: UpdateTask) -> Result<Task, TaskError> {
-        let (title, description) = validated_text(&input.title, &input.description)?;
-        self.audited(
-            AuditAction::TaskUpdate,
-            &input.id,
-            input.expected_revision,
-            || self.update_task_text(&input, &title, &description),
-        )
+        self.audited(AuditAction::TaskUpdate, input, |input| {
+            self.update_task_inner(input)
+        })
     }
 
-    fn update_task_text(
-        &self,
-        input: &UpdateTask,
-        title: &str,
-        description: &str,
-    ) -> Result<Task, TaskError> {
+    fn update_task_inner(&self, input: UpdateTask) -> Result<Task, TaskError> {
+        let (title, description) = validated_text(&input.title, &input.description)?;
         let now = current_millis()?;
         let mut conn = self.connect()?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -748,8 +740,7 @@ impl TaskStore {
     /// Ready means not yet started. An in-progress Task does not become Ready when
     /// its percentage drops to zero; resetting previously started work is not implicit.
     pub fn change_task(&self, input: ChangeTask) -> Result<Task, TaskError> {
-        let (id, revision) = (input.id.clone(), input.expected_revision);
-        self.audited(AuditAction::TaskChange, &id, revision, || {
+        self.audited(AuditAction::TaskChange, input, |input| {
             self.apply_task_change(AuditAction::TaskChange, input, None, None)
         })
     }
@@ -757,13 +748,12 @@ impl TaskStore {
     /// Record a dated update to a Task's progress and/or Next Step; a note can
     /// stand alone so the user can log work without changing the percentage.
     pub fn record_progress(&self, input: RecordProgress) -> Result<Task, TaskError> {
-        let (id, revision) = (input.id.clone(), input.expected_revision);
-        self.audited(AuditAction::TaskProgress, &id, revision, || {
-            self.record_progress_entry(input)
+        self.audited(AuditAction::TaskProgress, input, |input| {
+            self.record_progress_inner(input)
         })
     }
 
-    fn record_progress_entry(&self, input: RecordProgress) -> Result<Task, TaskError> {
+    fn record_progress_inner(&self, input: RecordProgress) -> Result<Task, TaskError> {
         self.apply_task_change(
             AuditAction::TaskProgress,
             ChangeTask {

@@ -289,8 +289,7 @@ impl TaskStore {
     }
 
     pub fn update_task_details(&self, input: UpdateTaskDetails) -> Result<Task, TaskError> {
-        let (id, revision) = (input.id.clone(), input.expected_revision);
-        self.audited(AuditAction::TaskDetails, &id, revision, || {
+        self.audited(AuditAction::TaskDetails, input, |input| {
             self.update_task_details_inner(input)
         })
     }
@@ -356,8 +355,7 @@ impl TaskStore {
     }
 
     pub fn move_task(&self, input: MoveTask) -> Result<Task, TaskError> {
-        let (id, revision) = (input.id.clone(), input.expected_revision);
-        self.audited(AuditAction::TaskMove, &id, revision, || {
+        self.audited(AuditAction::TaskMove, input, |input| {
             self.move_task_inner(input)
         })
     }
@@ -430,8 +428,7 @@ impl TaskStore {
     }
 
     pub fn rename_list(&self, input: RenameList) -> Result<List, TaskError> {
-        let (id, revision) = (input.id.clone(), input.expected_revision);
-        self.audited(AuditAction::ListRename, &id, revision, || {
+        self.audited(AuditAction::ListRename, input, |input| {
             self.rename_list_inner(input)
         })
     }
@@ -480,8 +477,7 @@ impl TaskStore {
         } else {
             AuditAction::ListRestore
         };
-        let (id, revision) = (input.id.clone(), input.expected_revision);
-        self.audited(action, &id, revision, || {
+        self.audited(action, input, |input| {
             self.set_list_removed_inner(input, action)
         })
     }
