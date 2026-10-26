@@ -1,5 +1,5 @@
 import {
-  useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject,
+  useCallback, useLayoutEffect, type KeyboardEvent, useMemo, useRef, useState, type ReactNode, type RefObject,
 } from "react";
 import {
   defaultRangeExtractor, measureElement, observeElementRect, useVirtualizer, type Range, type Virtualizer,
@@ -24,6 +24,9 @@ interface VirtualTaskListProps {
    */
   keepMounted: ReadonlySet<string>;
   renderTask: (task: Task) => ReactNode;
+  /** The open Task, which Escape closes. */
+  expandedId: string | null;
+  onCollapse: () => void;
 }
 
 /**
@@ -59,10 +62,12 @@ function measureShown(
  * section keeps its own landmark and rows grow freely when they open.
  */
 export default function VirtualTaskList({
-  tasks, hasMore, scrollRef, keepMounted, renderTask,
+  tasks, hasMore, scrollRef, keepMounted, renderTask, expandedId, onCollapse,
 }: VirtualTaskListProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const [scrollMargin, setScrollMargin] = useState(0);
+  // The row keyboard focus is moving to; it stays mounted until focus lands.
+  const [focusTarget, setFocusTarget] = useState<{ id: string; seq: number } | null>(null);
 
   const items = useMemo<Item[]>(() => STATUS_ORDER.flatMap((status) => {
     const group = tasks.filter((task) => task.status === status);
@@ -74,7 +79,8 @@ export default function VirtualTaskList({
   }), [tasks]);
 
   const pinned = useMemo(() => items.flatMap((item, index) =>
-    item.kind === "task" && keepMounted.has(item.task.id) ? [index] : []), [items, keepMounted]);
+    item.kind === "task" && (keepMounted.has(item.task.id) || item.task.id === focusTarget?.id)
+      ? [index] : []), [items, keepMounted, focusTarget]);
 
   const rangeExtractor = useCallback((range: Range) => {
     const visible = defaultRangeExtractor(range);
@@ -109,6 +115,44 @@ export default function VirtualTaskList({
     }
     if (margin !== scrollMargin) setScrollMargin(margin);
   });
+
+  useLayoutEffect(() => {
+    if (!focusTarget) return;
+    listRef.current
+      ?.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(focusTarget.id)}"] .task-open`)
+      ?.focus();
+  }, [focusTarget]);
+
+  function focusTask(id: string) {
+    const index = items.findIndex((item) => item.kind === "task" && item.task.id === id);
+    if (index < 0) return;
+    virtualizer.scrollToIndex(index, { align: "auto" });
+    setFocusTarget((previous) => ({ id, seq: (previous?.seq ?? 0) + 1 }));
+  }
+
+  // Up/Down/Home/End move between rows (headings are skipped); Escape closes the open Task.
+  function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    const target = event.target as HTMLElement;
+    const id = target.closest<HTMLElement>("[data-task-id]")?.dataset.taskId;
+    if (!id) return;
+    if (event.key === "Escape" && id === expandedId) {
+      event.preventDefault();
+      onCollapse();
+      focusTask(id);
+      return;
+    }
+    if (!target.classList.contains("task-open")) return;
+    const order = items.flatMap((item) => item.kind === "task" ? [item.task.id] : []);
+    const at = order.indexOf(id);
+    const next = event.key === "ArrowDown" ? order[at + 1]
+      : event.key === "ArrowUp" ? order[at - 1]
+      : event.key === "Home" ? order[0]
+      : event.key === "End" ? order[order.length - 1]
+      : undefined;
+    if (next === undefined) return;
+    event.preventDefault();
+    focusTask(next);
+  }
 
   const virtualItems = virtualizer.getVirtualItems();
   const total = virtualizer.getTotalSize();
@@ -148,7 +192,7 @@ export default function VirtualTaskList({
   const tail = Math.max(0, total + scrollMargin - previousEnd);
 
   return (
-    <div className="task-list" ref={listRef}>
+    <div className="task-list" ref={listRef} onKeyDown={onKeyDown}>
       {sections.map(({ status, children }) => (
         <section key={status} className="task-group" aria-label={`${STATUS_VIEW[status].label} tasks`}>
           {children}

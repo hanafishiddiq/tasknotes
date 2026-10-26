@@ -240,3 +240,46 @@ describe("Virtualized Task rows", () => {
     expect(screen.getByRole("textbox", { name: "Next step" })).toHaveValue("Call the printer");
   });
 });
+
+describe("Keyboard navigation in the Task list", () => {
+  let restoreLayout: () => void;
+  beforeEach(() => {
+    restoreLayout = withLayout();
+    tasks = [
+      task(1, { status: "in_progress", progress: 40 }),
+      ...Array.from({ length: 200 }, (_, i) => task(i + 2)),
+    ];
+  });
+  afterEach(() => restoreLayout());
+
+  it("moves between Tasks with the arrow keys, across groups and off screen", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    (await screen.findByRole("button", { name: "Open Synthetic task 1" })).focus();
+
+    await user.keyboard("{ArrowDown}");
+    expect(screen.getByRole("button", { name: "Open Synthetic task 2" })).toHaveFocus();
+    await user.keyboard("{ArrowUp}");
+    expect(screen.getByRole("button", { name: "Open Synthetic task 1" })).toHaveFocus();
+    await user.keyboard("{End}");
+    expect(await screen.findByRole("button", { name: "Open Synthetic task 201" })).toHaveFocus();
+    await user.keyboard("{Home}");
+    expect(await screen.findByRole("button", { name: "Open Synthetic task 1" })).toHaveFocus();
+  });
+
+  it("opens with Return and closes with Escape, handing focus back to the row", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    (await screen.findByRole("button", { name: "Open Synthetic task 2" })).focus();
+    await user.keyboard("{Enter}");
+    const title = screen.getByRole("textbox", { name: "Edit title" });
+    await user.click(title);
+    // Arrow keys inside a field stay with the field.
+    await user.keyboard("{ArrowDown}");
+    expect(title).toHaveFocus();
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("region", { name: "Task details" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open Synthetic task 2" })).toHaveFocus();
+  });
+});

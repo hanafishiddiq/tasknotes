@@ -891,6 +891,8 @@ export default function App() {
                     hasMore={Boolean(nextCursor)}
                     scrollRef={taskScroll}
                     keepMounted={keepMounted}
+                    expandedId={expandedId}
+                    onCollapse={() => setExpandedId(null)}
                     renderTask={(task) => (
                       <TaskRow
                         task={task}
