@@ -9,9 +9,10 @@
 //!
 //! Every AI-facing Note read goes through one of the helpers below
 //! (`note_shown_sql`, `require_note_shown`, `link_shown_sql`,
-//! `ai_audit_filter_sql`); none writes `exclude_from_ai` itself. A new Note
-//! read that skips them would leak, so `tests/note_privacy.rs` walks every
-//! public Note read with an AI store against an excluded Note.
+//! `ai_audit_filter_sql`, `shared_with_ai_sql`); none writes
+//! `exclude_from_ai` itself. A new Note read that skips them would leak, so
+//! `tests/note_privacy.rs` walks every public Note read with an AI store
+//! against an excluded Note, and `tests/export.rs` checks every export.
 //!
 //! Audit history (coordinator decision 2026-10-26, the owner may revisit):
 //! an AI never sees a `note.privacy` entry, nor any entry about a Note, or a
@@ -55,6 +56,13 @@ fn excluded_sql(alias: &str) -> String {
     format!("{alias}.exclude_from_ai = 1")
 }
 
+/// SQL that is true when the Note aliased `alias` is shared with AI: what
+/// an AI interface may read, and what a human export holds unless the
+/// person includes private Notes (`export`).
+pub(crate) fn shared_with_ai_sql(alias: &str) -> String {
+    format!("NOT ({})", excluded_sql(alias))
+}
+
 /// True when `entity` (an SQL expression holding an id) names an excluded
 /// Note or a link to one.
 fn about_excluded_note_sql(entity: &str) -> String {
@@ -94,7 +102,7 @@ impl TaskStore {
     /// interface. Every Note read, listing, link list and count uses it.
     pub(crate) fn note_shown_sql(&self, alias: &str) -> String {
         if self.hides_private() {
-            format!("NOT ({})", excluded_sql(alias))
+            shared_with_ai_sql(alias)
         } else {
             "1".to_owned()
         }

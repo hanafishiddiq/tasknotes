@@ -443,7 +443,7 @@ pub(crate) fn retained(created_at: &[i64]) -> Vec<bool> {
 }
 
 /// (year, month 1–12, day 1–31) of a day counted from 1970-01-01.
-fn civil_from_days(days: i64) -> (i64, i64, i64) {
+pub(crate) fn civil_from_days(days: i64) -> (i64, i64, i64) {
     let z = days + 719_468;
     let era = z.div_euclid(146_097);
     let doe = z.rem_euclid(146_097);
