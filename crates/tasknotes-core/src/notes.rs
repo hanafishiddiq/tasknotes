@@ -5,6 +5,7 @@ use rusqlite::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::audit::AuditAction;
 use crate::search::{fingerprint, search_terms};
 use crate::tasks::{TaskError, TaskStore, current_millis};
 
@@ -384,6 +385,7 @@ impl TaskStore {
             ],
             read_note,
         )?;
+        self.audit_applied(&tx, AuditAction::NoteCreate, &note.id, note.revision)?;
         tx.commit()?;
         Ok(note)
     }
@@ -391,6 +393,12 @@ impl TaskStore {
     /// Placement only: the Markdown, its revision and the edit time stay, so
     /// an editor open on the Note keeps saving without a conflict.
     pub fn move_note(&self, input: MoveNote) -> Result<Note, TaskError> {
+        self.audited(AuditAction::NoteMove, input, |input| {
+            self.move_note_inner(input)
+        })
+    }
+
+    fn move_note_inner(&self, input: MoveNote) -> Result<Note, TaskError> {
         let mut conn = self.connect()?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         self.require_note_shown(&tx, &input.id)?;
@@ -410,6 +418,7 @@ impl TaskStore {
             .optional()?
             // The Note exists (checked above), so only the revision missed.
             .ok_or(TaskError::NoteRevisionConflict)?;
+        self.audit_applied(&tx, AuditAction::NoteMove, &note.id, note.revision)?;
         tx.commit()?;
         Ok(note)
     }
@@ -425,6 +434,7 @@ impl TaskStore {
             params![input.pinned, input.id],
             read_note,
         )?;
+        self.audit_applied(&tx, AuditAction::NotePin, &note.id, note.revision)?;
         tx.commit()?;
         Ok(note)
     }
@@ -432,6 +442,12 @@ impl TaskStore {
     /// Saves only over the revision the editor started from; a newer edit wins
     /// and the caller decides what to do with its text.
     pub fn update_note(&self, input: UpdateNote) -> Result<Note, TaskError> {
+        self.audited(AuditAction::NoteUpdate, input, |input| {
+            self.update_note_inner(input)
+        })
+    }
+
+    fn update_note_inner(&self, input: UpdateNote) -> Result<Note, TaskError> {
         check_length(&input.markdown)?;
         let now = current_millis()?;
         let mut conn = self.connect()?;
@@ -456,6 +472,7 @@ impl TaskStore {
             )
             .optional()?
             .ok_or(TaskError::NoteRevisionConflict)?;
+        self.audit_applied(&tx, AuditAction::NoteUpdate, &updated.id, updated.revision)?;
         tx.commit()?;
         Ok(updated)
     }

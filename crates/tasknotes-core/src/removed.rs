@@ -344,6 +344,21 @@ impl TaskStore {
     /// Removes or restores a Note. Its revision changes, so an editor open
     /// elsewhere notices; its edit time does not, so restoring is not an edit.
     pub fn set_note_removed(&self, input: SetRemoved) -> Result<Note, TaskError> {
+        let action = if input.removed {
+            AuditAction::NoteRemove
+        } else {
+            AuditAction::NoteRestore
+        };
+        self.audited(action, input, |input| {
+            self.set_note_removed_inner(input, action)
+        })
+    }
+
+    fn set_note_removed_inner(
+        &self,
+        input: SetRemoved,
+        action: AuditAction,
+    ) -> Result<Note, TaskError> {
         let mut conn = self.connect()?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         self.require_note_shown(&tx, &input.id)?;
@@ -378,6 +393,7 @@ impl TaskStore {
             ],
             read_note,
         )?;
+        self.audit_applied(&tx, action, &changed.id, changed.revision)?;
         tx.commit()?;
         Ok(changed)
     }

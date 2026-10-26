@@ -372,7 +372,10 @@ fn the_ai_removed_view_leaves_out_an_excluded_note() {
     let ai = fx.ai();
     for text in ["", "draft", "private"] {
         let page = ai.list_removed(text, 50, None).unwrap();
-        assert!(page.items.iter().all(|item| item.id != private.id), "{text:?}");
+        assert!(
+            page.items.iter().all(|item| item.id != private.id),
+            "{text:?}"
+        );
     }
     assert_eq!(ai.list_removed("", 50, None).unwrap().items.len(), 1);
     assert_eq!(desktop.list_removed("", 50, None).unwrap().items.len(), 2);
@@ -420,4 +423,181 @@ fn folder_paths_read_root_first_and_ai_counts_only_notes_it_may_see() {
             .code(),
         "not_found"
     );
+}
+
+fn actions(store: &TaskStore, entity: Option<&str>) -> Vec<(String, String, String)> {
+    let mut items = store.list_audit_entries(entity, 100, None).unwrap().items;
+    items.reverse();
+    items
+        .into_iter()
+        .map(|e| {
+            (
+                e.action.as_str().to_owned(),
+                e.interface.as_str().to_owned(),
+                e.outcome.as_str().to_owned(),
+            )
+        })
+        .collect()
+}
+
+fn triple(action: &str, interface: &str, outcome: &str) -> (String, String, String) {
+    (action.into(), interface.into(), outcome.into())
+}
+
+#[test]
+fn note_folder_and_link_changes_are_audited_for_every_interface() {
+    use tasknotes_core::note_folders::{CreateNoteFolder, MoveNoteFolder, RenameNoteFolder};
+    use tasknotes_core::notes::{MoveNote, SetNotePinned, UpdateNote};
+    use tasknotes_core::removed::SetRemoved;
+    let fx = Fixture::new();
+    let desktop = fx.desktop();
+    let ai = fx.ai();
+    let chore = task(&desktop, "Synthetic chore");
+    let start = desktop
+        .list_audit_entries(None, 100, None)
+        .unwrap()
+        .items
+        .len();
+
+    let folder = ai
+        .create_note_folder(CreateNoteFolder {
+            name: "Inbox notes".into(),
+            parent_id: None,
+        })
+        .unwrap();
+    let folder = ai
+        .rename_note_folder(RenameNoteFolder {
+            id: folder.id.clone(),
+            expected_revision: folder.revision,
+            name: "Reading".into(),
+        })
+        .unwrap();
+    let parent = desktop
+        .create_note_folder(CreateNoteFolder {
+            name: "Home".into(),
+            parent_id: None,
+        })
+        .unwrap();
+    let folder = ai
+        .move_note_folder(MoveNoteFolder {
+            id: folder.id.clone(),
+            expected_revision: folder.revision,
+            parent_id: Some(parent.id.clone()),
+        })
+        .unwrap();
+    let removed = ai
+        .set_note_folder_removed(SetRemoved {
+            id: folder.id.clone(),
+            expected_revision: folder.revision,
+            removed: true,
+        })
+        .unwrap();
+    ai.set_note_folder_removed(SetRemoved {
+        id: folder.id.clone(),
+        expected_revision: removed.revision,
+        removed: false,
+    })
+    .unwrap();
+
+    let n = ai
+        .create_note(CreateNote {
+            markdown: "# Synthetic reading list".into(),
+            folder_id: None,
+        })
+        .unwrap();
+    let n = ai
+        .update_note(UpdateNote {
+            id: n.id.clone(),
+            markdown: "# Synthetic reading list, longer".into(),
+            expected_revision: n.revision,
+        })
+        .unwrap();
+    // A stale write is refused and recorded, like a Task's.
+    let stale = ai.update_note(UpdateNote {
+        id: n.id.clone(),
+        markdown: "# Stale".into(),
+        expected_revision: n.revision - 1,
+    });
+    assert_eq!(stale.unwrap_err().code(), "revision_conflict");
+    ai.move_note(MoveNote {
+        id: n.id.clone(),
+        folder_id: Some(folder.id.clone()),
+        expected_revision: Some(n.revision),
+    })
+    .unwrap();
+    desktop
+        .set_note_pinned(SetNotePinned {
+            id: n.id.clone(),
+            pinned: true,
+        })
+        .unwrap();
+    let link = ai.link_note(&chore.id, &n.id).unwrap();
+    ai.unlink_note(&link.id).unwrap();
+    ai.restore_link(&link.id).unwrap();
+    let gone = ai
+        .set_note_removed(SetRemoved {
+            id: n.id.clone(),
+            expected_revision: n.revision,
+            removed: true,
+        })
+        .unwrap();
+    ai.set_note_removed(SetRemoved {
+        id: n.id.clone(),
+        expected_revision: gone.revision,
+        removed: false,
+    })
+    .unwrap();
+    desktop
+        .set_note_exclude_from_ai(SetNoteExcludeFromAi {
+            id: n.id.clone(),
+            exclude_from_ai: true,
+        })
+        .unwrap();
+
+    let all = actions(&desktop, None);
+    assert_eq!(
+        all[start..].to_vec(),
+        vec![
+            triple("folder.create", "cli", "applied"),
+            triple("folder.rename", "cli", "applied"),
+            triple("folder.create", "desktop", "applied"),
+            triple("folder.move", "cli", "applied"),
+            triple("folder.remove", "cli", "applied"),
+            triple("folder.restore", "cli", "applied"),
+            triple("note.create", "cli", "applied"),
+            triple("note.update", "cli", "applied"),
+            triple("note.update", "cli", "rejected"),
+            triple("note.move", "cli", "applied"),
+            triple("note.pin", "desktop", "applied"),
+            triple("link.create", "cli", "applied"),
+            triple("link.remove", "cli", "applied"),
+            triple("link.restore", "cli", "applied"),
+            triple("note.remove", "cli", "applied"),
+            triple("note.restore", "cli", "applied"),
+            triple("note.privacy", "desktop", "applied"),
+        ]
+    );
+
+    // The Note is now excluded: to AI its entries, and its link's, are gone,
+    // as if it had never existed.
+    let ai_entries = ai.list_audit_entries(None, 100, None).unwrap().items;
+    assert!(
+        ai_entries
+            .iter()
+            .all(|e| e.entity_id != n.id && e.entity_id != link.id)
+    );
+    assert_eq!(ai_entries.len(), all.len() - 11);
+    assert!(
+        ai.list_audit_entries(Some(&n.id), 100, None)
+            .unwrap()
+            .items
+            .is_empty()
+    );
+    assert!(
+        ai.list_audit_entries(Some(&link.id), 100, None)
+            .unwrap()
+            .items
+            .is_empty()
+    );
+    assert_eq!(actions(&desktop, Some(&n.id)).len(), 8);
 }

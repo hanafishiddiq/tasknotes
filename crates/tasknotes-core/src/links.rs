@@ -2,6 +2,7 @@ use rusqlite::{Connection, OptionalExtension, Row, Transaction, TransactionBehav
 use serde::Serialize;
 use uuid::Uuid;
 
+use crate::audit::AuditAction;
 use crate::tasks::{TaskError, TaskStore, WorkStatus, current_millis, invalid_db_text};
 
 /// A reversible association between a Task and a Note (GLOSSARY: Note Link).
@@ -178,6 +179,7 @@ impl TaskStore {
             params![Uuid::new_v4().to_string(), task_id, note_id, now],
             read_link,
         )?;
+        self.audit_applied(&tx, AuditAction::LinkCreate, &link.id, None)?;
         tx.commit()?;
         Ok(link)
     }
@@ -186,7 +188,9 @@ impl TaskStore {
     /// (Undo) brings it back with the same ID and place.
     pub fn unlink_note(&self, link_id: &str) -> Result<NoteLink, TaskError> {
         let now = current_millis()?;
-        self.connect()?
+        let mut conn = self.connect()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let link = tx
             .query_row(
                 &format!(
                     "UPDATE task_note_links SET unlinked_at = ?2
@@ -199,7 +203,10 @@ impl TaskStore {
                 read_link,
             )
             .optional()?
-            .ok_or(TaskError::LinkNotFound)
+            .ok_or(TaskError::LinkNotFound)?;
+        self.audit_applied(&tx, AuditAction::LinkRemove, &link.id, None)?;
+        tx.commit()?;
+        Ok(link)
     }
 
     /// Undo for an unlink: the link comes back with its original stamp, so
@@ -234,6 +241,7 @@ impl TaskStore {
             params![link_id],
             read_link,
         )?;
+        self.audit_applied(&tx, AuditAction::LinkRestore, &link.id, None)?;
         tx.commit()?;
         Ok(link)
     }

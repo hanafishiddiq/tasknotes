@@ -10,7 +10,7 @@
 use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
 use serde::Deserialize;
 
-use crate::audit::Interface;
+use crate::audit::{AuditAction, Interface};
 use crate::notes::{COLUMNS, Note, read_note};
 use crate::tasks::{TaskError, TaskStore};
 
@@ -94,6 +94,7 @@ impl TaskStore {
             )
             .optional()?
             .ok_or(TaskError::NoteNotFound)?;
+        self.audit_applied(&tx, AuditAction::NotePrivacy, &note.id, note.revision)?;
         tx.commit()?;
         Ok(note)
     }

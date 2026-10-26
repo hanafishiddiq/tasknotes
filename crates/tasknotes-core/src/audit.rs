@@ -60,6 +60,9 @@ macro_rules! actions {
             fn entity_table(self) -> &'static str {
                 match self.as_str().split_once('.') {
                     Some(("list", _)) => "lists",
+                    Some(("note", _)) => "notes",
+                    Some(("folder", _)) => "note_folders",
+                    Some(("link", _)) => "task_note_links",
                     _ => "tasks",
                 }
             }
@@ -80,6 +83,21 @@ actions! {
     ListRename => "list.rename",
     ListRemove => "list.remove",
     ListRestore => "list.restore",
+    NoteCreate => "note.create",
+    NoteUpdate => "note.update",
+    NoteMove => "note.move",
+    NotePin => "note.pin",
+    NoteRemove => "note.remove",
+    NoteRestore => "note.restore",
+    NotePrivacy => "note.privacy",
+    FolderCreate => "folder.create",
+    FolderRename => "folder.rename",
+    FolderMove => "folder.move",
+    FolderRemove => "folder.remove",
+    FolderRestore => "folder.restore",
+    LinkCreate => "link.create",
+    LinkRemove => "link.remove",
+    LinkRestore => "link.restore",
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -159,7 +177,7 @@ struct NewAuditEntry<'a> {
     entity_id: &'a str,
     outcome: AuditOutcome,
     error_code: Option<&'static str>,
-    revision: i64,
+    revision: Option<i64>,
 }
 
 fn insert(conn: &Connection, interface: Interface, entry: &NewAuditEntry) -> Result<(), TaskError> {
@@ -209,14 +227,14 @@ fn insert_rejection(
 /// A change request that names the entity it changes and the revision the
 /// caller last read; `audited` records a refusal against them.
 pub(crate) trait Revisioned {
-    fn target(&self) -> (&str, i64);
+    fn target(&self) -> (&str, Option<i64>);
 }
 
 macro_rules! revisioned {
     ($($input:ty),+ $(,)?) => {
         $(impl Revisioned for $input {
-            fn target(&self) -> (&str, i64) {
-                (&self.id, self.expected_revision)
+            fn target(&self) -> (&str, Option<i64>) {
+                (&self.id, Some(self.expected_revision))
             }
         })+
     };
@@ -231,7 +249,16 @@ revisioned!(
     crate::organization::RenameList,
     crate::organization::SetListRemoved,
     crate::removed::SetRemoved,
+    crate::notes::UpdateNote,
+    crate::note_folders::RenameNoteFolder,
+    crate::note_folders::MoveNoteFolder,
 );
+
+impl Revisioned for crate::notes::MoveNote {
+    fn target(&self) -> (&str, Option<i64>) {
+        (&self.id, self.expected_revision)
+    }
+}
 
 impl TaskStore {
     /// Record an applied change inside the transaction that makes it, so the
@@ -241,8 +268,9 @@ impl TaskStore {
         tx: &Transaction,
         action: AuditAction,
         entity_id: &str,
-        revision: i64,
+        revision: impl Into<Option<i64>>,
     ) -> Result<(), TaskError> {
+        let revision = revision.into();
         insert(
             tx,
             self.interface(),
@@ -313,13 +341,21 @@ impl TaskStore {
             ),
         };
         let conn = self.connect()?;
-        let mut statement = conn.prepare(
+        // To an AI interface an excluded Note has no history, nor do its links.
+        let private = if self.hides_private() {
+            "AND entity_id NOT IN (SELECT id FROM notes WHERE exclude_from_ai = 1)
+             AND entity_id NOT IN (SELECT l.id FROM task_note_links l
+                                   JOIN notes n ON n.id = l.note_id WHERE n.exclude_from_ai = 1)"
+        } else {
+            ""
+        };
+        let mut statement = conn.prepare(&format!(
             "SELECT sequence, id, created_at, interface, action, entity_id, outcome,
                     error_code, revision
              FROM audit_entries
-             WHERE (?1 IS NULL OR entity_id = ?1) AND (?2 IS NULL OR sequence < ?2)
-             ORDER BY sequence DESC LIMIT ?3",
-        )?;
+             WHERE (?1 IS NULL OR entity_id = ?1) AND (?2 IS NULL OR sequence < ?2) {private}
+             ORDER BY sequence DESC LIMIT ?3"
+        ))?;
         let mut items = statement
             .query_map(params![entity_id, before, i64::from(limit) + 1], |row| {
                 let interface: String = row.get(3)?;
