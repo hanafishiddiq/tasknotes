@@ -219,8 +219,9 @@ impl TaskStore {
             values.push(value);
             format!("?{}", values.len())
         };
-        let (mut task, mut note, mut list, mut folder) =
-            (String::new(), String::new(), String::new(), String::new());
+        let (mut task, mut list, mut folder) = (String::new(), String::new(), String::new());
+        // To an AI interface an excluded Note is not in Removed either.
+        let mut note = format!(" AND {}", self.note_shown_sql("n"));
         for term in &terms {
             // A term is a quoted FTS prefix (`"word"*`); names match its bare word,
             // which holds only letters and digits, so LIKE sees no wildcards.

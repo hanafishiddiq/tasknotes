@@ -355,6 +355,48 @@ impl TaskStore {
         Ok(NoteFolderPage { items, next_cursor })
     }
 
+    /// The folder's names from the top level down, joined with `/`, as AI
+    /// interfaces show where a Note lives (owner decision 2026-10-25). A
+    /// name may itself contain `/`; the folder id is the stable reference.
+    pub fn note_folder_path(&self, id: &str) -> Result<String, TaskError> {
+        let conn = self.connect()?;
+        if get_folder(&conn, id)?.is_none() {
+            return Err(TaskError::NoteFolderNotFound);
+        }
+        let mut stmt = conn.prepare(
+            "WITH RECURSIVE up(id, parent_id, name, level) AS (
+                SELECT id, parent_id, name, 1 FROM note_folders WHERE id = ?1
+                UNION ALL
+                SELECT f.id, f.parent_id, f.name, up.level + 1
+                  FROM note_folders f JOIN up ON f.id = up.parent_id
+                 WHERE up.level < ?2
+             ) SELECT name FROM up ORDER BY level DESC",
+        )?;
+        let names = stmt
+            .query_map(params![id, WALK_LIMIT], |row| row.get::<_, String>(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(names.join("/"))
+    }
+
+    /// How many Notes this interface would list directly in the folder (or
+    /// in no folder): not Removed, and for an AI interface never a Note
+    /// marked Exclude from AI, so a count cannot reveal one.
+    pub fn count_folder_notes(&self, folder_id: Option<&str>) -> Result<i64, TaskError> {
+        let conn = self.connect()?;
+        if let Some(id) = folder_id {
+            require_folder(&conn, id)?;
+        }
+        Ok(conn.query_row(
+            &format!(
+                "SELECT count(*) FROM notes n
+                 WHERE n.folder_id IS ?1 AND n.removed_at IS NULL AND {}",
+                self.note_shown_sql("n")
+            ),
+            params![folder_id],
+            |row| row.get(0),
+        )?)
+    }
+
     /// Removes or restores a folder. Its subfolders and Notes are hidden with
     /// it but keep their own disposition, so restoring it leaves anything
     /// Removed on its own in Removed. A folder below a Removed folder cannot

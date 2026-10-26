@@ -349,3 +349,75 @@ fn only_the_desktop_changes_the_flag_and_the_desktop_still_edits_an_excluded_not
     assert!(edited.exclude_from_ai, "editing keeps the Note private");
     assert_eq!(fx.ai().get_note(&private.id).unwrap(), None);
 }
+
+#[test]
+fn the_ai_removed_view_leaves_out_an_excluded_note() {
+    use tasknotes_core::removed::SetRemoved;
+    let fx = Fixture::new();
+    let desktop = fx.desktop();
+    let remove = |n: &Note| {
+        desktop
+            .set_note_removed(SetRemoved {
+                id: n.id.clone(),
+                expected_revision: n.revision,
+                removed: true,
+            })
+            .unwrap()
+    };
+    let shared = note(&desktop, "# Shared old draft");
+    let private = exclude(&desktop, &note(&desktop, "# Private old draft"), true).unwrap();
+    remove(&shared);
+    remove(&private);
+
+    let ai = fx.ai();
+    for text in ["", "draft", "private"] {
+        let page = ai.list_removed(text, 50, None).unwrap();
+        assert!(page.items.iter().all(|item| item.id != private.id), "{text:?}");
+    }
+    assert_eq!(ai.list_removed("", 50, None).unwrap().items.len(), 1);
+    assert_eq!(desktop.list_removed("", 50, None).unwrap().items.len(), 2);
+}
+
+#[test]
+fn folder_paths_read_root_first_and_ai_counts_only_notes_it_may_see() {
+    use tasknotes_core::note_folders::CreateNoteFolder;
+    let fx = Fixture::new();
+    let desktop = fx.desktop();
+    let folder = |name: &str, parent: Option<&str>| {
+        desktop
+            .create_note_folder(CreateNoteFolder {
+                name: name.into(),
+                parent_id: parent.map(str::to_owned),
+            })
+            .unwrap()
+    };
+    let work = folder("Work", None);
+    let client = folder("Client A", Some(&work.id));
+    let put = |markdown: &str, folder_id: &str| {
+        desktop
+            .create_note(CreateNote {
+                markdown: markdown.into(),
+                folder_id: Some(folder_id.into()),
+            })
+            .unwrap()
+    };
+    put("# Shared brief", &client.id);
+    let private = put("# Private brief", &client.id);
+    exclude(&desktop, &private, true).unwrap();
+    let only_private = put("# Private note alone", &work.id);
+    exclude(&desktop, &only_private, true).unwrap();
+
+    let ai = fx.ai();
+    assert_eq!(ai.note_folder_path(&client.id).unwrap(), "Work/Client A");
+    assert_eq!(ai.note_folder_path(&work.id).unwrap(), "Work");
+    assert_eq!(ai.count_folder_notes(Some(&client.id)).unwrap(), 1);
+    assert_eq!(ai.count_folder_notes(Some(&work.id)).unwrap(), 0);
+    assert_eq!(desktop.count_folder_notes(Some(&client.id)).unwrap(), 2);
+    assert_eq!(desktop.count_folder_notes(Some(&work.id)).unwrap(), 1);
+    assert_eq!(
+        ai.note_folder_path("00000000-0000-4000-8000-000000000000")
+            .unwrap_err()
+            .code(),
+        "not_found"
+    );
+}
