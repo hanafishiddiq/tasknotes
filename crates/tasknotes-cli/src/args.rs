@@ -124,16 +124,23 @@ impl Parsed {
             .transpose()
     }
 
-    /// A snake_case enum value such as `in_progress` or `very_high`.
-    pub fn choice<T: serde::de::DeserializeOwned>(
+    /// One of the core's enum values by its serde name, such as
+    /// `in_progress` or `very_high`; `allowed` lists them for the error.
+    pub fn choice<T: serde::de::DeserializeOwned + serde::Serialize>(
         &self,
         name: &str,
-        allowed: &str,
+        allowed: &[T],
     ) -> Result<Option<T>, CliError> {
         self.value(name)
             .map(|raw| {
-                serde_json::from_value(serde_json::Value::String(raw.to_owned()))
-                    .map_err(|_| CliError::invalid(format!("--{name} must be one of: {allowed}")))
+                serde_json::from_value(serde_json::Value::String(raw.to_owned())).map_err(|_| {
+                    let names: Vec<String> = allowed
+                        .iter()
+                        .filter_map(|v| serde_json::to_value(v).ok())
+                        .filter_map(|v| v.as_str().map(str::to_owned))
+                        .collect();
+                    CliError::invalid(format!("--{name} must be one of: {}", names.join(", ")))
+                })
             })
             .transpose()
     }

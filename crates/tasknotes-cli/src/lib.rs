@@ -14,9 +14,9 @@ use tasknotes_core::ai_access;
 use tasknotes_core::audit::Interface;
 use tasknotes_core::removed::SetRemoved;
 use tasknotes_core::tasks::{
-    ChangeTask, CreateList, CreateTask, List, MoveTask, PatchTask, PatchTaskDetails,
+    ChangeTask, CreateList, CreateTask, List, MoveTask, PatchTask, PatchTaskDetails, Priority,
     RecordProgress, RenameList, SetListRemoved, SortMode, Task, TaskError, TaskQuery, TaskScope,
-    TaskStore, TaskView,
+    TaskStore, TaskView, WorkStatus,
 };
 
 use access::Environment;
@@ -160,8 +160,8 @@ fn task_change(store: &TaskStore, words: &[String]) -> Result<Task, CliError> {
     Ok(store.change_task(ChangeTask {
         id: p.id().to_owned(),
         expected_revision: p.revision()?,
-        status: p.choice("status", STATUSES)?,
-        priority: p.choice("priority", PRIORITIES)?,
+        status: p.choice("status", &WorkStatus::ALL)?,
+        priority: p.choice("priority", &Priority::ALL)?,
         progress: p.number("progress")?,
     })?)
 }
@@ -174,7 +174,7 @@ fn task_progress(store: &TaskStore, words: &[String]) -> Result<Task, CliError> 
     Ok(store.record_progress(RecordProgress {
         id: p.id().to_owned(),
         expected_revision: p.revision()?,
-        status: p.choice("status", STATUSES)?,
+        status: p.choice("status", &WorkStatus::ALL)?,
         progress: p.number("progress")?,
         next_step: p.value("next-step").map(str::to_owned),
         note: p.value("note").map(str::to_owned),
@@ -304,9 +304,6 @@ fn audit_command(store: &TaskStore, verb: &str, words: &[String]) -> Result<Valu
     ))
 }
 
-const STATUSES: &str = "ready, in_progress, completed";
-const PRIORITIES: &str = "very_low, low, medium, high, very_high";
-
 const ONE_ID: Spec = flags(&[], 1);
 
 const fn flags<'a>(values: &'a [&'a str], positionals: usize) -> Spec<'a> {
@@ -337,8 +334,8 @@ fn task_page(store: &TaskStore, words: &[String]) -> Result<Value, CliError> {
     }
     let query = TaskQuery {
         text: p.value("text").unwrap_or_default().to_owned(),
-        status: p.choice("status", STATUSES)?,
-        priority: p.choice("priority", PRIORITIES)?,
+        status: p.choice("status", &WorkStatus::ALL)?,
+        priority: p.choice("priority", &Priority::ALL)?,
         tag: p.value("tag").map(str::to_owned),
         view: match (p.value("list"), p.has("inbox")) {
             (Some(id), _) => TaskView::List(id.to_owned()),
@@ -350,9 +347,7 @@ fn task_page(store: &TaskStore, words: &[String]) -> Result<Value, CliError> {
         } else {
             TaskScope::Active
         },
-        sort: p
-            .choice::<SortMode>("sort", "priority, newest")?
-            .unwrap_or_default(),
+        sort: p.choice("sort", &SortMode::ALL)?.unwrap_or_default(),
         task_id: None,
     };
     let page = store.query_tasks(&query, p.limit()?, p.value("cursor"))?;

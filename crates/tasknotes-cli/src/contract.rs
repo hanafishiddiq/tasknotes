@@ -1,4 +1,5 @@
-//! The versioned JSON contract AI clients read (schema version 1). Ticket 12's
+//! The versioned JSON contract AI clients read (`CONTRACT_VERSION` 1, sent as
+//! `schema_version`). Ticket 12's
 //! MCP adapter is meant to reuse these shapes so both interfaces agree.
 //!
 //! Success: `{"schema_version":1,"ok":true,"item":{..}}`, or for a page
@@ -10,9 +11,11 @@
 
 use serde::Serialize;
 use serde_json::{Value, json};
-use tasknotes_core::tasks::{List, Priority, ProgressEntry, Task, TaskError, WorkStatus};
+use tasknotes_core::tasks::{List, ProgressEntry, Task, TaskError};
 
-pub const SCHEMA_VERSION: u32 = 1;
+/// The version of this JSON contract, sent as `schema_version` in every
+/// envelope. Not the database schema (`tasknotes_core::tasks::SCHEMA_VERSION`).
+pub const CONTRACT_VERSION: u32 = 1;
 
 /// A refusal with a stable code; the message is for people and may change.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -72,12 +75,12 @@ impl From<TaskError> for CliError {
 }
 
 pub fn success_item(item: Value) -> Value {
-    json!({"schema_version": SCHEMA_VERSION, "ok": true, "item": item})
+    json!({"schema_version": CONTRACT_VERSION, "ok": true, "item": item})
 }
 
 pub fn success_page(items: Vec<Value>, next_cursor: Option<String>) -> Value {
     json!({
-        "schema_version": SCHEMA_VERSION,
+        "schema_version": CONTRACT_VERSION,
         "ok": true,
         "items": items,
         "next_cursor": next_cursor,
@@ -89,25 +92,7 @@ pub fn failure(error: &CliError) -> Value {
     if error.audit_unrecorded {
         detail["audit_recorded"] = Value::Bool(false);
     }
-    json!({"schema_version": SCHEMA_VERSION, "ok": false, "error": detail})
-}
-
-pub fn status_name(status: WorkStatus) -> &'static str {
-    match status {
-        WorkStatus::Ready => "ready",
-        WorkStatus::InProgress => "in_progress",
-        WorkStatus::Completed => "completed",
-    }
-}
-
-pub fn priority_name(priority: Priority) -> &'static str {
-    match priority {
-        Priority::VeryLow => "very_low",
-        Priority::Low => "low",
-        Priority::Medium => "medium",
-        Priority::High => "high",
-        Priority::VeryHigh => "very_high",
-    }
+    json!({"schema_version": CONTRACT_VERSION, "ok": false, "error": detail})
 }
 
 pub fn task(task: &Task) -> Value {
@@ -115,8 +100,8 @@ pub fn task(task: &Task) -> Value {
         "id": task.id,
         "title": task.title,
         "description": task.description,
-        "status": status_name(task.status),
-        "priority": priority_name(task.priority),
+        "status": to_value(&task.status),
+        "priority": to_value(&task.priority),
         "progress": task.progress,
         "next_step": task.next_step,
         "list_id": task.list_id,
@@ -145,8 +130,8 @@ pub fn progress_entry(entry: &ProgressEntry) -> Value {
         "sequence": entry.sequence,
         "id": entry.id,
         "task_id": entry.task_id,
-        "previous_status": status_name(entry.previous_status),
-        "status": status_name(entry.status),
+        "previous_status": to_value(&entry.previous_status),
+        "status": to_value(&entry.status),
         "previous_progress": entry.previous_progress,
         "progress": entry.progress,
         "note": entry.note,

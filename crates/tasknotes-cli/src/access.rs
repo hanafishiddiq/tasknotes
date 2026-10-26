@@ -79,3 +79,18 @@ pub fn grant(
 pub fn revoke(data_dir: &Path) -> Result<(), CliError> {
     Ok(ai_access::set_authorized(data_dir, Interface::Cli, false)?)
 }
+
+#[cfg(test)]
+mod tests {
+    /// The CLI must look where the desktop app keeps its data.
+    #[test]
+    fn the_app_identifier_matches_the_desktop_bundle() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../src-tauri/tauri.conf.json"
+        );
+        let config: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        assert_eq!(config["identifier"], super::APP_IDENTIFIER);
+    }
+}

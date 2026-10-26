@@ -203,6 +203,10 @@ pub enum WorkStatus {
 }
 
 impl WorkStatus {
+    /// Every status, in display order of the names; their serde names are the
+    /// ones every interface reads and writes.
+    pub const ALL: [Self; 3] = [Self::Ready, Self::InProgress, Self::Completed];
+
     pub(crate) fn from_sql(value: &str) -> Option<Self> {
         match value {
             "ready" => Some(Self::Ready),
@@ -240,6 +244,15 @@ pub enum Priority {
 }
 
 impl Priority {
+    /// Every priority, lowest first.
+    pub const ALL: [Self; 5] = [
+        Self::VeryLow,
+        Self::Low,
+        Self::Medium,
+        Self::High,
+        Self::VeryHigh,
+    ];
+
     fn from_sql(value: &str) -> Option<Self> {
         match value {
             "very_low" => Some(Self::VeryLow),
@@ -327,6 +340,8 @@ pub enum SortMode {
 }
 
 impl SortMode {
+    pub const ALL: [Self; 2] = [Self::Priority, Self::Newest];
+
     pub(crate) fn as_cursor(self) -> &'static str {
         match self {
             Self::Priority => "priority",
