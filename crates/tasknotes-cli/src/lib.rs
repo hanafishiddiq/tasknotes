@@ -6,6 +6,7 @@ pub mod access;
 mod args;
 pub mod contract;
 
+use std::ffi::OsString;
 use std::path::Path;
 
 use serde_json::{Value, json};
@@ -31,11 +32,20 @@ pub struct Outcome {
 /// Run one command. `confirm` asks the person at the terminal to type
 /// `allow`; it is only called by `access grant` on an interactive terminal.
 pub fn run(
-    args: &[String],
+    args: &[OsString],
     env: &Environment,
     confirm: impl FnOnce() -> std::io::Result<String>,
 ) -> Outcome {
-    match dispatch(args, env, confirm) {
+    let result = args
+        .iter()
+        .map(|arg| {
+            arg.to_str()
+                .map(str::to_owned)
+                .ok_or_else(|| CliError::invalid("Every argument must be valid UTF-8 text"))
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .and_then(|args| dispatch(&args, env, confirm));
+    match result {
         Ok(body) => Outcome { exit_code: 0, body },
         Err(error) => Outcome {
             exit_code: error.exit_code(),

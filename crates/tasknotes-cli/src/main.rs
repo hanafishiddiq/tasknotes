@@ -3,7 +3,7 @@ use std::io::{BufRead, IsTerminal, Write};
 use tasknotes_cli::access::Environment;
 
 fn main() {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let args: Vec<_> = std::env::args_os().skip(1).collect();
     let env = Environment {
         data_dir: std::env::var_os("TASKNOTES_DATA_DIR"),
         home: std::env::var_os("HOME"),

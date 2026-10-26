@@ -31,8 +31,10 @@ pub enum TaskError {
     ListRemoved,
     #[error("This List is already in the requested state")]
     ListUnchanged,
-    #[error("Invalid List cursor or page size")]
+    #[error("List page size must be between 1 and 100")]
     InvalidListPage,
+    #[error("Invalid List page cursor")]
+    InvalidListCursor,
     #[error("Use at most 16 distinct Tags, each 1–40 characters without control characters")]
     InvalidTags,
     #[error("Deadline must be a real local calendar date in YYYY-MM-DD format")]
@@ -154,7 +156,8 @@ impl TaskError {
             | InvalidNoteCursor
             | InvalidNoteFolderCursor
             | InvalidLinkCursor
-            | InvalidAuditCursor => "invalid_cursor",
+            | InvalidAuditCursor
+            | InvalidListCursor => "invalid_cursor",
             NotFound | ListNotFound | NoteNotFound | NoteFolderNotFound | LinkNotFound => {
                 "not_found"
             }

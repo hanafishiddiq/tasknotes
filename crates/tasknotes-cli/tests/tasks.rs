@@ -147,3 +147,236 @@ fn listing_filters_by_text_status_priority_tag_list_and_removed() {
     );
     assert_eq!(paint["list_id"], list["id"]);
 }
+
+fn id(value: &Value) -> String {
+    value["id"].as_str().unwrap().to_owned()
+}
+
+#[test]
+fn a_task_is_edited_progressed_moved_removed_and_restored_through_the_cli() {
+    let cli = Cli::trusted();
+    let task = cli.ok(&[
+        "task",
+        "create",
+        "--title",
+        "Write the newsletter",
+        "--description",
+        "Three short sections",
+    ])["item"]
+        .clone();
+    let tid = id(&task);
+
+    // A partial update keeps the description.
+    let task = cli.ok(&[
+        "task",
+        "update",
+        &tid,
+        "--revision",
+        "1",
+        "--title",
+        "Write the June newsletter",
+    ])["item"]
+        .clone();
+    assert_eq!(task["description"], "Three short sections");
+    assert_eq!(task["revision"], 2);
+
+    let task = cli.ok(&[
+        "task",
+        "progress",
+        &tid,
+        "--revision",
+        "2",
+        "--progress",
+        "60",
+        "--next-step",
+        "Proofread section two",
+        "--note",
+        "Drafted sections one and two",
+    ])["item"]
+        .clone();
+    assert_eq!(
+        (
+            task["status"].as_str(),
+            task["progress"].as_u64(),
+            task["next_step"].as_str()
+        ),
+        (Some("in_progress"), Some(60), Some("Proofread section two"))
+    );
+    let history = cli.ok(&["task", "history", &tid]);
+    assert_eq!(history["items"][0]["note"], "Drafted sections one and two");
+    assert_eq!(history["items"][0]["previous_progress"], 0);
+
+    let task = cli.ok(&[
+        "task",
+        "details",
+        &tid,
+        "--revision",
+        "3",
+        "--tag",
+        "writing",
+        "--deadline",
+        "2031-06-30",
+    ])["item"]
+        .clone();
+    assert_eq!(task["tags"], serde_json::json!(["writing"]));
+    assert_eq!(task["deadline"], "2031-06-30");
+    // Changing only the deadline keeps the Tags.
+    let task =
+        cli.ok(&["task", "details", &tid, "--revision", "4", "--no-deadline"])["item"].clone();
+    assert_eq!(task["tags"], serde_json::json!(["writing"]));
+    assert!(task["deadline"].is_null());
+
+    let list = cli.ok(&["list", "create", "--name", "Writing"])["item"].clone();
+    let lid = id(&list);
+    let task = cli.ok(&["task", "move", &tid, "--revision", "5", "--list", &lid])["item"].clone();
+    assert_eq!(task["list_id"].as_str(), Some(lid.as_str()));
+
+    let task = cli.ok(&["task", "remove", &tid, "--revision", "6"])["item"].clone();
+    assert_eq!(task["removed"], true);
+    assert!(
+        cli.ok(&["task", "list"])["items"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    let task = cli.ok(&["task", "restore", &tid, "--revision", "7"])["item"].clone();
+    assert_eq!(
+        (
+            task["removed"].as_bool(),
+            task["progress"].as_u64(),
+            task["status"].as_str()
+        ),
+        (Some(false), Some(60), Some("in_progress")),
+        "restore keeps details and work status"
+    );
+    let task = cli.ok(&["task", "move", &tid, "--revision", "8", "--inbox"])["item"].clone();
+    assert!(task["list_id"].is_null());
+    let task = cli.ok(&[
+        "task",
+        "change",
+        &tid,
+        "--revision",
+        "9",
+        "--status",
+        "completed",
+    ])["item"]
+        .clone();
+    assert_eq!(task["progress"], 100);
+}
+
+#[test]
+fn lists_are_created_renamed_removed_and_restored_through_the_cli() {
+    let cli = Cli::trusted();
+    let list = cli.ok(&["list", "create", "--name", "Garden"])["item"].clone();
+    let lid = id(&list);
+    let list = cli.ok(&[
+        "list",
+        "rename",
+        &lid,
+        "--revision",
+        "1",
+        "--name",
+        "Vegetable garden",
+    ])["item"]
+        .clone();
+    assert_eq!(list["name"], "Vegetable garden");
+    cli.ok(&["task", "create", "--title", "Sow beans", "--list", &lid]);
+
+    cli.ok(&["list", "remove", &lid, "--revision", "2"]);
+    assert!(
+        cli.ok(&["list", "list"])["items"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        cli.ok(&["list", "list", "--include-removed"])["items"][0]["removed"],
+        true
+    );
+    // The Task is hidden with its List, not individually Removed.
+    assert!(
+        cli.ok(&["task", "list"])["items"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    cli.ok(&["list", "restore", &lid, "--revision", "3"]);
+    assert_eq!(cli.ok(&["task", "list"])["items"][0]["title"], "Sow beans");
+}
+
+#[test]
+fn cli_changes_and_refusals_appear_in_the_audit_log_without_task_text() {
+    let cli = Cli::trusted();
+    let task = cli.ok(&[
+        "task",
+        "create",
+        "--title",
+        "Renew insurance",
+        "--description",
+        "policy 12345",
+    ])["item"]
+        .clone();
+    let tid = id(&task);
+    cli.ok(&[
+        "task",
+        "update",
+        &tid,
+        "--revision",
+        "1",
+        "--title",
+        "Renew car insurance",
+    ]);
+    let stale = cli.run(&[
+        "task",
+        "update",
+        &tid,
+        "--revision",
+        "1",
+        "--title",
+        "Stale",
+    ]);
+    assert_eq!(error_code(&stale, 4), "revision_conflict");
+
+    let audit = cli.ok(&["audit", "list", "--entity", &tid]);
+    let rows: Vec<_> = audit["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| {
+            (
+                e["interface"].as_str().unwrap().to_owned(),
+                e["action"].as_str().unwrap().to_owned(),
+                e["outcome"].as_str().unwrap().to_owned(),
+                e["error_code"].as_str().map(str::to_owned),
+            )
+        })
+        .collect();
+    let row = |a: &str, o: &str, c: Option<&str>| {
+        (
+            "cli".to_owned(),
+            a.to_owned(),
+            o.to_owned(),
+            c.map(str::to_owned),
+        )
+    };
+    assert_eq!(
+        rows,
+        vec![
+            row("task.update", "rejected", Some("revision_conflict")),
+            row("task.update", "applied", None),
+            row("task.create", "applied", None),
+        ]
+    );
+    let text = audit.to_string();
+    assert!(!text.contains("insurance") && !text.contains("12345") && !text.contains("Stale"));
+
+    let paged = cli.ok(&["audit", "list", "--limit", "2"]);
+    let next = paged["next_cursor"].as_str().unwrap();
+    assert_eq!(
+        cli.ok(&["audit", "list", "--cursor", next])["items"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+}

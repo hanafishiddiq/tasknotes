@@ -518,13 +518,13 @@ impl TaskStore {
                     || bits[3] != if include_removed { "all" } else { "active" }
                     || Uuid::parse_str(bits[2]).is_err()
                 {
-                    return Err(TaskError::InvalidListPage);
+                    return Err(TaskError::InvalidListCursor);
                 }
                 let timestamp = bits[1]
                     .parse::<i64>()
-                    .map_err(|_| TaskError::InvalidListPage)?;
+                    .map_err(|_| TaskError::InvalidListCursor)?;
                 if timestamp < 0 {
-                    return Err(TaskError::InvalidListPage);
+                    return Err(TaskError::InvalidListCursor);
                 }
                 (Some(timestamp), Some(bits[2].to_owned()))
             }
