@@ -770,3 +770,34 @@ fn the_removed_view_lists_every_kind_newest_first_in_bounded_pages() {
         Err(TaskError::InvalidRemovedCursor)
     ));
 }
+
+#[test]
+fn an_unlinked_link_cannot_be_brought_back_onto_a_removed_task_or_note() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("l.db"));
+    let errand = task(&store, "Return library books");
+    let list_note = note(&store, "# Book list");
+    let link = store.link_note(&errand.id, &list_note.id).unwrap();
+    store.unlink_note(&link.id).unwrap();
+    let removed = store
+        .set_note_removed(set(&list_note.id, list_note.revision, true))
+        .unwrap();
+    assert!(matches!(
+        store.restore_link(&link.id),
+        Err(TaskError::NoteRemoved)
+    ));
+    store
+        .set_note_removed(set(&list_note.id, removed.revision, false))
+        .unwrap();
+    let errand = store
+        .set_task_removed(set(&errand.id, errand.revision, true))
+        .unwrap();
+    assert!(matches!(
+        store.restore_link(&link.id),
+        Err(TaskError::TaskRemoved)
+    ));
+    store
+        .set_task_removed(set(&errand.id, errand.revision, false))
+        .unwrap();
+    assert!(store.restore_link(&link.id).unwrap().unlinked_at.is_none());
+}

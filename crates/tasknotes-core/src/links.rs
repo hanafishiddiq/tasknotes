@@ -216,18 +216,33 @@ impl TaskStore {
 
     /// Undo for an unlink: the link comes back with its original stamp, so
     /// it returns to the place it had. An active link is returned unchanged.
+    /// An unlinked link stays unlinked while its Task or Note is Removed.
     pub fn restore_link(&self, link_id: &str) -> Result<NoteLink, TaskError> {
-        self.connect()?
+        let mut conn = self.connect()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let link = tx
             .query_row(
-                &format!(
-                    "UPDATE task_note_links SET unlinked_at = NULL
-                     WHERE id = ?1 RETURNING {COLUMNS}"
-                ),
+                &format!("SELECT {COLUMNS} FROM task_note_links WHERE id = ?1"),
                 params![link_id],
                 read_link,
             )
             .optional()?
-            .ok_or(TaskError::LinkNotFound)
+            .ok_or(TaskError::LinkNotFound)?;
+        if link.unlinked_at.is_none() {
+            return Ok(link);
+        }
+        crate::removed::require_writable_task(&tx, &link.task_id)?;
+        crate::removed::require_writable_note(&tx, &link.note_id)?;
+        let link = tx.query_row(
+            &format!(
+                "UPDATE task_note_links SET unlinked_at = NULL
+                 WHERE id = ?1 RETURNING {COLUMNS}"
+            ),
+            params![link_id],
+            read_link,
+        )?;
+        tx.commit()?;
+        Ok(link)
     }
 
     pub fn get_link(&self, link_id: &str) -> Result<Option<NoteLink>, TaskError> {
