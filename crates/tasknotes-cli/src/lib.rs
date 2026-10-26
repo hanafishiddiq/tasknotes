@@ -5,6 +5,7 @@
 pub mod access;
 mod args;
 pub mod contract;
+mod data;
 mod notes;
 
 use std::ffi::OsString;
@@ -31,12 +32,17 @@ pub struct Outcome {
     pub body: Value,
 }
 
-/// Run one command. `confirm` asks the person at the terminal to type
-/// `allow`; it is only called by `access grant` on an interactive terminal.
+/// Shown at the terminal by `access grant`; the person types `allow`.
+pub const GRANT_PROMPT: &str = "Allow local AI clients to read and change your Tasks through the \
+    tasknotes command? Type allow to confirm: ";
+
+/// Run one command. `confirm` shows the person at the terminal a prompt and
+/// returns what they typed; it is only called on an interactive terminal,
+/// by `access grant` and `backup restore`.
 pub fn run(
     args: &[OsString],
     env: &Environment,
-    confirm: impl FnOnce() -> std::io::Result<String>,
+    confirm: impl FnOnce(&str) -> std::io::Result<String>,
 ) -> Outcome {
     let result = args
         .iter()
@@ -59,7 +65,7 @@ pub fn run(
 fn dispatch(
     args: &[String],
     env: &Environment,
-    confirm: impl FnOnce() -> std::io::Result<String>,
+    confirm: impl FnOnce(&str) -> std::io::Result<String>,
 ) -> Result<Value, CliError> {
     let (data_flag, rest) = match args {
         [flag, dir, rest @ ..] if flag == "--data-dir" => (Some(dir.as_str()), rest),
@@ -75,20 +81,28 @@ fn dispatch(
         parse(words, &NO_FLAGS)?;
         return match verb {
             "status" => Ok(access_status(&data_dir)),
-            "grant" => access::grant(&data_dir, env, confirm).map(|()| access_status(&data_dir)),
+            "grant" => access::grant(&data_dir, env, || confirm(GRANT_PROMPT))
+                .map(|()| access_status(&data_dir)),
             "revoke" => access::revoke(&data_dir).map(|()| access_status(&data_dir)),
             _ => Err(CliError::invalid(USAGE)),
         };
     }
     if !matches!(
         noun,
-        "task" | "list" | "audit" | "note" | "folder" | "link" | "removed"
+        "task" | "list" | "audit" | "note" | "folder" | "link" | "removed" | "backup" | "export"
     ) {
         return Err(CliError::invalid(USAGE));
     }
     // The core refuses before the database is opened, created or migrated.
     let store = ai_access::open_authorized(&data_dir, Interface::Cli)?;
+    // Backups run while any Tasknotes process is active (spec): the first
+    // command of the day takes one. Best effort: a failed backup must not
+    // block the command, the next process tries again, and the contract
+    // keeps stderr empty.
+    let _ = store.ensure_daily_backup();
     match noun {
+        "backup" => data::backup_command(&store, verb, words, env, confirm),
+        "export" => data::export_command(&store, verb, words),
         "task" => task_command(&store, verb, words),
         "list" => list_command(&store, verb, words),
         "note" => notes::note_command(&store, verb, words),
@@ -100,9 +114,9 @@ fn dispatch(
 }
 
 pub(crate) const USAGE: &str = "Usage: tasknotes [--data-dir DIR] \
-    <task|list|note|folder|link|removed|audit|access> <command> [id] [--options]";
+    <task|list|note|folder|link|removed|audit|backup|export|access> <command> [id] [--options]";
 
-const NO_FLAGS: Spec = flags(&[], 0);
+pub(crate) const NO_FLAGS: Spec = flags(&[], 0);
 
 fn access_status(data_dir: &Path) -> Value {
     contract::success_item(json!({

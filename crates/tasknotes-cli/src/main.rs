@@ -10,12 +10,9 @@ fn main() {
         xdg_data_home: std::env::var_os("XDG_DATA_HOME"),
         stdin_is_terminal: std::io::stdin().is_terminal(),
     };
-    let outcome = tasknotes_cli::run(&args, &env, || {
-        // Only reached by `access grant` on an interactive terminal.
-        eprint!(
-            "Allow local AI clients to read and change your Tasks through the \
-             tasknotes command? Type allow to confirm: "
-        );
+    let outcome = tasknotes_cli::run(&args, &env, |prompt| {
+        // Only reached on an interactive terminal (`access grant`, `backup restore`).
+        eprint!("{prompt}");
         let mut line = String::new();
         std::io::stdin().lock().read_line(&mut line)?;
         Ok(line)
