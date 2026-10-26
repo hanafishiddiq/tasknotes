@@ -1,11 +1,5 @@
-import { renderRain } from "./rain";
+import { renderRainInSlices } from "./rain";
 import type { SoundSettings } from "./sound-settings";
-
-/**
- * Where the app is, as far as sound cares. Only quitting silences the rain:
- * a minimized window, or one hidden to the menu bar, keeps it playing.
- */
-export type Presence = "open" | "minimized" | "menu-bar" | "quitting";
 
 /** off: nothing to play; waiting-for-gesture: the WebView blocked autoplay. */
 export type SoundStatus = "off" | "waiting-for-gesture" | "playing" | "unavailable";
@@ -15,8 +9,11 @@ export type Cue = "create" | "complete";
 
 export interface SoundEngine {
   apply(settings: SoundSettings): void;
-  setPresence(presence: Presence): void;
-  /** A click or key press: the moment WebKit lets audio start. */
+  /**
+   * A click or key press: the moment WebKit lets audio start. It also ends a quit
+   * fade, for a quit that was held back. A minimized window or one hidden to the
+   * menu bar changes nothing: only quitting silences the rain.
+   */
   gesture(): void;
   play(cue: Cue): void;
   /** Fades the rain out before the app quits. */
@@ -28,7 +25,8 @@ export interface SoundEngine {
 
 export interface SoundEngineOptions {
   createContext: () => AudioContext;
-  renderAmbient?: (sampleRate: number) => Float32Array[];
+  /** Renders the rain loop; the engine starts it as soon as the rain is wanted, before any click. */
+  renderAmbient?: (sampleRate: number) => Promise<Float32Array<ArrayBuffer>[]>;
   wait?: (ms: number) => Promise<void>;
 }
 
@@ -46,7 +44,7 @@ const CUES: Record<Cue, { hz: number; at: number; seconds: number }[]> = {
 };
 const CUE_PEAK = 0.7;
 
-const defaultRain = (sampleRate: number) => renderRain(sampleRate, RAIN_LOOP_SECONDS, 1);
+const defaultRain = (sampleRate: number) => renderRainInSlices(sampleRate, RAIN_LOOP_SECONDS, 1);
 const defaultWait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 export function createSoundEngine(options: SoundEngineOptions): SoundEngine {
@@ -54,12 +52,16 @@ export function createSoundEngine(options: SoundEngineOptions): SoundEngine {
   const wait = options.wait ?? defaultWait;
   const listeners = new Set<() => void>();
   let settings: SoundSettings | null = null;
-  let presence: Presence = "open";
+  let quitting = false;
   let context: AudioContext | null = null;
   let unavailable = false;
   let ambientGain: GainNode | null = null;
   let interactionGain: GainNode | null = null;
   let rain: AudioBuffer | null = null;
+  let rendering = false;
+  let renderFailed = false;
+  /** Set when the engine itself suspended the context, so waking it is not a blocked autoplay. */
+  let suspendedByUs = false;
   let sources: AudioBufferSourceNode[] = [];
   let current: SoundStatus = "off";
 
@@ -70,9 +72,10 @@ export function createSoundEngine(options: SoundEngineOptions): SoundEngine {
   }
 
   const running = () => context?.state === "running";
+  const fadeSeconds = () => (quitting ? QUIT_FADE_SECONDS : ADJUST_SECONDS);
 
   function ambientTarget(): number {
-    if (!settings || settings.ambient.muted || presence === "quitting") return 0;
+    if (!settings || settings.ambient.muted || quitting) return 0;
     return settings.ambient.volume / 100;
   }
 
@@ -95,22 +98,33 @@ export function createSoundEngine(options: SoundEngineOptions): SoundEngine {
     ambientGain.gain.setValueAtTime(0, context.currentTime);
     ambientGain.connect(context.destination);
     interactionGain = context.createGain();
+    interactionGain.gain.setValueAtTime(0, context.currentTime);
     interactionGain.connect(context.destination);
     return context;
   }
 
-  function startRain(audio: AudioContext, gain: GainNode, target: number) {
-    if (!rain) {
-      const channels = renderAmbient(audio.sampleRate);
-      rain = audio.createBuffer(channels.length, channels[0].length, audio.sampleRate);
-      channels.forEach((samples, index) => rain!.copyToChannel(samples as Float32Array<ArrayBuffer>, index));
-    }
+  /** Renders the rain off the critical path, so the first click only has to start it. */
+  function prepareRain(audio: AudioContext) {
+    if (rain || rendering || renderFailed) return;
+    rendering = true;
+    renderAmbient(audio.sampleRate).then((channels) => {
+      if (context !== audio) return;
+      const buffer = audio.createBuffer(channels.length, channels[0].length, audio.sampleRate);
+      channels.forEach((samples, index) => buffer.copyToChannel(samples, index));
+      rain = buffer;
+    }, () => { renderFailed = true; }).finally(() => {
+      rendering = false;
+      sync();
+    });
+  }
+
+  function startRain(audio: AudioContext, gain: GainNode, target: number, buffer: AudioBuffer) {
     const now = audio.currentTime;
     gain.gain.cancelScheduledValues(now);
     gain.gain.setValueAtTime(0, now);
     gain.gain.linearRampToValueAtTime(target, now + FADE_IN_SECONDS);
     const source = audio.createBufferSource();
-    source.buffer = rain;
+    source.buffer = buffer;
     source.loop = true;
     source.connect(gain);
     source.start(now);
@@ -133,23 +147,33 @@ export function createSoundEngine(options: SoundEngineOptions): SoundEngine {
 
   function sync() {
     if (!settings) return;
-    const ambient = ambientTarget();
-    const audible = ambient > 0 || interactionTarget() > 0;
+    const audible = ambientTarget() > 0 || interactionTarget() > 0;
     if (!audible && !context) return setStatus(unavailable ? "unavailable" : "off");
     if (!audible) return quiet();
     const audio = ensureContext();
-    if (!audio || !ambientGain || !interactionGain) return;
-    if (audio.state === "closed") return;
-    if (!running()) {
-      setStatus("waiting-for-gesture");
-      audio.resume().then(() => { if (running()) sync(); }, () => undefined);
-      return;
-    }
-    if (ambient > 0 && sources.length === 0) startRain(audio, ambientGain, ambient);
-    else if (ambient > 0) moveTo(audio, ambientGain, ambient, ADJUST_SECONDS);
-    else stopRain(audio, ambientGain, presence === "quitting" ? QUIT_FADE_SECONDS : ADJUST_SECONDS);
-    interactionGain.gain.setValueAtTime(interactionTarget(), audio.currentTime);
+    if (!audio || audio.state === "closed") return;
+    if (ambientTarget() > 0) prepareRain(audio);
+    if (!running()) return wake(audio);
+    suspendedByUs = false;
+    applyLevels(audio);
     setStatus("playing");
+  }
+
+  /** The context is not running: ask it to, and say "waiting" only if it stays blocked. */
+  function wake(audio: AudioContext) {
+    if (!suspendedByUs) setStatus("waiting-for-gesture");
+    const stillBlocked = () => { if (!running()) setStatus("waiting-for-gesture"); };
+    audio.resume().then(() => (running() ? sync() : stillBlocked()), stillBlocked);
+  }
+
+  function applyLevels(audio: AudioContext) {
+    if (!ambientGain || !interactionGain) return;
+    const ambient = ambientTarget();
+    if (ambient > 0 && sources.length === 0) {
+      if (rain) startRain(audio, ambientGain, ambient, rain);
+    } else if (ambient > 0) moveTo(audio, ambientGain, ambient, ADJUST_SECONDS);
+    else stopRain(audio, ambientGain, fadeSeconds());
+    moveTo(audio, interactionGain, interactionTarget(), ADJUST_SECONDS);
   }
 
   /** Nothing is audible: let the rain fade, then suspend the audio device entirely. */
@@ -157,10 +181,13 @@ export function createSoundEngine(options: SoundEngineOptions): SoundEngine {
     const audio = context;
     setStatus(unavailable ? "unavailable" : "off");
     if (!audio || !ambientGain || audio.state !== "running") return;
-    stopRain(audio, ambientGain, presence === "quitting" ? QUIT_FADE_SECONDS : ADJUST_SECONDS);
+    stopRain(audio, ambientGain, fadeSeconds());
     void wait(ADJUST_SECONDS * 1000 + 20).then(() => {
       const stillQuiet = ambientTarget() === 0 && interactionTarget() === 0;
-      if (stillQuiet && context === audio && audio.state === "running") return audio.suspend();
+      if (stillQuiet && context === audio && audio.state === "running") {
+        suspendedByUs = true;
+        return audio.suspend();
+      }
     }).catch(() => undefined);
   }
 
@@ -181,7 +208,7 @@ export function createSoundEngine(options: SoundEngineOptions): SoundEngine {
       tone.connect(envelope);
       tone.start(at);
       tone.stop(at + note.seconds + 0.02);
-      tone.addEventListener?.("ended", () => envelope.disconnect());
+      tone.onended = () => envelope.disconnect();
     }
   }
 
@@ -190,17 +217,13 @@ export function createSoundEngine(options: SoundEngineOptions): SoundEngine {
       settings = next;
       sync();
     },
-    setPresence(next) {
-      presence = next;
-      sync();
-    },
     gesture() {
-      if (presence === "quitting") presence = "open";
+      quitting = false;
       sync();
     },
     play,
     async fadeOut() {
-      presence = "quitting";
+      quitting = true;
       sync();
       await wait(QUIT_FADE_SECONDS * 1000);
     },
@@ -213,6 +236,7 @@ export function createSoundEngine(options: SoundEngineOptions): SoundEngine {
       const audio = context;
       context = null;
       ambientGain = interactionGain = rain = null;
+      rendering = suspendedByUs = false;
       sources = [];
       if (audio) {
         audio.removeEventListener("statechange", sync);

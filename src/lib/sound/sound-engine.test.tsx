@@ -3,7 +3,7 @@ import { FakeAudioContext, last } from "../../test/fake-audio";
 import { createSoundEngine, type SoundEngine } from "./sound-engine";
 import { DEFAULT_SOUND_SETTINGS, type SoundSettings } from "./sound-settings";
 
-const quietRain = (rate: number) => [new Float32Array(rate / 10), new Float32Array(rate / 10)];
+const quietRain = async (rate: number) => [new Float32Array(rate / 10), new Float32Array(rate / 10)];
 
 function engine(): SoundEngine {
   return createSoundEngine({
@@ -69,7 +69,76 @@ function withChannel(channel: keyof SoundSettings, change: Partial<SoundSettings
   return { ...from, [channel]: { ...from[channel], ...change } };
 }
 
+describe("rain preparation", () => {
+  it("renders the rain before the first gesture, so the first click only has to start it", async () => {
+    FakeAudioContext.initialState = "suspended";
+    FakeAudioContext.resumePolicy = "block";
+    let renders = 0;
+    const sound = createSoundEngine({
+      createContext: () => new FakeAudioContext() as unknown as AudioContext,
+      renderAmbient: async (rate) => { renders += 1; return quietRain(rate); },
+      wait: async () => undefined,
+    });
+    sound.apply(DEFAULT_SOUND_SETTINGS);
+    await settle();
+    expect(renders).toBe(1);
+    FakeAudioContext.resumePolicy = "allow";
+    sound.gesture();
+    // Playing in the same turn as the click: nothing was left to render.
+    expect(renders).toBe(1);
+    await settle();
+    expect(FakeAudioContext.latest().playingSources()).toHaveLength(1);
+    expect(renders).toBe(1);
+  });
+
+  it("starts the rain as soon as a slow render finishes, without blocking in between", async () => {
+    let finish: (channels: Float32Array<ArrayBuffer>[]) => void = () => undefined;
+    const sound = createSoundEngine({
+      createContext: () => new FakeAudioContext() as unknown as AudioContext,
+      renderAmbient: () => new Promise((resolve) => { finish = resolve; }),
+      wait: async () => undefined,
+    });
+    sound.apply(DEFAULT_SOUND_SETTINGS);
+    await settle();
+    const context = FakeAudioContext.latest();
+    expect(context.playingSources()).toHaveLength(0);
+    finish(await quietRain(context.sampleRate));
+    await settle();
+    expect(ambientNow(context)).toBeCloseTo(0.08);
+  });
+
+  it("does not render the rain while the ambient channel is muted", async () => {
+    let renders = 0;
+    const sound = createSoundEngine({
+      createContext: () => new FakeAudioContext() as unknown as AudioContext,
+      renderAmbient: async (rate) => { renders += 1; return quietRain(rate); },
+      wait: async () => undefined,
+    });
+    sound.apply(withChannel("ambient", { muted: true }));
+    await settle();
+    expect(renders).toBe(0);
+  });
+});
+
 describe("independent volume and mute", () => {
+  it("ramps the interaction channel instead of jumping, so muting mid-cue does not click", async () => {
+    const sound = engine();
+    sound.apply(DEFAULT_SOUND_SETTINGS);
+    await settle();
+    const context = FakeAudioContext.latest();
+    sound.play("complete");
+    const [tone] = context.oscillators;
+    const gain = last(context.gainsAfter(tone))!.gain;
+    context.currentTime = 4;
+    sound.apply(withChannel("interaction", { muted: true }));
+    const after = gain.events.filter((event) => event.time >= 4);
+    expect(after.some((event) => event.type === "set" && event.value === 0)).toBe(false);
+    const ramp = last(gain.events)!;
+    expect(ramp).toMatchObject({ type: "ramp", value: 0 });
+    expect(ramp.time - 4).toBeGreaterThan(0);
+    expect(ramp.time - 4).toBeLessThanOrEqual(0.1);
+  });
+
   it("mutes the rain within a fraction of a second and stops the loop", async () => {
     const sound = engine();
     sound.apply(DEFAULT_SOUND_SETTINGS);
@@ -148,6 +217,22 @@ describe("independent volume and mute", () => {
   });
 });
 
+describe("status", () => {
+  it("does not flash the waiting hint when sound comes back after the engine's own suspend", async () => {
+    const sound = engine();
+    sound.apply(DEFAULT_SOUND_SETTINGS);
+    await settle();
+    sound.apply({ interaction: { volume: 12, muted: true }, ambient: { volume: 8, muted: true } });
+    await settle();
+    const seen: string[] = [];
+    sound.onStatus(() => seen.push(sound.status()));
+    sound.apply(DEFAULT_SOUND_SETTINGS);
+    await settle();
+    expect(sound.status()).toBe("playing");
+    expect(seen).not.toContain("waiting-for-gesture");
+  });
+});
+
 describe("app lifecycle", () => {
   it("keeps the rain playing while the window is minimized or hidden to the menu bar", async () => {
     const sound = engine();
@@ -155,8 +240,8 @@ describe("app lifecycle", () => {
     await settle();
     const context = FakeAudioContext.latest();
     const [source] = context.playingSources();
-    sound.setPresence("minimized");
-    sound.setPresence("menu-bar");
+    // Neither a minimized window nor the menu bar tells the engine anything: no reason to stop.
+    sound.gesture();
     expect(context.playingSources()).toEqual([source]);
     expect(ambientNow(context)).toBeCloseTo(0.08);
   });
@@ -189,7 +274,7 @@ describe("app lifecycle", () => {
     await settle();
     expect(sound.status()).toBe("waiting-for-gesture");
     FakeAudioContext.resumePolicy = "allow";
-    sound.setPresence("open");
+    sound.gesture();
     await settle();
     expect(sound.status()).toBe("playing");
     expect(context.playingSources()).toHaveLength(1);
@@ -203,7 +288,6 @@ describe("app lifecycle", () => {
     sound.apply(DEFAULT_SOUND_SETTINGS);
     sound.gesture();
     sound.play("complete");
-    sound.setPresence("minimized");
     await sound.fadeOut();
     expect(sound.status()).toBe("unavailable");
   });

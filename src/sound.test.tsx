@@ -13,7 +13,7 @@ const call = vi.mocked(invoke);
 
 // The real rain takes a few dozen milliseconds to render; tests only need a buffer.
 vi.mock("./lib/sound/rain", () => ({
-  renderRain: (rate: number) => [new Float32Array(rate / 10), new Float32Array(rate / 10)],
+  renderRainInSlices: async (rate: number) => [new Float32Array(rate / 10), new Float32Array(rate / 10)],
 }));
 
 const base: Task = {

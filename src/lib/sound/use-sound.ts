@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { saveBeforeQuit } from "../quit";
-import { createSoundEngine, type Cue, type Presence, type SoundEngine, type SoundStatus } from "./sound-engine";
+import { createSoundEngine, type Cue, type SoundEngine, type SoundStatus } from "./sound-engine";
 import { loadSoundSettings, saveSoundSettings, type SoundChannel, type SoundSettings } from "./sound-settings";
 
 export interface SoundControl {
@@ -9,11 +9,6 @@ export interface SoundControl {
   setVolume: (channel: SoundChannel, percent: number) => void;
   toggleMute: (channel: SoundChannel) => void;
   play: (cue: Cue) => void;
-  /**
-   * Where the app is. The hook already reports minimized/visible from the page's
-   * visibility; a shell state the page cannot see (Ticket 15's menu bar) reports here.
-   */
-  setPresence: (presence: Presence) => void;
 }
 
 function webAudio(): AudioContext {
@@ -37,15 +32,12 @@ export function useSound(): SoundControl {
   useEffect(() => {
     // WebKit only lets audio start inside a user gesture; capture runs before any handler.
     const gesture = () => engine.gesture();
-    const visibility = () => engine.setPresence(document.hidden ? "minimized" : "open");
     window.addEventListener("pointerdown", gesture, true);
     window.addEventListener("keydown", gesture, true);
-    document.addEventListener("visibilitychange", visibility);
     const stopQuitFade = saveBeforeQuit(() => engine.fadeOut().then(() => true));
     return () => {
       window.removeEventListener("pointerdown", gesture, true);
       window.removeEventListener("keydown", gesture, true);
-      document.removeEventListener("visibilitychange", visibility);
       stopQuitFade();
       engine.dispose();
     };
@@ -59,6 +51,5 @@ export function useSound(): SoundControl {
     toggleMute: (channel) =>
       setSettings((current) => ({ ...current, [channel]: { ...current[channel], muted: !current[channel].muted } })),
     play: engine.play,
-    setPresence: engine.setPresence,
   };
 }
