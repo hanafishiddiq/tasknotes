@@ -474,7 +474,7 @@ pub(crate) fn read_task(row: &Row<'_>) -> rusqlite::Result<Task> {
 pub(crate) const COLUMNS: &str = "id, title, description, status, priority, progress, revision, created_at, updated_at, next_step, list_id, due_date, removed_at";
 
 /// The database schema this core reads and writes.
-pub const SCHEMA_VERSION: i64 = 11;
+pub const SCHEMA_VERSION: i64 = 12;
 
 /// How long a write waits for another process (the CLI, MCP) holding the database lock.
 pub const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -626,6 +626,11 @@ impl TaskStore {
         if version < 11 {
             let migration = connection.transaction()?;
             crate::privacy::migrate_v11(&migration)?;
+            migration.commit()?;
+        }
+        if version < 12 {
+            let migration = connection.transaction()?;
+            crate::privacy::migrate_v12(&migration)?;
             migration.commit()?;
         }
         Ok(Self {

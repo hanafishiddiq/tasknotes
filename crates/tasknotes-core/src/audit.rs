@@ -5,7 +5,7 @@
 //! error code and a revision. It never holds a title, description, note or
 //! any other user text, so reading the audit log cannot leak content.
 
-use rusqlite::{Connection, Transaction, params};
+use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use serde::Serialize;
 use uuid::Uuid;
 
@@ -56,16 +56,6 @@ macro_rules! actions {
                 match value { $($text => Some(Self::$variant),)+ _ => None }
             }
 
-            /// The table holding the entity this action changes.
-            fn entity_table(self) -> &'static str {
-                match self.as_str().split_once('.') {
-                    Some(("list", _)) => "lists",
-                    Some(("note", _)) => "notes",
-                    Some(("folder", _)) => "note_folders",
-                    Some(("link", _)) => "task_note_links",
-                    _ => "tasks",
-                }
-            }
         }
     };
 }
@@ -100,6 +90,25 @@ actions! {
     LinkRestore => "link.restore",
 }
 
+impl AuditAction {
+    /// The table holding the entity this action changes. No wildcard arm:
+    /// a new action does not compile until it names its table.
+    fn entity_table(self) -> &'static str {
+        use AuditAction::*;
+        match self {
+            TaskCreate | TaskUpdate | TaskChange | TaskProgress | TaskDetails | TaskMove
+            | TaskRemove | TaskRestore => "tasks",
+            ListCreate | ListRename | ListRemove | ListRestore => "lists",
+            NoteCreate | NoteUpdate | NoteMove | NotePin | NoteRemove | NoteRestore
+            | NotePrivacy => "notes",
+            FolderCreate | FolderRename | FolderMove | FolderRemove | FolderRestore => {
+                "note_folders"
+            }
+            LinkCreate | LinkRemove | LinkRestore => "task_note_links",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AuditOutcome {
@@ -126,8 +135,9 @@ impl AuditOutcome {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct AuditEntry {
-    /// Append order; also the page cursor.
-    pub sequence: i64,
+    /// No append number is exposed: to an AI interface its gaps would count
+    /// the entries it may not see. Pages are ordered by append order inside
+    /// the core and resumed from an entry id.
     pub id: String,
     pub created_at: i64,
     pub interface: Interface,
@@ -182,9 +192,12 @@ struct NewAuditEntry<'a> {
 
 fn insert(conn: &Connection, interface: Interface, entry: &NewAuditEntry) -> Result<(), TaskError> {
     conn.execute(
-        "INSERT INTO audit_entries
-           (id, created_at, interface, action, entity_id, outcome, error_code, revision)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        &format!(
+            "INSERT INTO audit_entries (id, created_at, interface, action, entity_id, outcome,
+                                        error_code, revision, hidden_from_ai)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, {})",
+            crate::privacy::hidden_at_record_sql("?4", "?5")
+        ),
         params![
             Uuid::new_v4().to_string(),
             current_millis()?,
@@ -331,55 +344,58 @@ impl TaskStore {
         if !(1..=100).contains(&limit) {
             return Err(TaskError::InvalidPageSize);
         }
-        let before = match cursor {
-            None => None,
-            Some(raw) => Some(
-                raw.strip_prefix("a1|")
-                    .and_then(|n| n.parse::<i64>().ok())
-                    .filter(|n| *n > 0)
-                    .ok_or(TaskError::InvalidAuditCursor)?,
-            ),
-        };
         let conn = self.connect()?;
-        // To an AI interface an excluded Note has no history, nor do its links.
-        let private = if self.hides_private() {
-            "AND entity_id NOT IN (SELECT id FROM notes WHERE exclude_from_ai = 1)
-             AND entity_id NOT IN (SELECT l.id FROM task_note_links l
-                                   JOIN notes n ON n.id = l.note_id WHERE n.exclude_from_ai = 1)"
-        } else {
-            ""
+        // A cursor is the id of the last entry on the previous page. Ids are
+        // random, so a cursor says nothing about entries this interface
+        // cannot see; the append number it resolves to stays in the core.
+        let before: Option<i64> = match cursor {
+            None => None,
+            Some(raw) => {
+                let id = raw
+                    .strip_prefix("a2|")
+                    .filter(|id| Uuid::parse_str(id).is_ok())
+                    .ok_or(TaskError::InvalidAuditCursor)?;
+                Some(
+                    conn.query_row(
+                        "SELECT sequence FROM audit_entries WHERE id = ?1",
+                        params![id],
+                        |row| row.get(0),
+                    )
+                    .optional()?
+                    .ok_or(TaskError::InvalidAuditCursor)?,
+                )
+            }
         };
+        let private = self.ai_audit_filter_sql();
         let mut statement = conn.prepare(&format!(
-            "SELECT sequence, id, created_at, interface, action, entity_id, outcome,
-                    error_code, revision
+            "SELECT id, created_at, interface, action, entity_id, outcome, error_code, revision
              FROM audit_entries
              WHERE (?1 IS NULL OR entity_id = ?1) AND (?2 IS NULL OR sequence < ?2) {private}
              ORDER BY sequence DESC LIMIT ?3"
         ))?;
         let mut items = statement
             .query_map(params![entity_id, before, i64::from(limit) + 1], |row| {
-                let interface: String = row.get(3)?;
-                let action: String = row.get(4)?;
-                let outcome: String = row.get(6)?;
+                let interface: String = row.get(2)?;
+                let action: String = row.get(3)?;
+                let outcome: String = row.get(5)?;
                 Ok(AuditEntry {
-                    sequence: row.get(0)?,
-                    id: row.get(1)?,
-                    created_at: row.get(2)?,
+                    id: row.get(0)?,
+                    created_at: row.get(1)?,
                     interface: Interface::from_sql(&interface)
-                        .ok_or_else(|| crate::tasks::invalid_db_text(3, interface))?,
+                        .ok_or_else(|| crate::tasks::invalid_db_text(2, interface))?,
                     action: AuditAction::from_sql(&action)
-                        .ok_or_else(|| crate::tasks::invalid_db_text(4, action))?,
-                    entity_id: row.get(5)?,
+                        .ok_or_else(|| crate::tasks::invalid_db_text(3, action))?,
+                    entity_id: row.get(4)?,
                     outcome: AuditOutcome::from_sql(&outcome)
-                        .ok_or_else(|| crate::tasks::invalid_db_text(6, outcome))?,
-                    error_code: row.get(7)?,
-                    revision: row.get(8)?,
+                        .ok_or_else(|| crate::tasks::invalid_db_text(5, outcome))?,
+                    error_code: row.get(6)?,
+                    revision: row.get(7)?,
                 })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         let next_cursor = if items.len() > limit as usize {
             items.pop();
-            items.last().map(|e| format!("a1|{}", e.sequence))
+            items.last().map(|e| format!("a2|{}", e.id))
         } else {
             None
         };

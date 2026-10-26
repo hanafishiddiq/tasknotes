@@ -75,8 +75,12 @@ fn a_v10_database_keeps_its_notes_visible_to_ai_after_gaining_the_flag() {
     let fx = Fixture::new();
     let kept = note(&fx.desktop(), "# Existing synthetic Note");
     let conn = rusqlite::Connection::open(&fx.db).unwrap();
-    conn.execute_batch("ALTER TABLE notes DROP COLUMN exclude_from_ai; PRAGMA user_version = 10;")
-        .unwrap();
+    conn.execute_batch(
+        "ALTER TABLE notes DROP COLUMN exclude_from_ai;
+         ALTER TABLE audit_entries DROP COLUMN hidden_from_ai;
+         PRAGMA user_version = 10;",
+    )
+    .unwrap();
     drop(conn);
 
     let ai = fx.ai();
@@ -600,4 +604,74 @@ fn note_folder_and_link_changes_are_audited_for_every_interface() {
             .is_empty()
     );
     assert_eq!(actions(&desktop, Some(&n.id)).len(), 8);
+}
+
+/// Coordinator decision (2026-10-26, the owner may revisit): sharing a Note
+/// again does not open the history made while it was private. An AI never
+/// sees `note.privacy`, nor any entry about the Note or its links recorded
+/// while the Note was excluded, applied or rejected.
+#[test]
+fn re_sharing_a_note_keeps_what_happened_while_it_was_private_from_ai() {
+    use tasknotes_core::notes::UpdateNote;
+    let fx = Fixture::new();
+    let desktop = fx.desktop();
+    let ai = fx.ai();
+    let chore = task(&desktop, "Synthetic chore");
+    let n = note(&desktop, "# Shared plan");
+    let edit = |store: &TaskStore, revision: i64, text: &str| {
+        store.update_note(UpdateNote {
+            id: n.id.clone(),
+            markdown: text.into(),
+            expected_revision: revision,
+        })
+    };
+    let before = edit(&ai, n.revision, "# Shared plan\n\nby ai").unwrap();
+
+    exclude(&desktop, &n, true).unwrap();
+    let private = edit(&desktop, before.revision, "# Private plan").unwrap();
+    let private = edit(&desktop, private.revision, "# Private plan, again").unwrap();
+    assert_eq!(
+        edit(&desktop, before.revision, "stale").unwrap_err().code(),
+        "revision_conflict"
+    );
+    let link = desktop.link_note(&chore.id, &n.id).unwrap();
+    exclude(&desktop, &n, false).unwrap();
+    edit(&ai, private.revision, "# Shared plan\n\nby ai again").unwrap();
+
+    assert_eq!(
+        actions(&ai, Some(&n.id)),
+        [
+            triple("note.create", "desktop", "applied"),
+            triple("note.update", "cli", "applied"),
+            triple("note.update", "cli", "applied"),
+        ]
+    );
+    assert!(actions(&ai, Some(&link.id)).is_empty());
+    let everything = actions(&ai, None);
+    assert!(
+        everything
+            .iter()
+            .all(|(action, ..)| action != "note.privacy")
+    );
+    assert!(
+        !everything
+            .iter()
+            .any(|(action, ..)| action == "link.create")
+    );
+
+    // The person keeps the whole history.
+    assert_eq!(
+        actions(&desktop, Some(&n.id)),
+        [
+            triple("note.create", "desktop", "applied"),
+            triple("note.update", "cli", "applied"),
+            triple("note.privacy", "desktop", "applied"),
+            triple("note.update", "desktop", "applied"),
+            triple("note.update", "desktop", "applied"),
+            triple("note.update", "desktop", "rejected"),
+            triple("note.privacy", "desktop", "applied"),
+            triple("note.update", "cli", "applied"),
+        ]
+    );
+    assert_eq!(actions(&desktop, Some(&link.id)).len(), 1);
 }

@@ -6,6 +6,14 @@
 //! that was never used (`NoteNotFound`, or `LinkNotFound` for its links).
 //! Audit Entries about it are left out too. The desktop is the person
 //! themself and sees and edits everything; only it can change the flag.
+//!
+//! Every AI-facing Note read goes through one of the helpers below
+//! (`note_shown_sql`, `require_note_shown`, `ai_audit_filter_sql`).
+//!
+//! Audit history (coordinator decision 2026-10-26, the owner may revisit):
+//! an AI never sees a `note.privacy` entry, nor any entry about a Note, or a
+//! link to it, recorded while that Note was excluded, even after the Note is
+//! shared again. Entries carry `hidden_from_ai`, fixed when they are written.
 
 use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
 use serde::Deserialize;
@@ -23,6 +31,46 @@ pub(crate) fn migrate_v11(migration: &Transaction) -> Result<(), TaskError> {
          PRAGMA user_version = 11;",
     )?;
     Ok(())
+}
+
+/// Schema v12: each Audit Entry remembers whether it was written about an
+/// excluded Note (or a link to one), so re-sharing the Note does not reveal
+/// what happened while it was private. Entries written before v12 cannot
+/// know and default to 0; the list still hides every `note.privacy` entry
+/// and everything about a Note that is excluded now.
+pub(crate) fn migrate_v12(migration: &Transaction) -> Result<(), TaskError> {
+    migration.execute_batch(
+        "ALTER TABLE audit_entries ADD COLUMN hidden_from_ai INTEGER NOT NULL DEFAULT 0
+           CHECK(hidden_from_ai IN (0, 1));
+         PRAGMA user_version = 12;",
+    )?;
+    Ok(())
+}
+
+/// The one predicate: true when the Note aliased `alias` is excluded.
+fn excluded_sql(alias: &str) -> String {
+    format!("{alias}.exclude_from_ai = 1")
+}
+
+/// True when `entity` (an SQL expression holding an id) names an excluded
+/// Note or a link to one.
+fn about_excluded_note_sql(entity: &str) -> String {
+    format!(
+        "(EXISTS (SELECT 1 FROM notes xn WHERE xn.id = {entity} AND {excluded})
+          OR EXISTS (SELECT 1 FROM task_note_links xl JOIN notes xn ON xn.id = xl.note_id
+                     WHERE xl.id = {entity} AND {excluded}))",
+        excluded = excluded_sql("xn"),
+    )
+}
+
+/// The value of `hidden_from_ai` for an entry being written, given the SQL
+/// expressions holding its action and entity id.
+pub(crate) fn hidden_at_record_sql(action: &str, entity: &str) -> String {
+    format!(
+        "CASE WHEN {action} = '{privacy}' OR {about} THEN 1 ELSE 0 END",
+        privacy = AuditAction::NotePrivacy.as_str(),
+        about = about_excluded_note_sql(entity),
+    )
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -43,10 +91,24 @@ impl TaskStore {
     /// interface. Every Note read, listing, link list and count uses it.
     pub(crate) fn note_shown_sql(&self, alias: &str) -> String {
         if self.hides_private() {
-            format!("{alias}.exclude_from_ai = 0")
+            format!("NOT ({})", excluded_sql(alias))
         } else {
             "1".to_owned()
         }
+    }
+
+    /// Extra `AND …` conditions on `audit_entries` for this interface; empty
+    /// for the desktop. An AI sees no `note.privacy` entry, nothing written
+    /// while a Note was excluded, and nothing about a Note excluded now.
+    pub(crate) fn ai_audit_filter_sql(&self) -> String {
+        if !self.hides_private() {
+            return String::new();
+        }
+        format!(
+            "AND hidden_from_ai = 0 AND action <> '{}' AND NOT {}",
+            AuditAction::NotePrivacy.as_str(),
+            about_excluded_note_sql("entity_id")
+        )
     }
 
     /// Inside the caller's transaction, before any other check on the Note:
