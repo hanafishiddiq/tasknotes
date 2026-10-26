@@ -1,0 +1,148 @@
+//! The versioned JSON contract AI clients read (schema version 1). Ticket 12's
+//! MCP adapter is meant to reuse these shapes so both interfaces agree.
+//!
+//! Success: `{"schema_version":1,"ok":true,"item":{..}}`, or for a page
+//! `{"schema_version":1,"ok":true,"items":[..],"next_cursor":null|".."}`.
+//! Failure: `{"schema_version":1,"ok":false,"error":{"code":"..","message":".."}}`.
+//! Keys are snake_case and times are Unix milliseconds.
+
+use serde::Serialize;
+use serde_json::{Value, json};
+use tasknotes_core::tasks::{List, Priority, ProgressEntry, Task, TaskError, WorkStatus};
+
+pub const SCHEMA_VERSION: u32 = 1;
+
+/// A refusal with a stable code; the message is for people and may change.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CliError {
+    pub code: &'static str,
+    pub message: String,
+}
+
+impl CliError {
+    pub fn new(code: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+        }
+    }
+
+    pub fn invalid(message: impl Into<String>) -> Self {
+        Self::new("invalid_input", message)
+    }
+
+    pub fn not_trusted() -> Self {
+        Self::new(
+            "not_trusted",
+            "Tasknotes CLI access has not been granted on this Mac. \
+             The person using Tasknotes can run `tasknotes access grant` in a terminal.",
+        )
+    }
+
+    /// The process exit status for this error's code.
+    pub fn exit_code(&self) -> i32 {
+        match self.code {
+            "invalid_input" | "invalid_cursor" => 2,
+            "not_found" => 3,
+            "revision_conflict" => 4,
+            "removed" | "name_conflict" | "invalid_transition" | "unchanged" => 5,
+            "not_trusted" => 6,
+            "storage_unavailable" | "unsupported_schema" => 7,
+            _ => 1,
+        }
+    }
+}
+
+impl From<TaskError> for CliError {
+    fn from(error: TaskError) -> Self {
+        Self::new(error.code(), error.to_string())
+    }
+}
+
+pub fn success_item(item: Value) -> Value {
+    json!({"schema_version": SCHEMA_VERSION, "ok": true, "item": item})
+}
+
+pub fn success_page(items: Vec<Value>, next_cursor: Option<String>) -> Value {
+    json!({
+        "schema_version": SCHEMA_VERSION,
+        "ok": true,
+        "items": items,
+        "next_cursor": next_cursor,
+    })
+}
+
+pub fn failure(error: &CliError) -> Value {
+    json!({
+        "schema_version": SCHEMA_VERSION,
+        "ok": false,
+        "error": {"code": error.code, "message": error.message},
+    })
+}
+
+pub fn status_name(status: WorkStatus) -> &'static str {
+    match status {
+        WorkStatus::Ready => "ready",
+        WorkStatus::InProgress => "in_progress",
+        WorkStatus::Completed => "completed",
+    }
+}
+
+pub fn priority_name(priority: Priority) -> &'static str {
+    match priority {
+        Priority::VeryLow => "very_low",
+        Priority::Low => "low",
+        Priority::Medium => "medium",
+        Priority::High => "high",
+        Priority::VeryHigh => "very_high",
+    }
+}
+
+pub fn task(task: &Task) -> Value {
+    json!({
+        "id": task.id,
+        "title": task.title,
+        "description": task.description,
+        "status": status_name(task.status),
+        "priority": priority_name(task.priority),
+        "progress": task.progress,
+        "next_step": task.next_step,
+        "list_id": task.list_id,
+        "deadline": task.due_date,
+        "tags": task.tags,
+        "revision": task.revision,
+        "created_at": task.created_at,
+        "updated_at": task.updated_at,
+        "removed": task.removed,
+    })
+}
+
+pub fn list(list: &List) -> Value {
+    json!({
+        "id": list.id,
+        "name": list.name,
+        "revision": list.revision,
+        "created_at": list.created_at,
+        "updated_at": list.updated_at,
+        "removed": list.removed,
+    })
+}
+
+pub fn progress_entry(entry: &ProgressEntry) -> Value {
+    json!({
+        "sequence": entry.sequence,
+        "id": entry.id,
+        "task_id": entry.task_id,
+        "previous_status": status_name(entry.previous_status),
+        "status": status_name(entry.status),
+        "previous_progress": entry.previous_progress,
+        "progress": entry.progress,
+        "note": entry.note,
+        "next_step": entry.next_step,
+        "created_at": entry.created_at,
+    })
+}
+
+pub fn to_value(value: &impl Serialize) -> Value {
+    serde_json::to_value(value).expect("contract values always serialize")
+}
