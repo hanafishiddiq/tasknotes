@@ -684,6 +684,59 @@ button.folder-disclosure:hover:not(:disabled) {
   font-size: 12px;
   color: var(--text-3);
 }
+.settings-sound {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.settings-sound-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) minmax(96px, 180px) 40px;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 10px 0 4px;
+  border-radius: 6px;
+  color: var(--text);
+}
+.settings-sound-row:hover {
+  background: var(--hover);
+}
+.settings-sound-row[data-muted] label,
+.settings-sound-row[data-muted] output {
+  color: var(--text-3);
+}
+.settings-mute {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.settings-mute:hover {
+  background: var(--hover);
+}
+.settings-mute:focus-visible,
+.settings-sound-row input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.settings-sound-row input {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.settings-sound-row output {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--text-2);
+}
 .settings-shortcuts {
   margin: 0;
 }
