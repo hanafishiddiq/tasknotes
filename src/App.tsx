@@ -21,6 +21,7 @@ import { useNoteFolders } from "./lib/use-note-folders";
 import NoteFolderTree from "./components/NoteFolderTree";
 import NoteSnippet from "./components/NoteSnippet";
 import RemovedView from "./components/RemovedView";
+import SettingsView from "./components/SettingsView";
 import { removedApi, type RemovedItem } from "./lib/removed-api";
 import "./App.css";
 
@@ -38,7 +39,7 @@ function sameFilters(a: TaskFilters, b: TaskFilters): boolean {
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [view, setView] = useState<TaskView>({ kind: "all" });
-  const [workspace, setWorkspace] = useState<"tasks" | "notes" | "removed">("tasks");
+  const [workspace, setWorkspace] = useState<"tasks" | "notes" | "removed" | "settings">("tasks");
   // Bumped after something is moved to Removed, so the Removed view asks again.
   const [removedKey, setRemovedKey] = useState(0);
   // The Task just moved to Removed, for Undo.
@@ -82,7 +83,7 @@ export default function App() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [theme, toggleTheme] = useTheme();
+  const appearance = useTheme();
   const titleInput = useRef<HTMLInputElement>(null);
   // Ignore stale results from older Task queries after a newer user action.
   const requestGeneration = useRef(0);
@@ -206,6 +207,11 @@ export default function App() {
     setTagDraft("");
     applyFilters({ ...NO_FILTERS, taskId });
     setExpandedId(taskId);
+  }
+
+  function openSettings() {
+    if (busyList || creating || savingId || loadingMore) return;
+    setWorkspace("settings");
   }
 
   function openRemoved() {
@@ -634,7 +640,8 @@ export default function App() {
         lists={lists} shownCount={countKnown ? tasks.length : null} hasMoreTasks={Boolean(nextCursor)}
         listError={listError}
         hasMoreLists={Boolean(listCursor)} busy={busyList || creating || Boolean(savingId) || loadingMore}
-        theme={theme} onToggleTheme={toggleTheme}
+        theme={appearance.theme} onToggleTheme={appearance.toggle}
+        settingsActive={workspace === "settings"} onOpenSettings={openSettings}
         onNavigate={navigate} onCreateList={createList} onRenameList={renameList}
         onRemoveList={(list) => setListRemoved(list, true)}
         onLoadMoreLists={loadMoreLists}
@@ -919,6 +926,8 @@ export default function App() {
           </div>
         </div>
       </main>
+      <SettingsView hidden={workspace !== "settings"} preference={appearance.preference}
+        onPreference={appearance.setPreference} />
       <RemovedView hidden={workspace !== "removed"} refreshKey={removedKey} onRestored={restored} />
       {notesOpened && (
         <Suspense fallback={workspace === "notes" &&

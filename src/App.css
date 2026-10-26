@@ -611,6 +611,72 @@ button.folder-disclosure:hover:not(:disabled) {
   gap: 8px;
 }
 
+/* Settings: per-window preferences as quiet Notes-style rows */
+.settings-heading {
+  margin: 20px 0 4px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-2);
+}
+.settings-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.settings-choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+}
+.settings-choice:hover {
+  background: var(--hover);
+}
+.settings-choice input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+.settings-choice:has(input:focus-visible) {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.settings-choice svg {
+  color: var(--text-2);
+}
+.settings-hint {
+  margin: 4px 0 0;
+  padding: 0 10px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.settings-shortcuts {
+  margin: 0;
+}
+.settings-shortcut {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--sep);
+}
+.settings-shortcut dt {
+  color: var(--text);
+}
+.settings-shortcut dd {
+  margin: 0;
+}
+kbd {
+  font: inherit;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}
+
 /* Removed view: restorable items, never purged */
 .removed-search {
   width: 100%;
