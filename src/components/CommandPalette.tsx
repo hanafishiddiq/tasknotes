@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { createPortal } from "react-dom";
 import { Search } from "lucide-react";
 
 export interface Command {
@@ -69,7 +70,8 @@ export default function CommandPalette({ commands, textCommand, onClose }: Comma
 
   const optionId = (index: number) => `${listId}-${index}`;
 
-  return (
+  // Outside the app shell, which goes inert while the palette is open.
+  return createPortal(
     <div className="palette-layer" onMouseDown={(event) => {
       if (event.target === event.currentTarget) onClose();
     }}>
@@ -107,9 +109,10 @@ export default function CommandPalette({ commands, textCommand, onClose }: Comma
               <span className="palette-group" aria-hidden="true">{command.group}</span>
             </li>
           ))}
-          {shown.length === 0 && <li className="palette-empty" role="presentation">No matching commands</li>}
         </ul>
+        {shown.length === 0 && <p className="palette-empty" role="status">No matching commands</p>}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -783,6 +783,7 @@ kbd {
   color: inherit;
 }
 .palette-empty {
+  margin: 0;
   padding: 8px;
   color: var(--text-3);
 }

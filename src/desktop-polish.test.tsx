@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
 import App from "./App";
+import CommandPalette from "./components/CommandPalette";
 import type { Task, TaskList } from "./lib/task-api";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -534,6 +535,37 @@ describe("Command palette and shortcuts", () => {
     await user.type(screen.getByRole("combobox", { name: "Command" }), "settings");
     await user.keyboard("{Enter}");
     expect(screen.getByRole("heading", { name: "Settings" })).toBeVisible();
+  });
+
+  it("keeps the window behind the open palette inert, global shortcuts included", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<App />);
+    await screen.findByText("Your list is clear");
+    await user.keyboard("{Meta>}k{/Meta}");
+    const input = screen.getByRole("combobox", { name: "Command" });
+    expect(container.querySelector(".app-shell")).toHaveAttribute("inert");
+    expect(screen.getByRole("dialog", { name: "Command palette" }).closest(".app-shell")).toBeNull();
+
+    for (const key of ["n", "f", ","]) {
+      await user.keyboard(`{Meta>}${key}{/Meta}`);
+      expect(screen.getByRole("dialog", { name: "Command palette" })).toBeInTheDocument();
+      expect(input).toHaveFocus();
+    }
+    expect(screen.queryByRole("heading", { name: "Settings" })).toBeNull();
+    await user.keyboard("{Escape}");
+    expect(container.querySelector(".app-shell")).not.toHaveAttribute("inert");
+  });
+
+  it("announces no matches outside the list of options", async () => {
+    const user = userEvent.setup();
+    render(<CommandPalette commands={[{ id: "a", label: "All tasks", group: "Go to", run: () => undefined }]}
+      textCommand={() => null} onClose={() => undefined} />);
+    await user.type(screen.getByRole("combobox", { name: "Command" }), "zzz");
+    const listbox = screen.getByRole("listbox", { name: "Commands" });
+    expect(listbox.children).toHaveLength(0);
+    const empty = screen.getByRole("status");
+    expect(empty).toHaveTextContent("No matching commands");
+    expect(listbox.contains(empty)).toBe(false);
   });
 
   it("focuses New task with Cmd+N, search with Cmd+F and opens Settings with Cmd+,", async () => {

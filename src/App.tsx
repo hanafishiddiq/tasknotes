@@ -672,12 +672,14 @@ export default function App() {
     setPaletteOpen(true);
   }
 
+  // While the palette is open the window behind it is inert: its shortcuts do nothing.
+  const behindPalette = <T,>(handler: () => T, idle: T) => () => paletteOpen ? idle : handler();
   useShortcuts({
     palette: openPalette,
-    newTask: () => focusInTasks("capture"),
-    search: () => focusInTasks("search"),
-    settings: openSettings,
-    undo: undo.run,
+    newTask: behindPalette(() => focusInTasks("capture"), undefined),
+    search: behindPalette(() => focusInTasks("search"), undefined),
+    settings: behindPalette(openSettings, undefined),
+    undo: behindPalette(undo.run, false),
   });
 
   const appearanceLabels = { dark: "Dark", light: "Light", system: "Match system" } as const;
@@ -723,7 +725,7 @@ export default function App() {
   const countKnown = !(loadError && filtering);
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" inert={paletteOpen}>
       <TaskSidebar
         view={view} notesActive={workspace !== "tasks"} onOpenNotes={() => openNotes()}
         removedActive={workspace === "removed"} onOpenRemoved={openRemoved}
