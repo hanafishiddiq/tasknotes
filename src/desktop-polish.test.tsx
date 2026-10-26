@@ -372,8 +372,9 @@ describe("Command palette and shortcuts", () => {
     await user.type(screen.getByRole("combobox", { name: "Command" }), "report");
     await user.click(screen.getByRole("option", { name: "Search for “report”" }));
     expect(screen.getByRole("searchbox", { name: "Search tasks and notes" })).toHaveValue("report");
-    await waitFor(() => expect(screen.queryByRole("article", { name: "Water plants" })).not.toBeInTheDocument());
-    expect(screen.getByRole("article", { name: "Quarterly report" })).toBeInTheDocument();
+    await waitFor(() => expect(call).toHaveBeenCalledWith("list_tasks", expect.objectContaining({ text: "report" })));
+    expect(await screen.findByRole("article", { name: "Quarterly report" })).toBeInTheDocument();
+    expect(screen.queryByRole("article", { name: "Water plants" })).not.toBeInTheDocument();
   });
 
   it("offers Undo, appearance and Settings in the palette", async () => {
