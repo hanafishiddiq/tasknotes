@@ -5,6 +5,7 @@
 pub mod access;
 mod args;
 pub mod contract;
+mod notes;
 
 use std::ffi::OsString;
 use std::path::Path;
@@ -79,7 +80,10 @@ fn dispatch(
             _ => Err(CliError::invalid(USAGE)),
         };
     }
-    if !matches!(noun, "task" | "list" | "audit") {
+    if !matches!(
+        noun,
+        "task" | "list" | "audit" | "note" | "folder" | "link" | "removed"
+    ) {
         return Err(CliError::invalid(USAGE));
     }
     // The core refuses before the database is opened, created or migrated.
@@ -87,12 +91,16 @@ fn dispatch(
     match noun {
         "task" => task_command(&store, verb, words),
         "list" => list_command(&store, verb, words),
+        "note" => notes::note_command(&store, verb, words),
+        "folder" => notes::folder_command(&store, verb, words),
+        "link" => notes::link_command(&store, verb, words),
+        "removed" => notes::removed_command(&store, verb, words),
         _ => audit_command(&store, verb, words),
     }
 }
 
-const USAGE: &str =
-    "Usage: tasknotes [--data-dir DIR] <task|list|audit|access> <command> [id] [--options]";
+pub(crate) const USAGE: &str = "Usage: tasknotes [--data-dir DIR] \
+    <task|list|note|folder|link|removed|audit|access> <command> [id] [--options]";
 
 const NO_FLAGS: Spec = flags(&[], 0);
 
@@ -107,6 +115,7 @@ fn task_command(store: &TaskStore, verb: &str, words: &[String]) -> Result<Value
     let task = match verb {
         "list" => return task_page(store, words),
         "history" => return task_history(store, words),
+        "notes" => return notes::task_notes(store, words),
         "get" => {
             let p = parse(words, &ONE_ID)?;
             store.get_task(p.id())?.ok_or(TaskError::NotFound)?
@@ -304,9 +313,9 @@ fn audit_command(store: &TaskStore, verb: &str, words: &[String]) -> Result<Valu
     ))
 }
 
-const ONE_ID: Spec = flags(&[], 1);
+pub(crate) const ONE_ID: Spec = flags(&[], 1);
 
-const fn flags<'a>(values: &'a [&'a str], positionals: usize) -> Spec<'a> {
+pub(crate) const fn flags<'a>(values: &'a [&'a str], positionals: usize) -> Spec<'a> {
     Spec {
         values,
         repeated: &[],

@@ -11,6 +11,10 @@
 
 use serde::Serialize;
 use serde_json::{Value, json};
+use tasknotes_core::links::{LinkedNote, LinkedTask, NoteLink};
+use tasknotes_core::note_folders::NoteFolder;
+use tasknotes_core::notes::{Note, NoteSummary};
+use tasknotes_core::removed::RemovedItem;
 use tasknotes_core::tasks::{List, ProgressEntry, Task, TaskError};
 
 /// The version of this JSON contract, sent as `schema_version` in every
@@ -53,7 +57,7 @@ impl CliError {
             "invalid_input" | "invalid_cursor" => 2,
             "not_found" => 3,
             "revision_conflict" => 4,
-            "removed" | "name_conflict" | "invalid_transition" | "unchanged" => 5,
+            "removed" | "name_conflict" | "invalid_transition" | "unchanged" | "desktop_only" => 5,
             "not_trusted" => 6,
             "storage_unavailable" | "unsupported_schema" => 7,
             _ => 1,
@@ -142,4 +146,93 @@ pub fn progress_entry(entry: &ProgressEntry) -> Value {
 
 pub fn to_value(value: &impl Serialize) -> Value {
     serde_json::to_value(value).expect("contract values always serialize")
+}
+
+/// A Note as AI interfaces read it. Exclude from AI is never shown: an AI
+/// interface only ever sees Notes that are not excluded.
+pub fn note(note: &Note, folder_path: Option<String>) -> Value {
+    json!({
+        "id": note.id,
+        "title": note.title,
+        "markdown": note.markdown,
+        "revision": note.revision,
+        "created_at": note.created_at,
+        "updated_at": note.updated_at,
+        "folder_id": note.folder_id,
+        "folder_path": folder_path,
+        "pinned": note.pinned,
+        "removed": note.removed,
+    })
+}
+
+/// A listed or found Note, without its text; a search hit carries a short
+/// plain-text snippet around the match.
+pub fn note_summary(note: &NoteSummary, folder_path: Option<String>) -> Value {
+    json!({
+        "id": note.id,
+        "title": note.title,
+        "revision": note.revision,
+        "updated_at": note.updated_at,
+        "folder_id": note.folder_id,
+        "folder_path": folder_path,
+        "pinned": note.pinned,
+        "snippet": note.snippet.as_deref().map(|s| s.replace(['\u{2}', '\u{3}'], "")),
+    })
+}
+
+/// `path` is the names from the top level down joined with `/`;
+/// `note_count` counts only the Notes directly inside that this interface
+/// may see.
+pub fn folder(folder: &NoteFolder, path: String, note_count: i64) -> Value {
+    json!({
+        "id": folder.id,
+        "parent_id": folder.parent_id,
+        "name": folder.name,
+        "path": path,
+        "revision": folder.revision,
+        "created_at": folder.created_at,
+        "updated_at": folder.updated_at,
+        "has_children": folder.has_children,
+        "note_count": note_count,
+        "removed": folder.removed,
+    })
+}
+
+pub fn link(link: &NoteLink) -> Value {
+    json!({
+        "id": link.id,
+        "task_id": link.task_id,
+        "note_id": link.note_id,
+        "linked_at": link.linked_at,
+        "unlinked_at": link.unlinked_at,
+    })
+}
+
+pub fn linked_note(note: &LinkedNote) -> Value {
+    json!({
+        "link_id": note.link_id,
+        "note_id": note.note_id,
+        "title": note.title,
+        "updated_at": note.updated_at,
+    })
+}
+
+pub fn linked_task(task: &LinkedTask) -> Value {
+    json!({
+        "link_id": task.link_id,
+        "task_id": task.task_id,
+        "title": task.title,
+        "status": to_value(&task.status),
+    })
+}
+
+pub fn removed_item(item: &RemovedItem) -> Value {
+    json!({
+        "kind": to_value(&item.kind),
+        "id": item.id,
+        "title": item.title,
+        "revision": item.revision,
+        "removed_at": item.removed_at,
+        "in_removed_container": item.in_removed_container,
+    })
 }

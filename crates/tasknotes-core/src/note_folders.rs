@@ -405,12 +405,18 @@ impl TaskStore {
     }
 
     /// How many Notes this interface would list directly in the folder (or
-    /// in no folder): not Removed, and for an AI interface never a Note
+    /// in no folder): not Removed, none while the folder is hidden by Removed, and for an AI interface never a Note
     /// marked Exclude from AI, so a count cannot reveal one.
     pub fn count_folder_notes(&self, folder_id: Option<&str>) -> Result<i64, TaskError> {
         let conn = self.connect()?;
         if let Some(id) = folder_id {
-            require_folder(&conn, id)?;
+            if get_folder(&conn, id)?.is_none() {
+                return Err(TaskError::NoteFolderNotFound);
+            }
+            // A folder hidden by Removed hides its Notes with it.
+            if crate::removed::folder_hidden(&conn, id)? {
+                return Ok(0);
+            }
         }
         Ok(conn.query_row(
             &format!(
