@@ -118,6 +118,9 @@ pub enum TaskError {
     InvalidLinkCursor,
     #[error("Invalid Audit Entry page cursor")]
     InvalidAuditCursor,
+    /// A refusal whose Audit Entry could not be written; see `audit_unrecorded`.
+    #[error("{0}")]
+    AuditUnrecorded(Box<TaskError>),
     #[error("This AI interface has not been authorized for Tasknotes data")]
     NotAuthorized,
     #[error("Unsupported database schema version {0}; refusing to modify a newer database")]
@@ -131,6 +134,13 @@ pub enum TaskError {
 }
 
 impl TaskError {
+    /// True when this is a refusal the core meant to record as an Audit
+    /// Entry but could not, even after waiting out the busy timeout. The
+    /// refusal itself (code and message) is unchanged.
+    pub fn audit_unrecorded(&self) -> bool {
+        matches!(self, Self::AuditUnrecorded(_))
+    }
+
     /// A stable identifier every adapter (CLI, MCP) reports for this error.
     /// Messages may be reworded; codes only change with the schema version.
     pub fn code(&self) -> &'static str {
@@ -176,6 +186,7 @@ impl TaskError {
             ListNameConflict | NoteFolderNameConflict => "name_conflict",
             InvalidTransition(_) => "invalid_transition",
             TaskUnchanged | ListUnchanged | RemovedUnchanged | NoteFolderUnchanged => "unchanged",
+            AuditUnrecorded(refusal) => refusal.code(),
             NotAuthorized => "not_trusted",
             UnsupportedSchema(_) => "unsupported_schema",
             Io(_) | Sqlite(_) | Clock => "storage_unavailable",

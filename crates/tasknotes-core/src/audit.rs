@@ -55,6 +55,14 @@ macro_rules! actions {
             fn from_sql(value: &str) -> Option<Self> {
                 match value { $($text => Some(Self::$variant),)+ _ => None }
             }
+
+            /// The table holding the entity this action changes.
+            fn entity_table(self) -> &'static str {
+                match self.as_str().split_once('.') {
+                    Some(("list", _)) => "lists",
+                    _ => "tasks",
+                }
+            }
         }
     };
 }
@@ -179,6 +187,25 @@ fn meaningful_rejection(error: &TaskError) -> bool {
     matches!(error.code(), "revision_conflict" | "removed")
 }
 
+/// Record a refusal only against a row that exists, so an entry never holds
+/// an arbitrary string the caller passed as an id.
+fn insert_rejection(
+    conn: &Connection,
+    interface: Interface,
+    entry: &NewAuditEntry,
+) -> Result<(), TaskError> {
+    let table = entry.action.entity_table();
+    let exists: bool = conn.query_row(
+        &format!("SELECT EXISTS(SELECT 1 FROM {table} WHERE id = ?1)"),
+        params![entry.entity_id],
+        |row| row.get(0),
+    )?;
+    if exists {
+        insert(conn, interface, entry)?;
+    }
+    Ok(())
+}
+
 /// A change request that names the entity it changes and the revision the
 /// caller last read; `audited` records a refusal against them.
 pub(crate) trait Revisioned {
@@ -231,7 +258,9 @@ impl TaskStore {
 
     /// Run a change; when it is refused for a meaningful reason, record the
     /// refusal in its own transaction (the failed one has rolled back). The
-    /// caller always gets the original error, even if recording fails.
+    /// insert waits out the busy timeout like any write; if it still fails,
+    /// the caller gets the original refusal wrapped in `AuditUnrecorded` so
+    /// the adapter can say the history is incomplete.
     pub(crate) fn audited<I: Revisioned, T>(
         &self,
         action: AuditAction,
@@ -242,24 +271,25 @@ impl TaskStore {
             let (id, revision) = input.target();
             (id.to_owned(), revision)
         };
-        let result = change(input);
-        if let Err(error) = &result
-            && meaningful_rejection(error)
-            && !entity_id.is_empty()
-            && entity_id.len() <= 64
-        {
-            let entry = NewAuditEntry {
-                action,
-                entity_id: &entity_id,
-                outcome: AuditOutcome::Rejected,
-                error_code: Some(error.code()),
-                revision,
-            };
-            let _ = self
-                .connect()
-                .and_then(|conn| insert(&conn, self.interface(), &entry));
+        match change(input) {
+            Err(error) if meaningful_rejection(&error) => {
+                let entry = NewAuditEntry {
+                    action,
+                    entity_id: &entity_id,
+                    outcome: AuditOutcome::Rejected,
+                    error_code: Some(error.code()),
+                    revision,
+                };
+                match self
+                    .connect()
+                    .and_then(|conn| insert_rejection(&conn, self.interface(), &entry))
+                {
+                    Ok(()) => Err(error),
+                    Err(_) => Err(TaskError::AuditUnrecorded(Box::new(error))),
+                }
+            }
+            result => result,
         }
-        result
     }
 
     /// Audit Entries newest first, optionally for one entity, in keyset pages

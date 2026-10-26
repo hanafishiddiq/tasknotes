@@ -4,6 +4,8 @@
 //! Success: `{"schema_version":1,"ok":true,"item":{..}}`, or for a page
 //! `{"schema_version":1,"ok":true,"items":[..],"next_cursor":null|".."}`.
 //! Failure: `{"schema_version":1,"ok":false,"error":{"code":"..","message":".."}}`.
+//! A refusal the core meant to audit but could not also carries
+//! `"audit_recorded": false` in `error`; the refusal itself is unchanged.
 //! Keys are snake_case and times are Unix milliseconds.
 
 use serde::Serialize;
@@ -17,6 +19,8 @@ pub const SCHEMA_VERSION: u32 = 1;
 pub struct CliError {
     pub code: &'static str,
     pub message: String,
+    /// The core refused the change but could not write its Audit Entry.
+    pub audit_unrecorded: bool,
 }
 
 impl CliError {
@@ -24,6 +28,7 @@ impl CliError {
         Self {
             code,
             message: message.into(),
+            audit_unrecorded: false,
         }
     }
 
@@ -58,7 +63,10 @@ impl From<TaskError> for CliError {
         match error {
             // Tell the person how to grant access from this interface.
             TaskError::NotAuthorized => Self::not_trusted(),
-            error => Self::new(error.code(), error.to_string()),
+            error => Self {
+                audit_unrecorded: error.audit_unrecorded(),
+                ..Self::new(error.code(), error.to_string())
+            },
         }
     }
 }
@@ -77,11 +85,11 @@ pub fn success_page(items: Vec<Value>, next_cursor: Option<String>) -> Value {
 }
 
 pub fn failure(error: &CliError) -> Value {
-    json!({
-        "schema_version": SCHEMA_VERSION,
-        "ok": false,
-        "error": {"code": error.code, "message": error.message},
-    })
+    let mut detail = json!({"code": error.code, "message": error.message});
+    if error.audit_unrecorded {
+        detail["audit_recorded"] = Value::Bool(false);
+    }
+    json!({"schema_version": SCHEMA_VERSION, "ok": false, "error": detail})
 }
 
 pub fn status_name(status: WorkStatus) -> &'static str {

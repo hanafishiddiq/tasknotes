@@ -192,3 +192,37 @@ fn an_argument_that_is_not_utf8_is_invalid_input() {
     let run = finish(command.output().unwrap());
     assert_eq!(error_code(&run, 2), "invalid_input");
 }
+
+#[test]
+fn a_refusal_whose_audit_entry_cannot_be_written_says_so_in_the_envelope() {
+    let cli = Cli::trusted();
+    let task = cli.ok(&["task", "create", "--title", "Return the parcel"])["item"].clone();
+    let tid = task["id"].as_str().unwrap();
+    cli.ok(&[
+        "task",
+        "update",
+        tid,
+        "--revision",
+        "1",
+        "--title",
+        "Return it",
+    ]);
+    let stale = ["task", "update", tid, "--revision", "1", "--title", "Late"];
+
+    let recorded = cli.run(&stale);
+    assert_eq!(error_code(&recorded, 4), "revision_conflict");
+    assert!(recorded.json["error"].get("audit_recorded").is_none());
+
+    // Stand-in for a storage failure that outlasts the busy timeout.
+    rusqlite::Connection::open(cli.db())
+        .unwrap()
+        .execute_batch(
+            "CREATE TRIGGER refuse_rejections BEFORE INSERT ON audit_entries
+             WHEN NEW.outcome = 'rejected'
+             BEGIN SELECT RAISE(ABORT, 'disk full'); END;",
+        )
+        .unwrap();
+    let unrecorded = cli.run(&stale);
+    assert_eq!(error_code(&unrecorded, 4), "revision_conflict");
+    assert_eq!(unrecorded.json["error"]["audit_recorded"], false);
+}

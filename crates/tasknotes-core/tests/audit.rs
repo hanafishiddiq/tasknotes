@@ -388,3 +388,137 @@ fn a_failed_v10_migration_rolls_back_and_keeps_the_database_usable() {
     assert_eq!(version(&db), 10);
     assert!(store.get_task(&id).unwrap().is_some());
 }
+
+#[test]
+fn a_refused_write_naming_no_existing_row_stores_no_caller_text() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = TaskStore::open_as(&dir.path().join("t.db"), Interface::Cli).unwrap();
+    let invented = "caller-chosen text, not an id";
+    let results = [
+        store
+            .update_task(UpdateTask {
+                id: invented.into(),
+                title: "Anything".into(),
+                description: String::new(),
+                expected_revision: 1,
+            })
+            .err(),
+        store
+            .change_task(ChangeTask {
+                id: invented.into(),
+                expected_revision: 1,
+                status: None,
+                priority: Some(Priority::High),
+                progress: None,
+            })
+            .err(),
+        store
+            .record_progress(RecordProgress {
+                id: invented.into(),
+                expected_revision: 1,
+                status: None,
+                progress: Some(10),
+                next_step: None,
+                note: None,
+            })
+            .err(),
+        store
+            .update_task_details(UpdateTaskDetails {
+                id: invented.into(),
+                expected_revision: 1,
+                tags: vec!["x".into()],
+                due_date: None,
+            })
+            .err(),
+        store
+            .move_task(MoveTask {
+                id: invented.into(),
+                expected_revision: 1,
+                list_id: None,
+            })
+            .err(),
+        store
+            .set_task_removed(SetRemoved {
+                id: invented.into(),
+                expected_revision: 1,
+                removed: true,
+            })
+            .err(),
+        store
+            .rename_list(RenameList {
+                id: invented.into(),
+                expected_revision: 1,
+                name: "Anything".into(),
+            })
+            .err(),
+        store
+            .set_list_removed(SetListRemoved {
+                id: invented.into(),
+                expected_revision: 1,
+                removed: true,
+            })
+            .err(),
+    ];
+    assert!(results.iter().all(Option::is_some), "{results:?}");
+    assert!(
+        store
+            .list_audit_entries(None, 10, None)
+            .unwrap()
+            .items
+            .is_empty()
+    );
+}
+
+#[test]
+fn a_refusal_that_cannot_be_audited_says_so_and_keeps_its_code() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("t.db");
+    let store = store_at(&db);
+    let task = store
+        .create_task(CreateTask {
+            title: "Book the dentist".into(),
+            description: String::new(),
+        })
+        .unwrap();
+    // Stand-in for a storage failure that outlasts the busy timeout.
+    rusqlite::Connection::open(&db)
+        .unwrap()
+        .execute_batch(
+            "CREATE TRIGGER refuse_rejections BEFORE INSERT ON audit_entries
+             WHEN NEW.outcome = 'rejected'
+             BEGIN SELECT RAISE(ABORT, 'disk full'); END;",
+        )
+        .unwrap();
+    let stale = |revision| {
+        store.update_task(UpdateTask {
+            id: task.id.clone(),
+            title: "Book the dentist today".into(),
+            description: String::new(),
+            expected_revision: revision,
+        })
+    };
+    store
+        .update_task(UpdateTask {
+            id: task.id.clone(),
+            title: "Book the dentist soon".into(),
+            description: String::new(),
+            expected_revision: task.revision,
+        })
+        .unwrap();
+    let error = stale(task.revision).unwrap_err();
+    assert_eq!(error.code(), "revision_conflict");
+    assert!(error.audit_unrecorded(), "{error:?}");
+    assert_eq!(
+        error.to_string(),
+        TaskError::RevisionConflict.to_string(),
+        "the person still sees the original refusal"
+    );
+
+    rusqlite::Connection::open(&db)
+        .unwrap()
+        .execute_batch("DROP TRIGGER refuse_rejections;")
+        .unwrap();
+    let recorded = stale(task.revision).unwrap_err();
+    assert!(matches!(recorded, TaskError::RevisionConflict));
+    assert!(!recorded.audit_unrecorded());
+}
