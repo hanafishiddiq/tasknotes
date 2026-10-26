@@ -89,3 +89,263 @@ fn a_v10_database_keeps_its_notes_visible_to_ai_after_gaining_the_flag() {
     assert!(!read.exclude_from_ai, "nothing becomes private by itself");
     assert_eq!(read.markdown, kept.markdown);
 }
+
+fn ids(page: &tasknotes_core::notes::NotePage) -> Vec<String> {
+    page.items.iter().map(|n| n.id.clone()).collect()
+}
+
+#[test]
+fn ai_listings_and_searches_leave_an_excluded_note_out_entirely() {
+    use tasknotes_core::note_folders::CreateNoteFolder;
+    use tasknotes_core::notes::{NoteQuery, NoteScope};
+    let fx = Fixture::new();
+    let desktop = fx.desktop();
+    let folder = desktop
+        .create_note_folder(CreateNoteFolder {
+            name: "Synthetic folder".into(),
+            parent_id: None,
+        })
+        .unwrap();
+    let in_folder = |markdown: &str| {
+        desktop
+            .create_note(CreateNote {
+                markdown: markdown.into(),
+                folder_id: Some(folder.id.clone()),
+            })
+            .unwrap()
+    };
+    let shared = in_folder("# Shared marmalade recipe");
+    let private = in_folder("# Private marmalade recipe");
+    exclude(&desktop, &private, true).unwrap();
+
+    let searches = [
+        NoteQuery::default(),
+        NoteQuery {
+            text: "marmalade".into(),
+            folder: NoteScope::All,
+        },
+        NoteQuery {
+            text: "private".into(),
+            folder: NoteScope::All,
+        },
+        NoteQuery {
+            text: String::new(),
+            folder: NoteScope::Folder(folder.id.clone()),
+        },
+    ];
+    let ai = fx.ai();
+    for query in &searches {
+        let page = ai.query_notes(query, 50, None).unwrap();
+        assert!(!ids(&page).contains(&private.id), "{query:?}");
+        assert!(page.items.iter().all(|n| !n.title.contains("Private")
+            && !n.snippet.clone().unwrap_or_default().contains("Private")));
+    }
+    assert_eq!(
+        ids(&ai.list_notes(50, None).unwrap()),
+        vec![shared.id.clone()]
+    );
+    let desktop_all = desktop.list_notes(50, None).unwrap();
+    assert_eq!(ids(&desktop_all).len(), 2, "the person still finds both");
+    let desktop_hit = desktop.query_notes(&searches[2], 50, None).unwrap();
+    assert_eq!(ids(&desktop_hit), vec![private.id.clone()]);
+}
+
+fn task(store: &TaskStore, title: &str) -> tasknotes_core::tasks::Task {
+    store
+        .create_task(tasknotes_core::tasks::CreateTask {
+            title: title.into(),
+            description: String::new(),
+        })
+        .unwrap()
+}
+
+#[test]
+fn ai_link_lists_leave_out_an_excluded_note_and_its_links() {
+    let fx = Fixture::new();
+    let desktop = fx.desktop();
+    let chore = task(&desktop, "Synthetic chore");
+    let shared = note(&desktop, "# Shared checklist");
+    let private = note(&desktop, "# Private checklist");
+    desktop.link_note(&chore.id, &shared.id).unwrap();
+    let private_link = desktop.link_note(&chore.id, &private.id).unwrap();
+    exclude(&desktop, &private, true).unwrap();
+
+    let ai = fx.ai();
+    let linked = ai.list_task_notes(&chore.id, 50, None).unwrap();
+    assert_eq!(
+        linked.items.iter().map(|n| &n.note_id).collect::<Vec<_>>(),
+        vec![&shared.id]
+    );
+    assert_eq!(ai.get_link(&private_link.id).unwrap(), None);
+    let never = "00000000-0000-4000-8000-000000000000";
+    for id in [private.id.as_str(), never] {
+        assert_eq!(
+            ai.list_note_tasks(id, 50, None).unwrap_err().code(),
+            "not_found",
+            "an excluded Note's Tasks read like a missing Note's"
+        );
+    }
+    assert_eq!(
+        desktop
+            .list_task_notes(&chore.id, 50, None)
+            .unwrap()
+            .items
+            .len(),
+        2
+    );
+    assert_eq!(
+        desktop
+            .list_note_tasks(&private.id, 50, None)
+            .unwrap()
+            .items
+            .len(),
+        1
+    );
+    assert!(desktop.get_link(&private_link.id).unwrap().is_some());
+}
+
+/// Every AI write that names a Note, run against `id`; each error message
+/// and code is returned so the caller can compare an excluded Note with an
+/// id that was never used.
+fn ai_writes(
+    ai: &TaskStore,
+    task_id: &str,
+    id: &str,
+    link_id: &str,
+    revision: i64,
+) -> Vec<(String, String)> {
+    use tasknotes_core::notes::{MoveNote, SetNotePinned, UpdateNote};
+    use tasknotes_core::removed::SetRemoved;
+    let results = vec![
+        ai.update_note(UpdateNote {
+            id: id.into(),
+            markdown: "# Overwritten by AI".into(),
+            expected_revision: revision,
+        })
+        .map(|_| ()),
+        ai.update_note(UpdateNote {
+            id: id.into(),
+            markdown: "# Stale overwrite".into(),
+            expected_revision: revision + 7,
+        })
+        .map(|_| ()),
+        ai.move_note(MoveNote {
+            id: id.into(),
+            folder_id: None,
+            expected_revision: Some(revision),
+        })
+        .map(|_| ()),
+        ai.set_note_pinned(SetNotePinned {
+            id: id.into(),
+            pinned: true,
+        })
+        .map(|_| ()),
+        ai.set_note_removed(SetRemoved {
+            id: id.into(),
+            expected_revision: revision,
+            removed: true,
+        })
+        .map(|_| ()),
+        ai.set_note_removed(SetRemoved {
+            id: id.into(),
+            expected_revision: revision,
+            removed: false,
+        })
+        .map(|_| ()),
+        ai.link_note(task_id, id).map(|_| ()),
+        ai.set_note_exclude_from_ai(SetNoteExcludeFromAi {
+            id: id.into(),
+            exclude_from_ai: false,
+        })
+        .map(|_| ()),
+        ai.unlink_note(link_id).map(|_| ()),
+        ai.restore_link(link_id).map(|_| ()),
+    ];
+    results
+        .into_iter()
+        .map(|r| {
+            let e = r.expect_err("an AI write on a hidden Note must fail");
+            (e.code().to_owned(), e.to_string())
+        })
+        .collect()
+}
+
+#[test]
+fn ai_writes_restores_and_links_on_an_excluded_note_fail_like_a_missing_note() {
+    let fx = Fixture::new();
+    let desktop = fx.desktop();
+    let chore = task(&desktop, "Synthetic chore");
+    let private = note(&desktop, "# Private synthetic plan\n\nsecret-marker-123");
+    let link = desktop.link_note(&chore.id, &private.id).unwrap();
+    let private = exclude(&desktop, &private, true).unwrap();
+    let before = desktop.get_note(&private.id).unwrap().unwrap();
+
+    let ai = fx.ai();
+    let hidden = ai_writes(&ai, &chore.id, &private.id, &link.id, private.revision);
+    let never = ai_writes(
+        &ai,
+        &chore.id,
+        "00000000-0000-4000-8000-000000000000",
+        "00000000-0000-4000-8000-000000000001",
+        private.revision,
+    );
+    assert_eq!(
+        hidden, never,
+        "indistinguishable from a Note that never existed"
+    );
+    for (code, message) in &hidden {
+        assert_eq!(code, "not_found");
+        assert!(!message.contains("secret") && !message.contains("Private"));
+    }
+    assert_eq!(desktop.get_note(&private.id).unwrap().unwrap(), before);
+    assert!(
+        desktop
+            .get_link(&link.id)
+            .unwrap()
+            .unwrap()
+            .unlinked_at
+            .is_none()
+    );
+
+    // Removed as well as excluded: restoring it is still "not found".
+    let removed = desktop
+        .set_note_removed(tasknotes_core::removed::SetRemoved {
+            id: private.id.clone(),
+            expected_revision: before.revision,
+            removed: true,
+        })
+        .unwrap();
+    let hidden = ai_writes(&ai, &chore.id, &private.id, &link.id, removed.revision);
+    assert!(
+        hidden.iter().all(|(code, _)| code == "not_found"),
+        "{hidden:?}"
+    );
+}
+
+#[test]
+fn only_the_desktop_changes_the_flag_and_the_desktop_still_edits_an_excluded_note() {
+    use tasknotes_core::notes::UpdateNote;
+    let fx = Fixture::new();
+    let desktop = fx.desktop();
+    let shared = note(&desktop, "# Shared synthetic note");
+    let refused = exclude(&fx.ai(), &shared, true).unwrap_err();
+    assert_eq!(refused.code(), "desktop_only");
+    assert!(
+        !desktop
+            .get_note(&shared.id)
+            .unwrap()
+            .unwrap()
+            .exclude_from_ai
+    );
+
+    let private = exclude(&desktop, &shared, true).unwrap();
+    let edited = desktop
+        .update_note(UpdateNote {
+            id: private.id.clone(),
+            markdown: "# Still mine to edit".into(),
+            expected_revision: private.revision,
+        })
+        .unwrap();
+    assert!(edited.exclude_from_ai, "editing keeps the Note private");
+    assert_eq!(fx.ai().get_note(&private.id).unwrap(), None);
+}

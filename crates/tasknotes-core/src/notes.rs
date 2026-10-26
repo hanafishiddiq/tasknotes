@@ -85,6 +85,11 @@ pub struct MoveNote {
     pub id: String,
     /// None takes the Note out of every folder.
     pub folder_id: Option<String>,
+    /// When given, the move is refused unless the Note is still at this
+    /// revision. AI interfaces always give it; the desktop's placement
+    /// controls act on what is on screen and leave it out.
+    #[serde(default)]
+    pub expected_revision: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -388,18 +393,23 @@ impl TaskStore {
     pub fn move_note(&self, input: MoveNote) -> Result<Note, TaskError> {
         let mut conn = self.connect()?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        self.require_note_shown(&tx, &input.id)?;
         crate::removed::require_writable_note(&tx, &input.id)?;
         if let Some(folder) = input.folder_id.as_deref() {
             crate::note_folders::require_folder(&tx, folder)?;
         }
         let note = tx
             .query_row(
-                &format!("UPDATE notes SET folder_id = ?1 WHERE id = ?2 RETURNING {COLUMNS}"),
-                params![input.folder_id, input.id],
+                &format!(
+                    "UPDATE notes SET folder_id = ?1 WHERE id = ?2
+                       AND (?3 IS NULL OR revision = ?3) RETURNING {COLUMNS}"
+                ),
+                params![input.folder_id, input.id, input.expected_revision],
                 read_note,
             )
             .optional()?
-            .ok_or(TaskError::NoteNotFound)?;
+            // The Note exists (checked above), so only the revision missed.
+            .ok_or(TaskError::NoteRevisionConflict)?;
         tx.commit()?;
         Ok(note)
     }
@@ -408,6 +418,7 @@ impl TaskStore {
     pub fn set_note_pinned(&self, input: SetNotePinned) -> Result<Note, TaskError> {
         let mut conn = self.connect()?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        self.require_note_shown(&tx, &input.id)?;
         crate::removed::require_writable_note(&tx, &input.id)?;
         let note = tx.query_row(
             &format!("UPDATE notes SET pinned = ?1 WHERE id = ?2 RETURNING {COLUMNS}"),
@@ -425,6 +436,7 @@ impl TaskStore {
         let now = current_millis()?;
         let mut conn = self.connect()?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        self.require_note_shown(&tx, &input.id)?;
         crate::removed::require_writable_note(&tx, &input.id)?;
         let updated = tx
             .query_row(
@@ -486,7 +498,7 @@ impl TaskStore {
             format!("?{}", values.len())
         };
         // Removed Notes, and Notes in a Removed folder or below one, are hidden.
-        let mut filters = vec![note_visible!("n").to_owned()];
+        let mut filters = vec![note_visible!("n").to_owned(), self.note_shown_sql("n")];
         // All words must match; each is a quoted prefix term, so user text
         // never reaches FTS5 query syntax.
         let match_terms = terms.join(" ");

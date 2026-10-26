@@ -116,6 +116,7 @@ fn page<T>(
     conn: &Connection,
     side: &Side,
     owner: &str,
+    shown: &str,
     limit: u32,
     cursor: Option<&str>,
     read: impl Fn(&Row<'_>) -> rusqlite::Result<T>,
@@ -126,7 +127,7 @@ fn page<T>(
     let (time, id) = cursor.map(parse_cursor).transpose()?.unzip();
     let mut stmt = conn.prepare(&format!(
         "SELECT l.linked_at, l.id, {} FROM task_note_links l {}
-         WHERE l.{} = ?1 AND l.unlinked_at IS NULL AND {}
+         WHERE l.{} = ?1 AND l.unlinked_at IS NULL AND {shown} AND {}
          ORDER BY l.linked_at DESC, l.id DESC LIMIT ?4",
         side.select,
         side.join,
@@ -163,6 +164,7 @@ impl TaskStore {
         let mut conn = self.connect()?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         crate::removed::require_writable_task(&tx, task_id)?;
+        self.require_note_shown(&tx, note_id)?;
         crate::removed::require_writable_note(&tx, note_id)?;
         let link = tx.query_row(
             &format!(
@@ -188,7 +190,10 @@ impl TaskStore {
             .query_row(
                 &format!(
                     "UPDATE task_note_links SET unlinked_at = ?2
-                     WHERE id = ?1 AND unlinked_at IS NULL RETURNING {COLUMNS}"
+                     WHERE id = ?1 AND unlinked_at IS NULL AND EXISTS
+                       (SELECT 1 FROM notes n WHERE n.id = note_id AND {})
+                     RETURNING {COLUMNS}",
+                    self.note_shown_sql("n")
                 ),
                 params![link_id, now],
                 read_link,
@@ -205,11 +210,16 @@ impl TaskStore {
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let link = tx
             .query_row(
-                &format!("SELECT {COLUMNS} FROM task_note_links WHERE id = ?1"),
+                &format!(
+                    "SELECT {COLUMNS} FROM task_note_links WHERE id = ?1 AND EXISTS
+                       (SELECT 1 FROM notes n WHERE n.id = note_id AND {})",
+                    self.note_shown_sql("n")
+                ),
                 params![link_id],
                 read_link,
             )
             .optional()?
+            // To an AI interface a link to an excluded Note does not exist.
             .ok_or(TaskError::LinkNotFound)?;
         if link.unlinked_at.is_none() {
             return Ok(link);
@@ -228,11 +238,16 @@ impl TaskStore {
         Ok(link)
     }
 
+    /// To an AI interface a link to an excluded Note does not exist.
     pub fn get_link(&self, link_id: &str) -> Result<Option<NoteLink>, TaskError> {
         Ok(self
             .connect()?
             .query_row(
-                &format!("SELECT {COLUMNS} FROM task_note_links WHERE id = ?1"),
+                &format!(
+                    "SELECT {COLUMNS} FROM task_note_links WHERE id = ?1 AND EXISTS
+                       (SELECT 1 FROM notes n WHERE n.id = note_id AND {})",
+                    self.note_shown_sql("n")
+                ),
                 params![link_id],
                 read_link,
             )
@@ -247,14 +262,23 @@ impl TaskStore {
         cursor: Option<&str>,
     ) -> Result<LinkPage<LinkedNote>, TaskError> {
         let conn = self.connect()?;
-        page(&conn, &NOTES_OF_TASK, task_id, limit, cursor, |row| {
-            Ok(LinkedNote {
-                link_id: row.get(1)?,
-                note_id: row.get(2)?,
-                title: row.get(3)?,
-                updated_at: row.get(4)?,
-            })
-        })
+        let shown = self.note_shown_sql("n");
+        page(
+            &conn,
+            &NOTES_OF_TASK,
+            task_id,
+            &shown,
+            limit,
+            cursor,
+            |row| {
+                Ok(LinkedNote {
+                    link_id: row.get(1)?,
+                    note_id: row.get(2)?,
+                    title: row.get(3)?,
+                    updated_at: row.get(4)?,
+                })
+            },
+        )
     }
 
     /// Tasks linked to a Note, most recently linked first.
@@ -265,7 +289,9 @@ impl TaskStore {
         cursor: Option<&str>,
     ) -> Result<LinkPage<LinkedTask>, TaskError> {
         let conn = self.connect()?;
-        page(&conn, &TASKS_OF_NOTE, note_id, limit, cursor, |row| {
+        // To an AI interface an excluded Note is missing, Tasks and all.
+        self.require_note_shown(&conn, note_id)?;
+        page(&conn, &TASKS_OF_NOTE, note_id, "1", limit, cursor, |row| {
             let status: String = row.get(4)?;
             Ok(LinkedTask {
                 link_id: row.get(1)?,

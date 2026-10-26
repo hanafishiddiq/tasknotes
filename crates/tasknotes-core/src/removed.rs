@@ -345,6 +345,7 @@ impl TaskStore {
     pub fn set_note_removed(&self, input: SetRemoved) -> Result<Note, TaskError> {
         let mut conn = self.connect()?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        self.require_note_shown(&tx, &input.id)?;
         let old = tx
             .query_row(
                 &format!("SELECT {} FROM notes WHERE id = ?1", crate::notes::COLUMNS),
