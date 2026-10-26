@@ -5,6 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import App from "./App";
 import type { Task } from "./lib/task-api";
 import { QUIT_REQUESTED } from "./lib/quit";
+import { QUICK_CAPTURE_REQUESTED } from "./lib/shell-api";
 import { FakeAudioContext } from "./test/fake-audio";
 import { tauriEvents } from "./test/tauri-events";
 
@@ -179,5 +180,35 @@ describe("Quitting", () => {
     await act(() => tauriEvents.emit(QUIT_REQUESTED, 1));
     expect(source.stoppedAt).not.toBeNull();
     expect(call).toHaveBeenCalledWith("quit_ready", { ticket: 1, proceed: true });
+  });
+});
+
+describe("Menu bar mode (Ticket 15)", () => {
+  it("keeps the rain playing while Quick Capture brings the window back from the menu bar", async () => {
+    // Hiding the window to the menu bar tells the page nothing; only quitting
+    // (closing with menu-bar mode off goes the same way) asks it to fade out.
+    let pendingCapture = false;
+    const backend = call.getMockImplementation()!;
+    call.mockImplementation(async (command, args) => {
+      if (command === "take_quick_capture") {
+        const pending = pendingCapture;
+        pendingCapture = false;
+        return pending;
+      }
+      return backend(command, args);
+    });
+    render(<App />);
+    await screen.findByRole("article", { name: "Synthetic plan" });
+    const context = FakeAudioContext.latest();
+    const [source] = context.playingSources();
+
+    await act(() => {
+      pendingCapture = true;
+      return tauriEvents.emit(QUICK_CAPTURE_REQUESTED);
+    });
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Task title" })).toHaveFocus());
+    expect(context.playingSources()).toEqual([source]);
+    expect(source.stoppedAt).toBeNull();
+    expect(ambientLevel()).toBeCloseTo(0.08);
   });
 });

@@ -13,7 +13,17 @@ use tasknotes_core::tasks::{
 };
 use tauri::{Manager, State};
 
+#[cfg(desktop)]
+mod platform;
+#[cfg(desktop)]
+mod quick_capture;
 mod quit;
+#[cfg(desktop)]
+mod shell;
+#[cfg(desktop)]
+mod shell_settings;
+#[cfg(desktop)]
+mod shell_state;
 
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
@@ -301,11 +311,21 @@ fn list_removed(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(desktop)]
+    let builder = builder.plugin(shell::shortcut_plugin());
+    builder
         .manage(quit::QuitState::default())
         .menu(quit::menu)
         .on_menu_event(quit::on_menu_event)
-        .on_window_event(quit::on_window_event)
+        .on_window_event(|window, event| {
+            // With menu-bar mode on, closing hides the window instead of quitting.
+            #[cfg(desktop)]
+            if shell::on_window_event(window, event) {
+                return;
+            }
+            quit::on_window_event(window, event);
+        })
         .setup(|app| {
             // Data is private to this macOS user, never kept in the public source repository.
             let app_data_dir = app.path().app_data_dir()?;
@@ -317,6 +337,8 @@ pub fn run() {
                 .unwrap_or(app_data_dir);
             let store = TaskStore::open(&app_data_dir.join("tasknotes.db"))?;
             app.manage(store);
+            #[cfg(desktop)]
+            shell::start(app.handle(), app_data_dir);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -351,8 +373,33 @@ pub fn run() {
             set_note_removed,
             set_note_folder_removed,
             list_removed,
-            quit::quit_ready
+            quit::quit_ready,
+            #[cfg(desktop)]
+            shell::get_shell_settings,
+            #[cfg(desktop)]
+            shell::set_keep_in_menu_bar,
+            #[cfg(desktop)]
+            shell::set_quick_capture,
+            #[cfg(desktop)]
+            shell::take_quick_capture,
+            #[cfg(desktop)]
+            shell::take_launch_notice
         ])
-        .run(tauri::generate_context!())
-        .expect("Unable to launch Tasknotes");
+        .build(tauri::generate_context!())
+        .expect("Unable to launch Tasknotes")
+        .run(on_run_event);
+}
+
+/// Clicking the Dock icon brings back a window hidden to the menu bar. Other
+/// systems reopen from the tray item, so there is nothing to do there.
+#[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
+fn on_run_event(app: &tauri::AppHandle, event: tauri::RunEvent) {
+    #[cfg(target_os = "macos")]
+    if let tauri::RunEvent::Reopen {
+        has_visible_windows: false,
+        ..
+    } = event
+    {
+        shell::show_main_window(app);
+    }
 }

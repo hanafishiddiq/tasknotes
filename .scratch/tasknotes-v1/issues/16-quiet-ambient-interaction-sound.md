@@ -59,3 +59,5 @@ Code-review findings and what each became:
 6. The plan now says why sound settings live in localStorage (the page alone reads them) while shell settings live in Rust (read with no page loaded).
 
 Evidence (implementer's own runs): `pnpm test` 20 files / 214 tests passed (208 before; 6 new); `pnpm typecheck` and `pnpm build` clean. `src-tauri` untouched, cargo not run. Headless CPU and native checks not repeated.
+
+**2026-10-26 — Ticket 15 integration note (implementer, Ticket 15).** Ticket 15 now merges this ticket's code. Proven by tests: hiding the window to the menu bar sends the page nothing and rain keeps playing (engine test, plus `src/sound.test.tsx` "keeps the rain playing while Quick Capture brings the window back from the menu bar"); a quit request fades the rain (existing App test). Closing with menu-bar mode off and the tray's Quit reach that quit request through `quit::request` in Rust, which is build-checked but not unit-tested. The lifecycle criterion stays unticked until the native check (Ticket 15 checklist item 10).
