@@ -19,7 +19,7 @@ export class NoteBackend {
 
   seed(markdown: string, title: string, fields: Partial<Note> = {}): Note {
     return this.write({
-      id: `note-${this.nextId++}`, markdown, title, revision: 1, folderId: null, pinned: false, ...fields,
+      id: `note-${this.nextId++}`, markdown, title, revision: 1, folderId: null, pinned: false, excludeFromAi: false, ...fields,
     });
   }
 
@@ -98,7 +98,7 @@ export class NoteBackend {
       const { markdown, folderId } = args.input as { markdown: string; folderId?: string | null };
       return this.write({
         id: `note-${this.nextId++}`, markdown, title: firstLine(markdown), revision: 1,
-        folderId: folderId ?? null, pinned: false,
+        folderId: folderId ?? null, pinned: false, excludeFromAi: false,
       });
     }
     if (command === "update_note") {
@@ -111,6 +111,13 @@ export class NoteBackend {
       return this.write({
         ...current, markdown: input.markdown, title: firstLine(input.markdown), revision: current.revision + 1,
       });
+    }
+    if (command === "set_note_exclude_from_ai") {
+      const input = args.input as { id: string; excludeFromAi: boolean };
+      const current = this.notes.get(input.id);
+      if (!current) throw "Note not found";
+      // As in the core: a setting like a pin, not an edit.
+      return this.write({ ...current, excludeFromAi: input.excludeFromAi }, false);
     }
     if (command === "move_note" || command === "set_note_pinned") {
       const input = args.input as { id: string; folderId?: string | null; pinned?: boolean };

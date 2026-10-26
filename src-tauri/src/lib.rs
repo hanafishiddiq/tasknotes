@@ -5,6 +5,7 @@ use tasknotes_core::note_folders::{
 use tasknotes_core::notes::{
     CreateNote, MoveNote, Note, NotePage, NoteQuery, NoteScope, SetNotePinned, UpdateNote,
 };
+use tasknotes_core::privacy::SetNoteExcludeFromAi;
 use tasknotes_core::removed::{RemovedPage, SetRemoved};
 use tasknotes_core::tasks::{
     ChangeTask, CreateList, CreateTask, List, ListPage, MoveTask, Priority, ProgressSequencePage,
@@ -158,6 +159,17 @@ fn create_note(store: State<'_, TaskStore>, input: CreateNote) -> Result<Note, S
 #[tauri::command]
 fn move_note(store: State<'_, TaskStore>, input: MoveNote) -> Result<Note, String> {
     store.move_note(input).map_err(|error| error.to_string())
+}
+
+/// Exclude from AI: only this window, the person themself, can change it.
+#[tauri::command]
+fn set_note_exclude_from_ai(
+    store: State<'_, TaskStore>,
+    input: SetNoteExcludeFromAi,
+) -> Result<Note, String> {
+    store
+        .set_note_exclude_from_ai(input)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -338,6 +350,7 @@ pub fn run() {
             update_note,
             move_note,
             set_note_pinned,
+            set_note_exclude_from_ai,
             list_note_folders,
             create_note_folder,
             rename_note_folder,

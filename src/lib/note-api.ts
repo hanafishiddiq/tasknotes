@@ -11,6 +11,8 @@ export interface Note {
   /** null when the Note is not in a folder. */
   folderId: string | null;
   pinned: boolean;
+  /** Exclude from AI: AI interfaces (CLI, MCP) treat the Note as missing. */
+  excludeFromAi: boolean;
 }
 
 export interface NoteSummary {
@@ -83,6 +85,10 @@ export const noteApi = {
 
   setPinned(id: string, pinned: boolean): Promise<Note> {
     return invoke("set_note_pinned", { input: { id, pinned } });
+  },
+
+  setExcludeFromAi(id: string, excludeFromAi: boolean): Promise<Note> {
+    return invoke("set_note_exclude_from_ai", { input: { id, excludeFromAi } });
   },
 
   folders(parentId: string | null, cursor: string | null = null): Promise<NoteFolderPage> {

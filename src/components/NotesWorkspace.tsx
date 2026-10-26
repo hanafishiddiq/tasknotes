@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { Folder as FolderIcon, LoaderCircle, Pin, PinOff, Search, SquarePen, Trash2 } from "lucide-react";
+import { Bot, BotOff, Folder as FolderIcon, LoaderCircle, Pin, PinOff, Search, SquarePen, Trash2 } from "lucide-react";
 import { errorMessage, isFolderRemoved } from "../lib/error-message";
 import { ALL_NOTES, noteApi, type Note, type NoteScope, type NoteSummary } from "../lib/note-api";
 import type { FolderOption } from "../lib/use-note-folders";
@@ -27,11 +27,12 @@ interface Saved {
   markdown: string;
   folderId: string | null;
   pinned: boolean;
+  excludeFromAi: boolean;
 }
 
 function draftIn(scope: NoteScope): Saved {
   return {
-    id: null, revision: 0, markdown: "", pinned: false,
+    id: null, revision: 0, markdown: "", pinned: false, excludeFromAi: false,
     folderId: scope.kind === "folder" ? scope.folderId : null,
   };
 }
@@ -39,6 +40,7 @@ function draftIn(scope: NoteScope): Saved {
 function savedFrom(note: Note): Saved {
   return {
     id: note.id, revision: note.revision, markdown: note.markdown, folderId: note.folderId, pinned: note.pinned,
+    excludeFromAi: note.excludeFromAi,
   };
 }
 
@@ -107,9 +109,9 @@ export default function NotesWorkspace({
   const [moreCursor, setMoreCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
-  // Where the open Note lives and whether it is pinned, as the core last said.
-  const [placement, setPlacement] = useState<{ folderId: string | null; pinned: boolean }>(
-    { folderId: null, pinned: false },
+  // Where the open Note lives, whether it is pinned and excluded from AI, as the core last said.
+  const [placement, setPlacement] = useState<{ folderId: string | null; pinned: boolean; excludeFromAi: boolean }>(
+    { folderId: null, pinned: false, excludeFromAi: false },
   );
   const [placing, setPlacing] = useState(false);
   const [searchDraft, setSearchDraft] = useState("");
@@ -147,7 +149,7 @@ export default function NotesWorkspace({
     saved.current = next;
     dirty.current = false;
     setOpenId(next.id);
-    setPlacement({ folderId: next.folderId, pinned: next.pinned });
+    setPlacement({ folderId: next.folderId, pinned: next.pinned, excludeFromAi: next.excludeFromAi });
     setEditor((current) => ({ key: (current?.key ?? 0) + 1, markdown: next.markdown }));
   }
 
@@ -375,15 +377,17 @@ export default function NotesWorkspace({
     setMoreCursor(page.nextCursor);
   }
 
-  /** Pins or moves the open Note. Placement never changes its text or revision. */
+  /** Pins, moves or excludes the open Note from AI. None of these changes its text or revision. */
   async function place(change: (id: string) => Promise<Note>) {
     const id = saved.current.id;
     if (id === null || placing) return;
     setPlacing(true);
     try {
       const note = await change(id);
-      saved.current = { ...saved.current, folderId: note.folderId, pinned: note.pinned };
-      setPlacement({ folderId: note.folderId, pinned: note.pinned });
+      saved.current = {
+        ...saved.current, folderId: note.folderId, pinned: note.pinned, excludeFromAi: note.excludeFromAi,
+      };
+      setPlacement({ folderId: note.folderId, pinned: note.pinned, excludeFromAi: note.excludeFromAi });
       setError(null);
       await refreshList().catch((reason) => setError("Couldn't refresh the Notes list: " + errorMessage(reason)));
     } catch (reason) {
@@ -477,6 +481,15 @@ export default function NotesWorkspace({
             aria-label={placement.pinned ? "Unpin note" : "Pin note"} aria-pressed={placement.pinned}
             onClick={() => { const pinned = !placement.pinned; void place((id) => noteApi.setPinned(id, pinned)); }}>
             {placement.pinned ? <PinOff size={16} aria-hidden="true" /> : <Pin size={16} aria-hidden="true" />}
+          </button>
+          <button className="icon-button" type="button" disabled={openId === null || placing}
+            aria-label="Exclude from AI" aria-pressed={placement.excludeFromAi}
+            title={placement.excludeFromAi ? "Hidden from AI tools" : "Visible to AI tools"}
+            onClick={() => {
+              const excludeFromAi = !placement.excludeFromAi;
+              void place((id) => noteApi.setExcludeFromAi(id, excludeFromAi));
+            }}>
+            {placement.excludeFromAi ? <BotOff size={16} aria-hidden="true" /> : <Bot size={16} aria-hidden="true" />}
           </button>
           <button className="icon-button" type="button" disabled={openId === null || placing}
             aria-label="Move note to Removed" onClick={() => void removeOpen()}>
