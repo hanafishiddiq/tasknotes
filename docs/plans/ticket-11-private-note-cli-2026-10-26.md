@@ -49,7 +49,7 @@ Open the store with `ai_access::open_authorized(dir, Interface::Mcp)` (or `open_
 
 ## Not claimed
 
-Interface-scoped only (ADR-0004): a process with same-user file access can read the SQLite file directly. A negligible timing side channel remains (a new Note's edit stamp is `max(now, newest stamp + 1)` across all Notes); no content, id or count is exposed.
+Interface-scoped only (ADR-0004): a process with same-user file access can read the SQLite file directly. Revision numbers stay what they are: after a Note is shared again, an AI reading it sees its current revision, so it can tell the Note was edited some number of times since it last saw it (the audit entries for those edits stay hidden).
 
 ## Vertical TDD slices
 
@@ -62,3 +62,17 @@ Interface-scoped only (ADR-0004): a process with same-user file access can read 
 7. CLI: Note, folder, link and Removed commands in the envelope.
 8. CLI: subprocess negative controls (direct, list/search, folder counts, link metadata, mutations/restore/link, Removed view, audit, stderr), plus a re-share check. A mutation check (privacy predicate disabled) made 5 of the 6 privacy tests fail.
 9. Desktop: toolbar toggle; autosave keeps working.
+
+## 2026-10-26 — review fixes
+
+Findings from the independent `/code-review`, each fixed test-first (red seen before green):
+
+1. **Audit order leaked hidden entries.** AI audit entries carried the global, gap-free `sequence`, and the cursor was `a1|<sequence>`, so gaps counted a private Note's entries and edits. `AuditEntry` no longer has a `sequence` field for any interface (no consumer used it; the desktop window does not read audit history). The cursor is now `a2|<id of the last entry on the page>`; ids are random, the core resolves the id to its position internally, and an unknown or malformed cursor is `invalid_cursor`. Old `a1|N` cursors are refused. Test: `crates/tasknotes-cli/tests/audit_privacy.rs` runs the real binary: with a private Note (created through the CLI, then excluded and edited 4 times on the desktop) versus without it, every `audit list --limit 1` page, every field and every cursor are equal after replacing ids and times. Red before the fix: `sequence` 8 vs 2 and cursor `a1|8` vs `a1|2`.
+2. **Re-share history: coordinator decision (owner may revisit).** An AI never sees `note.privacy` entries, nor any entry about a Note or one of its links recorded while that Note was excluded (applied or rejected, from any interface), even after the Note is shared again. Schema v12 adds `audit_entries.hidden_from_ai`, set when the entry is written from `privacy::hidden_at_record_sql`; the AI filter (`ai_audit_filter_sql`) also hides `note.privacy` and everything about a currently excluded Note. Entries from before v12 default to 0 and are still covered by those two rules; their past private periods cannot be recovered, which only matters for databases that ran this branch before v12. Test: `re_sharing_a_note_keeps_what_happened_while_it_was_private_from_ai` (core); with the `hidden_from_ai` condition removed it fails, showing the desktop edits and the rejection.
+3. **One predicate.** `exclude_from_ai = 1` is written only in `privacy::excluded_sql`; the audit filter, the write-time flag, `note_shown_sql` and the new `link_shown_sql` (replacing three copied `EXISTS` blocks in `links.rs`) all use it. The link page takes `shown: Option<&str>` instead of the magic `"1"`. `AuditAction::entity_table` is an exhaustive match with no `_ => "tasks"` fallback.
+4. **Fail closed: documented convention plus a catalogue test** (saya pilih ini, bukan view SQLite yang menyaring otomatis, karena view itu akan memaksa setiap write ke `main.notes` dan diam-diam mengubah query privasi audit yang justru perlu melihat Note excluded). `privacy.rs` states that every AI-facing Note read goes through its helpers. `every_ai_facing_note_read_leaves_excluded_notes_out` calls every public Note read (`get_note`, `list_notes`, `query_notes` folder and text, `list_removed` blank and text, `list_task_notes`, `list_note_tasks`, `get_link`, `list_note_folders`, `count_folder_notes`, `list_audit_entries`) with an AI store against two excluded Notes (one Removed, one linked) and checks no id, link id or marker text appears. Mutation check: dropping the filter from `get_note` makes it fail.
+5. **Stamps.** The Note stamp `max(now, max(updated_at) + 1)` ran over all Notes, so an excluded Note edited in the same millisecond, or stamped ahead of the clock (clock set back), pushed an AI's own `created_at`/`updated_at` past it and showed that time. The link stamp had the same shape. Both are now computed over the Notes/links this interface can see (`next_stamp_sql`, `next_link_stamp_sql`); the desktop still never repeats a stamp among everything. Cost: the desktop may see an AI stamp equal to a private Note's; the id breaks the tie in every list. Test: `ai_note_and_link_stamps_ignore_excluded_notes` (fails with the old query).
+
+CLI audit entry shape is now `{id,created_at,interface,action,entity_id,outcome,error_code,revision}`.
+
+Evidence (implementer's own runs, 2026-10-26): `crates/tasknotes-core` cargo test 137 passed; `crates/tasknotes-cli` cargo test 33 passed; `src-tauri` cargo test 1 passed; `cargo clippy --all-targets -- -D warnings` and `cargo fmt --check` clean in all three; `pnpm test` 188 passed; `pnpm build` ok.

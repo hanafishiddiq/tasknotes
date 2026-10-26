@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** implemented, awaiting independent review (branch `feat/ticket-11-private-note-cli`, plan `docs/plans/ticket-11-private-note-cli-2026-10-26.md`).
+**Implementation:** implemented; independent review findings fixed 2026-10-26, awaiting re-review (branch `feat/ticket-11-private-note-cli`, plan `docs/plans/ticket-11-private-note-cli-2026-10-26.md`).
 
 ## Acceptance criteria
 
@@ -20,7 +20,7 @@
 
 - [x] Exercise direct, search, link, mutation and failure-side privacy negative controls through actual CLI subprocesses.
 - [x] Relevant tests pass and evidence is recorded here.
-- [ ] Run `/code-review` and address findings before marking complete.
+- [x] Run `/code-review` and address findings before marking complete.
 
 ## Delivery guardrails
 
@@ -50,3 +50,12 @@ Desktop: toolbar button "Exclude from AI" (pressed state) beside Pin on the open
 Evidence (implementer's own runs, 2026-10-26, after merging integration tip 57d0ec6): `crates/tasknotes-core` cargo test 134 passed (new `tests/note_privacy.rs` 9, `note_placement` +1); `crates/tasknotes-cli` cargo test 32 passed (new `tests/notes.rs` 4 and `tests/privacy.rs` 6 separate-process negative controls: direct get, list/search/folder scope, folder counts, task-notes/note-tasks/link get, update/stale update/move/remove/restore/link create/remove/restore, Removed view, audit list incl. `--entity`, stderr empty, each compared with a never-used id; re-share makes it visible at once). Mutation check: with the privacy predicate disabled, 5 of the 6 CLI privacy tests failed. `src-tauri` cargo test 1 passed; `cargo clippy --all-targets -- -D warnings` and `cargo fmt --check` clean in all three; `pnpm test` 188 passed (new `src/note-privacy.test.tsx` 2); `pnpm build` ok.
 
 Open: `/code-review` not run yet; native GUI check of the toggle not done (component test only); export privacy belongs to Ticket 13.
+
+**2026-10-26 — review fixes (AI implementer).** Independent `/code-review` findings fixed test-first; details and evidence in the plan, section "2026-10-26 — review fixes":
+- AI audit list no longer shows the global append number, and its cursor is now the id of the last visible entry (`a2|<id>`), so gaps can no longer count a private Note's entries. Proven through the real CLI: history with a private Note edited 4 times reads, page by page, exactly like history without it.
+- **Coordinator decision (owner may revisit):** sharing a Note again does not open what happened while it was private. AI never sees `note.privacy` entries, nor entries about the Note or its links recorded while it was excluded (schema v12 `audit_entries.hidden_from_ai`).
+- One privacy predicate in `privacy.rs` (audit, links, stamps); exhaustive audit entity-table match.
+- Saya pilih konvensi terdokumentasi + tes katalog (semua read Note publik dengan store AI) daripada view SQLite yang menyaring otomatis, karena view itu memaksa semua write lewat `main.notes` dan diam-diam merusak query yang memang perlu melihat Note excluded.
+- Note and link stamps for AI are computed over what it can see, so an excluded Note's edit time cannot show through an AI's own timestamps.
+
+Evidence (implementer's own runs): core 137 passed, cli 33 passed, src-tauri 1 passed; clippy `-D warnings` and fmt clean in all three; `pnpm test` 188 passed; `pnpm build` ok. Still open: native GUI check of the toggle; export privacy belongs to Ticket 13.
