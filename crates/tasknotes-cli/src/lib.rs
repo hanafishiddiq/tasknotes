@@ -13,13 +13,13 @@ use serde_json::{Value, json};
 use tasknotes_core::audit::Interface;
 use tasknotes_core::removed::SetRemoved;
 use tasknotes_core::tasks::{
-    ChangeTask, CreateList, CreateTask, List, MoveTask, RecordProgress, RenameList, SetListRemoved,
-    SortMode, Task, TaskError, TaskQuery, TaskScope, TaskStore, TaskView, UpdateTask,
-    UpdateTaskDetails,
+    ChangeTask, CreateList, CreateTask, List, MoveTask, PatchTask, PatchTaskDetails,
+    RecordProgress, RenameList, SetListRemoved, SortMode, Task, TaskError, TaskQuery, TaskScope,
+    TaskStore, TaskView,
 };
 
 use access::Environment;
-use args::{Parsed, Spec, parse};
+use args::{Spec, parse};
 use contract::CliError;
 
 /// What the process prints on stdout and exits with.
@@ -104,158 +104,147 @@ fn access_status(data_dir: &Path) -> Value {
 }
 
 fn task_command(store: &TaskStore, verb: &str, words: &[String]) -> Result<Value, CliError> {
-    let item = |task: Task| Ok(contract::success_item(contract::task(&task)));
-    match verb {
-        "list" => {
-            let p = parse(
-                words,
-                &Spec {
-                    values: &[
-                        "limit", "cursor", "text", "status", "priority", "tag", "list", "sort",
-                    ],
-                    repeated: &[],
-                    switches: &["inbox", "removed"],
-                    positionals: 0,
-                },
-            )?;
-            task_page(store, &p)
-        }
+    let task = match verb {
+        "list" => return task_page(store, words),
+        "history" => return task_history(store, words),
         "get" => {
             let p = parse(words, &ONE_ID)?;
-            item(existing_task(store, p.id())?)
+            store.get_task(p.id())?.ok_or(TaskError::NotFound)?
         }
-        "create" => {
-            let p = parse(words, &flags(&["title", "description", "list"], 0))?;
-            item(store.create_task_in_list(
-                CreateTask {
-                    title: p.required("title")?.to_owned(),
-                    description: p.value("description").unwrap_or_default().to_owned(),
-                },
-                p.value("list"),
-            )?)
-        }
-        "update" => {
-            let p = parse(words, &flags(&["revision", "title", "description"], 1))?;
-            let revision = p.revision()?;
-            if !p.has("title") && !p.has("description") {
-                return Err(CliError::invalid("Give --title and/or --description"));
-            }
-            // A missing field keeps its current value; the core still checks
-            // the caller's revision, so a stale caller is refused, not merged.
-            let current = existing_task(store, p.id())?;
-            item(
-                store.update_task(UpdateTask {
-                    id: p.id().to_owned(),
-                    title: p.value("title").map_or(current.title, str::to_owned),
-                    description: p
-                        .value("description")
-                        .map_or(current.description, str::to_owned),
-                    expected_revision: revision,
-                })?,
-            )
-        }
-        "change" => {
-            let p = parse(
-                words,
-                &flags(&["revision", "status", "priority", "progress"], 1),
-            )?;
-            item(store.change_task(ChangeTask {
-                id: p.id().to_owned(),
-                expected_revision: p.revision()?,
-                status: p.choice("status", STATUSES)?,
-                priority: p.choice("priority", PRIORITIES)?,
-                progress: p.number("progress")?,
-            })?)
-        }
-        "progress" => {
-            let p = parse(
-                words,
-                &flags(&["revision", "status", "progress", "next-step", "note"], 1),
-            )?;
-            item(store.record_progress(RecordProgress {
-                id: p.id().to_owned(),
-                expected_revision: p.revision()?,
-                status: p.choice("status", STATUSES)?,
-                progress: p.number("progress")?,
-                next_step: p.value("next-step").map(str::to_owned),
-                note: p.value("note").map(str::to_owned),
-            })?)
-        }
-        "details" => {
-            let p = parse(
-                words,
-                &Spec {
-                    values: &["revision", "deadline"],
-                    repeated: &["tag"],
-                    switches: &["no-tags", "no-deadline"],
-                    positionals: 1,
-                },
-            )?;
-            let revision = p.revision()?;
-            if p.has("tag") && p.has("no-tags") || p.has("deadline") && p.has("no-deadline") {
-                return Err(CliError::invalid(
-                    "Give either --tag or --no-tags, and either --deadline or --no-deadline",
-                ));
-            }
-            let current = existing_task(store, p.id())?;
-            let tags = if p.has("no-tags") {
-                Vec::new()
-            } else if p.has("tag") {
-                p.all("tag")
-            } else {
-                current.tags
-            };
-            let due_date = if p.has("no-deadline") {
-                None
-            } else {
-                p.value("deadline").map(str::to_owned).or(current.due_date)
-            };
-            item(store.update_task_details(UpdateTaskDetails {
-                id: p.id().to_owned(),
-                expected_revision: revision,
-                tags,
-                due_date,
-            })?)
-        }
-        "move" => {
-            let p = parse(
-                words,
-                &Spec {
-                    values: &["revision", "list"],
-                    repeated: &[],
-                    switches: &["inbox"],
-                    positionals: 1,
-                },
-            )?;
-            if p.has("list") == p.has("inbox") {
-                return Err(CliError::invalid(
-                    "Give exactly one of --list ID or --inbox",
-                ));
-            }
-            item(store.move_task(MoveTask {
-                id: p.id().to_owned(),
-                expected_revision: p.revision()?,
-                list_id: p.value("list").map(str::to_owned),
-            })?)
-        }
+        "create" => task_create(store, words)?,
+        "update" => task_update(store, words)?,
+        "change" => task_change(store, words)?,
+        "progress" => task_progress(store, words)?,
+        "details" => task_details(store, words)?,
+        "move" => task_move(store, words)?,
         "remove" | "restore" => {
             let p = parse(words, &flags(&["revision"], 1))?;
-            item(store.set_task_removed(SetRemoved {
+            store.set_task_removed(SetRemoved {
                 id: p.id().to_owned(),
                 expected_revision: p.revision()?,
                 removed: verb == "remove",
-            })?)
+            })?
         }
-        "history" => {
-            let p = parse(words, &flags(&["limit", "cursor"], 1))?;
-            let page = store.list_progress_entries(p.id(), p.limit()?, p.value("cursor"))?;
-            Ok(contract::success_page(
-                page.items.iter().map(contract::progress_entry).collect(),
-                page.next_cursor,
-            ))
-        }
-        _ => Err(CliError::invalid(USAGE)),
+        _ => return Err(CliError::invalid(USAGE)),
+    };
+    Ok(contract::success_item(contract::task(&task)))
+}
+
+fn task_create(store: &TaskStore, words: &[String]) -> Result<Task, CliError> {
+    let p = parse(words, &flags(&["title", "description", "list"], 0))?;
+    Ok(store.create_task_in_list(
+        CreateTask {
+            title: p.required("title")?.to_owned(),
+            description: p.value("description").unwrap_or_default().to_owned(),
+        },
+        p.value("list"),
+    )?)
+}
+
+/// A flag that is not given keeps its current value (the core's patch rule).
+fn task_update(store: &TaskStore, words: &[String]) -> Result<Task, CliError> {
+    let p = parse(words, &flags(&["revision", "title", "description"], 1))?;
+    Ok(store.patch_task(PatchTask {
+        id: p.id().to_owned(),
+        expected_revision: p.revision()?,
+        title: p.value("title").map(str::to_owned),
+        description: p.value("description").map(str::to_owned),
+    })?)
+}
+
+fn task_change(store: &TaskStore, words: &[String]) -> Result<Task, CliError> {
+    let p = parse(
+        words,
+        &flags(&["revision", "status", "priority", "progress"], 1),
+    )?;
+    Ok(store.change_task(ChangeTask {
+        id: p.id().to_owned(),
+        expected_revision: p.revision()?,
+        status: p.choice("status", STATUSES)?,
+        priority: p.choice("priority", PRIORITIES)?,
+        progress: p.number("progress")?,
+    })?)
+}
+
+fn task_progress(store: &TaskStore, words: &[String]) -> Result<Task, CliError> {
+    let p = parse(
+        words,
+        &flags(&["revision", "status", "progress", "next-step", "note"], 1),
+    )?;
+    Ok(store.record_progress(RecordProgress {
+        id: p.id().to_owned(),
+        expected_revision: p.revision()?,
+        status: p.choice("status", STATUSES)?,
+        progress: p.number("progress")?,
+        next_step: p.value("next-step").map(str::to_owned),
+        note: p.value("note").map(str::to_owned),
+    })?)
+}
+
+/// `--tag` (repeated) sets the Tags, `--no-tags` clears them; `--deadline`
+/// sets the Deadline, `--no-deadline` clears it; absent flags keep the value.
+fn task_details(store: &TaskStore, words: &[String]) -> Result<Task, CliError> {
+    let p = parse(
+        words,
+        &Spec {
+            values: &["revision", "deadline"],
+            repeated: &["tag"],
+            switches: &["no-tags", "no-deadline"],
+            positionals: 1,
+        },
+    )?;
+    if p.has("tag") && p.has("no-tags") || p.has("deadline") && p.has("no-deadline") {
+        return Err(CliError::invalid(
+            "Give either --tag or --no-tags, and either --deadline or --no-deadline",
+        ));
     }
+    let tags = if p.has("no-tags") {
+        Some(Vec::new())
+    } else {
+        p.has("tag").then(|| p.all("tag"))
+    };
+    let due_date = if p.has("no-deadline") {
+        Some(None)
+    } else {
+        p.value("deadline").map(|d| Some(d.to_owned()))
+    };
+    Ok(store.patch_task_details(PatchTaskDetails {
+        id: p.id().to_owned(),
+        expected_revision: p.revision()?,
+        tags,
+        due_date,
+    })?)
+}
+
+fn task_move(store: &TaskStore, words: &[String]) -> Result<Task, CliError> {
+    let p = parse(
+        words,
+        &Spec {
+            values: &["revision", "list"],
+            repeated: &[],
+            switches: &["inbox"],
+            positionals: 1,
+        },
+    )?;
+    if p.has("list") == p.has("inbox") {
+        return Err(CliError::invalid(
+            "Give exactly one of --list ID or --inbox",
+        ));
+    }
+    Ok(store.move_task(MoveTask {
+        id: p.id().to_owned(),
+        expected_revision: p.revision()?,
+        list_id: p.value("list").map(str::to_owned),
+    })?)
+}
+
+fn task_history(store: &TaskStore, words: &[String]) -> Result<Value, CliError> {
+    let p = parse(words, &flags(&["limit", "cursor"], 1))?;
+    let page = store.list_progress_entries(p.id(), p.limit()?, p.value("cursor"))?;
+    Ok(contract::success_page(
+        page.items.iter().map(contract::progress_entry).collect(),
+        page.next_cursor,
+    ))
 }
 
 fn list_command(store: &TaskStore, verb: &str, words: &[String]) -> Result<Value, CliError> {
@@ -329,13 +318,18 @@ const fn flags<'a>(values: &'a [&'a str], positionals: usize) -> Spec<'a> {
     }
 }
 
-fn existing_task(store: &TaskStore, id: &str) -> Result<Task, CliError> {
-    store
-        .get_task(id)?
-        .ok_or_else(|| TaskError::NotFound.into())
-}
-
-fn task_page(store: &TaskStore, p: &Parsed) -> Result<Value, CliError> {
+fn task_page(store: &TaskStore, words: &[String]) -> Result<Value, CliError> {
+    let p = parse(
+        words,
+        &Spec {
+            values: &[
+                "limit", "cursor", "text", "status", "priority", "tag", "list", "sort",
+            ],
+            repeated: &[],
+            switches: &["inbox", "removed"],
+            positionals: 0,
+        },
+    )?;
     if p.has("list") && p.has("inbox") {
         return Err(CliError::invalid(
             "Give at most one of --list ID or --inbox",

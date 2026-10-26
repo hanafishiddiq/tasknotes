@@ -8,7 +8,8 @@ use uuid::Uuid;
 
 use crate::audit::{AuditAction, Interface};
 pub use crate::organization::{
-    CreateList, List, ListPage, MoveTask, RenameList, SetListRemoved, TaskView, UpdateTaskDetails,
+    CreateList, List, ListPage, MoveTask, PatchTaskDetails, RenameList, SetListRemoved, TaskView,
+    UpdateTaskDetails,
 };
 pub use crate::search::{TaskQuery, TaskScope};
 
@@ -67,6 +68,8 @@ pub enum TaskError {
     InvalidHistoryCursor,
     #[error("Task changes must specify status, priority, or progress")]
     EmptyChange,
+    #[error("A partial edit must name at least one field to change")]
+    EmptyPatch,
     #[error("Progress must be between 0 and 100")]
     InvalidProgress,
     #[error("Invalid work status/progress transition: {0}")]
@@ -144,6 +147,7 @@ impl TaskError {
             | ProgressNoteTooLong
             | InvalidHistoryPageSize
             | EmptyChange
+            | EmptyPatch
             | EmptyProgressUpdate
             | InvalidProgress
             | NoteTooLong
@@ -288,6 +292,16 @@ pub struct UpdateTask {
     pub title: String,
     pub description: String,
     pub expected_revision: i64,
+}
+
+/// A partial title/description edit: `None` keeps the current value. The
+/// AI adapters (CLI, MCP) use it so neither re-implements the merge.
+#[derive(Debug, Clone)]
+pub struct PatchTask {
+    pub id: String,
+    pub expected_revision: i64,
+    pub title: Option<String>,
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -707,6 +721,22 @@ impl TaskStore {
         self.audit_applied(&tx, AuditAction::TaskUpdate, &task.id, task.revision)?;
         tx.commit()?;
         Ok(task)
+    }
+
+    /// Edit only the named fields. The merge reads the current Task, but the
+    /// write still checks the caller's revision, so a stale caller is refused
+    /// rather than merged onto someone else's change.
+    pub fn patch_task(&self, patch: PatchTask) -> Result<Task, TaskError> {
+        if patch.title.is_none() && patch.description.is_none() {
+            return Err(TaskError::EmptyPatch);
+        }
+        let current = self.get_task(&patch.id)?.ok_or(TaskError::NotFound)?;
+        self.update_task(UpdateTask {
+            id: patch.id,
+            title: patch.title.unwrap_or(current.title),
+            description: patch.description.unwrap_or(current.description),
+            expected_revision: patch.expected_revision,
+        })
     }
 
     /// Applies a status, priority, or percentage change atomically under the same

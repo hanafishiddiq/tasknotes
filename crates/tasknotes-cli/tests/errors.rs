@@ -56,6 +56,9 @@ fn malformed_commands_and_options_are_invalid_input() {
         vec!["task", "list", "--limit", "500"],
         vec!["task", "list", "--inbox=yes"],
         vec!["task", "move", tid, "--revision", "1"],
+        // A partial edit that names no field.
+        vec!["task", "update", tid, "--revision", "1"],
+        vec!["task", "details", tid, "--revision", "1"],
     ] {
         let run = cli.run(&args);
         assert_eq!(error_code(&run, 2), "invalid_input", "{args:?}");

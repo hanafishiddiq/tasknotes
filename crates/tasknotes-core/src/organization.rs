@@ -82,6 +82,17 @@ pub struct UpdateTaskDetails {
     pub due_date: Option<String>,
 }
 
+/// A partial Tags/Deadline edit: `None` keeps the current value,
+/// `tags: Some(vec![])` clears the Tags and `due_date: Some(None)` clears the
+/// Deadline.
+#[derive(Debug, Clone)]
+pub struct PatchTaskDetails {
+    pub id: String,
+    pub expected_revision: i64,
+    pub tags: Option<Vec<String>>,
+    pub due_date: Option<Option<String>>,
+}
+
 fn clean_tags(raw: &[String]) -> Result<Vec<String>, TaskError> {
     if raw.len() > 16 {
         return Err(TaskError::InvalidTags);
@@ -263,6 +274,20 @@ fn read_list(row: &rusqlite::Row<'_>) -> rusqlite::Result<List> {
 }
 
 impl TaskStore {
+    /// Edit only the named details; the caller's revision is still checked.
+    pub fn patch_task_details(&self, patch: PatchTaskDetails) -> Result<Task, TaskError> {
+        if patch.tags.is_none() && patch.due_date.is_none() {
+            return Err(TaskError::EmptyPatch);
+        }
+        let current = self.get_task(&patch.id)?.ok_or(TaskError::NotFound)?;
+        self.update_task_details(UpdateTaskDetails {
+            id: patch.id,
+            expected_revision: patch.expected_revision,
+            tags: patch.tags.unwrap_or(current.tags),
+            due_date: patch.due_date.unwrap_or(current.due_date),
+        })
+    }
+
     pub fn update_task_details(&self, input: UpdateTaskDetails) -> Result<Task, TaskError> {
         let (id, revision) = (input.id.clone(), input.expected_revision);
         self.audited(AuditAction::TaskDetails, &id, revision, || {
