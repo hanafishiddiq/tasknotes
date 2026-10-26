@@ -81,6 +81,8 @@ export default function App() {
   const [creating, setCreating] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // Rows holding unsaved edits; the virtualized list keeps them mounted.
+  const [dirtyIds, setDirtyIds] = useState<ReadonlySet<string>>(new Set());
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -534,6 +536,15 @@ export default function App() {
     }
   }
 
+  function markDirty(id: string, dirty: boolean) {
+    setDirtyIds((current) => {
+      if (current.has(id) === dirty) return current;
+      const next = new Set(current);
+      if (dirty) next.add(id); else next.delete(id);
+      return next;
+    });
+  }
+
   function changeSort(nextSort: SortMode) {
     if (sort === nextSort) return;
     currentQuery.current = { ...currentQuery.current, sort: nextSort };
@@ -609,7 +620,9 @@ export default function App() {
     }
   }
 
-  const keepMounted = useMemo(() => new Set(expandedId ? [expandedId] : []), [expandedId]);
+  const keepMounted = useMemo(
+    () => new Set([...dirtyIds, ...(expandedId ? [expandedId] : [])]), [dirtyIds, expandedId],
+  );
 
   const pageTitle = view.kind === "all" ? "All tasks"
     : view.kind === "inbox" ? "Inbox"
@@ -894,6 +907,7 @@ export default function App() {
                         onOpenNote={openLinkedNote}
                         onRemove={() => removeTask(task)}
                         shown={workspace === "tasks"}
+                        onDirtyChange={(dirty) => markDirty(task.id, dirty)}
                       />
                     )}
                   />

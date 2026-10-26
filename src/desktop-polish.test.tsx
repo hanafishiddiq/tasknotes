@@ -193,4 +193,50 @@ describe("Virtualized Task rows", () => {
     expect(screen.queryByRole("article", { name: "Synthetic task 1" })).not.toBeInTheDocument();
     expect(screen.getAllByRole("article").length).toBeLessThan(40);
   });
+
+  it("keeps the scroll position when a Task opens and closes", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("article", { name: "Synthetic task 1" });
+    const area = await act(async () => scrollTasksTo(30 + 50 * 40));
+    await user.click(await screen.findByRole("button", { name: "Open Synthetic task 42" }));
+    expect(screen.getByRole("region", { name: "Task details" })).toBeInTheDocument();
+    expect(area.scrollTop).toBe(30 + 50 * 40);
+    await user.click(screen.getByRole("button", { name: "Close Synthetic task 42" }));
+    expect(area.scrollTop).toBe(30 + 50 * 40);
+    expect(screen.getByRole("button", { name: "Open Synthetic task 42" })).toHaveFocus();
+  });
+
+  it("keeps an unsaved edit when the open Task scrolls far out of view", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open Synthetic task 3" }));
+    const title = screen.getByRole("textbox", { name: "Edit title" });
+    await user.clear(title);
+    await user.type(title, "Draft title kept");
+
+    await act(async () => { scrollTasksTo(30 + 50 * 250); });
+    expect(await screen.findByRole("article", { name: "Synthetic task 250" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Edit title" })).toHaveValue("Draft title kept");
+    await act(async () => { scrollTasksTo(0); });
+    expect(screen.getByRole("textbox", { name: "Edit title" })).toHaveValue("Draft title kept");
+  });
+
+  it("keeps an unsaved edit after opening another Task, and marks the row", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open Synthetic task 3" }));
+    await user.type(screen.getByRole("textbox", { name: "Next step" }), "Call the printer");
+    await user.click(screen.getByRole("button", { name: "Open Synthetic task 4" }));
+
+    const row = screen.getByRole("article", { name: "Synthetic task 3" });
+    expect(within(row).getByText("Unsaved edits")).toBeInTheDocument();
+    // Far out of view, the row holding unsaved edits stays mounted.
+    await act(async () => { scrollTasksTo(30 + 50 * 250); });
+    expect(screen.getByRole("article", { name: "Synthetic task 3" })).toBeInTheDocument();
+    await act(async () => { scrollTasksTo(0); });
+
+    await user.click(screen.getByRole("button", { name: "Open Synthetic task 3" }));
+    expect(screen.getByRole("textbox", { name: "Next step" })).toHaveValue("Call the printer");
+  });
 });

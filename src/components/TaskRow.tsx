@@ -51,6 +51,8 @@ interface TaskRowProps {
   onRemove: () => Promise<void>;
   /** False while the Notes workspace covers the Task view. */
   shown: boolean;
+  /** Told whether this row holds edits not yet saved, so it is never unmounted with them. */
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 export default function TaskRow({
@@ -68,6 +70,7 @@ export default function TaskRow({
   onOpenNote,
   onRemove,
   shown,
+  onDirtyChange,
 }: TaskRowProps) {
   const [draftTitle, setDraftTitle] = useState(task.title);
   const [draftDescription, setDraftDescription] = useState(task.description);
@@ -90,6 +93,7 @@ export default function TaskRow({
   const hasUnsavedDetails =
     draftTags !== (task.tags ?? []).join(", ") ||
     draftDueDate !== (task.dueDate ?? "");
+  const dirty = hasUnsavedText || hasUnsavedProgressUpdate || hasUnsavedDetails;
   const canChangeDetails = !saving && !hasUnsavedText && !hasUnsavedProgressUpdate;
   const canChangeMetadata = !saving && !hasUnsavedText && !hasUnsavedDetails;
   const canChangeSelectors = canChangeMetadata && !hasUnsavedProgressUpdate;
@@ -127,15 +131,23 @@ export default function TaskRow({
     return () => window.removeEventListener("resize", fit);
   }, [draftTitle, expanded]);
 
+  useEffect(() => {
+    if (!onDirtyChange) return;
+    onDirtyChange(dirty);
+  }, [dirty]);
+  // A row leaving the page no longer holds anything to keep.
+  useEffect(() => () => onDirtyChange?.(false), []);
+
   function toggle() {
+    // Reopening shows what was typed and not saved; only untouched fields
+    // pick up the latest saved values.
     if (!expanded) {
-      setDraftTitle(task.title);
-      setDraftDescription(task.description);
-      setDraftProgress(String(task.progress));
-      setDraftNextStep(task.nextStep ?? "");
-      setDraftNote("");
-      setDraftTags((task.tags ?? []).join(", "));
-      setDraftDueDate(task.dueDate ?? "");
+      if (!hasUnsavedText) {
+        setDraftTitle(task.title);
+        setDraftDescription(task.description);
+      }
+      if (!hasUnsavedProgressUpdate) discardUpdateDraft();
+      if (!hasUnsavedDetails) discardDetailsDraft();
     }
     onToggle();
   }
@@ -212,6 +224,7 @@ export default function TaskRow({
           </span>
         </button>
         <div className="task-row-meta">
+          {dirty && !expanded && <span className="unsaved-pill">Unsaved edits</span>}
           <span className={`status-pill status-pill--${task.status} sr-only`}>
             {STATUS_VIEW[task.status].label}
           </span>
