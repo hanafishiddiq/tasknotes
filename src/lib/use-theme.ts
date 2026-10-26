@@ -4,6 +4,13 @@ export type Theme = "dark" | "light";
 /** What the person chose: one appearance, or whatever the system shows. */
 export type ThemePreference = Theme | "system";
 
+/** The appearance choices, in the order Settings and the palette offer them. */
+export const APPEARANCES: readonly ThemePreference[] = ["dark", "light", "system"];
+
+export const APPEARANCE_LABELS: Record<ThemePreference, string> = {
+  dark: "Dark", light: "Light", system: "Match system",
+};
+
 const STORAGE_KEY = "tasknotes.theme";
 const SYSTEM_DARK = "(prefers-color-scheme: dark)";
 

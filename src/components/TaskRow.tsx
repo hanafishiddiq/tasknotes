@@ -235,7 +235,7 @@ export default function TaskRow({
           </span>
         </button>
         <div className="task-row-meta">
-          {dirty && !expanded && <span className="unsaved-pill">Unsaved edits</span>}
+          {dirty && !expanded && <span className="unsaved-marker">Unsaved edits</span>}
           <span className={`status-pill status-pill--${task.status} sr-only`}>
             {STATUS_VIEW[task.status].label}
           </span>

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { SHORTCUTS, type ShortcutAction } from "./shortcuts";
 
 /** Where typing belongs to the field: its own undo, arrows and letters stay there. */
 export function isTypingTarget(target: EventTarget | null): boolean {
@@ -7,36 +8,24 @@ export function isTypingTarget(target: EventTarget | null): boolean {
   return target.matches("input, textarea, select");
 }
 
-export interface ShortcutHandlers {
-  /** ⌘K, from anywhere. */
-  palette: () => void;
-  /** ⌘N, from anywhere. */
-  newTask: () => void;
-  /** ⌘F, from anywhere. */
-  search: () => void;
-  /** ⌘, from anywhere. */
-  settings: () => void;
-  /** ⌘Z outside a text field; returns false when there is nothing to undo. */
-  undo: () => boolean;
-}
+/**
+ * One handler per action in SHORTCUTS. Returning false means "nothing to do",
+ * and the key press is left alone (⌘Z with nothing to undo).
+ */
+export type ShortcutHandlers = Record<ShortcutAction, () => boolean | void>;
 
-/** The app-wide ⌘ shortcuts. Handlers are read fresh on every key press. */
+/** The app-wide ⌘ shortcuts from SHORTCUTS. Handlers are read fresh on every key press. */
 export function useShortcuts(handlers: ShortcutHandlers) {
   const latest = useRef(handlers);
   latest.current = handlers;
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.isComposing) return;
+      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey || event.isComposing) return;
       const key = event.key.toLowerCase();
-      const run = latest.current;
-      if (key === "k" && !event.shiftKey) run.palette();
-      else if (key === "n" && !event.shiftKey) run.newTask();
-      else if (key === "f" && !event.shiftKey) run.search();
-      else if (key === "," && !event.shiftKey) run.settings();
-      else if (key === "z" && !event.shiftKey && !isTypingTarget(event.target)) {
-        if (!run.undo()) return;
-      } else return;
+      const command = SHORTCUTS.find((shortcut) => shortcut.command?.key === key)?.command;
+      if (!command || (command.outsideFields && isTypingTarget(event.target))) return;
+      if (latest.current[command.action]() === false) return;
       event.preventDefault();
     }
     window.addEventListener("keydown", onKeyDown);

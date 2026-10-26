@@ -44,6 +44,12 @@ const has = (selector: string, property: RegExp) =>
   all.some((rule) => rule.selector.split(",").map((part) => part.trim()).includes(selector) && property.test(rule.body));
 
 describe("Stylesheet accessibility", () => {
+  it("shows the Unsaved edits marker as plain text, never a filled badge", () => {
+    // DESIGN.md: no colored or filled badges; the marker is italic secondary text.
+    expect(has(".unsaved-marker", /font-style: italic/)).toBe(true);
+    expect(has(".unsaved-marker", /background|border|border-radius/)).toBe(false);
+  });
+
   it("gives every control that hides the native outline a visible focus replacement", () => {
     // The hidden outline → where focus shows instead (DESIGN.md: outline, accent underline, or the hover step).
     const replacements: Record<string, [string, RegExp]> = {

@@ -29,6 +29,7 @@ import NoteSnippet from "./components/NoteSnippet";
 import RemovedView from "./components/RemovedView";
 import SettingsView from "./components/SettingsView";
 import CommandPalette, { type Command } from "./components/CommandPalette";
+import { buildCommands } from "./lib/app-commands";
 import { removedApi, type RemovedItem } from "./lib/removed-api";
 import "./App.css";
 
@@ -97,6 +98,8 @@ export default function App() {
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
   const appearance = useTheme();
+  // A Task view change in flight: moving elsewhere waits until it settles.
+  const busy = busyList || creating || Boolean(savingId) || loadingMore;
   const titleInput = useRef<HTMLInputElement>(null);
   const taskScroll = useRef<HTMLDivElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
@@ -182,11 +185,9 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (pendingLinkedTask && !(busyList || creating || savingId || loadingMore)) {
-      openLinkedTask(pendingLinkedTask);
-    }
-    // openLinkedTask reads the same busy flags listed here.
-  }, [pendingLinkedTask, busyList, creating, savingId, loadingMore]);
+    if (pendingLinkedTask && !busy) openLinkedTask(pendingLinkedTask);
+    // openLinkedTask reads the same busy flag listed here.
+  }, [pendingLinkedTask, busy]);
 
   useEffect(() => {
     if (!focusRequest || workspace !== "tasks") return;
@@ -217,7 +218,7 @@ export default function App() {
 
   /** Shows one Task, expanded, as when it is opened from a Note it is linked to. */
   function openLinkedTask(taskId: string) {
-    if (busyList || creating || savingId || loadingMore) {
+    if (busy) {
       // Opened once the Task view has finished its current change.
       setPendingLinkedTask(taskId);
       setWorkspace("tasks");
@@ -232,13 +233,13 @@ export default function App() {
   }
 
   function openSettings() {
-    if (busyList || creating || savingId || loadingMore) return;
+    if (busy) return;
     undo.hideNotice();
     setWorkspace("settings");
   }
 
   function openRemoved() {
-    if (busyList || creating || savingId || loadingMore) return;
+    if (busy) return;
     undo.hideNotice();
     setWorkspace("removed");
   }
@@ -290,7 +291,7 @@ export default function App() {
   }
 
   function navigate(next: TaskView) {
-    if (busyList || creating || savingId || loadingMore) return;
+    if (busy) return;
     setWorkspace("tasks");
     undo.hideNotice();
     if (next.kind === view.kind &&
@@ -672,39 +673,21 @@ export default function App() {
     setPaletteOpen(true);
   }
 
-  // While the palette is open the window behind it is inert: its shortcuts do nothing.
-  const behindPalette = <T,>(handler: () => T, idle: T) => () => paletteOpen ? idle : handler();
+  // While the palette is open the window behind it is inert: its shortcuts are swallowed.
+  const behindPalette = (handler: () => boolean | void) => () => paletteOpen || handler();
   useShortcuts({
     palette: openPalette,
-    newTask: behindPalette(() => focusInTasks("capture"), undefined),
-    search: behindPalette(() => focusInTasks("search"), undefined),
-    settings: behindPalette(openSettings, undefined),
-    undo: behindPalette(undo.run, false),
+    newTask: behindPalette(() => focusInTasks("capture")),
+    search: behindPalette(() => focusInTasks("search")),
+    settings: behindPalette(openSettings),
+    undo: behindPalette(undo.run),
   });
 
-  const appearanceLabels = { dark: "Dark", light: "Light", system: "Match system" } as const;
-  const commands: Command[] = [
-    { id: "go-all", label: "All tasks", group: "Go to", run: () => navigate({ kind: "all" }) },
-    { id: "go-inbox", label: "Inbox", group: "Go to", run: () => navigate({ kind: "inbox" }) },
-    ...lists.filter((list) => !list.removed).map((list): Command => ({
-      id: `go-list-${list.id}`, label: list.name, group: "Go to", keywords: "list",
-      run: () => navigate({ kind: "list", listId: list.id }),
-    })),
-    { id: "go-notes", label: "All notes", group: "Go to", run: () => openNotes() },
-    { id: "go-removed", label: "Removed", group: "Go to", keywords: "trash restore", run: openRemoved },
-    { id: "go-settings", label: "Settings", group: "Go to", keywords: "preferences", run: openSettings },
-    { id: "new-task", label: "New task", group: "Actions", keywords: "add create capture", run: () => focusInTasks("capture") },
-    { id: "search", label: "Search tasks and notes", group: "Actions", keywords: "find", run: () => focusInTasks("search") },
-    ...(undo.next ? [{
-      id: "undo", label: `Undo moving “${undo.next.title}” to Removed`, group: "Actions", keywords: "restore",
-      run: undo.run,
-    }] : []),
-    ...(["dark", "light", "system"] as const).filter((value) => value !== appearance.preference)
-      .map((value): Command => ({
-        id: `appearance-${value}`, label: `Appearance: ${appearanceLabels[value]}`, group: "Actions",
-        keywords: "theme mode", run: () => appearance.setPreference(value),
-      })),
-  ];
+  const commands = buildCommands({
+    lists, undoTitle: undo.next?.title ?? null, appearance: appearance.preference,
+    navigate, openNotes: () => openNotes(), openRemoved, openSettings, focusInTasks,
+    undo: undo.run, setAppearance: appearance.setPreference,
+  });
   const searchCommand = (text: string): Command => ({
     id: "search-text", label: `Search for “${text}”`, group: "Actions",
     run: () => { focusInTasks("search"); setSearchDraft(text); },
@@ -733,13 +716,13 @@ export default function App() {
         noteFolders={notesOpened && (
           <NoteFolderTree folders={noteFolders}
             currentId={workspace === "notes" && noteScope.kind === "folder" ? noteScope.folderId : null}
-            disabled={busyList || creating || Boolean(savingId) || loadingMore}
+            disabled={busy}
             onOpen={(folder) => openNotes({ kind: "folder", folderId: folder.id })}
             onRemoved={folderRemoved} />
         )}
         lists={lists} shownCount={countKnown ? tasks.length : null} hasMoreTasks={Boolean(nextCursor)}
         listError={listError}
-        hasMoreLists={Boolean(listCursor)} busy={busyList || creating || Boolean(savingId) || loadingMore}
+        hasMoreLists={Boolean(listCursor)} busy={busy}
         theme={appearance.theme} onToggleTheme={appearance.toggle}
         settingsActive={workspace === "settings"} onOpenSettings={openSettings}
         onNavigate={navigate} onCreateList={createList} onRenameList={renameList}

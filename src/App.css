@@ -1053,7 +1053,7 @@ kbd {
   color: var(--orange);
 }
 /* A closed row still holding typed text: plain words, no badge. */
-.unsaved-pill {
+.unsaved-marker {
   font-style: italic;
   color: var(--text-2);
   white-space: nowrap;

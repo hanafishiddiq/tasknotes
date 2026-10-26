@@ -1,12 +1,8 @@
 import { Monitor, Moon, Sun } from "lucide-react";
-import type { ThemePreference } from "../lib/use-theme";
+import { APPEARANCES, APPEARANCE_LABELS, type ThemePreference } from "../lib/use-theme";
 import { SHORTCUTS } from "../lib/shortcuts";
 
-const APPEARANCES: { value: ThemePreference; label: string; icon: typeof Sun }[] = [
-  { value: "dark", label: "Dark", icon: Moon },
-  { value: "light", label: "Light", icon: Sun },
-  { value: "system", label: "Match system", icon: Monitor },
-];
+const APPEARANCE_ICONS: Record<ThemePreference, typeof Sun> = { dark: Moon, light: Sun, system: Monitor };
 
 interface SettingsViewProps {
   hidden: boolean;
@@ -24,14 +20,17 @@ export default function SettingsView({ hidden, preference, onPreference }: Setti
 
           <h2 className="settings-heading" id="settings-appearance">Appearance</h2>
           <div className="settings-choices" role="radiogroup" aria-labelledby="settings-appearance">
-            {APPEARANCES.map(({ value, label, icon: Icon }) => (
-              <label key={value} className="settings-choice">
-                <input type="radio" name="appearance" value={value}
-                  checked={preference === value} onChange={() => onPreference(value)} />
-                <Icon size={15} aria-hidden="true" />
-                <span>{label}</span>
-              </label>
-            ))}
+            {APPEARANCES.map((value) => {
+              const Icon = APPEARANCE_ICONS[value];
+              return (
+                <label key={value} className="settings-choice">
+                  <input type="radio" name="appearance" value={value}
+                    checked={preference === value} onChange={() => onPreference(value)} />
+                  <Icon size={15} aria-hidden="true" />
+                  <span>{APPEARANCE_LABELS[value]}</span>
+                </label>
+              );
+            })}
           </div>
           <p className="settings-hint">Match system follows the macOS appearance as it changes.</p>
 
