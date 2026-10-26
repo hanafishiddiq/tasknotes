@@ -87,4 +87,19 @@ describe("Removed Notes and folders", () => {
     await user.click(screen.getByRole("button", { name: "All notes" }));
     await eventually(() => expect(within(noteList()).getByRole("button", { name: /Budget/ })).toBeInTheDocument());
   });
+
+  it("leaves a subfolder's view when a folder above it is moved to Removed", async () => {
+    const work = backend.folder("Work");
+    const meetings = backend.folder("Meetings", work);
+    backend.seed("# Minutes", "Minutes", { folderId: meetings.id });
+    const user = await openNotes();
+    await user.click(await within(folderTree()).findByRole("button", { name: "Expand Work" }));
+    await user.click(await within(folderTree()).findByRole("button", { name: "Meetings" }));
+    await eventually(() => expect(screen.getByRole("heading", { name: "Meetings" })).toBeInTheDocument());
+
+    await user.click(within(folderTree()).getByRole("button", { name: "Remove Work" }));
+    // The core refuses to list a hidden folder, so the view goes back to every Note.
+    await eventually(() => expect(screen.getByRole("heading", { name: "Notes" })).toBeInTheDocument());
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
 });

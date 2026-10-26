@@ -67,6 +67,12 @@ export function useNoteFolders(enabled: boolean) {
     setLevels(tree);
   }, [loadTree]);
 
+  /** Reloads the tree after a change elsewhere (e.g. a restore), reporting a failure in the tree. */
+  const refresh = useCallback(
+    () => reload().catch((reason) => setError("Couldn't load folders: " + errorMessage(reason))),
+    [reload],
+  );
+
   useEffect(() => {
     if (!enabled) return;
     reload().catch((reason) => setError("Couldn't load folders: " + errorMessage(reason)));
@@ -161,7 +167,7 @@ export function useNoteFolders(enabled: boolean) {
   const remove = (folder: NoteFolder) => write(() => removedApi.remove<NoteFolder>("note_folder", folder));
 
   return {
-    reload,
+    refresh,
     remove,
     level: (parentId: string | null): Level | undefined => levels[key(parentId)],
     isExpanded: (id: string) => expanded.has(id),

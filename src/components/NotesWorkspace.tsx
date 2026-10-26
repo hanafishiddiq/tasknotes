@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Folder as FolderIcon, LoaderCircle, Pin, PinOff, Search, SquarePen, Trash2 } from "lucide-react";
-import { errorMessage } from "../lib/error-message";
+import { errorMessage, isFolderRemoved } from "../lib/error-message";
 import { ALL_NOTES, noteApi, type Note, type NoteScope, type NoteSummary } from "../lib/note-api";
 import type { FolderOption } from "../lib/use-note-folders";
 import { saveBeforeQuit } from "../lib/quit";
@@ -76,6 +76,8 @@ interface NotesWorkspaceProps {
   refreshKey: number;
   /** Called after the open Note was moved to Removed. */
   onRemoved: () => void;
+  /** Called when the core says the open folder is now hidden by Removed. */
+  onScopeHidden: () => void;
 }
 
 /** Arrow keys move focus between the Notes in the list. */
@@ -98,7 +100,7 @@ function placeEdited(list: NoteSummary[], item: NoteSummary): NoteSummary[] {
 
 /** The Notes list beside one open Note, as in Apple Notes. */
 export default function NotesWorkspace({
-  hidden, scope, scopeName, folders, request, onOpenTask, refreshKey, onRemoved,
+  hidden, scope, scopeName, folders, request, onOpenTask, refreshKey, onRemoved, onScopeHidden,
 }: NotesWorkspaceProps) {
   const [notes, setNotes] = useState<NoteSummary[]>([]);
   // Where the next page of older Notes starts; null once every Note is listed.
@@ -230,7 +232,11 @@ export default function NotesWorkspace({
   useEffect(() => {
     if (refreshKey === seenRefresh.current) return;
     seenRefresh.current = refreshKey;
-    refreshList().catch((reason) => setError("Couldn't refresh the Notes list: " + errorMessage(reason)));
+    refreshList().catch((reason) => {
+      // The open folder, or one above it, went to Removed: the core decides that.
+      if (scopeRef.current.kind === "folder" && isFolderRemoved(reason)) onScopeHidden();
+      else setError("Couldn't refresh the Notes list: " + errorMessage(reason));
+    });
   }, [refreshKey]);
 
   // flush reads only refs, so the first render's copy stays current.

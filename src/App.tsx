@@ -15,7 +15,7 @@ import { useLocalCalendarDay } from "./lib/use-local-calendar-day";
 import { useTheme } from "./lib/use-theme";
 import { errorMessage } from "./lib/error-message";
 import { listenForQuit } from "./lib/quit";
-import { ALL_NOTES, noteApi, type NoteFolder, type NotePage, type NoteScope } from "./lib/note-api";
+import { ALL_NOTES, noteApi, type NotePage, type NoteScope } from "./lib/note-api";
 import type { NotesRequest } from "./components/NotesWorkspace";
 import { useNoteFolders } from "./lib/use-note-folders";
 import NoteFolderTree from "./components/NoteFolderTree";
@@ -220,22 +220,19 @@ export default function App() {
     }
     if (item.kind === "task" || item.kind === "list") retryFirstLoad();
     if (item.kind === "note_folder") {
-      noteFolders.reload().catch(() => undefined);
+      void noteFolders.refresh();
     }
     if (item.kind === "note" || item.kind === "note_folder") setNotesRefresh((key) => key + 1);
   }
 
-  /** A Removed folder hides its subtree: leave its view if it, or a folder below it, is open. */
-  function folderRemoved(folder: NoteFolder) {
+  /**
+   * A Removed folder hides its subtree. The Notes list refreshes; if the open
+   * folder is now hidden, the core refuses to list it and the view goes back
+   * to All notes (onScopeHidden).
+   */
+  function folderRemoved() {
     setRemovedKey((key) => key + 1);
     setNotesRefresh((key) => key + 1);
-    if (noteScope.kind !== "folder") return;
-    for (let at: string | null = noteScope.folderId; at !== null; at = noteFolders.byId.get(at)?.parentId ?? null) {
-      if (at === folder.id) {
-        setNoteScope(ALL_NOTES);
-        return;
-      }
-    }
   }
 
   function openLinkedNote(noteId: string) {
@@ -930,7 +927,8 @@ export default function App() {
             scopeName={noteScope.kind === "folder"
               ? noteFolders.byId.get(noteScope.folderId)?.name ?? "Folder" : "Notes"}
             folders={noteFolders.options} request={notesRequest} onOpenTask={openLinkedTask}
-            refreshKey={notesRefresh} onRemoved={() => setRemovedKey((key) => key + 1)} />
+            refreshKey={notesRefresh} onRemoved={() => setRemovedKey((key) => key + 1)}
+            onScopeHidden={() => setNoteScope(ALL_NOTES)} />
         </Suspense>
       )}
     </div>

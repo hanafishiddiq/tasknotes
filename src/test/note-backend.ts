@@ -76,6 +76,10 @@ export class NoteBackend {
       const words = text.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
       // As in the core: text without words ("!!!") matches nothing.
       if (text.trim() && words.length === 0) return { items: [], nextCursor: null };
+      // As in the core: a folder hidden by Removed cannot be listed.
+      if (scope.kind === "folder" && this.folderHidden(scope.folderId)) {
+        throw "This folder, or a folder it is in, is in Removed; restore that folder first";
+      }
       const all: NoteSummary[] = [...this.notes.values()]
         .filter((note) => this.noteShown(note))
         .filter((note) => scope.kind === "all" || note.folderId === scope.folderId)
