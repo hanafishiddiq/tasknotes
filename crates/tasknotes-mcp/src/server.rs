@@ -4,6 +4,7 @@
 //! nothing about the data.
 
 use std::path::PathBuf;
+use std::sync::Mutex;
 
 use rmcp::model::{
     CallToolRequestParams, CallToolResponse, CallToolResult, Implementation, ListToolsResult,
@@ -27,6 +28,9 @@ Changing several items at once goes through bulk_preview, then bulk_confirm with
 
 pub struct Tasknotes {
     data_dir: PathBuf,
+    /// Tool calls run one at a time. A client may send several at once, and
+    /// the first one may create and migrate the database.
+    serial: Mutex<()>,
     tools: Vec<ToolDef>,
     previews: Previews,
 }
@@ -35,6 +39,7 @@ impl Tasknotes {
     pub fn new(data_dir: PathBuf) -> Self {
         Self {
             data_dir,
+            serial: Mutex::new(()),
             tools: crate::tools::all(),
             previews: Previews::default(),
         }
@@ -111,7 +116,11 @@ impl ServerHandler for Tasknotes {
                 None,
             ));
         };
-        let envelope = self.run(tool, request.arguments);
+        // The core is synchronous SQLite; keep it off the async workers.
+        let envelope = tokio::task::block_in_place(|| {
+            let _one_at_a_time = self.serial.lock().unwrap_or_else(|e| e.into_inner());
+            self.run(tool, request.arguments)
+        });
         let result = if envelope["ok"] == Value::Bool(true) {
             CallToolResult::structured(envelope)
         } else {
