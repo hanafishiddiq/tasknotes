@@ -59,13 +59,13 @@ A Note kept above the other Notes in every Note list it appears in. Pinning, lik
 An immutable dated record that an official Tasknotes interface made or attempted a consequential change.
 
 **Backup**:
-A consistent local copy of all Tasknotes data, taken automatically once a day while Tasknotes runs, on request, and just before a restore. The 7 daily / 4 weekly / 3 monthly retention prunes backup copies only, never live Tasks, Notes or Lists.
+A consistent local copy of all Tasknotes data, taken automatically once a local calendar day while Tasknotes runs (Daily), on request (Manual), and just before a restore (Pre-restore). Daily backups follow the 7 daily / 4 weekly / 3 monthly retention, the 10 newest Manual backups are kept, and Pre-restore backups are never removed automatically. Retention prunes backup copies only, never live Tasks, Notes or Lists.
 
 **Backup Manifest**:
 The record beside each Backup of when and why it was taken, its schema version, size and checksum; a restore refuses a Backup that does not match its manifest.
 
 **Restore**:
-Replacing all current data with a validated Backup, after keeping a Backup of the current data. Windows and commands that opened the data before must reload before they can change anything.
+Replacing all current data with a validated Backup, after stopping every other writer and keeping a Backup of the current data. The Audit Entries made since the Backup are kept, and the restore itself is recorded as one. Windows and commands that opened the data before must reload before they can change anything.
 _Avoid_: Restore alone where restoring an item from Removed is meant.
 
 **Export**:
