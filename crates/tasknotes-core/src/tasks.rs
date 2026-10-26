@@ -344,12 +344,25 @@ pub struct ProgressEntry {
     pub created_at: i64,
 }
 
+/// A page of Progress Entries with an opaque cursor, for the AI-facing
+/// adapters (CLI, MCP): they hand `next_cursor` back unchanged.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProgressHistoryPage {
     pub items: Vec<ProgressEntry>,
+    pub next_cursor: Option<String>,
+}
+
+/// The desktop window's page shape: the cursor is the raw sequence number of
+/// the last entry shown. Kept so the window's wire format is unchanged.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProgressSequencePage {
+    pub items: Vec<ProgressEntry>,
     pub next_cursor: Option<i64>,
 }
+
+const HISTORY_CURSOR_PREFIX: &str = "h1|";
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -886,15 +899,40 @@ impl TaskStore {
         Ok(updated)
     }
 
-    /// Recent Progress Entries in reverse write order. The sequence is an
-    /// append-only cursor, so entries written in the same millisecond do not
-    /// reorder or disappear when moving between pages.
+    /// Recent Progress Entries newest first, in pages of 1–50 with an opaque
+    /// cursor that only the core reads.
     pub fn list_progress_entries(
         &self,
         task_id: &str,
         limit: u32,
-        before: Option<i64>,
+        cursor: Option<&str>,
     ) -> Result<ProgressHistoryPage, TaskError> {
+        let before = cursor
+            .map(|raw| {
+                raw.strip_prefix(HISTORY_CURSOR_PREFIX)
+                    .and_then(|n| n.parse::<i64>().ok())
+                    .filter(|n| *n > 0)
+                    .ok_or(TaskError::InvalidHistoryCursor)
+            })
+            .transpose()?;
+        let page = self.list_progress_entries_before(task_id, limit, before)?;
+        Ok(ProgressHistoryPage {
+            items: page.items,
+            next_cursor: page
+                .next_cursor
+                .map(|n| format!("{HISTORY_CURSOR_PREFIX}{n}")),
+        })
+    }
+
+    /// Recent Progress Entries in reverse write order, for the desktop window.
+    /// The sequence is an append-only cursor, so entries written in the same
+    /// millisecond do not reorder or disappear when moving between pages.
+    pub fn list_progress_entries_before(
+        &self,
+        task_id: &str,
+        limit: u32,
+        before: Option<i64>,
+    ) -> Result<ProgressSequencePage, TaskError> {
         if !(1..=50).contains(&limit) {
             return Err(TaskError::InvalidHistoryPageSize);
         }
@@ -941,7 +979,7 @@ impl TaskStore {
         } else {
             None
         };
-        Ok(ProgressHistoryPage { items, next_cursor })
+        Ok(ProgressSequencePage { items, next_cursor })
     }
 
     /// Backwards-compatible default: work status is always the outer sort key,

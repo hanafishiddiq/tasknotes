@@ -248,18 +248,10 @@ fn task_command(store: &TaskStore, verb: &str, words: &[String]) -> Result<Value
         }
         "history" => {
             let p = parse(words, &flags(&["limit", "cursor"], 1))?;
-            let before = p
-                .value("cursor")
-                .map(|raw| {
-                    raw.strip_prefix("h1|")
-                        .and_then(|n| n.parse::<i64>().ok())
-                        .ok_or(TaskError::InvalidHistoryCursor)
-                })
-                .transpose()?;
-            let page = store.list_progress_entries(p.id(), p.limit()?, before)?;
+            let page = store.list_progress_entries(p.id(), p.limit()?, p.value("cursor"))?;
             Ok(contract::success_page(
                 page.items.iter().map(contract::progress_entry).collect(),
-                page.next_cursor.map(|n| format!("h1|{n}")),
+                page.next_cursor,
             ))
         }
         _ => Err(CliError::invalid(USAGE)),

@@ -7,7 +7,7 @@ use tasknotes_core::notes::{
 };
 use tasknotes_core::removed::{RemovedPage, SetRemoved};
 use tasknotes_core::tasks::{
-    ChangeTask, CreateList, CreateTask, List, ListPage, MoveTask, Priority, ProgressHistoryPage,
+    ChangeTask, CreateList, CreateTask, List, ListPage, MoveTask, Priority, ProgressSequencePage,
     RecordProgress, RenameList, SetListRemoved, SortMode, Task, TaskPage, TaskQuery, TaskStore,
     TaskView, UpdateTask, UpdateTaskDetails, WorkStatus,
 };
@@ -78,9 +78,9 @@ fn list_progress_entries(
     task_id: String,
     limit: u32,
     before: Option<i64>,
-) -> Result<ProgressHistoryPage, String> {
+) -> Result<ProgressSequencePage, String> {
     store
-        .list_progress_entries(&task_id, limit, before)
+        .list_progress_entries_before(&task_id, limit, before)
         .map_err(|error| error.to_string())
 }
 
