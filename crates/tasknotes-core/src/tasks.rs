@@ -139,7 +139,9 @@ pub enum TaskError {
     BackupNotFound,
     #[error("This backup cannot be restored: {0}. Your current data was not changed")]
     InvalidBackup(&'static str),
-    #[error("Another Tasknotes window or command kept writing; the restore was not applied. Try again")]
+    #[error(
+        "Another Tasknotes window or command kept writing; the restore was not applied. Try again"
+    )]
     RestoreBusy,
     #[error("Restore is only available in the Tasknotes window or the tasknotes command")]
     RestoreNotAllowed,
@@ -723,7 +725,9 @@ impl TaskStore {
 
     pub(crate) fn epoch(&self) -> std::sync::MutexGuard<'_, String> {
         // The guarded value is a plain string, so a poisoned lock is still sound.
-        self.epoch.lock().unwrap_or_else(|poison| poison.into_inner())
+        self.epoch
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
     }
 
     /// Accept the data as it is now, after a restore made elsewhere. The

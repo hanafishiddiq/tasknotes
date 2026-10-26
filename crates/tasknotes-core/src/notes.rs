@@ -1,7 +1,4 @@
-use rusqlite::{
-    OptionalExtension, Row, Transaction, params, params_from_iter,
-    types::Value,
-};
+use rusqlite::{OptionalExtension, Row, Transaction, params, params_from_iter, types::Value};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

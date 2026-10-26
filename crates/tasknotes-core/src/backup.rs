@@ -115,9 +115,11 @@ pub(crate) fn migrate_v13(migration: &Transaction) -> Result<(), TaskError> {
 }
 
 pub(crate) fn read_epoch(conn: &Connection) -> Result<String, TaskError> {
-    Ok(conn.query_row("SELECT epoch FROM database_epoch WHERE id = 1", [], |row| {
-        row.get(0)
-    })?)
+    Ok(
+        conn.query_row("SELECT epoch FROM database_epoch WHERE id = 1", [], |row| {
+            row.get(0)
+        })?,
+    )
 }
 
 impl TaskStore {
@@ -253,7 +255,8 @@ impl TaskStore {
             conn.execute("VACUUM INTO ?1", params![partial.to_string_lossy()])?;
             File::open(&partial)?.sync_all()?;
             let (size_bytes, sha256) = digest(&partial)?;
-            let schema_version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
+            let schema_version: i64 =
+                conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
             let backup = Backup {
                 id: id.clone(),
                 kind,
@@ -405,6 +408,9 @@ impl Drop for Staging {
     }
 }
 
+/// Maps a day (counted from 1970-01-01) to the period it belongs to.
+type PeriodOf = fn(i64) -> i64;
+
 /// Which of the backups (created-at times, any order) the 7 daily /
 /// 4 weekly / 3 monthly policy keeps. Each rule keeps the newest backup of
 /// each of its most recent periods that have a backup; a backup kept by
@@ -413,7 +419,7 @@ pub(crate) fn retained(created_at: &[i64]) -> Vec<bool> {
     let mut order: Vec<usize> = (0..created_at.len()).collect();
     order.sort_by_key(|&i| std::cmp::Reverse(created_at[i]));
     let mut keep = vec![false; created_at.len()];
-    let rules: [(usize, fn(i64) -> i64); 3] = [
+    let rules: [(usize, PeriodOf); 3] = [
         (7, |day| day),
         (4, |day| (day + 3).div_euclid(7)),
         (3, |day| {
