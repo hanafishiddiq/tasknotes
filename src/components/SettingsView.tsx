@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Monitor, Moon, Sun } from "lucide-react";
 import { APPEARANCES, APPEARANCE_LABELS, type ThemePreference } from "../lib/use-theme";
 import { SHORTCUTS } from "../lib/shortcuts";
@@ -9,10 +10,12 @@ interface SettingsViewProps {
   hidden: boolean;
   preference: ThemePreference;
   onPreference: (next: ThemePreference) => void;
+  /** Sections owned by other features (e.g. Sound), shown after Appearance. */
+  children?: ReactNode;
 }
 
 /** Per-window preferences. Later tickets add menu-bar, shortcut and sound settings here. */
-export default function SettingsView({ hidden, preference, onPreference }: SettingsViewProps) {
+export default function SettingsView({ hidden, preference, onPreference, children }: SettingsViewProps) {
   return (
     <main className="main-view" hidden={hidden}>
       <div className="main-scroll">
@@ -34,6 +37,8 @@ export default function SettingsView({ hidden, preference, onPreference }: Setti
             })}
           </div>
           <p className="settings-hint">Match system follows the macOS appearance as it changes.</p>
+
+          {children}
 
           <MenuBarSettings active={!hidden} />
 
