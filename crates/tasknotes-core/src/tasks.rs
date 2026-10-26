@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::audit::{AuditAction, Interface};
 pub use crate::organization::{
     CreateList, List, ListPage, MoveTask, RenameList, SetListRemoved, TaskView, UpdateTaskDetails,
 };
@@ -15,6 +16,7 @@ pub use crate::search::{TaskQuery, TaskScope};
 #[derive(Debug, Clone)]
 pub struct TaskStore {
     path: PathBuf,
+    interface: Interface,
 }
 
 #[derive(Debug, Error)]
@@ -109,6 +111,8 @@ pub enum TaskError {
     LinkNotFound,
     #[error("Invalid Note Link page cursor")]
     InvalidLinkCursor,
+    #[error("Invalid Audit Entry page cursor")]
+    InvalidAuditCursor,
     #[error("Unsupported database schema version {0}; refusing to modify a newer database")]
     UnsupportedSchema(i64),
     #[error("Unable to open local storage: {0}")]
@@ -117,6 +121,56 @@ pub enum TaskError {
     Sqlite(#[from] rusqlite::Error),
     #[error("System clock is unavailable")]
     Clock,
+}
+
+impl TaskError {
+    /// A stable identifier every adapter (CLI, MCP) reports for this error.
+    /// Messages may be reworded; codes only change with the schema version.
+    pub fn code(&self) -> &'static str {
+        use TaskError::*;
+        match self {
+            InvalidListName
+            | InvalidTags
+            | InvalidDeadline
+            | EmptyTitle
+            | TitleTooLong
+            | DescriptionTooLong
+            | InvalidPageSize
+            | InvalidListPage
+            | TooManySearchWords
+            | NextStepTooLong
+            | ProgressNoteTooLong
+            | InvalidHistoryPageSize
+            | EmptyChange
+            | EmptyProgressUpdate
+            | InvalidProgress
+            | NoteTooLong
+            | InvalidNoteFolderName
+            | NoteFolderTooDeep
+            | NoteFolderCycle => "invalid_input",
+            InvalidCursor
+            | InvalidHistoryCursor
+            | InvalidRemovedCursor
+            | InvalidNoteCursor
+            | InvalidNoteFolderCursor
+            | InvalidLinkCursor
+            | InvalidAuditCursor => "invalid_cursor",
+            NotFound | ListNotFound | NoteNotFound | NoteFolderNotFound | LinkNotFound => {
+                "not_found"
+            }
+            RevisionConflict | NoteRevisionConflict | NoteFolderRevisionConflict => {
+                "revision_conflict"
+            }
+            TaskRemoved | TaskListRemoved | ListRemoved | NoteRemoved | NoteFolderRemoved => {
+                "removed"
+            }
+            ListNameConflict | NoteFolderNameConflict => "name_conflict",
+            InvalidTransition(_) => "invalid_transition",
+            TaskUnchanged | ListUnchanged | RemovedUnchanged | NoteFolderUnchanged => "unchanged",
+            UnsupportedSchema(_) => "unsupported_schema",
+            Io(_) | Sqlite(_) | Clock => "storage_unavailable",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -357,11 +411,14 @@ pub(crate) fn read_task(row: &Row<'_>) -> rusqlite::Result<Task> {
 
 pub(crate) const COLUMNS: &str = "id, title, description, status, priority, progress, revision, created_at, updated_at, next_step, list_id, due_date, removed_at";
 
+/// The database schema this core reads and writes.
+pub const SCHEMA_VERSION: i64 = 10;
+
 /// How long a write waits for another process (the CLI, MCP) holding the database lock.
 pub const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 
 impl TaskStore {
-    /// Opens an on-disk database and applies transactional, forward-only migrations.
+    /// Opens an on-disk database for the desktop interface and applies transactional, forward-only migrations.
     pub fn open(path: &Path) -> Result<Self, TaskError> {
         if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
             std::fs::create_dir_all(parent)?;
@@ -370,7 +427,7 @@ impl TaskStore {
         let mut connection = Connection::open(path)?;
         connection.busy_timeout(BUSY_TIMEOUT)?;
         let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        if version > 9 {
+        if version > SCHEMA_VERSION {
             return Err(TaskError::UnsupportedSchema(version));
         }
 
@@ -499,9 +556,28 @@ impl TaskStore {
             crate::removed::migrate_v9(&migration)?;
             migration.commit()?;
         }
+        if version < 10 {
+            let migration = connection.transaction()?;
+            crate::audit::migrate_v10(&migration)?;
+            migration.commit()?;
+        }
         Ok(Self {
             path: path.to_path_buf(),
+            interface: Interface::Desktop,
         })
+    }
+
+    /// Opens the database for one official interface; its changes are
+    /// recorded in Audit Entries under that interface.
+    pub fn open_as(path: &Path, interface: Interface) -> Result<Self, TaskError> {
+        Ok(Self {
+            interface,
+            ..Self::open(path)?
+        })
+    }
+
+    pub fn interface(&self) -> Interface {
+        self.interface
     }
 
     pub(crate) fn connect(&self) -> Result<Connection, TaskError> {
@@ -563,6 +639,7 @@ impl TaskStore {
                 task.list_id,
             ],
         )?;
+        self.audit_applied(&tx, AuditAction::TaskCreate, &task.id, task.revision)?;
         tx.commit()?;
         Ok(task)
     }
@@ -579,6 +656,20 @@ impl TaskStore {
 
     pub fn update_task(&self, input: UpdateTask) -> Result<Task, TaskError> {
         let (title, description) = validated_text(&input.title, &input.description)?;
+        self.audited(
+            AuditAction::TaskUpdate,
+            &input.id,
+            input.expected_revision,
+            || self.update_task_text(&input, &title, &description),
+        )
+    }
+
+    fn update_task_text(
+        &self,
+        input: &UpdateTask,
+        title: &str,
+        description: &str,
+    ) -> Result<Task, TaskError> {
         let now = current_millis()?;
         let mut conn = self.connect()?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -597,6 +688,7 @@ impl TaskStore {
             .optional()?
             .ok_or(TaskError::RevisionConflict)?;
         crate::organization::hydrate_tags(&tx, std::slice::from_mut(&mut task))?;
+        self.audit_applied(&tx, AuditAction::TaskUpdate, &task.id, task.revision)?;
         tx.commit()?;
         Ok(task)
     }
@@ -607,13 +699,24 @@ impl TaskStore {
     /// Ready means not yet started. An in-progress Task does not become Ready when
     /// its percentage drops to zero; resetting previously started work is not implicit.
     pub fn change_task(&self, input: ChangeTask) -> Result<Task, TaskError> {
-        self.apply_task_change(input, None, None)
+        let (id, revision) = (input.id.clone(), input.expected_revision);
+        self.audited(AuditAction::TaskChange, &id, revision, || {
+            self.apply_task_change(AuditAction::TaskChange, input, None, None)
+        })
     }
 
     /// Record a dated update to a Task's progress and/or Next Step; a note can
     /// stand alone so the user can log work without changing the percentage.
     pub fn record_progress(&self, input: RecordProgress) -> Result<Task, TaskError> {
+        let (id, revision) = (input.id.clone(), input.expected_revision);
+        self.audited(AuditAction::TaskProgress, &id, revision, || {
+            self.record_progress_entry(input)
+        })
+    }
+
+    fn record_progress_entry(&self, input: RecordProgress) -> Result<Task, TaskError> {
         self.apply_task_change(
+            AuditAction::TaskProgress,
             ChangeTask {
                 id: input.id,
                 expected_revision: input.expected_revision,
@@ -628,6 +731,7 @@ impl TaskStore {
 
     fn apply_task_change(
         &self,
+        action: AuditAction,
         input: ChangeTask,
         next_step: Option<String>,
         note: Option<String>,
@@ -772,6 +876,7 @@ impl TaskStore {
                 ],
             )?;
         }
+        self.audit_applied(&transaction, action, &updated.id, updated.revision)?;
         transaction.commit()?;
         let mut updated = updated;
         crate::organization::hydrate_tags(&conn, std::slice::from_mut(&mut updated))?;

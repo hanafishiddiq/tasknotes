@@ -322,6 +322,7 @@ fn v6_database(db: &Path) -> (Task, Note) {
              DROP TABLE notes; ALTER TABLE notes_v6 RENAME TO notes;
              CREATE INDEX notes_updated_order ON notes(updated_at DESC, id DESC);
              DROP TABLE note_folders;
+             DROP TABLE IF EXISTS audit_entries;
              PRAGMA user_version = 6;",
         )
         .unwrap();
@@ -336,7 +337,7 @@ fn a_v6_database_gains_links_without_touching_its_tasks_or_notes() {
 
     let store = store_at(&db);
 
-    assert_eq!(version(&db), 9);
+    assert_eq!(version(&db), tasknotes_core::tasks::SCHEMA_VERSION);
     assert_eq!(store.get_task(&old_task.id).unwrap().unwrap(), old_task);
     assert_eq!(store.get_note(&old_note.id).unwrap().unwrap(), old_note);
     store.link_note(&old_task.id, &old_note.id).unwrap();
@@ -375,7 +376,7 @@ fn a_failed_v7_migration_rolls_back_and_keeps_the_v6_database_usable() {
         .execute_batch("DROP TABLE task_note_links_note_order;")
         .unwrap();
     let store = store_at(&db);
-    assert_eq!(version(&db), 9);
+    assert_eq!(version(&db), tasknotes_core::tasks::SCHEMA_VERSION);
     assert_eq!(store.get_task(&old_task.id).unwrap().unwrap(), old_task);
     assert_eq!(store.get_note(&old_note.id).unwrap().unwrap(), old_note);
 }

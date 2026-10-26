@@ -65,6 +65,7 @@ macro_rules! note_visible {
     };
 }
 
+pub mod audit;
 pub mod links;
 pub mod note_folders;
 pub mod notes;

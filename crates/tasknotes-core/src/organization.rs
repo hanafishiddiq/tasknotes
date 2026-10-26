@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
+use crate::audit::AuditAction;
 use crate::tasks::{COLUMNS, Task, TaskError, TaskStore, current_millis, read_task};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -263,6 +264,13 @@ fn read_list(row: &rusqlite::Row<'_>) -> rusqlite::Result<List> {
 
 impl TaskStore {
     pub fn update_task_details(&self, input: UpdateTaskDetails) -> Result<Task, TaskError> {
+        let (id, revision) = (input.id.clone(), input.expected_revision);
+        self.audited(AuditAction::TaskDetails, &id, revision, || {
+            self.update_task_details_inner(input)
+        })
+    }
+
+    fn update_task_details_inner(&self, input: UpdateTaskDetails) -> Result<Task, TaskError> {
         let tags = clean_tags(&input.tags)?;
         let due_date = calendar_date(input.due_date.as_deref())?;
         let mut conn = self.connect()?;
@@ -316,12 +324,20 @@ impl TaskStore {
             )?;
             canonical.push(name);
         }
+        self.audit_applied(&tx, AuditAction::TaskDetails, &updated.id, updated.revision)?;
         tx.commit()?;
         updated.tags = canonical;
         Ok(updated)
     }
 
     pub fn move_task(&self, input: MoveTask) -> Result<Task, TaskError> {
+        let (id, revision) = (input.id.clone(), input.expected_revision);
+        self.audited(AuditAction::TaskMove, &id, revision, || {
+            self.move_task_inner(input)
+        })
+    }
+
+    fn move_task_inner(&self, input: MoveTask) -> Result<Task, TaskError> {
         let mut conn = self.connect()?;
         let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
         let old = tx
@@ -352,6 +368,7 @@ impl TaskStore {
             params![input.list_id, now, input.id, input.expected_revision],
             read_task,
         )?;
+        self.audit_applied(&tx, AuditAction::TaskMove, &updated.id, updated.revision)?;
         tx.commit()?;
         let mut updated = updated;
         hydrate_tags(&conn, std::slice::from_mut(&mut updated))?;
@@ -382,11 +399,19 @@ impl TaskStore {
              VALUES (?1, ?2, 1, ?3, ?3, NULL)",
             params![list.id, list.name, list.created_at],
         )?;
+        self.audit_applied(&tx, AuditAction::ListCreate, &list.id, list.revision)?;
         tx.commit()?;
         Ok(list)
     }
 
     pub fn rename_list(&self, input: RenameList) -> Result<List, TaskError> {
+        let (id, revision) = (input.id.clone(), input.expected_revision);
+        self.audited(AuditAction::ListRename, &id, revision, || {
+            self.rename_list_inner(input)
+        })
+    }
+
+    fn rename_list_inner(&self, input: RenameList) -> Result<List, TaskError> {
         let name = list_name(&input.name)?;
         let mut conn = self.connect()?;
         let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
@@ -419,11 +444,28 @@ impl TaskStore {
             params![name, now, input.id, input.expected_revision],
             read_list,
         )?;
+        self.audit_applied(&tx, AuditAction::ListRename, &updated.id, updated.revision)?;
         tx.commit()?;
         Ok(updated)
     }
 
     pub fn set_list_removed(&self, input: SetListRemoved) -> Result<List, TaskError> {
+        let action = if input.removed {
+            AuditAction::ListRemove
+        } else {
+            AuditAction::ListRestore
+        };
+        let (id, revision) = (input.id.clone(), input.expected_revision);
+        self.audited(action, &id, revision, || {
+            self.set_list_removed_inner(input, action)
+        })
+    }
+
+    fn set_list_removed_inner(
+        &self,
+        input: SetListRemoved,
+        action: AuditAction,
+    ) -> Result<List, TaskError> {
         let mut conn = self.connect()?;
         let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
         let old = tx
@@ -453,6 +495,7 @@ impl TaskStore {
             params![removed_at, now, input.id, input.expected_revision],
             read_list,
         )?;
+        self.audit_applied(&tx, action, &changed.id, changed.revision)?;
         tx.commit()?;
         Ok(changed)
     }
