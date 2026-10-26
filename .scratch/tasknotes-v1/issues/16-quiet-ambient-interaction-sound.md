@@ -21,7 +21,7 @@
 
 - [ ] Run Mac playback/looping/license checks, app lifecycle tests and CPU sampling with audio on/off.
 - [x] Relevant tests pass and evidence is recorded here. *(see Comments, 2026-10-26)*
-- [ ] Run `/code-review` and address findings before marking complete.
+- [x] Run `/code-review` and address findings before marking complete. *(findings fixed, see Comments 2026-10-26 — review fixes; the lifecycle criterion above stays open for Ticket 15 and the native check)*
 
 ## Delivery guardrails
 
@@ -41,8 +41,21 @@ Evidence (implementer's own runs on the branch, integration tip 57d0ec6): `pnpm 
 
 Decisions (details in the plan): saya pilih synthesis for rain and cues karena nothing then needs a license review and it is offline by construction; a pre-rendered 12 s loop played from one buffer karena it keeps the audio thread to buffer playback; suspending the AudioContext when both channels are silent karena muted should cost nothing; dropping (not queuing) cues while autoplay is blocked karena a late burst is worse than silence.
 
-Integration point for Ticket 15: `useSound().setPresence("menu-bar")`; policy keeps rain for minimized/menu-bar and silences it only on quit (the quit fade uses `saveBeforeQuit`). See the plan.
+Integration point for Ticket 15: superseded by the review fixes below (no presence API; only the quit fade matters).
 
 For owner review: rain character and 12 s loop; cue sounds (create tick, complete chime) and which actions get one; 2 s fade-in; linear volume; "Ambient rain" label and mute-icon layout; rain continuing while minimized/menu bar.
 
-Open: native macOS playback, looping, lifecycle and CPU checks (owner checklist in the plan); `/code-review` not run yet.
+Open: native macOS playback, looping, lifecycle and CPU checks (owner checklist in the plan).
+
+**2026-10-26 — review fixes (implementer, Ticket 16).** Status unchanged.
+
+Code-review findings and what each became:
+
+1. First-click stall: the 60–80 ms rain render no longer runs on the first click. `rain.ts` renders in 16,384-sample slices with a pause between them (same samples as before, test-proven equal); the engine starts it as soon as ambient is wanted and the context exists, before any gesture, and starts the rain the moment it finishes. Muted ambient never renders it. Tests: slices equal the one-go render and pause repeatedly; render happens once before the gesture and the click only starts it; a slow render starts the rain on completion; no render while muted.
+2. Interaction mute/volume now ramps over 80 ms (the channel starts at 0), so muting mid-cue does not click. Test: no hard `set` to 0, final ramp to 0 within 0.1 s.
+3. Simplification: `Presence` and `setPresence` are gone (nothing called them but tests); one internal `quitting` flag remains. The hook no longer listens to page visibility. `addEventListener?.` became `onended`; the `Float32Array` cast became a typed render result; the fade duration is one `fadeSeconds()`; `sync()` is split into `sync` / `wake` / `applyLevels`.
+4. Status flicker: after the engine's own suspend, un-muting resumes without showing "Sound starts after your first click…"; the hint shows only if the resume leaves audio blocked. Test records every status change across un-mute.
+5. Ticket 15 integration: Ticket 15 is NOT in `integration/tasknotes-v1-07-18` yet (tip still 57d0ec6, nothing to merge). The lifecycle criterion therefore stays unticked; minimized/menu-bar need no code (rain simply continues) and quit goes through `saveBeforeQuit`, but this must be re-verified against Ticket 15's code once it is merged.
+6. The plan now says why sound settings live in localStorage (the page alone reads them) while shell settings live in Rust (read with no page loaded).
+
+Evidence (implementer's own runs): `pnpm test` 20 files / 214 tests passed (208 before; 6 new); `pnpm typecheck` and `pnpm build` clean. `src-tauri` untouched, cargo not run. Headless CPU and native checks not repeated.
