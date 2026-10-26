@@ -66,11 +66,31 @@ pub(crate) fn shared_with_ai_sql(alias: &str) -> String {
 /// True when `entity` (an SQL expression holding an id) names an excluded
 /// Note or a link to one.
 fn about_excluded_note_sql(entity: &str) -> String {
+    about_excluded_note_in("main", entity)
+}
+
+/// `about_excluded_note_sql` against the database `schema` (`main`, or one
+/// attached under that name).
+fn about_excluded_note_in(schema: &str, entity: &str) -> String {
     format!(
-        "(EXISTS (SELECT 1 FROM notes xn WHERE xn.id = {entity} AND {excluded})
-          OR EXISTS (SELECT 1 FROM task_note_links xl JOIN notes xn ON xn.id = xl.note_id
+        "(EXISTS (SELECT 1 FROM {schema}.notes xn WHERE xn.id = {entity} AND {excluded})
+          OR EXISTS (SELECT 1 FROM {schema}.task_note_links xl
+                     JOIN {schema}.notes xn ON xn.id = xl.note_id
                      WHERE xl.id = {entity} AND {excluded}))",
         excluded = excluded_sql("xn"),
+    )
+}
+
+/// 1 when an existing Audit Entry (its `hidden_from_ai`, action and entity
+/// id given as SQL expressions) is hidden from AI right now in the database
+/// `schema`, else 0: `ai_audit_filter_sql` as one value. A restore freezes
+/// it into the entries it carries over, since the Note that hides them may
+/// be missing, or shared, in the restored data.
+pub(crate) fn hidden_now_sql(schema: &str, hidden: &str, action: &str, entity: &str) -> String {
+    format!(
+        "CASE WHEN {hidden} = 1 OR {action} = '{privacy}' OR {about} THEN 1 ELSE 0 END",
+        privacy = AuditAction::NotePrivacy.as_str(),
+        about = about_excluded_note_in(schema, entity),
     )
 }
 

@@ -23,6 +23,16 @@ pub enum Interface {
 }
 
 impl Interface {
+    /// Whether this interface may replace all data with a Backup: the
+    /// person in the window, or at a terminal (the CLI asks them first).
+    /// No wildcard arm: a new interface must decide.
+    pub fn may_restore(self) -> bool {
+        match self {
+            Self::Desktop | Self::Cli => true,
+            Self::Mcp => false,
+        }
+    }
+
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Desktop => "desktop",
@@ -88,14 +98,16 @@ actions! {
     LinkCreate => "link.create",
     LinkRemove => "link.remove",
     LinkRestore => "link.restore",
+    BackupRestore => "backup.restore",
 }
 
 impl AuditAction {
-    /// The table holding the entity this action changes. No wildcard arm:
-    /// a new action does not compile until it names its table.
-    fn entity_table(self) -> &'static str {
+    /// The table holding the entity this action changes, or `None` when
+    /// the entity is not a row (a restore names a Backup id). No wildcard
+    /// arm: a new action does not compile until it names its table.
+    fn entity_table(self) -> Option<&'static str> {
         use AuditAction::*;
-        match self {
+        Some(match self {
             TaskCreate | TaskUpdate | TaskChange | TaskProgress | TaskDetails | TaskMove
             | TaskRemove | TaskRestore => "tasks",
             ListCreate | ListRename | ListRemove | ListRestore => "lists",
@@ -105,7 +117,8 @@ impl AuditAction {
                 "note_folders"
             }
             LinkCreate | LinkRemove | LinkRestore => "task_note_links",
-        }
+            BackupRestore => return None,
+        })
     }
 }
 
@@ -212,6 +225,26 @@ fn insert(conn: &Connection, interface: Interface, entry: &NewAuditEntry) -> Res
     Ok(())
 }
 
+/// Record, in the data a restore brings back, that it was restored: which
+/// Backup (its id is the entity) and through which interface. No user text.
+pub(crate) fn record_restore(
+    conn: &Connection,
+    interface: Interface,
+    backup_id: &str,
+) -> Result<(), TaskError> {
+    insert(
+        conn,
+        interface,
+        &NewAuditEntry {
+            action: AuditAction::BackupRestore,
+            entity_id: backup_id,
+            outcome: AuditOutcome::Applied,
+            error_code: None,
+            revision: None,
+        },
+    )
+}
+
 /// A refusal worth keeping in history: a stale revision, or a write to
 /// something in Removed. Input mistakes are not consequential changes.
 fn meaningful_rejection(error: &TaskError) -> bool {
@@ -225,7 +258,9 @@ fn insert_rejection(
     interface: Interface,
     entry: &NewAuditEntry,
 ) -> Result<(), TaskError> {
-    let table = entry.action.entity_table();
+    let Some(table) = entry.action.entity_table() else {
+        return Ok(());
+    };
     let exists: bool = conn.query_row(
         &format!("SELECT EXISTS(SELECT 1 FROM {table} WHERE id = ?1)"),
         params![entry.entity_id],
@@ -321,10 +356,17 @@ impl TaskStore {
                     error_code: Some(error.code()),
                     revision,
                 };
-                match self
-                    .connect()
-                    .and_then(|conn| insert_rejection(&conn, self.interface(), &entry))
-                {
+                // Through `begin_write` like every write, so a refusal racing
+                // a restore is either in the live data before the restore
+                // fences writers (and carried into the restored data) or
+                // refused, never written into data that is being replaced.
+                let recorded = self.connect().and_then(|mut conn| {
+                    let tx = self.begin_write(&mut conn)?;
+                    insert_rejection(&tx, self.interface(), &entry)?;
+                    tx.commit()?;
+                    Ok(())
+                });
+                match recorded {
                     Ok(()) => Err(error),
                     Err(_) => Err(TaskError::AuditUnrecorded(Box::new(error))),
                 }

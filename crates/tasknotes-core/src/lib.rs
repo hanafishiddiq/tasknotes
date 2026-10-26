@@ -68,6 +68,7 @@ macro_rules! note_visible {
 pub mod ai_access;
 pub mod audit;
 pub mod backup;
+pub mod calendar;
 pub mod export;
 pub mod links;
 pub mod note_folders;

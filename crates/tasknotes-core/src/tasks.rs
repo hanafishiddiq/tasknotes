@@ -143,12 +143,16 @@ pub enum TaskError {
         "Another Tasknotes window or command kept writing; the restore was not applied. Try again"
     )]
     RestoreBusy,
+    #[error("Tasknotes data is being restored from a backup; try again in a moment")]
+    RestoreInProgress,
     #[error("Restore is only available in the Tasknotes window or the tasknotes command")]
     RestoreNotAllowed,
     #[error("Only the person, in the Tasknotes window, can include Notes marked Exclude from AI")]
     PrivateExportDesktopOnly,
     #[error("Something already exists at the export destination; choose a new name")]
     ExportDestinationExists,
+    #[error("The export destination needs a file or folder name")]
+    InvalidExportDestination,
     #[error("Unsupported database schema version {0}; refusing to modify a newer database")]
     UnsupportedSchema(i64),
     #[error("Unable to open local storage: {0}")]
@@ -218,8 +222,8 @@ impl TaskError {
             DatabaseRestored => "database_restored",
             BackupNotFound => "not_found",
             InvalidBackup(_) => "invalid_backup",
-            ExportDestinationExists => "invalid_input",
-            RestoreBusy => "storage_unavailable",
+            ExportDestinationExists | InvalidExportDestination => "invalid_input",
+            RestoreBusy | RestoreInProgress => "storage_unavailable",
             UnsupportedSchema(_) => "unsupported_schema",
             Io(_) | Sqlite(_) | Clock => "storage_unavailable",
         }
@@ -508,27 +512,30 @@ pub const SCHEMA_VERSION: i64 = 13;
 /// How long a write waits for another process (the CLI, MCP) holding the database lock.
 pub const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 
-impl TaskStore {
-    /// Opens an on-disk database for the desktop interface and applies transactional, forward-only migrations.
-    pub fn open(path: &Path) -> Result<Self, TaskError> {
-        if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
-            std::fs::create_dir_all(parent)?;
-        }
+/// Every connection the core opens: it waits out another process holding
+/// the database lock for up to `BUSY_TIMEOUT`.
+pub(crate) fn open_connection(path: &Path) -> Result<Connection, TaskError> {
+    let connection = Connection::open(path)?;
+    connection.busy_timeout(BUSY_TIMEOUT)?;
+    Ok(connection)
+}
 
-        let mut connection = Connection::open(path)?;
-        connection.busy_timeout(BUSY_TIMEOUT)?;
-        let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        if version > SCHEMA_VERSION {
-            return Err(TaskError::UnsupportedSchema(version));
-        }
+/// Transactional, forward-only migrations to `SCHEMA_VERSION`. Used on
+/// launch, on a restore's staging copy and for the reference schema a
+/// restored backup is compared with.
+pub(crate) fn migrate(connection: &mut Connection) -> Result<(), TaskError> {
+    let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    if version > SCHEMA_VERSION {
+        return Err(TaskError::UnsupportedSchema(version));
+    }
 
-        connection.pragma_update(None, "foreign_keys", true)?;
-        connection.pragma_update(None, "journal_mode", "WAL")?;
-        if version < 2 {
-            let migration = connection.transaction()?;
-            if version == 0 {
-                migration.execute_batch(
-                    "CREATE TABLE IF NOT EXISTS tasks (
+    connection.pragma_update(None, "foreign_keys", true)?;
+    connection.pragma_update(None, "journal_mode", "WAL")?;
+    if version < 2 {
+        let migration = connection.transaction()?;
+        if version == 0 {
+            migration.execute_batch(
+                "CREATE TABLE IF NOT EXISTS tasks (
                     id TEXT PRIMARY KEY NOT NULL,
                     title TEXT NOT NULL CHECK (length(trim(title)) > 0),
                     description TEXT NOT NULL DEFAULT '',
@@ -544,10 +551,10 @@ impl TaskStore {
                 CREATE INDEX IF NOT EXISTS tasks_created_order
                   ON tasks(created_at DESC, id DESC);
                 PRAGMA user_version = 1;",
-                )?;
-            }
-            migration.execute_batch(
-                "ALTER TABLE tasks ADD COLUMN previous_incomplete_progress
+            )?;
+        }
+        migration.execute_batch(
+            "ALTER TABLE tasks ADD COLUMN previous_incomplete_progress
                  INTEGER NOT NULL DEFAULT 0 CHECK (previous_incomplete_progress BETWEEN 0 AND 99);
                  UPDATE tasks SET previous_incomplete_progress = progress
                    WHERE status = 'in_progress' AND progress BETWEEN 0 AND 99;
@@ -562,12 +569,12 @@ impl TaskStore {
                      created_at DESC, id DESC
                  );
                  PRAGMA user_version = 2;",
-            )?;
-            migration.commit()?;
-        }
-        if version < 3 {
-            let migration = connection.transaction()?;
-            migration.execute_batch(
+        )?;
+        migration.commit()?;
+    }
+    if version < 3 {
+        let migration = connection.transaction()?;
+        migration.execute_batch(
                 "ALTER TABLE tasks ADD COLUMN next_step TEXT NOT NULL DEFAULT '';
                  CREATE TABLE progress_entries (
                     sequence INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -584,12 +591,12 @@ impl TaskStore {
                  CREATE INDEX progress_entries_task_sequence ON progress_entries(task_id, sequence DESC);
                  PRAGMA user_version = 3;",
             )?;
-            migration.commit()?;
-        }
-        if version < 4 {
-            let migration = connection.transaction()?;
-            migration.execute_batch(
-                "CREATE TABLE lists (
+        migration.commit()?;
+    }
+    if version < 4 {
+        let migration = connection.transaction()?;
+        migration.execute_batch(
+            "CREATE TABLE lists (
                     id TEXT PRIMARY KEY NOT NULL,
                     name TEXT NOT NULL CHECK(length(trim(name)) BETWEEN 1 AND 100),
                     revision INTEGER NOT NULL CHECK(revision >= 1),
@@ -616,58 +623,70 @@ impl TaskStore {
                  );
                  CREATE INDEX task_tags_tag_name ON task_tags(tag_name, task_id);
                  PRAGMA user_version = 4;",
-            )?;
-            migration.commit()?;
+        )?;
+        migration.commit()?;
+    }
+    if version < 5 {
+        let migration = connection.transaction()?;
+        crate::search::migrate_v5(&migration)?;
+        migration.commit()?;
+    }
+    if version < 6 {
+        let migration = connection.transaction()?;
+        crate::notes::migrate_v6(&migration)?;
+        migration.commit()?;
+    }
+    if version < 7 {
+        let migration = connection.transaction()?;
+        crate::links::migrate_v7(&migration)?;
+        migration.commit()?;
+    }
+    if version < 8 {
+        let migration = connection.transaction()?;
+        crate::note_folders::migrate_v8(&migration)?;
+        crate::notes::migrate_v8(&migration)?;
+        crate::organization::refold_tags(&migration)?;
+        migration.execute_batch("PRAGMA user_version = 8;")?;
+        migration.commit()?;
+    }
+    if version < 9 {
+        let migration = connection.transaction()?;
+        crate::removed::migrate_v9(&migration)?;
+        migration.commit()?;
+    }
+    if version < 10 {
+        let migration = connection.transaction()?;
+        crate::audit::migrate_v10(&migration)?;
+        migration.commit()?;
+    }
+    if version < 11 {
+        let migration = connection.transaction()?;
+        crate::privacy::migrate_v11(&migration)?;
+        migration.commit()?;
+    }
+    if version < 12 {
+        let migration = connection.transaction()?;
+        crate::privacy::migrate_v12(&migration)?;
+        migration.commit()?;
+    }
+    if version < 13 {
+        let migration = connection.transaction()?;
+        crate::backup::migrate_v13(&migration)?;
+        migration.commit()?;
+    }
+    Ok(())
+}
+
+impl TaskStore {
+    /// Opens an on-disk database for the desktop interface and applies transactional, forward-only migrations.
+    pub fn open(path: &Path) -> Result<Self, TaskError> {
+        if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+            std::fs::create_dir_all(parent)?;
         }
-        if version < 5 {
-            let migration = connection.transaction()?;
-            crate::search::migrate_v5(&migration)?;
-            migration.commit()?;
-        }
-        if version < 6 {
-            let migration = connection.transaction()?;
-            crate::notes::migrate_v6(&migration)?;
-            migration.commit()?;
-        }
-        if version < 7 {
-            let migration = connection.transaction()?;
-            crate::links::migrate_v7(&migration)?;
-            migration.commit()?;
-        }
-        if version < 8 {
-            let migration = connection.transaction()?;
-            crate::note_folders::migrate_v8(&migration)?;
-            crate::notes::migrate_v8(&migration)?;
-            crate::organization::refold_tags(&migration)?;
-            migration.execute_batch("PRAGMA user_version = 8;")?;
-            migration.commit()?;
-        }
-        if version < 9 {
-            let migration = connection.transaction()?;
-            crate::removed::migrate_v9(&migration)?;
-            migration.commit()?;
-        }
-        if version < 10 {
-            let migration = connection.transaction()?;
-            crate::audit::migrate_v10(&migration)?;
-            migration.commit()?;
-        }
-        if version < 11 {
-            let migration = connection.transaction()?;
-            crate::privacy::migrate_v11(&migration)?;
-            migration.commit()?;
-        }
-        if version < 12 {
-            let migration = connection.transaction()?;
-            crate::privacy::migrate_v12(&migration)?;
-            migration.commit()?;
-        }
-        if version < 13 {
-            let migration = connection.transaction()?;
-            crate::backup::migrate_v13(&migration)?;
-            migration.commit()?;
-        }
-        let epoch = crate::backup::read_epoch(&connection)?;
+
+        let mut connection = open_connection(path)?;
+        migrate(&mut connection)?;
+        let epoch = crate::backup::settled_epoch(path, &connection)?;
         Ok(Self {
             path: path.to_path_buf(),
             interface: Interface::Desktop,
@@ -695,8 +714,7 @@ impl TaskStore {
     /// A connection for one operation. Refuses with `DatabaseRestored` when
     /// the data was restored from a backup after this store was opened.
     pub(crate) fn connect(&self) -> Result<Connection, TaskError> {
-        let connection = Connection::open(&self.path)?;
-        connection.busy_timeout(BUSY_TIMEOUT)?;
+        let connection = open_connection(&self.path)?;
         connection.pragma_update(None, "foreign_keys", true)?;
         self.require_current_epoch(&connection)?;
         Ok(connection)
@@ -733,10 +751,10 @@ impl TaskStore {
     /// Accept the data as it is now, after a restore made elsewhere. The
     /// caller must drop everything it read before (the desktop reloads its
     /// window), or stale revisions could be written over the restored data.
+    /// While a restore is under way it is refused with `RestoreInProgress`.
     pub fn adopt_restored_data(&self) -> Result<(), TaskError> {
-        let connection = Connection::open(&self.path)?;
-        connection.busy_timeout(BUSY_TIMEOUT)?;
-        *self.epoch() = crate::backup::read_epoch(&connection)?;
+        let connection = open_connection(&self.path)?;
+        *self.epoch() = crate::backup::settled_epoch(&self.path, &connection)?;
         Ok(())
     }
 

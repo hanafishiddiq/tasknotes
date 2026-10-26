@@ -566,7 +566,8 @@ pub fn suggested_name(format: ExportFormat, now_ms: i64) -> String {
 
 /// `2026-10-26 09:15` for Unix milliseconds, UTC.
 fn iso_time(ms: i64) -> String {
-    let (year, month, day) = crate::backup::civil_from_days(ms.div_euclid(86_400_000));
+    let (year, month, day) =
+        crate::calendar::civil_from_days(ms.div_euclid(crate::calendar::DAY_MS));
     let minutes = ms.rem_euclid(86_400_000) / 60_000;
     format!(
         "{year:04}-{month:02}-{day:02} {:02}:{:02}",

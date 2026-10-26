@@ -4,26 +4,43 @@
 //! one read transaction) kept in `backups/` next to the database, outside
 //! any source repository. Its **Backup Manifest** (`<id>.json`) records when
 //! and why it was taken, the schema version, the size and a SHA-256 of the
-//! snapshot. A snapshot is written under a hidden partial name and renamed
-//! only once complete, so an interrupted backup never looks like a backup.
+//! snapshot. Both are written under hidden partial names, synced, and
+//! renamed into place snapshot first, manifest last: only a snapshot with a
+//! manifest is a Backup, and an orphan left by a stopped process is cleaned
+//! up an hour later.
 //!
-//! Automatic backups are taken at most once per UTC day while any Tasknotes
-//! process (desktop, CLI, MCP) runs; Daily and Manual backups share the
-//! 7 daily / 4 weekly / 3 monthly retention. Pruning removes backup *copies*
-//! only, never live Tasks, Notes or Lists.
+//! **Retention**, by kind (each kind is its own bucket, so one never prunes
+//! another): Daily backups, taken at most once per *local* calendar day
+//! while any Tasknotes process (desktop, CLI, MCP) runs, follow the
+//! 7 daily / 4 weekly / 3 monthly policy; the 10 newest Manual backups are
+//! kept; Pre-restore backups are never removed automatically (the person
+//! can manage the `backups` folder). Pruning removes backup *copies* only,
+//! never live Tasks, Notes or Lists.
 //!
 //! **Restore** checks the snapshot against its manifest, copies it to a
 //! staging file, runs `PRAGMA integrity_check` and `foreign_key_check`,
-//! migrates it forward, takes a Pre-restore backup of the live data and
-//! only then copies the staging file over the live database with SQLite's
-//! online backup API, under SQLite's own write lock.
+//! migrates it forward and compares its schema with a freshly created one.
+//! Only then does it touch the live data, in this order:
 //!
-//! **Restore Epoch**: a random token stored in the database. Each restore
-//! writes a fresh one into the restored data, and every store remembers the
-//! token it opened. A store from before the restore (another window, a CLI
-//! or MCP process) is refused with `DatabaseRestored` on every read and on
-//! every write transaction — the write check runs after the write lock is
-//! taken — so a stale revision can never land on restored data.
+//! 1. **Fence**: under the write lock (`begin_write`), the live Restore
+//!    Epoch is replaced by a fence token no store holds, so every other
+//!    writer, in any process, is refused from that commit on.
+//! 2. **Pre-restore backup** of the live data, which now holds every write
+//!    that succeeded.
+//! 3. **Carry over**: Audit Entries are append-only (ADR-0005), so every
+//!    live entry the snapshot lacks is appended to the staging copy, with a
+//!    `backup.restore` entry. Progress Entries are user state and come back
+//!    as they were in the snapshot.
+//! 4. **Swap**: the staging copy, with a fresh Restore Epoch, replaces the
+//!    live database through SQLite's online backup API, under its write lock.
+//!
+//! **Restore Epoch**: a random token stored in the database; every store
+//! remembers the token it opened. A store from before a restore is refused
+//! with `DatabaseRestored` on every read and on every write transaction —
+//! the write check runs after the write lock is taken. A restore holds
+//! `backups/.restore.lock` while the fence is up; a store opened meanwhile
+//! is refused with `RestoreInProgress`, and a fence left by a restore that
+//! stopped (its lock is free, the live data unchanged) is lifted on open.
 
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
@@ -36,22 +53,28 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::audit::Interface;
-use crate::tasks::{BUSY_TIMEOUT, SCHEMA_VERSION, TaskError, TaskStore, current_millis};
+use crate::calendar::{DAY_MS, TimeZone, civil_from_days};
+use crate::tasks::{
+    BUSY_TIMEOUT, SCHEMA_VERSION, TaskError, TaskStore, current_millis, migrate, open_connection,
+};
 
 /// The directory, next to the database, that holds Backups.
 pub const BACKUP_DIR: &str = "backups";
+/// How many Manual backups are kept; they are outside the 7/4/3 policy.
+pub const MANUAL_KEPT: usize = 10;
 const MANIFEST_VERSION: u32 = 1;
-const DAY_MS: i64 = 86_400_000;
-/// How many Pre-restore backups are kept; they are outside the 7/4/3 policy.
-pub const PRE_RESTORE_KEPT: usize = 3;
-/// Leftover partial or staging files older than this are from a process
-/// that stopped mid-way and are cleaned up.
+/// Leftover partial, staging or orphan files older than this are from a
+/// process that stopped mid-way and are cleaned up.
 const ABANDONED_AFTER: Duration = Duration::from_secs(60 * 60);
+/// Held by a restore while its fence is up.
+const RESTORE_LOCK: &str = ".restore.lock";
+/// The Restore Epoch while a restore fences writers. No store adopts it.
+const FENCE_PREFIX: &str = "restoring-";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BackupKind {
-    /// Taken automatically, at most once per day, while Tasknotes runs.
+    /// Taken automatically, at most once per local day, while Tasknotes runs.
     Daily,
     /// Asked for by the person or a trusted local client.
     Manual,
@@ -83,12 +106,38 @@ pub struct Backup {
     pub sha256: String,
 }
 
+/// A Backup just taken. The backup is complete even when retention then
+/// failed to remove an old copy; the next backup tries again.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NewBackup {
+    pub backup: Backup,
+    pub retention_error: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RestoreOutcome {
     pub restored: Backup,
     /// The live data as it was just before the restore.
     pub pre_restore: Backup,
+}
+
+/// When a backup is taken, and which wall clock decides its day.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Clock {
+    pub now_ms: i64,
+    pub zone: TimeZone,
+}
+
+impl Clock {
+    /// Now, on the Mac's own time zone.
+    pub fn system() -> Result<Self, TaskError> {
+        Ok(Self {
+            now_ms: current_millis()?,
+            zone: TimeZone::Local,
+        })
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -122,45 +171,83 @@ pub(crate) fn read_epoch(conn: &Connection) -> Result<String, TaskError> {
     )
 }
 
+/// The Restore Epoch a store opening (or adopting) the database at `db`
+/// may hold. While a restore fences writers it is refused; a fence whose
+/// restore stopped is lifted with a fresh epoch (the live data was never
+/// replaced: the swap is the restore's last step).
+pub(crate) fn settled_epoch(db: &Path, conn: &Connection) -> Result<String, TaskError> {
+    let epoch = read_epoch(conn)?;
+    if !epoch.starts_with(FENCE_PREFIX) {
+        return Ok(epoch);
+    }
+    let _lock = RestoreLock::acquire(&backups_dir_of(db))?;
+    conn.execute(
+        "UPDATE database_epoch SET epoch = ?1 WHERE id = 1 AND epoch = ?2",
+        params![Uuid::new_v4().to_string(), epoch],
+    )?;
+    read_epoch(conn)
+}
+
+fn backups_dir_of(db: &Path) -> PathBuf {
+    db.parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(BACKUP_DIR)
+}
+
 impl TaskStore {
     /// Where this database's Backups are kept.
     pub fn backups_dir(&self) -> PathBuf {
-        self.path()
-            .parent()
-            .unwrap_or_else(|| Path::new("."))
-            .join(BACKUP_DIR)
+        backups_dir_of(self.path())
     }
 
-    /// Take a Manual backup now, then apply the retention policy.
-    pub fn create_backup(&self) -> Result<Backup, TaskError> {
-        let backup = self.snapshot(BackupKind::Manual, current_millis()?)?;
-        self.prune(&self.list_backups()?)?;
-        Ok(backup)
+    /// Take a Manual backup now. Retention then applies to Manual backups
+    /// only: a Manual backup never removes a Daily or Pre-restore one.
+    pub fn create_backup(&self) -> Result<NewBackup, TaskError> {
+        self.create_backup_at(Clock::system()?)
     }
 
-    /// Take today's automatic backup unless one (Daily or Manual) already
-    /// exists for this UTC day; always applies retention. Safe to call from
-    /// every process: two that race may both take one, and retention keeps
-    /// the newest of the day.
-    pub fn ensure_daily_backup(&self) -> Result<Option<Backup>, TaskError> {
-        self.ensure_daily_backup_at(current_millis()?)
+    /// `create_backup` with the clock given, for tests.
+    pub fn create_backup_at(&self, clock: Clock) -> Result<NewBackup, TaskError> {
+        let backup = self.snapshot(&self.connect()?, BackupKind::Manual, clock.now_ms)?;
+        Ok(NewBackup {
+            backup,
+            retention_error: self
+                .prune(BackupKind::Manual, clock.zone)
+                .err()
+                .map(|e| e.to_string()),
+        })
+    }
+
+    /// Take today's automatic backup unless a Daily backup already exists
+    /// for this local calendar day, then apply the 7/4/3 policy to Daily
+    /// backups. Every adapter calls it: the desktop at launch and hourly,
+    /// each CLI command, and MCP at start-up and periodically. Two
+    /// processes that race may both take one; retention keeps the newest
+    /// of the day.
+    pub fn ensure_daily_backup(&self) -> Result<Option<NewBackup>, TaskError> {
+        self.ensure_daily_backup_at(Clock::system()?)
     }
 
     /// `ensure_daily_backup` with the clock given, for tests.
-    pub fn ensure_daily_backup_at(&self, now_ms: i64) -> Result<Option<Backup>, TaskError> {
+    pub fn ensure_daily_backup_at(&self, clock: Clock) -> Result<Option<NewBackup>, TaskError> {
         self.clean_abandoned();
-        let today = now_ms.div_euclid(DAY_MS);
-        let existing = self.list_backups()?;
-        let taken = existing
+        let today = clock.zone.day_of(clock.now_ms);
+        let taken = self
+            .list_backups()?
             .iter()
-            .any(|b| b.kind != BackupKind::PreRestore && b.created_at.div_euclid(DAY_MS) == today);
-        let created = if taken {
-            None
-        } else {
-            Some(self.snapshot(BackupKind::Daily, now_ms)?)
-        };
-        self.prune(&self.list_backups()?)?;
-        Ok(created)
+            .any(|b| b.kind == BackupKind::Daily && clock.zone.day_of(b.created_at) == today);
+        if taken {
+            self.prune(BackupKind::Daily, clock.zone)?;
+            return Ok(None);
+        }
+        let backup = self.snapshot(&self.connect()?, BackupKind::Daily, clock.now_ms)?;
+        Ok(Some(NewBackup {
+            backup,
+            retention_error: self
+                .prune(BackupKind::Daily, clock.zone)
+                .err()
+                .map(|e| e.to_string()),
+        }))
     }
 
     /// Every complete Backup with a readable manifest, newest first.
@@ -187,15 +274,16 @@ impl TaskStore {
         Ok(backups)
     }
 
-    /// Replace the live data with a validated Backup. Nothing live changes
-    /// unless every check passes; a Pre-restore backup is kept first. Other
-    /// stores opened before are then refused with `DatabaseRestored`; this
-    /// one carries on with the restored data.
+    /// Replace the live data with a validated Backup (see the module notes
+    /// for the order of steps). Nothing live changes unless every check
+    /// passes; a Pre-restore backup holds every write that succeeded before.
+    /// Other stores opened before are then refused with `DatabaseRestored`;
+    /// this one (and its clones) carries on with the restored data.
     ///
-    /// Only the desktop and the CLI may restore; the CLI asks the person at
-    /// the terminal first. An MCP client cannot.
+    /// Only an interface that `may_restore` can: the desktop, and the CLI,
+    /// which asks the person at the terminal first. An MCP client cannot.
     pub fn restore_backup(&self, id: &str) -> Result<RestoreOutcome, TaskError> {
-        if self.interface() == Interface::Mcp {
+        if !self.interface().may_restore() {
             return Err(TaskError::RestoreNotAllowed);
         }
         // Refuse a store that is already stale before touching anything.
@@ -206,19 +294,66 @@ impl TaskStore {
             .flatten()
             .ok_or(TaskError::BackupNotFound)?;
         verify_file(&dir.join(snapshot_name(id)), &restored)?;
-
         let staging = Staging::copy(&dir, &dir.join(snapshot_name(id)))?;
-        let epoch = staging.validate_and_prepare()?;
+        staging.validate()?;
 
-        let pre_restore = self.snapshot(BackupKind::PreRestore, current_millis()?)?;
-        self.replace_live_with(&staging.path)?;
-        *self.epoch() = epoch;
-        drop(staging);
-        self.prune(&self.list_backups()?)?;
-        Ok(RestoreOutcome {
-            restored,
-            pre_restore,
-        })
+        let _lock = RestoreLock::acquire(&dir)?;
+        let held = self.epoch().clone();
+        let fence = format!("{FENCE_PREFIX}{}", Uuid::new_v4().simple());
+        self.fence_writers(&fence)?;
+        let swapped = (|| {
+            let pre_restore = self.snapshot(
+                &open_connection(self.path())?,
+                BackupKind::PreRestore,
+                current_millis()?,
+            )?;
+            let epoch = staging.carry_over(self.path(), &restored.id, self.interface())?;
+            self.replace_live_with(&staging.path)?;
+            Ok((pre_restore, epoch))
+        })();
+        match swapped {
+            Ok((pre_restore, epoch)) => {
+                *self.epoch() = epoch;
+                Ok(RestoreOutcome {
+                    restored,
+                    pre_restore,
+                })
+            }
+            Err(error) => {
+                // Nothing live was replaced: lift the fence so every store,
+                // this one included, carries on. If even that fails, the
+                // next store to open lifts it (the lock is released).
+                let _ = open_connection(self.path()).and_then(|conn| {
+                    conn.execute(
+                        "UPDATE database_epoch SET epoch = ?1 WHERE id = 1 AND epoch = ?2",
+                        params![held, fence],
+                    )?;
+                    Ok(())
+                });
+                Err(error)
+            }
+        }
+    }
+
+    /// Step 1 of a restore: from this commit on, every store's write
+    /// transaction is refused, because none holds the fence token.
+    fn fence_writers(&self, fence: &str) -> Result<(), TaskError> {
+        let mut conn = self.connect()?;
+        // A writer that keeps the lock past the busy timeout: say so plainly.
+        let tx = self.begin_write(&mut conn).map_err(|error| match error {
+            TaskError::Sqlite(rusqlite::Error::SqliteFailure(failure, _))
+                if failure.code == rusqlite::ErrorCode::DatabaseBusy =>
+            {
+                TaskError::RestoreBusy
+            }
+            error => error,
+        })?;
+        tx.execute(
+            "UPDATE database_epoch SET epoch = ?1 WHERE id = 1",
+            params![fence],
+        )?;
+        tx.commit()?;
+        Ok(())
     }
 
     /// Copy the staging file over the live database in one backup step,
@@ -226,8 +361,7 @@ impl TaskStore {
     /// other connections see the old data or the new, never a mix.
     fn replace_live_with(&self, staging: &Path) -> Result<(), TaskError> {
         let source = Connection::open_with_flags(staging, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
-        let mut live = Connection::open(self.path())?;
-        live.busy_timeout(BUSY_TIMEOUT)?;
+        let mut live = open_connection(self.path())?;
         let copy = rusqlite::backup::Backup::new(&source, &mut live)?;
         let started = Instant::now();
         loop {
@@ -240,14 +374,22 @@ impl TaskStore {
         }
     }
 
-    /// Write a consistent snapshot and its manifest. The snapshot is taken
-    /// under a hidden partial name and renamed once complete and synced.
-    fn snapshot(&self, kind: BackupKind, now_ms: i64) -> Result<Backup, TaskError> {
-        let conn = self.connect()?;
+    /// Write a consistent snapshot of `conn`'s database and its manifest.
+    /// Both are written under hidden partial names and synced; the snapshot
+    /// is renamed into place first and the manifest last, so a stop in
+    /// between leaves an orphan snapshot (cleaned later), never a manifest
+    /// pointing at nothing.
+    fn snapshot(
+        &self,
+        conn: &Connection,
+        kind: BackupKind,
+        now_ms: i64,
+    ) -> Result<Backup, TaskError> {
         let dir = self.backups_dir();
         create_private_dir(&dir)?;
         let id = backup_id(kind, now_ms);
         let partial = dir.join(format!(".{id}.partial"));
+        let manifest_partial = dir.join(format!(".{}.partial", manifest_name(&id)));
         // VACUUM INTO accepts an existing empty file, which lets the
         // snapshot be private (0600) from its first byte.
         drop(private_file(&partial, true)?);
@@ -265,51 +407,54 @@ impl TaskStore {
                 size_bytes,
                 sha256,
             };
+            write_manifest(&manifest_partial, &backup)?;
             fs::rename(&partial, dir.join(snapshot_name(&id)))?;
-            write_manifest(&dir, &backup)?;
-            sync_dir(&dir);
+            fs::rename(&manifest_partial, dir.join(manifest_name(&id)))?;
+            sync_dir(&dir)?;
             Ok(backup)
         })();
         if result.is_err() {
             let _ = fs::remove_file(&partial);
+            let _ = fs::remove_file(&manifest_partial);
         }
         result
     }
 
-    /// Apply the 7 daily / 4 weekly / 3 monthly policy to Daily and Manual
-    /// backups and keep the newest Pre-restore backups.
-    fn prune(&self, backups: &[Backup]) -> Result<(), TaskError> {
-        let regular: Vec<&Backup> = backups
-            .iter()
-            .filter(|b| b.kind != BackupKind::PreRestore)
+    /// Apply one kind's retention: 7 daily / 4 weekly / 3 monthly for Daily
+    /// backups, the newest `MANUAL_KEPT` for Manual ones; Pre-restore
+    /// backups are never removed automatically.
+    fn prune(&self, kind: BackupKind, zone: TimeZone) -> Result<(), TaskError> {
+        let bucket: Vec<Backup> = self
+            .list_backups()?
+            .into_iter()
+            .filter(|b| b.kind == kind)
             .collect();
-        let times: Vec<i64> = regular.iter().map(|b| b.created_at).collect();
-        let keep = retained(&times);
-        let mut doomed: Vec<&Backup> = regular
-            .iter()
-            .zip(keep)
-            .filter(|(_, keep)| !keep)
-            .map(|(b, _)| *b)
-            .collect();
-        doomed.extend(
-            backups
-                .iter()
-                .filter(|b| b.kind == BackupKind::PreRestore)
-                .skip(PRE_RESTORE_KEPT),
-        );
+        let keep = match kind {
+            BackupKind::Daily => {
+                let times: Vec<i64> = bucket.iter().map(|b| b.created_at).collect();
+                retained(&times, zone)
+            }
+            // `list_backups` is newest first.
+            BackupKind::Manual => (0..bucket.len()).map(|i| i < MANUAL_KEPT).collect(),
+            BackupKind::PreRestore => return Ok(()),
+        };
         let dir = self.backups_dir();
-        for backup in doomed {
-            // The manifest goes first: a backup without one is not listed.
-            remove_if_present(&dir.join(format!("{}.json", backup.id)))?;
-            remove_if_present(&dir.join(snapshot_name(&backup.id)))?;
+        for (backup, keep) in bucket.iter().zip(keep) {
+            if !keep {
+                // The manifest goes first: a backup without one is not listed.
+                remove_if_present(&dir.join(manifest_name(&backup.id)))?;
+                remove_if_present(&dir.join(snapshot_name(&backup.id)))?;
+            }
         }
         Ok(())
     }
 
-    /// Best effort: remove partial snapshots and staging files a stopped
-    /// process left behind. Recent ones may belong to a running process.
+    /// Best effort: remove partial snapshots and manifests, staging files
+    /// and orphan snapshots (no manifest) a stopped process left behind.
+    /// Recent ones may belong to a running process and are left alone.
     fn clean_abandoned(&self) {
-        let Ok(entries) = fs::read_dir(self.backups_dir()) else {
+        let dir = self.backups_dir();
+        let Ok(entries) = fs::read_dir(&dir) else {
             return;
         };
         for entry in entries.flatten() {
@@ -317,15 +462,40 @@ impl TaskStore {
             let name = name.to_string_lossy();
             let leftover = name.starts_with('.')
                 && (name.ends_with(".partial") || name.starts_with(".restore-"));
+            let orphan = name
+                .strip_suffix(".sqlite3")
+                .is_some_and(|id| valid_id(id) && !dir.join(manifest_name(id)).exists());
             let old = entry
                 .metadata()
                 .and_then(|m| m.modified())
                 .ok()
                 .and_then(|t| SystemTime::now().duration_since(t).ok())
                 .is_some_and(|age| age >= ABANDONED_AFTER);
-            if leftover && old {
+            if (leftover || orphan) && old {
                 let _ = fs::remove_file(entry.path());
             }
+        }
+    }
+}
+
+/// `backups/.restore.lock`, held (an OS file lock, released when the
+/// process ends however it ends) while a restore fences writers.
+struct RestoreLock {
+    _file: File,
+}
+
+impl RestoreLock {
+    fn acquire(dir: &Path) -> Result<Self, TaskError> {
+        create_private_dir(dir)?;
+        let mut options = OpenOptions::new();
+        options.read(true).write(true).create(true).truncate(false);
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        let file = options.open(dir.join(RESTORE_LOCK))?;
+        match file.try_lock() {
+            Ok(()) => Ok(Self { _file: file }),
+            Err(std::fs::TryLockError::WouldBlock) => Err(TaskError::RestoreInProgress),
+            Err(std::fs::TryLockError::Error(error)) => Err(error.into()),
         }
     }
 }
@@ -347,19 +517,23 @@ impl Staging {
     }
 
     /// Check the copy is a whole, consistent Tasknotes database this core
-    /// can read, migrate it forward and give it a fresh Restore Epoch.
-    fn validate_and_prepare(&self) -> Result<String, TaskError> {
+    /// can read, and migrate it forward. A file is a Tasknotes database
+    /// only if, once migrated, it has exactly the tables, columns, indexes
+    /// and triggers a freshly created one has: a `user_version` alone
+    /// proves nothing.
+    fn validate(&self) -> Result<(), TaskError> {
+        let foreign = || TaskError::InvalidBackup("it is not a Tasknotes database");
         {
             let conn = Connection::open_with_flags(&self.path, OpenFlags::SQLITE_OPEN_READ_WRITE)
-                .map_err(|_| TaskError::InvalidBackup("it is not a Tasknotes database"))?;
+                .map_err(|_| foreign())?;
             let version: i64 = conn
                 .pragma_query_value(None, "user_version", |r| r.get(0))
-                .map_err(|_| TaskError::InvalidBackup("it is not a Tasknotes database"))?;
+                .map_err(|_| foreign())?;
             if version > SCHEMA_VERSION {
                 return Err(TaskError::UnsupportedSchema(version));
             }
             if version < 1 {
-                return Err(TaskError::InvalidBackup("it is not a Tasknotes database"));
+                return Err(foreign());
             }
             let damaged = || TaskError::InvalidBackup("the snapshot is damaged");
             let mut check = conn
@@ -382,16 +556,61 @@ impl Staging {
             }
         }
         // Forward-only migrations, exactly as on launch.
-        drop(
-            TaskStore::open(&self.path)
-                .map_err(|_| TaskError::InvalidBackup("it could not be upgraded"))?,
-        );
-        let conn = Connection::open(&self.path)?;
-        let epoch = Uuid::new_v4().to_string();
+        let mut conn = open_connection(&self.path)?;
+        migrate(&mut conn).map_err(|_| TaskError::InvalidBackup("it could not be upgraded"))?;
+        let mut reference = Connection::open_in_memory()?;
+        migrate(&mut reference)?;
+        if schema_of(&conn).map_err(|_| foreign())? != schema_of(&reference)? {
+            return Err(foreign());
+        }
+        Ok(())
+    }
+
+    /// Step 3 of a restore, once writers are fenced: append every live
+    /// Audit Entry the snapshot lacks (in append order, with its id, and
+    /// hidden from AI if it is hidden from AI now) and a `backup.restore`
+    /// entry, give the copy a
+    /// fresh Restore Epoch and fold its log into the file. Returns the
+    /// epoch.
+    fn carry_over(
+        &self,
+        live: &Path,
+        backup_id: &str,
+        interface: Interface,
+    ) -> Result<String, TaskError> {
+        let mut conn = open_connection(&self.path)?;
         conn.execute(
-            "UPDATE database_epoch SET epoch = ?1 WHERE id = 1",
+            "ATTACH DATABASE ?1 AS live",
+            params![live.to_string_lossy()],
+        )?;
+        let epoch = Uuid::new_v4().to_string();
+        let tx = conn.transaction()?;
+        tx.execute(
+            &format!(
+                "INSERT INTO main.audit_entries
+                   (id, created_at, interface, action, entity_id, outcome, error_code,
+                    revision, hidden_from_ai)
+                 SELECT id, created_at, interface, action, entity_id, outcome, error_code,
+                        revision, {hidden}
+                 FROM live.audit_entries AS l
+                 WHERE NOT EXISTS (SELECT 1 FROM main.audit_entries AS m WHERE m.id = l.id)
+                 ORDER BY l.sequence",
+                hidden = crate::privacy::hidden_now_sql(
+                    "live",
+                    "l.hidden_from_ai",
+                    "l.action",
+                    "l.entity_id"
+                ),
+            ),
+            [],
+        )?;
+        crate::audit::record_restore(&tx, interface, backup_id)?;
+        tx.execute(
+            "UPDATE main.database_epoch SET epoch = ?1 WHERE id = 1",
             params![epoch],
         )?;
+        tx.commit()?;
+        conn.execute_batch("DETACH DATABASE live;")?;
         // Fold the write-ahead log into the file before it is copied.
         conn.pragma_update_and_check(None, "journal_mode", "DELETE", |_| Ok(()))?;
         Ok(epoch)
@@ -408,14 +627,29 @@ impl Drop for Staging {
     }
 }
 
+/// Each schema object with, for a table, its column names in order.
+fn schema_of(conn: &Connection) -> Result<Vec<(String, String, String)>, TaskError> {
+    let mut statement = conn.prepare(
+        "SELECT m.type, m.name,
+                coalesce((SELECT group_concat(c.name, ',') FROM pragma_table_xinfo(m.name) AS c), '')
+         FROM sqlite_master AS m
+         WHERE m.name NOT LIKE 'sqlite\\_%' ESCAPE '\\'
+         ORDER BY m.type, m.name",
+    )?;
+    let rows = statement.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?;
+    Ok(rows.collect::<rusqlite::Result<_>>()?)
+}
+
 /// Maps a day (counted from 1970-01-01) to the period it belongs to.
 type PeriodOf = fn(i64) -> i64;
 
 /// Which of the backups (created-at times, any order) the 7 daily /
 /// 4 weekly / 3 monthly policy keeps. Each rule keeps the newest backup of
 /// each of its most recent periods that have a backup; a backup kept by
-/// any rule stays. Days and weeks (Monday to Sunday) are UTC.
-pub(crate) fn retained(created_at: &[i64]) -> Vec<bool> {
+/// any rule stays. Days, weeks (Monday to Sunday) and months are those of
+/// the wall clock `zone`, so a backup at 00:30 local time belongs to that
+/// local day even when it is still the previous day in UTC.
+pub(crate) fn retained(created_at: &[i64], zone: TimeZone) -> Vec<bool> {
     let mut order: Vec<usize> = (0..created_at.len()).collect();
     order.sort_by_key(|&i| std::cmp::Reverse(created_at[i]));
     let mut keep = vec![false; created_at.len()];
@@ -431,7 +665,7 @@ pub(crate) fn retained(created_at: &[i64]) -> Vec<bool> {
         let mut last = None;
         let mut kept = 0;
         for &i in &order {
-            let period = period_of(created_at[i].div_euclid(DAY_MS));
+            let period = period_of(zone.day_of(created_at[i]));
             if kept < count && last != Some(period) {
                 keep[i] = true;
                 kept += 1;
@@ -442,20 +676,8 @@ pub(crate) fn retained(created_at: &[i64]) -> Vec<bool> {
     keep
 }
 
-/// (year, month 1–12, day 1–31) of a day counted from 1970-01-01.
-pub(crate) fn civil_from_days(days: i64) -> (i64, i64, i64) {
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097);
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let day = doy - (153 * mp + 2) / 5 + 1;
-    let month = if mp < 10 { mp + 3 } else { mp - 9 };
-    let year = yoe + era * 400 + i64::from(month <= 2);
-    (year, month, day)
-}
-
+/// `20261026T101500Z-daily-0a1b2c3d`: the UTC time it was taken, so ids
+/// sort by time whatever the time zone.
 fn backup_id(kind: BackupKind, now_ms: i64) -> String {
     let (year, month, day) = civil_from_days(now_ms.div_euclid(DAY_MS));
     let seconds = now_ms.rem_euclid(DAY_MS) / 1000;
@@ -481,8 +703,12 @@ fn snapshot_name(id: &str) -> String {
     format!("{id}.sqlite3")
 }
 
+fn manifest_name(id: &str) -> String {
+    format!("{id}.json")
+}
+
 fn read_manifest(dir: &Path, id: &str) -> Option<Backup> {
-    let text = fs::read_to_string(dir.join(format!("{id}.json"))).ok()?;
+    let text = fs::read_to_string(dir.join(manifest_name(id))).ok()?;
     let manifest: Manifest = serde_json::from_str(&text).ok()?;
     (manifest.manifest_version == MANIFEST_VERSION
         && manifest.backup.id == id
@@ -490,20 +716,20 @@ fn read_manifest(dir: &Path, id: &str) -> Option<Backup> {
     .then_some(manifest.backup)
 }
 
-fn write_manifest(dir: &Path, backup: &Backup) -> Result<(), TaskError> {
+/// Write a manifest to its (hidden, partial) path and sync it; the caller
+/// renames it into place.
+fn write_manifest(partial: &Path, backup: &Backup) -> Result<(), TaskError> {
     let manifest = Manifest {
         manifest_version: MANIFEST_VERSION,
         backup: backup.clone(),
     };
-    let temporary = dir.join(format!(".{}.json.partial", backup.id));
-    let mut file = private_file(&temporary, true)?;
+    let mut file = private_file(partial, true)?;
     file.write_all(
         serde_json::to_string_pretty(&manifest)
             .map_err(std::io::Error::other)?
             .as_bytes(),
     )?;
     file.sync_all()?;
-    fs::rename(&temporary, dir.join(format!("{}.json", backup.id)))?;
     Ok(())
 }
 
@@ -530,7 +756,7 @@ fn digest(path: &Path) -> std::io::Result<(u64, String)> {
     Ok((size, hex))
 }
 
-fn create_private_dir(dir: &Path) -> std::io::Result<()> {
+pub(crate) fn create_private_dir(dir: &Path) -> std::io::Result<()> {
     fs::create_dir_all(dir)?;
     #[cfg(unix)]
     {
@@ -541,7 +767,7 @@ fn create_private_dir(dir: &Path) -> std::io::Result<()> {
 }
 
 /// A file only the person's account can read. `fresh` refuses an existing one.
-fn private_file(path: &Path, fresh: bool) -> std::io::Result<File> {
+pub(crate) fn private_file(path: &Path, fresh: bool) -> std::io::Result<File> {
     let mut options = OpenOptions::new();
     options.write(true);
     if fresh {
@@ -561,10 +787,13 @@ fn remove_if_present(path: &Path) -> std::io::Result<()> {
     }
 }
 
-/// Make the renames durable; not every system can sync a directory.
-fn sync_dir(dir: &Path) {
-    if let Ok(handle) = File::open(dir) {
-        let _ = handle.sync_all();
+/// Make the renames in `dir` durable. A file system that cannot sync a
+/// directory at all says so with `InvalidInput` (EINVAL), which is not a
+/// failure of this write; every other error is reported.
+pub(crate) fn sync_dir(dir: &Path) -> std::io::Result<()> {
+    match File::open(dir)?.sync_all() {
+        Err(error) if error.kind() == std::io::ErrorKind::InvalidInput => Ok(()),
+        result => result,
     }
 }
 
@@ -581,16 +810,12 @@ mod tests {
     }
 
     #[test]
-    fn calendar_dates_are_right() {
-        assert_eq!(civil_from_days(0), (1970, 1, 1));
-        assert_eq!(civil_from_days(20_752), (2026, 10, 26));
-        assert_eq!(civil_from_days(day_of(2024, 2, 29)), (2024, 2, 29));
-    }
-
-    #[test]
     fn several_backups_in_one_day_keep_only_the_newest_for_that_day() {
         let monday = day_of(2026, 10, 26) * DAY;
-        let keep = retained(&[monday + 1_000, monday + 9_000, monday + 5_000]);
+        let keep = retained(
+            &[monday + 1_000, monday + 9_000, monday + 5_000],
+            TimeZone::UTC,
+        );
         assert_eq!(keep, [false, true, false]);
     }
 
@@ -602,7 +827,7 @@ mod tests {
             .iter()
             .map(|&(y, m, d)| day_of(y, m, d) * DAY)
             .collect();
-        assert_eq!(retained(&times), [true, true, true]);
+        assert_eq!(retained(&times, TimeZone::UTC), [true, true, true]);
     }
 
     #[test]
