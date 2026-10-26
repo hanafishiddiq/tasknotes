@@ -84,7 +84,8 @@ pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
     }
 }
 
-fn request<R: Runtime>(app: &AppHandle<R>) {
+/// Asks the page to save, then quits; also used by the menu-bar item's Quit.
+pub fn request<R: Runtime>(app: &AppHandle<R>) {
     let ticket = app.state::<QuitState>().ask();
     if app.emit(QUIT_REQUESTED, ticket).is_err() {
         return exit(app);
@@ -96,6 +97,11 @@ fn request<R: Runtime>(app: &AppHandle<R>) {
             exit(&app);
         }
     });
+}
+
+/// Whether a quit is already under way, so closing must not be turned into hiding.
+pub fn exiting<R: Runtime>(app: &AppHandle<R>) -> bool {
+    app.state::<QuitState>().exiting.load(Ordering::SeqCst)
 }
 
 fn exit<R: Runtime>(app: &AppHandle<R>) {
