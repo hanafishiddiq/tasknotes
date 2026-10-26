@@ -57,3 +57,16 @@ A Note kept above the other Notes in every Note list it appears in. Pinning, lik
 
 **Audit Entry**:
 An immutable dated record that an official Tasknotes interface made or attempted a consequential change.
+
+**Backup**:
+A consistent local copy of all Tasknotes data, taken automatically once a day while Tasknotes runs, on request, and just before a restore. The 7 daily / 4 weekly / 3 monthly retention prunes backup copies only, never live Tasks, Notes or Lists.
+
+**Backup Manifest**:
+The record beside each Backup of when and why it was taken, its schema version, size and checksum; a restore refuses a Backup that does not match its manifest.
+
+**Restore**:
+Replacing all current data with a validated Backup, after keeping a Backup of the current data. Windows and commands that opened the data before must reload before they can change anything.
+_Avoid_: Restore alone where restoring an item from Removed is meant.
+
+**Export**:
+A copy of Tasks and Notes written as JSON or Markdown for the person to keep or move elsewhere. An export made through an AI interface never contains Notes marked Exclude from AI.
