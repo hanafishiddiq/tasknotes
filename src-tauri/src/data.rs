@@ -20,8 +20,9 @@ pub fn start_daily_backups(store: TaskStore) {
         .name("tasknotes-backups".into())
         .spawn(move || {
             loop {
-                if let Err(error) = store.ensure_daily_backup() {
-                    eprintln!("Tasknotes could not take today's backup: {error}");
+                match store.ensure_daily_backup() {
+                    Ok(taken) => log_retention(taken.and_then(|t| t.retention_error)),
+                    Err(error) => eprintln!("Tasknotes could not take today's backup: {error}"),
                 }
                 std::thread::sleep(BACKUP_CHECK);
             }
@@ -36,7 +37,16 @@ pub fn list_backups(store: State<'_, TaskStore>) -> Result<Vec<Backup>, String> 
 
 #[tauri::command]
 pub fn create_backup(store: State<'_, TaskStore>) -> Result<Backup, String> {
-    store.create_backup().map_err(|error| error.to_string())
+    let taken = store.create_backup().map_err(|error| error.to_string())?;
+    // The backup is complete; a failed cleanup of old ones is retried next time.
+    log_retention(taken.retention_error);
+    Ok(taken.backup)
+}
+
+fn log_retention(error: Option<String>) {
+    if let Some(error) = error {
+        eprintln!("Tasknotes took a backup but could not remove an old one: {error}");
+    }
 }
 
 /// The window reloads afterwards, so nothing it read before is written back.
