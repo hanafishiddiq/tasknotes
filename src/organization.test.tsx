@@ -247,24 +247,29 @@ describe("Inbox, Lists, and Task metadata", () => {
     });
     render(<App />);
     expect(await screen.findByRole("article", { name: "Item 0" })).toBeInTheDocument();
-    expect(screen.getAllByRole("article")).toHaveLength(50);
+    // Rows are virtualized, so the group count (not the DOM) shows the page size.
+    expect(screen.getByRole("heading", { name: /^Ready/ })).toHaveTextContent("Ready50+");
 
     await user.click(screen.getByRole("button", { name: "Next page" }));
     expect(await screen.findByRole("article", { name: "Item 50" })).toBeInTheDocument();
-    expect(screen.getAllByRole("article")).toHaveLength(50);
+    // Rows are virtualized, so the group count (not the DOM) shows the page size.
+    expect(screen.getByRole("heading", { name: /^Ready/ })).toHaveTextContent("Ready50+");
     expect(screen.queryByRole("article", { name: "Item 0" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Next page" }));
     expect(await screen.findByRole("article", { name: "Item 100" })).toBeInTheDocument();
-    expect(screen.getAllByRole("article")).toHaveLength(20);
+    // Rows are virtualized, so the group count (not the DOM) shows the page size.
+    expect(screen.getByRole("heading", { name: /^Ready/ })).toHaveTextContent("Ready20");
 
     await user.click(screen.getByRole("button", { name: "Previous page" }));
     expect(await screen.findByRole("article", { name: "Item 50" })).toBeInTheDocument();
-    expect(screen.getAllByRole("article")).toHaveLength(50);
+    // Rows are virtualized, so the group count (not the DOM) shows the page size.
+    expect(screen.getByRole("heading", { name: /^Ready/ })).toHaveTextContent("Ready50+");
 
     await user.click(screen.getByRole("button", { name: "Previous page" }));
     expect(await screen.findByRole("article", { name: "Item 0" })).toBeInTheDocument();
-    expect(screen.getAllByRole("article")).toHaveLength(50);
+    // Rows are virtualized, so the group count (not the DOM) shows the page size.
+    expect(screen.getByRole("heading", { name: /^Ready/ })).toHaveTextContent("Ready50+");
   });
 
   it("shows an upcoming local date without marking it overdue", async () => {

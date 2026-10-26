@@ -21,6 +21,7 @@
     "@lexical/react": "0.52.0",
     "@lexical/rich-text": "0.52.0",
     "@lexical/utils": "0.52.0",
+    "@tanstack/react-virtual": "3.14.18",
     "@tauri-apps/api": "^2",
     "lexical": "0.52.0",
     "lucide-react": "^1.55.0",

@@ -1,7 +1,7 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import {
   Check, Folder, Inbox, ListChecks, Moon, NotebookText, Pencil,
-  Plus, Sun, Trash2, X,
+  Plus, Settings, Sun, Trash2, X,
 } from "lucide-react";
 import type { TaskList, TaskView } from "../lib/task-api";
 import type { Theme } from "../lib/use-theme";
@@ -13,6 +13,8 @@ interface TaskSidebarProps {
   /** The Removed view is showing. */
   removedActive: boolean;
   onOpenRemoved: () => void;
+  settingsActive: boolean;
+  onOpenSettings: () => void;
   /** Notes are showing every Note rather than one folder. */
   allNotesCurrent: boolean;
   /** The Note Folder tree, once Notes have been opened. */
@@ -35,7 +37,7 @@ interface TaskSidebarProps {
 }
 
 export default function TaskSidebar({
-  view, notesActive, removedActive, onOpenRemoved, allNotesCurrent, noteFolders, lists, listError, shownCount, hasMoreTasks, hasMoreLists, busy,
+  view, notesActive, removedActive, onOpenRemoved, settingsActive, onOpenSettings, allNotesCurrent, noteFolders, lists, listError, shownCount, hasMoreTasks, hasMoreLists, busy,
   theme, onToggleTheme, onNavigate, onOpenNotes, onCreateList, onRenameList, onRemoveList,
   onLoadMoreLists,
 }: TaskSidebarProps) {
@@ -162,6 +164,10 @@ export default function TaskSidebar({
       </nav>
 
       <div className="sidebar-spacer" />
+      <button type="button" className="folder folder--quiet" disabled={busy}
+        aria-label="Settings" aria-current={settingsActive ? "page" : undefined} onClick={onOpenSettings}>
+        <Settings size={16} aria-hidden="true" /><span className="folder-name">Settings</span>
+      </button>
       <button type="button" className="folder folder--quiet" onClick={onToggleTheme}
         aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}>
         {theme === "dark" ? <Sun size={16} aria-hidden="true" /> : <Moon size={16} aria-hidden="true" />}

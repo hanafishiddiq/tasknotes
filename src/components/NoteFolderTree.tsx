@@ -125,7 +125,7 @@ export default function NoteFolderTree({ folders, currentId, disabled, onOpen, o
                       </button>
                       <button type="button" className="folder-action" disabled={busy}
                         aria-label={`Remove ${folder.name}`}
-                        onClick={() => void folders.remove(folder).then((done) => done && onRemoved(folder))}>
+                        onClick={() => void folders.remove(folder).then((removed) => removed && onRemoved(removed))}>
                         <Trash2 size={13} />
                       </button>
                     </span>

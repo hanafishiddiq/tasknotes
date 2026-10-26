@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { useLayoutEffect, useRef, type FormEvent } from "react";
 import { CalendarDays, Check, Folder, LoaderCircle, Tag, Trash2 } from "lucide-react";
 import type {
   Task,
@@ -11,6 +11,7 @@ import type {
 import TaskProgressHistory from "./TaskProgressHistory";
 import TaskLinkedNotes from "./TaskLinkedNotes";
 import { deadlineStatus } from "../lib/deadlines";
+import type { EditableFields, UnsavedTaskEdits } from "../lib/use-task-drafts";
 import {
   STATUS_ORDER,
   STATUS_VIEW,
@@ -39,18 +40,48 @@ interface TaskRowProps {
   expanded: boolean;
   saving: boolean;
   onToggle: () => void;
-  onSave: (title: string, description: string) => Promise<void>;
-  onChange: (change: TaskChange) => Promise<void>;
-  onRecordProgress: (update: ProgressDraft) => Promise<void>;
+  /** Every save names the revision its edits were typed against. */
+  onSave: (title: string, description: string, expectedRevision: number) => Promise<void>;
+  onChange: (change: TaskChange, expectedRevision: number) => Promise<void>;
+  onRecordProgress: (update: ProgressDraft, expectedRevision: number) => Promise<void>;
   lists: TaskList[];
   today: string;
   onMove: (listId: string | null) => Promise<void>;
-  onUpdateDetails: (tags: string[], dueDate: string | null) => Promise<void>;
+  onUpdateDetails: (tags: string[], dueDate: string | null, expectedRevision: number) => Promise<void>;
   onOpenNote: (noteId: string) => void;
   /** Moves the Task to Removed; restoring it later brings back everything. */
   onRemove: () => Promise<void>;
   /** False while the Notes workspace covers the Task view. */
   shown: boolean;
+  /** What was typed and not saved, kept above the row so it outlives it. */
+  edits: UnsavedTaskEdits | undefined;
+  onEdits: (edits: UnsavedTaskEdits | undefined) => void;
+}
+
+/** What the fields show for a Task with nothing typed into it. */
+function savedFields(task: Task): EditableFields {
+  return {
+    title: task.title,
+    description: task.description,
+    progress: String(task.progress),
+    nextStep: task.nextStep ?? "",
+    note: "",
+    tags: (task.tags ?? []).join(", "),
+    dueDate: task.dueDate ?? "",
+  };
+}
+
+/** Keeps only the fields that still differ from what is saved; nothing left means no edits. */
+function withoutSaved(
+  baseRevision: number, fields: Partial<EditableFields>, saved: EditableFields,
+): UnsavedTaskEdits | undefined {
+  const kept: Partial<EditableFields> = {};
+  for (const key of Object.keys(fields) as (keyof EditableFields)[]) {
+    const value = fields[key];
+    const unchanged = key === "note" ? !value?.trim() : value === saved[key];
+    if (value !== undefined && !unchanged) kept[key] = value;
+  }
+  return Object.keys(kept).length > 0 ? { baseRevision, fields: kept } : undefined;
 }
 
 export default function TaskRow({
@@ -68,28 +99,31 @@ export default function TaskRow({
   onOpenNote,
   onRemove,
   shown,
+  edits,
+  onEdits,
 }: TaskRowProps) {
-  const [draftTitle, setDraftTitle] = useState(task.title);
-  const [draftDescription, setDraftDescription] = useState(task.description);
-  const [draftProgress, setDraftProgress] = useState(String(task.progress));
-  const [draftNextStep, setDraftNextStep] = useState(task.nextStep ?? "");
-  const [draftNote, setDraftNote] = useState("");
-  const [draftTags, setDraftTags] = useState((task.tags ?? []).join(", "));
-  const [draftDueDate, setDraftDueDate] = useState(task.dueDate ?? "");
+  const saved = savedFields(task);
+  const typed = edits?.fields ?? {};
+  const draft: EditableFields = { ...saved, ...typed };
+  const {
+    title: draftTitle, description: draftDescription, progress: draftProgress,
+    nextStep: draftNextStep, note: draftNote, tags: draftTags, dueDate: draftDueDate,
+  } = draft;
+  // Saves name the revision the typing started from, never a newer one.
+  const baseRevision = edits?.baseRevision ?? task.revision;
+  const changedElsewhere = edits !== undefined && edits.baseRevision !== task.revision;
   const PriorityIcon = PRIORITY_VIEW[task.priority].icon;
   const hiddenTags = (task.tags ?? []).slice(2);
   const titleField = useRef<HTMLTextAreaElement>(null);
   const due = deadlineStatus(task.dueDate, today, task.status);
-  const hasUnsavedText =
-    draftTitle !== task.title || draftDescription !== task.description;
-  const hasUnsavedProgress = draftProgress !== String(task.progress);
-  const hasUnsavedNextStep = draftNextStep !== (task.nextStep ?? "");
-  const hasUnsavedNote = draftNote.trim().length > 0;
+  const hasUnsavedText = typed.title !== undefined || typed.description !== undefined;
+  const hasUnsavedProgress = typed.progress !== undefined;
+  const hasUnsavedNextStep = typed.nextStep !== undefined;
+  const hasUnsavedNote = typed.note !== undefined;
   const hasUnsavedProgressUpdate =
     hasUnsavedProgress || hasUnsavedNextStep || hasUnsavedNote;
-  const hasUnsavedDetails =
-    draftTags !== (task.tags ?? []).join(", ") ||
-    draftDueDate !== (task.dueDate ?? "");
+  const hasUnsavedDetails = typed.tags !== undefined || typed.dueDate !== undefined;
+  const dirty = edits !== undefined;
   const canChangeDetails = !saving && !hasUnsavedText && !hasUnsavedProgressUpdate;
   const canChangeMetadata = !saving && !hasUnsavedText && !hasUnsavedDetails;
   const canChangeSelectors = canChangeMetadata && !hasUnsavedProgressUpdate;
@@ -103,16 +137,6 @@ export default function TaskRow({
     hasUnsavedNextStep || hasUnsavedNote
       ? "Save progress update"
       : "Apply progress";
-  // Every refresh delivers a new tags array; key on its contents so an
-  // unrelated refresh does not wipe unsaved drafts.
-  const savedTagsKey = (task.tags ?? []).join("\u0000");
-  useEffect(() => {
-    setDraftProgress(String(task.progress));
-    setDraftNextStep(task.nextStep ?? "");
-    setDraftNote("");
-    setDraftTags((task.tags ?? []).join(", "));
-    setDraftDueDate(task.dueDate ?? "");
-  }, [task.progress, task.nextStep, task.revision, task.dueDate, savedTagsKey]);
 
   // The detail title wraps like a note heading; grow it with its content.
   useLayoutEffect(() => {
@@ -127,23 +151,25 @@ export default function TaskRow({
     return () => window.removeEventListener("resize", fit);
   }, [draftTitle, expanded]);
 
-  function toggle() {
-    if (!expanded) {
-      setDraftTitle(task.title);
-      setDraftDescription(task.description);
-      setDraftProgress(String(task.progress));
-      setDraftNextStep(task.nextStep ?? "");
-      setDraftNote("");
-      setDraftTags((task.tags ?? []).join(", "));
-      setDraftDueDate(task.dueDate ?? "");
-    }
-    onToggle();
+  function edit(field: keyof EditableFields, value: string) {
+    onEdits(withoutSaved(baseRevision, { ...typed, [field]: value }, saved));
+  }
+
+  function forget(fields: (keyof EditableFields)[]) {
+    const rest = { ...typed };
+    for (const field of fields) delete rest[field];
+    onEdits(withoutSaved(baseRevision, rest, saved));
+  }
+
+  /** Carries on from the newer version: typed fields stay, the rest show what is saved now. */
+  function keepOnLatest() {
+    onEdits(withoutSaved(task.revision, typed, saved));
   }
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!draftTitle.trim() || saving || hasUnsavedProgressUpdate || hasUnsavedDetails) return;
-    await onSave(draftTitle, draftDescription);
+    await onSave(draftTitle, draftDescription, baseRevision);
   }
 
   async function saveProgressUpdate() {
@@ -151,31 +177,28 @@ export default function TaskRow({
       return;
     // Keep the older simple button behavior for percentage-only updates.
     if (!hasUnsavedNextStep && !hasUnsavedNote) {
-      await onChange({ progress: numericProgress });
+      await onChange({ progress: numericProgress }, baseRevision);
       return;
     }
     await onRecordProgress({
       ...(hasUnsavedProgress ? { progress: numericProgress } : {}),
       ...(hasUnsavedNextStep ? { nextStep: draftNextStep } : {}),
       ...(hasUnsavedNote ? { note: draftNote.trim() } : {}),
-    });
+    }, baseRevision);
   }
 
   async function saveDetails() {
     if (!canChangeDetails || !hasUnsavedDetails) return;
     const tags = draftTags.split(",").map((value) => value.trim()).filter(Boolean);
-    await onUpdateDetails(tags, draftDueDate || null);
+    await onUpdateDetails(tags, draftDueDate || null, baseRevision);
   }
 
   function discardUpdateDraft() {
-    setDraftProgress(String(task.progress));
-    setDraftNextStep(task.nextStep ?? "");
-    setDraftNote("");
+    forget(["progress", "nextStep", "note"]);
   }
 
   function discardDetailsDraft() {
-    setDraftTags((task.tags ?? []).join(", "));
-    setDraftDueDate(task.dueDate ?? "");
+    forget(["tags", "dueDate"]);
   }
 
   const listName = task.listId
@@ -197,7 +220,7 @@ export default function TaskRow({
         <button
           className="task-open"
           type="button"
-          onClick={toggle}
+          onClick={onToggle}
           aria-label={`${expanded ? "Close" : "Open"} ${task.title}`}
           aria-expanded={expanded}
         >
@@ -212,6 +235,7 @@ export default function TaskRow({
           </span>
         </button>
         <div className="task-row-meta">
+          {dirty && !expanded && <span className="unsaved-marker">Unsaved edits</span>}
           <span className={`status-pill status-pill--${task.status} sr-only`}>
             {STATUS_VIEW[task.status].label}
           </span>
@@ -245,6 +269,25 @@ export default function TaskRow({
           <p className="task-stamp">
             Updated {stampFormatter.format(new Date(task.updatedAt))} · {listName}
           </p>
+          {changedElsewhere && (
+            <div role="alert" aria-label="Changed elsewhere" className="notice-banner">
+              <span>
+                This Task was changed somewhere else after you started typing. Your edits are
+                still here and saving them now is refused. Discard them to see the latest, or
+                keep them to save over the change.
+              </span>
+              <span className="notice-actions">
+                <button className="button button-small" type="button" disabled={saving}
+                  onClick={() => onEdits(undefined)}>
+                  Discard my edits
+                </button>
+                <button className="button button-small" type="button" disabled={saving}
+                  onClick={keepOnLatest}>
+                  Keep my edits
+                </button>
+              </span>
+            </div>
+          )}
           <form className="task-page" onSubmit={save}>
             <label className="sr-only" htmlFor={`title-${task.id}`}>Title</label>
             <textarea
@@ -254,7 +297,7 @@ export default function TaskRow({
               aria-label="Edit title"
               rows={1}
               value={draftTitle}
-              onChange={(event) => setDraftTitle(event.target.value.replace(/\n/g, " "))}
+              onChange={(event) => edit("title", event.target.value.replace(/\n/g, " "))}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.nativeEvent.isComposing) {
                   event.preventDefault();
@@ -271,7 +314,7 @@ export default function TaskRow({
               className="task-page-body"
               aria-label="Edit description"
               value={draftDescription}
-              onChange={(event) => setDraftDescription(event.target.value)}
+              onChange={(event) => edit("description", event.target.value)}
               rows={3}
               maxLength={20000}
               placeholder="Add notes..."
@@ -305,7 +348,7 @@ export default function TaskRow({
                 value={task.status}
                 disabled={!canChangeSelectors}
                 onChange={(event) =>
-                  void onChange({ status: event.target.value as WorkStatus })
+                  void onChange({ status: event.target.value as WorkStatus }, task.revision)
                 }
               >
                 {STATUS_ORDER.map((status) => (
@@ -328,7 +371,7 @@ export default function TaskRow({
                 value={task.priority}
                 disabled={!canChangeSelectors}
                 onChange={(event) =>
-                  void onChange({ priority: event.target.value as Priority })
+                  void onChange({ priority: event.target.value as Priority }, task.revision)
                 }
               >
                 {PRIORITY_ORDER.map((priority) => (
@@ -362,7 +405,7 @@ export default function TaskRow({
               <CalendarDays size={13} aria-hidden="true" />
               <input id={`due-${task.id}`} aria-label="Deadline" type="date"
                 value={draftDueDate} disabled={!canChangeDetails}
-                onChange={(event) => setDraftDueDate(event.target.value)} />
+                onChange={(event) => edit("dueDate", event.target.value)} />
             </label>
             <label className="property property--wide" htmlFor={`tags-${task.id}`}>
               <span className="sr-only">Tags (comma-separated)</span>
@@ -370,7 +413,7 @@ export default function TaskRow({
               <input id={`tags-${task.id}`} aria-label="Tags" maxLength={640}
                 placeholder="Tags, comma-separated" value={draftTags}
                 disabled={!canChangeDetails}
-                onChange={(event) => setDraftTags(event.target.value)} />
+                onChange={(event) => edit("tags", event.target.value)} />
             </label>
             {hasUnsavedDetails && (
               <div className="details-actions">
@@ -401,7 +444,7 @@ export default function TaskRow({
                   step="1"
                   value={draftProgress}
                   disabled={!canChangeMetadata}
-                  onChange={(event) => setDraftProgress(event.target.value)}
+                  onChange={(event) => edit("progress", event.target.value)}
                 />
                 %
               </span>
@@ -416,7 +459,7 @@ export default function TaskRow({
               placeholder="What will you do next?"
               value={draftNextStep}
               disabled={!canChangeMetadata}
-              onChange={(event) => setDraftNextStep(event.target.value)}
+              onChange={(event) => edit("nextStep", event.target.value)}
             />
             <label className="sr-only" htmlFor={`progress-note-${task.id}`}>Progress note</label>
             <textarea
@@ -428,7 +471,7 @@ export default function TaskRow({
               placeholder="Add a progress note..."
               value={draftNote}
               disabled={!canChangeMetadata}
-              onChange={(event) => setDraftNote(event.target.value)}
+              onChange={(event) => edit("note", event.target.value)}
             />
             <div className="editor-actions">
               {hasUnsavedProgressUpdate && (

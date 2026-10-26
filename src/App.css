@@ -108,7 +108,32 @@ textarea:disabled {
 .app-shell {
   display: grid;
   grid-template-columns: 210px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
   height: 100vh;
+}
+.app-shell > .sidebar {
+  grid-column: 1;
+  grid-row: 1 / -1;
+}
+.app-shell > :not(.sidebar):not(.undo-bar) {
+  grid-column: 2;
+  grid-row: 1;
+}
+/* Undo sits in the window's last row, flat and in flow: nothing floats. */
+.undo-bar {
+  grid-column: 2;
+  grid-row: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 16px;
+  border-top: 1px solid var(--sep);
+  color: var(--text-2);
+  background: var(--hover);
+}
+.undo-bar--error {
+  color: var(--red);
 }
 
 /* Sidebar: Notes-style folder list */
@@ -386,6 +411,10 @@ button.folder-disclosure:hover:not(:disabled) {
   color: var(--text);
   background: var(--hover);
 }
+.toolbar-sort:focus-within {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
 .toolbar-sort select {
   padding: 0;
   border: 0;
@@ -409,6 +438,7 @@ button.folder-disclosure:hover:not(:disabled) {
   background: var(--hover);
 }
 .main-scroll {
+  position: relative;
   flex: 1;
   overflow-y: auto;
   scrollbar-color: var(--side-selected) transparent;
@@ -611,6 +641,153 @@ button.folder-disclosure:hover:not(:disabled) {
   gap: 8px;
 }
 
+/* Settings: per-window preferences as quiet Notes-style rows */
+.settings-heading {
+  margin: 20px 0 4px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-2);
+}
+.settings-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.settings-choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+}
+.settings-choice:hover {
+  background: var(--hover);
+}
+.settings-choice input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+.settings-choice:has(input:focus-visible) {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.settings-choice svg {
+  color: var(--text-2);
+}
+.settings-hint {
+  margin: 4px 0 0;
+  padding: 0 10px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.settings-shortcuts {
+  margin: 0;
+}
+.settings-shortcut {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--sep);
+}
+.settings-shortcut dt {
+  color: var(--text);
+}
+.settings-shortcut dd {
+  margin: 0;
+}
+kbd {
+  font: inherit;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}
+
+/* Command palette (⌘K): a flat sheet near the top, hairline-edged, no shadow. */
+.palette-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 72px 16px 16px;
+}
+.palette {
+  width: min(560px, 100%);
+  max-height: min(420px, 100%);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--sep);
+  border-radius: 8px;
+  background: var(--sidebar);
+}
+.palette-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--sep);
+  color: var(--text-3);
+}
+.palette-field input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: none;
+  font-size: 14px;
+  color: var(--text);
+}
+/* Like the Next Step field, focus turns the underline to the accent. */
+.palette-field:focus-within {
+  color: var(--text-2);
+  border-bottom-color: var(--accent);
+}
+.palette-list {
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  list-style: none;
+}
+.palette-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.palette-option[aria-selected="true"] {
+  color: var(--row-selected-text);
+  background: var(--row-selected);
+}
+.palette-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.palette-group {
+  flex: none;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.palette-option[aria-selected="true"] .palette-group {
+  color: inherit;
+}
+.palette-empty {
+  margin: 0;
+  padding: 8px;
+  color: var(--text-3);
+}
+
 /* Removed view: restorable items, never purged */
 .removed-search {
   width: 100%;
@@ -658,9 +835,6 @@ button.folder-disclosure:hover:not(:disabled) {
 }
 
 /* Status groups */
-.task-group + .task-group {
-  margin-top: 20px;
-}
 .task-group-heading {
   display: flex;
   align-items: baseline;
@@ -669,6 +843,9 @@ button.folder-disclosure:hover:not(:disabled) {
   padding: 0 10px 4px;
   font-size: 13px;
   font-weight: 700;
+}
+.task-group-heading--later {
+  padding-top: 20px;
 }
 .task-group-heading span {
   font-weight: 400;
@@ -728,7 +905,7 @@ button.folder-disclosure:hover:not(:disabled) {
 .task-card {
   position: relative;
 }
-.task-card + .task-card::before {
+.task-slot + .task-slot .task-card::before {
   content: "";
   position: absolute;
   top: 0;
@@ -737,9 +914,9 @@ button.folder-disclosure:hover:not(:disabled) {
   border-top: 1px solid var(--sep);
 }
 .task-card:hover::before,
-.task-card:hover + .task-card::before,
+.task-slot:hover + .task-slot .task-card::before,
 .task-card--expanded::before,
-.task-card--expanded + .task-card::before {
+.task-slot:has(.task-card--expanded) + .task-slot .task-card::before {
   border-color: transparent;
 }
 .task-row {
@@ -874,6 +1051,12 @@ button.folder-disclosure:hover:not(:disabled) {
 }
 .deadline-pill--today {
   color: var(--orange);
+}
+/* A closed row still holding typed text: plain words, no badge. */
+.unsaved-marker {
+  font-style: italic;
+  color: var(--text-2);
+  white-space: nowrap;
 }
 .tag-pill {
   overflow: hidden;
@@ -1092,6 +1275,10 @@ button.folder-disclosure:hover:not(:disabled) {
   resize: vertical;
   background: var(--field);
   color: var(--text);
+}
+.progress-note-input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
 }
 .metadata-hint {
   margin: 8px 0 0;
@@ -1663,7 +1850,19 @@ button.folder-disclosure:hover:not(:disabled) {
   }
   .app-shell {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+  .app-shell > .sidebar {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .app-shell > :not(.sidebar):not(.undo-bar) {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .undo-bar {
+    grid-column: 1;
+    grid-row: 3;
   }
   .sidebar {
     flex-direction: row;
@@ -1737,6 +1936,18 @@ button.folder-disclosure:hover:not(:disabled) {
   }
   .progress-track span {
     transition: transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  /* An opening Task page fades in; nothing slides, so the list never shifts twice. */
+  .task-editor {
+    animation: page-in 120ms ease-out;
+  }
+  .task-check {
+    transition: background-color 120ms ease-out, border-color 120ms ease-out;
+  }
+}
+@keyframes page-in {
+  from {
+    opacity: 0;
   }
 }
 @media (prefers-reduced-motion: reduce) {
