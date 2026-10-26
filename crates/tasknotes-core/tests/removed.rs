@@ -291,6 +291,7 @@ fn v8_database(db: &Path) -> (String, String) {
              ALTER TABLE note_folders DROP COLUMN removed_at;
              CREATE UNIQUE INDEX note_folders_sibling_name
                ON note_folders(coalesce(parent_id, ''), name_fold);
+             DROP TABLE IF EXISTS audit_entries;
              PRAGMA user_version = 8;",
         )
         .unwrap();
@@ -305,7 +306,7 @@ fn a_v8_database_keeps_its_notes_and_folders_and_gains_removed() {
     assert_eq!(version(&db), 8);
 
     let store = store_at(&db);
-    assert_eq!(version(&db), 9);
+    assert_eq!(version(&db), tasknotes_core::tasks::SCHEMA_VERSION);
     let kept = store.get_note(&note_id).unwrap().unwrap();
     assert_eq!(kept.folder_id.as_deref(), Some(folder_id.as_str()));
     assert!(!kept.removed);
@@ -346,7 +347,7 @@ fn a_failed_v9_migration_rolls_back_and_keeps_the_database_usable() {
         .execute_batch("DROP TABLE notes_removed_order;")
         .unwrap();
     let store = store_at(&db);
-    assert_eq!(version(&db), 9);
+    assert_eq!(version(&db), tasknotes_core::tasks::SCHEMA_VERSION);
     assert!(store.get_note(&note_id).unwrap().is_some());
 }
 

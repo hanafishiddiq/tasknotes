@@ -6,8 +6,10 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::audit::{AuditAction, Interface};
 pub use crate::organization::{
-    CreateList, List, ListPage, MoveTask, RenameList, SetListRemoved, TaskView, UpdateTaskDetails,
+    CreateList, List, ListPage, MoveTask, PatchTaskDetails, RenameList, SetListRemoved, TaskView,
+    UpdateTaskDetails,
 };
 pub use crate::search::{TaskQuery, TaskScope};
 
@@ -15,6 +17,7 @@ pub use crate::search::{TaskQuery, TaskScope};
 #[derive(Debug, Clone)]
 pub struct TaskStore {
     path: PathBuf,
+    interface: Interface,
 }
 
 #[derive(Debug, Error)]
@@ -29,8 +32,10 @@ pub enum TaskError {
     ListRemoved,
     #[error("This List is already in the requested state")]
     ListUnchanged,
-    #[error("Invalid List cursor or page size")]
+    #[error("List page size must be between 1 and 100")]
     InvalidListPage,
+    #[error("Invalid List page cursor")]
+    InvalidListCursor,
     #[error("Use at most 16 distinct Tags, each 1–40 characters without control characters")]
     InvalidTags,
     #[error("Deadline must be a real local calendar date in YYYY-MM-DD format")]
@@ -63,6 +68,8 @@ pub enum TaskError {
     InvalidHistoryCursor,
     #[error("Task changes must specify status, priority, or progress")]
     EmptyChange,
+    #[error("A partial edit must name at least one field to change")]
+    EmptyPatch,
     #[error("Progress must be between 0 and 100")]
     InvalidProgress,
     #[error("Invalid work status/progress transition: {0}")]
@@ -109,6 +116,13 @@ pub enum TaskError {
     LinkNotFound,
     #[error("Invalid Note Link page cursor")]
     InvalidLinkCursor,
+    #[error("Invalid Audit Entry page cursor")]
+    InvalidAuditCursor,
+    /// A refusal whose Audit Entry could not be written; see `audit_unrecorded`.
+    #[error("{0}")]
+    AuditUnrecorded(Box<TaskError>),
+    #[error("This AI interface has not been authorized for Tasknotes data")]
+    NotAuthorized,
     #[error("Unsupported database schema version {0}; refusing to modify a newer database")]
     UnsupportedSchema(i64),
     #[error("Unable to open local storage: {0}")]
@@ -117,6 +131,67 @@ pub enum TaskError {
     Sqlite(#[from] rusqlite::Error),
     #[error("System clock is unavailable")]
     Clock,
+}
+
+impl TaskError {
+    /// True when this is a refusal the core meant to record as an Audit
+    /// Entry but could not, even after waiting out the busy timeout. The
+    /// refusal itself (code and message) is unchanged.
+    pub fn audit_unrecorded(&self) -> bool {
+        matches!(self, Self::AuditUnrecorded(_))
+    }
+
+    /// A stable identifier every adapter (CLI, MCP) reports for this error.
+    /// Messages may be reworded; codes only change with the schema version.
+    pub fn code(&self) -> &'static str {
+        use TaskError::*;
+        match self {
+            InvalidListName
+            | InvalidTags
+            | InvalidDeadline
+            | EmptyTitle
+            | TitleTooLong
+            | DescriptionTooLong
+            | InvalidPageSize
+            | InvalidListPage
+            | TooManySearchWords
+            | NextStepTooLong
+            | ProgressNoteTooLong
+            | InvalidHistoryPageSize
+            | EmptyChange
+            | EmptyPatch
+            | EmptyProgressUpdate
+            | InvalidProgress
+            | NoteTooLong
+            | InvalidNoteFolderName
+            | NoteFolderTooDeep
+            | NoteFolderCycle => "invalid_input",
+            InvalidCursor
+            | InvalidHistoryCursor
+            | InvalidRemovedCursor
+            | InvalidNoteCursor
+            | InvalidNoteFolderCursor
+            | InvalidLinkCursor
+            | InvalidAuditCursor
+            | InvalidListCursor => "invalid_cursor",
+            NotFound | ListNotFound | NoteNotFound | NoteFolderNotFound | LinkNotFound => {
+                "not_found"
+            }
+            RevisionConflict | NoteRevisionConflict | NoteFolderRevisionConflict => {
+                "revision_conflict"
+            }
+            TaskRemoved | TaskListRemoved | ListRemoved | NoteRemoved | NoteFolderRemoved => {
+                "removed"
+            }
+            ListNameConflict | NoteFolderNameConflict => "name_conflict",
+            InvalidTransition(_) => "invalid_transition",
+            TaskUnchanged | ListUnchanged | RemovedUnchanged | NoteFolderUnchanged => "unchanged",
+            AuditUnrecorded(refusal) => refusal.code(),
+            NotAuthorized => "not_trusted",
+            UnsupportedSchema(_) => "unsupported_schema",
+            Io(_) | Sqlite(_) | Clock => "storage_unavailable",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -128,6 +203,10 @@ pub enum WorkStatus {
 }
 
 impl WorkStatus {
+    /// Every status, in display order of the names; their serde names are the
+    /// ones every interface reads and writes.
+    pub const ALL: [Self; 3] = [Self::Ready, Self::InProgress, Self::Completed];
+
     pub(crate) fn from_sql(value: &str) -> Option<Self> {
         match value {
             "ready" => Some(Self::Ready),
@@ -165,6 +244,15 @@ pub enum Priority {
 }
 
 impl Priority {
+    /// Every priority, lowest first.
+    pub const ALL: [Self; 5] = [
+        Self::VeryLow,
+        Self::Low,
+        Self::Medium,
+        Self::High,
+        Self::VeryHigh,
+    ];
+
     fn from_sql(value: &str) -> Option<Self> {
         match value {
             "very_low" => Some(Self::VeryLow),
@@ -233,6 +321,16 @@ pub struct UpdateTask {
     pub expected_revision: i64,
 }
 
+/// A partial title/description edit: `None` keeps the current value. The
+/// AI adapters (CLI, MCP) use it so neither re-implements the merge.
+#[derive(Debug, Clone)]
+pub struct PatchTask {
+    pub id: String,
+    pub expected_revision: i64,
+    pub title: Option<String>,
+    pub description: Option<String>,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum SortMode {
@@ -242,6 +340,8 @@ pub enum SortMode {
 }
 
 impl SortMode {
+    pub const ALL: [Self; 2] = [Self::Priority, Self::Newest];
+
     pub(crate) fn as_cursor(self) -> &'static str {
         match self {
             Self::Priority => "priority",
@@ -287,12 +387,25 @@ pub struct ProgressEntry {
     pub created_at: i64,
 }
 
+/// A page of Progress Entries with an opaque cursor, for the AI-facing
+/// adapters (CLI, MCP): they hand `next_cursor` back unchanged.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProgressHistoryPage {
     pub items: Vec<ProgressEntry>,
+    pub next_cursor: Option<String>,
+}
+
+/// The desktop window's page shape: the cursor is the raw sequence number of
+/// the last entry shown. Kept so the window's wire format is unchanged.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProgressSequencePage {
+    pub items: Vec<ProgressEntry>,
     pub next_cursor: Option<i64>,
 }
+
+const HISTORY_CURSOR_PREFIX: &str = "h1|";
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -357,11 +470,14 @@ pub(crate) fn read_task(row: &Row<'_>) -> rusqlite::Result<Task> {
 
 pub(crate) const COLUMNS: &str = "id, title, description, status, priority, progress, revision, created_at, updated_at, next_step, list_id, due_date, removed_at";
 
+/// The database schema this core reads and writes.
+pub const SCHEMA_VERSION: i64 = 10;
+
 /// How long a write waits for another process (the CLI, MCP) holding the database lock.
 pub const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 
 impl TaskStore {
-    /// Opens an on-disk database and applies transactional, forward-only migrations.
+    /// Opens an on-disk database for the desktop interface and applies transactional, forward-only migrations.
     pub fn open(path: &Path) -> Result<Self, TaskError> {
         if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
             std::fs::create_dir_all(parent)?;
@@ -370,7 +486,7 @@ impl TaskStore {
         let mut connection = Connection::open(path)?;
         connection.busy_timeout(BUSY_TIMEOUT)?;
         let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        if version > 9 {
+        if version > SCHEMA_VERSION {
             return Err(TaskError::UnsupportedSchema(version));
         }
 
@@ -499,9 +615,28 @@ impl TaskStore {
             crate::removed::migrate_v9(&migration)?;
             migration.commit()?;
         }
+        if version < 10 {
+            let migration = connection.transaction()?;
+            crate::audit::migrate_v10(&migration)?;
+            migration.commit()?;
+        }
         Ok(Self {
             path: path.to_path_buf(),
+            interface: Interface::Desktop,
         })
+    }
+
+    /// Opens the database for one official interface; its changes are
+    /// recorded in Audit Entries under that interface.
+    pub fn open_as(path: &Path, interface: Interface) -> Result<Self, TaskError> {
+        Ok(Self {
+            interface,
+            ..Self::open(path)?
+        })
+    }
+
+    pub fn interface(&self) -> Interface {
+        self.interface
     }
 
     pub(crate) fn connect(&self) -> Result<Connection, TaskError> {
@@ -563,6 +698,7 @@ impl TaskStore {
                 task.list_id,
             ],
         )?;
+        self.audit_applied(&tx, AuditAction::TaskCreate, &task.id, task.revision)?;
         tx.commit()?;
         Ok(task)
     }
@@ -578,6 +714,12 @@ impl TaskStore {
     }
 
     pub fn update_task(&self, input: UpdateTask) -> Result<Task, TaskError> {
+        self.audited(AuditAction::TaskUpdate, input, |input| {
+            self.update_task_inner(input)
+        })
+    }
+
+    fn update_task_inner(&self, input: UpdateTask) -> Result<Task, TaskError> {
         let (title, description) = validated_text(&input.title, &input.description)?;
         let now = current_millis()?;
         let mut conn = self.connect()?;
@@ -597,8 +739,25 @@ impl TaskStore {
             .optional()?
             .ok_or(TaskError::RevisionConflict)?;
         crate::organization::hydrate_tags(&tx, std::slice::from_mut(&mut task))?;
+        self.audit_applied(&tx, AuditAction::TaskUpdate, &task.id, task.revision)?;
         tx.commit()?;
         Ok(task)
+    }
+
+    /// Edit only the named fields. The merge reads the current Task, but the
+    /// write still checks the caller's revision, so a stale caller is refused
+    /// rather than merged onto someone else's change.
+    pub fn patch_task(&self, patch: PatchTask) -> Result<Task, TaskError> {
+        if patch.title.is_none() && patch.description.is_none() {
+            return Err(TaskError::EmptyPatch);
+        }
+        let current = self.get_task(&patch.id)?.ok_or(TaskError::NotFound)?;
+        self.update_task(UpdateTask {
+            id: patch.id,
+            title: patch.title.unwrap_or(current.title),
+            description: patch.description.unwrap_or(current.description),
+            expected_revision: patch.expected_revision,
+        })
     }
 
     /// Applies a status, priority, or percentage change atomically under the same
@@ -607,13 +766,22 @@ impl TaskStore {
     /// Ready means not yet started. An in-progress Task does not become Ready when
     /// its percentage drops to zero; resetting previously started work is not implicit.
     pub fn change_task(&self, input: ChangeTask) -> Result<Task, TaskError> {
-        self.apply_task_change(input, None, None)
+        self.audited(AuditAction::TaskChange, input, |input| {
+            self.apply_task_change(AuditAction::TaskChange, input, None, None)
+        })
     }
 
     /// Record a dated update to a Task's progress and/or Next Step; a note can
     /// stand alone so the user can log work without changing the percentage.
     pub fn record_progress(&self, input: RecordProgress) -> Result<Task, TaskError> {
+        self.audited(AuditAction::TaskProgress, input, |input| {
+            self.record_progress_inner(input)
+        })
+    }
+
+    fn record_progress_inner(&self, input: RecordProgress) -> Result<Task, TaskError> {
         self.apply_task_change(
+            AuditAction::TaskProgress,
             ChangeTask {
                 id: input.id,
                 expected_revision: input.expected_revision,
@@ -628,6 +796,7 @@ impl TaskStore {
 
     fn apply_task_change(
         &self,
+        action: AuditAction,
         input: ChangeTask,
         next_step: Option<String>,
         note: Option<String>,
@@ -772,21 +941,47 @@ impl TaskStore {
                 ],
             )?;
         }
+        self.audit_applied(&transaction, action, &updated.id, updated.revision)?;
         transaction.commit()?;
         let mut updated = updated;
         crate::organization::hydrate_tags(&conn, std::slice::from_mut(&mut updated))?;
         Ok(updated)
     }
 
-    /// Recent Progress Entries in reverse write order. The sequence is an
-    /// append-only cursor, so entries written in the same millisecond do not
-    /// reorder or disappear when moving between pages.
+    /// Recent Progress Entries newest first, in pages of 1–50 with an opaque
+    /// cursor that only the core reads.
     pub fn list_progress_entries(
         &self,
         task_id: &str,
         limit: u32,
-        before: Option<i64>,
+        cursor: Option<&str>,
     ) -> Result<ProgressHistoryPage, TaskError> {
+        let before = cursor
+            .map(|raw| {
+                raw.strip_prefix(HISTORY_CURSOR_PREFIX)
+                    .and_then(|n| n.parse::<i64>().ok())
+                    .filter(|n| *n > 0)
+                    .ok_or(TaskError::InvalidHistoryCursor)
+            })
+            .transpose()?;
+        let page = self.list_progress_entries_before(task_id, limit, before)?;
+        Ok(ProgressHistoryPage {
+            items: page.items,
+            next_cursor: page
+                .next_cursor
+                .map(|n| format!("{HISTORY_CURSOR_PREFIX}{n}")),
+        })
+    }
+
+    /// Recent Progress Entries in reverse write order, for the desktop window.
+    /// The sequence is an append-only cursor, so entries written in the same
+    /// millisecond do not reorder or disappear when moving between pages.
+    pub fn list_progress_entries_before(
+        &self,
+        task_id: &str,
+        limit: u32,
+        before: Option<i64>,
+    ) -> Result<ProgressSequencePage, TaskError> {
         if !(1..=50).contains(&limit) {
             return Err(TaskError::InvalidHistoryPageSize);
         }
@@ -833,7 +1028,7 @@ impl TaskStore {
         } else {
             None
         };
-        Ok(ProgressHistoryPage { items, next_cursor })
+        Ok(ProgressSequencePage { items, next_cursor })
     }
 
     /// Backwards-compatible default: work status is always the outer sort key,

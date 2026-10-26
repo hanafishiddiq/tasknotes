@@ -188,6 +188,7 @@ fn v1_database_migrates_without_losing_tasks() {
              INSERT INTO tasks VALUES(
                 '00000000-0000-4000-8000-000000000002',
                 'Already started', 'Keep 60 percent', 'in_progress', 'high', 60, 1, 101, 101);
+             DROP TABLE IF EXISTS audit_entries;
              PRAGMA user_version=1;",
         )
         .unwrap();
@@ -231,7 +232,7 @@ fn v1_database_migrates_without_losing_tasks() {
     let version: i64 = db
         .pragma_query_value(None, "user_version", |r| r.get(0))
         .unwrap();
-    assert_eq!(version, 9);
+    assert_eq!(version, tasknotes_core::tasks::SCHEMA_VERSION);
 }
 
 #[test]

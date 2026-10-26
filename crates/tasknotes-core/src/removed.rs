@@ -7,6 +7,7 @@ use rusqlite::types::Value;
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params, params_from_iter};
 use serde::{Deserialize, Serialize};
 
+use crate::audit::AuditAction;
 use crate::notes::{Note, read_note};
 use crate::search::{fingerprint, parse_time_id_cursor, search_terms};
 use crate::tasks::{COLUMNS, Task, TaskError, TaskStore, current_millis, read_task};
@@ -281,6 +282,21 @@ impl TaskStore {
     }
 
     pub fn set_task_removed(&self, input: SetRemoved) -> Result<Task, TaskError> {
+        let action = if input.removed {
+            AuditAction::TaskRemove
+        } else {
+            AuditAction::TaskRestore
+        };
+        self.audited(action, input, |input| {
+            self.set_task_removed_inner(input, action)
+        })
+    }
+
+    fn set_task_removed_inner(
+        &self,
+        input: SetRemoved,
+        action: AuditAction,
+    ) -> Result<Task, TaskError> {
         let mut conn = self.connect()?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let old = tx
@@ -319,6 +335,7 @@ impl TaskStore {
             read_task,
         )?;
         crate::organization::hydrate_tags(&tx, std::slice::from_mut(&mut changed))?;
+        self.audit_applied(&tx, action, &changed.id, changed.revision)?;
         tx.commit()?;
         Ok(changed)
     }

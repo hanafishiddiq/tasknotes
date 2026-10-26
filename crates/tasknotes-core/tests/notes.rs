@@ -245,7 +245,7 @@ fn an_interrupted_save_leaves_the_last_saved_version_recoverable() {
 }
 
 /// Later schema steps run straight after v6.
-const CURRENT_VERSION: i64 = 9;
+const CURRENT_VERSION: i64 = tasknotes_core::tasks::SCHEMA_VERSION;
 
 fn version(db: &Path) -> i64 {
     Connection::open(db)
@@ -267,6 +267,7 @@ fn v5_database(db: &Path) -> Task {
         .execute_batch(
             "DROP INDEX tasks_removed_order; DROP INDEX lists_removed_order;
              DROP TABLE task_note_links; DROP TABLE notes_fts; DROP TABLE notes; DROP TABLE note_folders;
+             DROP TABLE IF EXISTS audit_entries;
              PRAGMA user_version = 5;",
         )
         .unwrap();
