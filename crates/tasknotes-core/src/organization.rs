@@ -363,6 +363,18 @@ impl TaskStore {
     fn move_task_inner(&self, input: MoveTask) -> Result<Task, TaskError> {
         let mut conn = self.connect()?;
         let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let updated = self.move_task_in(&tx, input)?;
+        tx.commit()?;
+        Ok(updated)
+    }
+
+    /// The move inside the caller's write transaction (also used by bulk
+    /// changes); the caller commits.
+    pub(crate) fn move_task_in(
+        &self,
+        tx: &rusqlite::Transaction,
+        input: MoveTask,
+    ) -> Result<Task, TaskError> {
         let old = tx
             .query_row(
                 &format!("SELECT {COLUMNS} FROM tasks WHERE id=?1"),
@@ -371,7 +383,7 @@ impl TaskStore {
             )
             .optional()?
             .ok_or(TaskError::NotFound)?;
-        crate::removed::require_writable_task(&tx, &old.id)?;
+        crate::removed::require_writable_task(tx, &old.id)?;
         if old.revision != input.expected_revision {
             return Err(TaskError::RevisionConflict);
         }
@@ -379,7 +391,7 @@ impl TaskStore {
             return Err(TaskError::TaskUnchanged);
         }
         if let Some(ref id) = input.list_id {
-            require_active_list(&tx, id)?;
+            require_active_list(tx, id)?;
         }
         let now = current_millis()?;
         let updated = tx.query_row(
@@ -391,10 +403,9 @@ impl TaskStore {
             params![input.list_id, now, input.id, input.expected_revision],
             read_task,
         )?;
-        self.audit_applied(&tx, AuditAction::TaskMove, &updated.id, updated.revision)?;
-        tx.commit()?;
+        self.audit_applied(tx, AuditAction::TaskMove, &updated.id, updated.revision)?;
         let mut updated = updated;
-        hydrate_tags(&conn, std::slice::from_mut(&mut updated))?;
+        hydrate_tags(tx, std::slice::from_mut(&mut updated))?;
         Ok(updated)
     }
 

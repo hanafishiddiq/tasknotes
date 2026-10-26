@@ -4,7 +4,9 @@
 //! container leaves anything Removed on its own in Removed.
 
 use rusqlite::types::Value;
-use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params, params_from_iter};
+use rusqlite::{
+    Connection, OptionalExtension, Transaction, TransactionBehavior, params, params_from_iter,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::audit::AuditAction;
@@ -300,6 +302,19 @@ impl TaskStore {
     ) -> Result<Task, TaskError> {
         let mut conn = self.connect()?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let changed = self.set_task_removed_in(&tx, input, action)?;
+        tx.commit()?;
+        Ok(changed)
+    }
+
+    /// The change inside the caller's write transaction (also used by bulk
+    /// changes); the caller commits.
+    pub(crate) fn set_task_removed_in(
+        &self,
+        tx: &Transaction,
+        input: SetRemoved,
+        action: AuditAction,
+    ) -> Result<Task, TaskError> {
         let old = tx
             .query_row(
                 &format!("SELECT {COLUMNS} FROM tasks WHERE id = ?1"),
@@ -317,7 +332,7 @@ impl TaskStore {
         // While its List is in Removed the Task is hidden with it: restoring
         // would leave it hidden, and removing it would make it stay in Removed
         // when the List comes back. The List comes first either way.
-        if task_list_removed(&tx, &old)? {
+        if task_list_removed(tx, &old)? {
             return Err(TaskError::TaskListRemoved);
         }
         let now = current_millis()?;
@@ -335,9 +350,8 @@ impl TaskStore {
             ],
             read_task,
         )?;
-        crate::organization::hydrate_tags(&tx, std::slice::from_mut(&mut changed))?;
-        self.audit_applied(&tx, action, &changed.id, changed.revision)?;
-        tx.commit()?;
+        crate::organization::hydrate_tags(tx, std::slice::from_mut(&mut changed))?;
+        self.audit_applied(tx, action, &changed.id, changed.revision)?;
         Ok(changed)
     }
 
@@ -361,7 +375,20 @@ impl TaskStore {
     ) -> Result<Note, TaskError> {
         let mut conn = self.connect()?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        self.require_note_shown(&tx, &input.id)?;
+        let changed = self.set_note_removed_in(&tx, input, action)?;
+        tx.commit()?;
+        Ok(changed)
+    }
+
+    /// The change inside the caller's write transaction (also used by bulk
+    /// changes); the caller commits.
+    pub(crate) fn set_note_removed_in(
+        &self,
+        tx: &Transaction,
+        input: SetRemoved,
+        action: AuditAction,
+    ) -> Result<Note, TaskError> {
+        self.require_note_shown(tx, &input.id)?;
         let old = tx
             .query_row(
                 &format!("SELECT {} FROM notes WHERE id = ?1", crate::notes::COLUMNS),
@@ -378,7 +405,7 @@ impl TaskStore {
         }
         // Under a Removed folder the Note is hidden with it; the folder comes
         // first, whether restoring or removing the Note on its own.
-        note_folder_free(&tx, &old)?;
+        note_folder_free(tx, &old)?;
         let now = current_millis()?;
         let changed = tx.query_row(
             &format!(
@@ -393,8 +420,7 @@ impl TaskStore {
             ],
             read_note,
         )?;
-        self.audit_applied(&tx, action, &changed.id, changed.revision)?;
-        tx.commit()?;
+        self.audit_applied(tx, action, &changed.id, changed.revision)?;
         Ok(changed)
     }
 }

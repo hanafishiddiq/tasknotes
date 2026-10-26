@@ -118,6 +118,20 @@ pub enum TaskError {
     InvalidLinkCursor,
     #[error("Invalid Audit Entry page cursor")]
     InvalidAuditCursor,
+    #[error("Choose 1–100 distinct ids for a bulk change")]
+    InvalidBulkSelection,
+    /// One item of a bulk preview would be refused; `position` counts from 1.
+    #[error("Item {position}: {error}")]
+    BulkItemRefused {
+        position: usize,
+        error: Box<TaskError>,
+    },
+    #[error(
+        "Something in this preview changed since it was made; nothing was changed. Preview again"
+    )]
+    StalePreview,
+    #[error("This preview has expired; nothing was changed. Preview again")]
+    PreviewExpired,
     /// A refusal whose Audit Entry could not be written; see `audit_unrecorded`.
     #[error("{0}")]
     AuditUnrecorded(Box<TaskError>),
@@ -167,7 +181,8 @@ impl TaskError {
             | NoteTooLong
             | InvalidNoteFolderName
             | NoteFolderTooDeep
-            | NoteFolderCycle => "invalid_input",
+            | NoteFolderCycle
+            | InvalidBulkSelection => "invalid_input",
             InvalidCursor
             | InvalidHistoryCursor
             | InvalidRemovedCursor
@@ -189,6 +204,8 @@ impl TaskError {
             InvalidTransition(_) => "invalid_transition",
             TaskUnchanged | ListUnchanged | RemovedUnchanged | NoteFolderUnchanged => "unchanged",
             AuditUnrecorded(refusal) => refusal.code(),
+            BulkItemRefused { error, .. } => error.code(),
+            StalePreview | PreviewExpired => "stale_preview",
             NotAuthorized => "not_trusted",
             DesktopOnly => "desktop_only",
             UnsupportedSchema(_) => "unsupported_schema",
@@ -415,6 +432,15 @@ const HISTORY_CURSOR_PREFIX: &str = "h1|";
 pub struct TaskPage {
     pub items: Vec<Task>,
     pub next_cursor: Option<String>,
+}
+
+fn read_task_with_tags(conn: &Connection, id: &str) -> Result<Option<Task>, TaskError> {
+    let sql = format!("SELECT {COLUMNS} FROM tasks WHERE id = ?1");
+    let mut task = conn.query_row(&sql, params![id], read_task).optional()?;
+    if let Some(ref mut item) = task {
+        crate::organization::hydrate_tags(conn, std::slice::from_mut(item))?;
+    }
+    Ok(task)
 }
 
 pub(crate) fn current_millis() -> Result<i64, TaskError> {
@@ -717,13 +743,12 @@ impl TaskStore {
     }
 
     pub fn get_task(&self, id: &str) -> Result<Option<Task>, TaskError> {
-        let conn = self.connect()?;
-        let sql = format!("SELECT {COLUMNS} FROM tasks WHERE id = ?1");
-        let mut task = conn.query_row(&sql, params![id], read_task).optional()?;
-        if let Some(ref mut item) = task {
-            crate::organization::hydrate_tags(&conn, std::slice::from_mut(item))?;
-        }
-        Ok(task)
+        read_task_with_tags(&self.connect()?, id)
+    }
+
+    /// The Task inside the caller's transaction, or `NotFound`.
+    pub(crate) fn get_task_in(&self, conn: &Connection, id: &str) -> Result<Task, TaskError> {
+        read_task_with_tags(conn, id)?.ok_or(TaskError::NotFound)
     }
 
     pub fn update_task(&self, input: UpdateTask) -> Result<Task, TaskError> {
@@ -839,6 +864,21 @@ impl TaskStore {
 
         let mut conn = self.connect()?;
         let transaction = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let updated = self.apply_task_change_in(&transaction, action, input, next_step, note)?;
+        transaction.commit()?;
+        Ok(updated)
+    }
+
+    /// The change inside the caller's write transaction (also used by bulk
+    /// changes), after the checks that need no data; the caller commits.
+    pub(crate) fn apply_task_change_in(
+        &self,
+        transaction: &rusqlite::Transaction,
+        action: AuditAction,
+        input: ChangeTask,
+        next_step: Option<String>,
+        note: String,
+    ) -> Result<Task, TaskError> {
         let sql =
             format!("SELECT {COLUMNS}, previous_incomplete_progress FROM tasks WHERE id = ?1");
         let current = transaction
@@ -847,7 +887,7 @@ impl TaskStore {
             })
             .optional()?;
         let (before, mut previous_incomplete) = current.ok_or(TaskError::NotFound)?;
-        crate::removed::require_writable_task(&transaction, &before.id)?;
+        crate::removed::require_writable_task(transaction, &before.id)?;
         if before.revision != input.expected_revision {
             return Err(TaskError::RevisionConflict);
         }
@@ -954,10 +994,9 @@ impl TaskStore {
                 ],
             )?;
         }
-        self.audit_applied(&transaction, action, &updated.id, updated.revision)?;
-        transaction.commit()?;
+        self.audit_applied(transaction, action, &updated.id, updated.revision)?;
         let mut updated = updated;
-        crate::organization::hydrate_tags(&conn, std::slice::from_mut(&mut updated))?;
+        crate::organization::hydrate_tags(transaction, std::slice::from_mut(&mut updated))?;
         Ok(updated)
     }
 

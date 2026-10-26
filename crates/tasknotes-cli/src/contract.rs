@@ -56,7 +56,7 @@ impl CliError {
         match self.code {
             "invalid_input" | "invalid_cursor" => 2,
             "not_found" => 3,
-            "revision_conflict" => 4,
+            "revision_conflict" | "stale_preview" => 4,
             "removed" | "name_conflict" | "invalid_transition" | "unchanged" | "desktop_only" => 5,
             "not_trusted" => 6,
             "storage_unavailable" | "unsupported_schema" => 7,
