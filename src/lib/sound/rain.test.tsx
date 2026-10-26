@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { renderRain } from "./rain";
+import { renderRain, renderRainInSlices } from "./rain";
 
 const RATE = 16_000; // A low rate keeps the test fast; the shape does not depend on it.
 
@@ -51,5 +51,17 @@ describe("synthesized soft rain", () => {
     for (let i = 1; i < left.length; i += 1) diff += (left[i] - left[i - 1]) ** 2;
     const trebleRatio = Math.sqrt(diff / (left.length - 1)) / rms(left);
     expect(trebleRatio).toBeLessThan(0.9);
+  });
+});
+
+describe("rain rendered in slices", () => {
+  it("gives the same samples as the one-go render, pausing often so no single stretch is long", async () => {
+    let pauses = 0;
+    const sliced = await renderRainInSlices(RATE, 6, 7, async () => { pauses += 1; });
+    const whole = renderRain(RATE, 6, 7);
+    expect(sliced).toHaveLength(2);
+    sliced.forEach((channel, index) => expect(channel).toEqual(whole[index]));
+    // 6 s at 16 kHz is about 100,000 samples a channel: several slices each, not one stretch.
+    expect(pauses).toBeGreaterThan(8);
   });
 });

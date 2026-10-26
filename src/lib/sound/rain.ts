@@ -10,7 +10,8 @@
  *   pitches and loudness, placed by a seeded random process.
  * The tail is cross-faded into the head so the loop has no click, and the result
  * is scaled to a quiet, unclipped level. Everything runs once, before playback;
- * the audio thread then only replays the buffer.
+ * the audio thread then only replays the buffer. The render is written as steps,
+ * so the app can do it in short slices while idle instead of in one long stretch.
  */
 
 const BED_LOW_PASS_HZ = 1_600;
@@ -20,6 +21,8 @@ const SWELLS_PER_LOOP = 2;
 const CROSSFADE_SECONDS = 0.25;
 const TARGET_RMS = 0.16;
 const PEAK_LIMIT = 0.85;
+/** Samples rendered between pauses: about a millisecond of work each. */
+const SLICE_SAMPLES = 16_384;
 
 /** A small seeded generator, so the same seed always renders the same rain. */
 function random(seed: number): () => number {
@@ -39,7 +42,8 @@ function onePole(cutoffHz: number, sampleRate: number): number {
 
 interface Drop { phase: number; step: number; level: number; decay: number }
 
-function renderChannel(sampleRate: number, length: number, seed: number): Float32Array {
+/** Renders one channel, yielding after every slice of samples so a caller can pause. */
+function* channelSteps(sampleRate: number, length: number, seed: number): Generator<void, Float32Array<ArrayBuffer>> {
   const next = random(seed);
   const extra = Math.round(sampleRate * CROSSFADE_SECONDS);
   const raw = new Float32Array(length + extra);
@@ -50,6 +54,7 @@ function renderChannel(sampleRate: number, length: number, seed: number): Float3
   const drops: Drop[] = [];
 
   for (let i = 0; i < raw.length; i += 1) {
+    if (i > 0 && i % SLICE_SAMPLES === 0) yield;
     const white = next() * 2 - 1;
     b0 = 0.99765 * b0 + white * 0.099;
     b1 = 0.963 * b1 + white * 0.2965;
@@ -98,7 +103,28 @@ function renderChannel(sampleRate: number, length: number, seed: number): Float3
 }
 
 /** Renders a stereo loop of `seconds` of soft rain; channels differ so the rain feels wide. */
-export function renderRain(sampleRate: number, seconds: number, seed: number): Float32Array[] {
+export function renderRain(sampleRate: number, seconds: number, seed: number): Float32Array<ArrayBuffer>[] {
   const length = Math.round(sampleRate * seconds);
-  return [renderChannel(sampleRate, length, seed * 2), renderChannel(sampleRate, length, seed * 2 + 1)];
+  return [seed * 2, seed * 2 + 1].map((channelSeed) => {
+    const steps = channelSteps(sampleRate, length, channelSeed);
+    for (let step = steps.next(); ; step = steps.next()) if (step.done) return step.value;
+  });
+}
+
+const nextTurn = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+/** The same rain as `renderRain`, calling `pause` between slices so the page stays responsive. */
+export async function renderRainInSlices(
+  sampleRate: number, seconds: number, seed: number, pause: () => Promise<void> = nextTurn,
+): Promise<Float32Array<ArrayBuffer>[]> {
+  const length = Math.round(sampleRate * seconds);
+  const channels: Float32Array<ArrayBuffer>[] = [];
+  for (const channelSeed of [seed * 2, seed * 2 + 1]) {
+    const steps = channelSteps(sampleRate, length, channelSeed);
+    for (let step = steps.next(); ; step = steps.next()) {
+      if (step.done) { channels.push(step.value); break; }
+      await pause();
+    }
+  }
+  return channels;
 }
