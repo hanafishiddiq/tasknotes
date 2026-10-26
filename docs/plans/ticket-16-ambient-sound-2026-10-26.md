@@ -7,8 +7,8 @@ Scope: spec stories 45–47, the "Separate sound controls" and "Third-party ambi
 ## Shape
 
 - `src/lib/sound/rain.ts` — the soft rain, synthesized in code (see Provenance). Pure function, seeded, deterministic.
-- `src/lib/sound/sound-engine.ts` — the one deep module: `apply(settings)`, `setPresence(presence)`, `gesture()`, `play(cue)`, `fadeOut()`, `status()`, `dispose()`. It owns every Web Audio rule (fade-in from silence, autoplay wait, mute ramp, suspend when silent, lifecycle). It takes a `createContext` factory, so tests drive it with a fake AudioContext.
-- `src/lib/sound/sound-settings.ts` — defaults (interaction 12%, ambient 8%, both on) and persistence under `localStorage["tasknotes.sound"]`, the same per-window pattern Ticket 14 used for the theme (`tasknotes.theme`). Unreadable or missing values fall back per channel to the defaults.
+- `src/lib/sound/sound-engine.ts` — the one deep module: `apply(settings)`, `gesture()`, `play(cue)`, `fadeOut()`, `status()`, `dispose()`. It owns every Web Audio rule (fade-in from silence, autoplay wait, mute ramp, suspend when silent, lifecycle). It takes a `createContext` factory, so tests drive it with a fake AudioContext.
+- `src/lib/sound/sound-settings.ts` — defaults (interaction 12%, ambient 8%, both on) and persistence under `localStorage["tasknotes.sound"]`, the same per-window pattern Ticket 14 used for the theme (`tasknotes.theme`). Unreadable or missing values fall back per channel to the defaults. Why localStorage and not Ticket 15's Rust `shell-settings.json`: sound is only played and read by the page, so the page keeps it like the theme; shell settings exist because Rust must read them (the global shortcut, menu-bar mode) when no page is loaded.
 - `src/lib/sound/use-sound.ts` — React glue: one engine per window, gesture/visibility listeners, a quit fade via the existing `saveBeforeQuit` seam.
 - `src/components/SoundSettings.tsx` — its own Settings section. `SettingsView` only gained a `children` slot rendered after Appearance, so Ticket 15 can add its section the same way without touching this one.
 - `App.tsx` — three lines: `useSound()`, a cue after a Task is created, and a cue when the core's answer turns a Task Completed (status or 100% progress — the core decides, the UI does not repeat the rule).
@@ -16,9 +16,9 @@ Scope: spec stories 45–47, the "Separate sound controls" and "Third-party ambi
 ## Decisions made by the implementer (owner may revisit)
 
 - **saya pilih synthesis for both channels** karena it needs no bundled recording, so nothing has to pass a license review and nothing is downloaded; it works offline by construction.
-- **saya pilih a pre-rendered 12 s stereo loop played by one `AudioBufferSourceNode`** karena all filtering is baked in once, so the audio thread only replays a buffer (no per-frame JS, no ScriptProcessor, no live filter nodes). Cost: a one-time render of about 30 ms (Node) / 60–80 ms (browser) on the main thread when the rain first starts.
-- **Rain always fades in from silence over 2 s; mute and volume changes ramp over 80 ms; the quit fade is 300 ms.** No ramp is ever scheduled while autoplay is blocked, so the first audible moment after unblocking still starts at 0.
-- **Autoplay blocked → status "waiting-for-gesture"**: the engine keeps asking `resume()` on the next pointer-down or key-down (capture phase, so it works inside WebKit's gesture window). Settings then says "Sound starts after your first click or key press." Interaction cues requested while blocked are dropped, never queued.
+- **saya pilih a pre-rendered 12 s stereo loop played by one `AudioBufferSourceNode`** karena all filtering is baked in once, so the audio thread only replays a buffer (no per-frame JS, no ScriptProcessor, no live filter nodes). The loop is rendered in slices of about 1 ms (16,384 samples) with a pause between them, starting as soon as the rain is wanted and the audio context exists, which is before any click; the first click only starts the finished buffer. Cost: the same one-time 60–80 ms of work, spread over about 12 short slices (reviewed 2026-10-26: it used to run in one stretch on the first click). If the render is not finished when the context is allowed to run, the rain starts the moment it finishes. Muted ambient never renders it.
+- **Rain always fades in from silence over 2 s; mute and volume changes ramp over 80 ms on both channels (a cue that is playing when interaction is muted fades out instead of clicking); the quit fade is 300 ms.** No ramp is ever scheduled while autoplay is blocked, so the first audible moment after unblocking still starts at 0.
+- **Autoplay blocked → status "waiting-for-gesture"**: the engine keeps asking `resume()` on the next pointer-down or key-down (capture phase, so it works inside WebKit's gesture window). Settings then says "Sound starts after your first click or key press." Interaction cues requested while blocked are dropped, never queued. After the engine suspends the context itself (both channels muted), un-muting resumes it without showing that hint; the hint only shows if the resume does not actually start audio.
 - **Both channels muted (or at 0%) → the AudioContext is suspended** after the fade, so muted audio costs no audio-thread CPU.
 - **Web Audio missing or failing → status "unavailable"**; Settings says so and every control keeps working; Task actions are unaffected. Sound never gates any behavior, and Reduce Motion does not change sound (sound is not motion).
 - **Lifecycle (spec story 46):** minimized (page hidden) keeps the rain; quitting fades it out before the app answers the quit request. If a quit is held back (a Note could not save), the rain returns on the next click or key press.
@@ -27,10 +27,12 @@ Scope: spec stories 45–47, the "Separate sound controls" and "Third-party ambi
 
 ## Integration point for Ticket 15 (menu-bar mode)
 
-`useSound()` returns `setPresence(presence)` with `"open" | "minimized" | "menu-bar" | "quitting"`. Today the hook maps page visibility to `open` / `minimized`, and the quit fade goes through `saveBeforeQuit`. The policy (in `sound-engine.ts`) keeps the rain playing for `minimized` and `menu-bar` and silences it only for `quitting`. When Ticket 15 merges:
+There is no presence API. Only quitting changes sound, so the engine keeps one internal `quitting` flag: `fadeOut()` sets it, and the next `gesture()` clears it (a held-back quit). The hook no longer listens to page visibility: a minimized window, or one hidden to the menu bar, keeps the rain with no code at all. When Ticket 15 merges:
 
-- Hidden to the menu bar: the page is hidden, so it already behaves as `minimized` (rain continues). Call `sound.setPresence("menu-bar")` only if the owner wants a different policy there.
-- Close-to-quit: if closing the window quits, it already arrives as the quit request, so the 300 ms fade runs. If closing only hides the window, it behaves like minimized.
+- Hidden to the menu bar: nothing to call; the rain continues.
+- Close-to-quit: it already arrives as the quit request, so the 300 ms fade runs through `saveBeforeQuit`. If closing only hides the window, the rain continues.
+
+If the owner wants a different policy for the menu bar, add the smallest input then; nothing needs it today.
 
 ## Provenance of the ambient sound (owner decision 2026-10-25)
 
