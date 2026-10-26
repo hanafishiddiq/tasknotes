@@ -56,6 +56,8 @@ pub struct ShellView {
     keep_in_menu_bar: bool,
     /// The menu-bar item could not be created on this system.
     menu_bar_unavailable: bool,
+    /// The saved choice; the status says whether it is working.
+    quick_capture_enabled: bool,
     quick_capture: QuickCaptureStatus,
     /// The recorded shortcut, also while Quick Capture is off.
     remembered_label: Option<String>,
@@ -202,6 +204,7 @@ fn view<R: Runtime>(app: &AppHandle<R>, inner: &Inner) -> ShellView {
     ShellView {
         keep_in_menu_bar: inner.keep_in_menu_bar,
         menu_bar_unavailable: inner.keep_in_menu_bar && app.tray_by_id(TRAY_ID).is_none(),
+        quick_capture_enabled: inner.capture.setting().enabled,
         quick_capture: inner.capture.status().clone(),
         remembered_label,
         settings_unreadable: inner.unreadable,

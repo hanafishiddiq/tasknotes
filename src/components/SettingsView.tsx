@@ -1,6 +1,7 @@
 import { Monitor, Moon, Sun } from "lucide-react";
 import { APPEARANCES, APPEARANCE_LABELS, type ThemePreference } from "../lib/use-theme";
 import { SHORTCUTS } from "../lib/shortcuts";
+import MenuBarSettings from "./MenuBarSettings";
 
 const APPEARANCE_ICONS: Record<ThemePreference, typeof Sun> = { dark: Moon, light: Sun, system: Monitor };
 
@@ -33,6 +34,8 @@ export default function SettingsView({ hidden, preference, onPreference }: Setti
             })}
           </div>
           <p className="settings-hint">Match system follows the macOS appearance as it changes.</p>
+
+          <MenuBarSettings active={!hidden} />
 
           <h2 className="settings-heading">Keyboard</h2>
           <dl className="settings-shortcuts">

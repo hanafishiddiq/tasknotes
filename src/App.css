@@ -700,6 +700,27 @@ button.folder-disclosure:hover:not(:disabled) {
 .settings-shortcut dd {
   margin: 0;
 }
+/* Menu bar and Quick Capture (Ticket 15): the same quiet rows, a recorder button and plain-text fallbacks. */
+.settings-shortcut-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+  padding: 2px 10px 2px 34px;
+}
+.settings-shortcut-row .settings-hint {
+  margin: 0;
+  padding: 0;
+}
+.settings-hint--error {
+  color: var(--text-2);
+}
+.settings-hint--error p {
+  margin: 0 0 2px;
+}
+.settings-hint--error p:first-child {
+  color: var(--red);
+}
 kbd {
   font: inherit;
   font-size: 12px;

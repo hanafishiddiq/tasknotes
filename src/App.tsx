@@ -19,6 +19,7 @@ import { useTaskDrafts } from "./lib/use-task-drafts";
 import { useUndo } from "./lib/use-undo";
 import { errorMessage } from "./lib/error-message";
 import { listenForQuit } from "./lib/quit";
+import { listenForQuickCapture } from "./lib/shell-api";
 import {
   ALL_NOTES, noteApi, type Note, type NoteFolder, type NotePage, type NoteScope,
 } from "./lib/note-api";
@@ -682,6 +683,17 @@ export default function App() {
     settings: behindPalette(openSettings),
     undo: behindPalette(undo.run),
   });
+
+  // The global Quick Capture shortcut lands in the ordinary New task field, like ⌘N.
+  const quickCapture = useRef(() => {});
+  quickCapture.current = () => {
+    setPaletteOpen(false);
+    focusInTasks("capture");
+  };
+  useEffect(() => {
+    const stop = listenForQuickCapture(() => quickCapture.current());
+    return () => void stop.then((unlisten) => unlisten());
+  }, []);
 
   const commands = buildCommands({
     lists, undoTitle: undo.next?.title ?? null, appearance: appearance.preference,
