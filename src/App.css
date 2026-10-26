@@ -411,6 +411,10 @@ button.folder-disclosure:hover:not(:disabled) {
   color: var(--text);
   background: var(--hover);
 }
+.toolbar-sort:focus-within {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
 .toolbar-sort select {
   padding: 0;
   border: 0;
@@ -1271,6 +1275,10 @@ kbd {
   background: var(--field);
   color: var(--text);
 }
+.progress-note-input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
 .metadata-hint {
   margin: 8px 0 0;
   font-size: 12px;
@@ -1927,6 +1935,18 @@ kbd {
   }
   .progress-track span {
     transition: transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  /* An opening Task page fades in; nothing slides, so the list never shifts twice. */
+  .task-editor {
+    animation: page-in 120ms ease-out;
+  }
+  .task-check {
+    transition: background-color 120ms ease-out, border-color 120ms ease-out;
+  }
+}
+@keyframes page-in {
+  from {
+    opacity: 0;
   }
 }
 @media (prefers-reduced-motion: reduce) {
