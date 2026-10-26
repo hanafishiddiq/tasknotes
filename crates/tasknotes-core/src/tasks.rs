@@ -1,7 +1,10 @@
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use rusqlite::{Connection, OptionalExtension, Row, TransactionBehavior, params, types::Type};
+use rusqlite::{
+    Connection, OptionalExtension, Row, Transaction, TransactionBehavior, params, types::Type,
+};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
@@ -18,6 +21,9 @@ pub use crate::search::{TaskQuery, TaskScope};
 pub struct TaskStore {
     path: PathBuf,
     interface: Interface,
+    /// The Restore Epoch this store last saw (`backup` module). Shared by
+    /// clones, so a restore made through one clone keeps the others usable.
+    epoch: Arc<Mutex<String>>,
 }
 
 #[derive(Debug, Error)]
@@ -125,6 +131,22 @@ pub enum TaskError {
     NotAuthorized,
     #[error("Only the person, in the Tasknotes window, can change this")]
     DesktopOnly,
+    #[error(
+        "Tasknotes data was restored from a backup since this was opened; reload Tasknotes to continue"
+    )]
+    DatabaseRestored,
+    #[error("Backup not found")]
+    BackupNotFound,
+    #[error("This backup cannot be restored: {0}. Your current data was not changed")]
+    InvalidBackup(&'static str),
+    #[error("Another Tasknotes window or command kept writing; the restore was not applied. Try again")]
+    RestoreBusy,
+    #[error("Restore is only available in the Tasknotes window or the tasknotes command")]
+    RestoreNotAllowed,
+    #[error("Only the person, in the Tasknotes window, can include Notes marked Exclude from AI")]
+    PrivateExportDesktopOnly,
+    #[error("Something already exists at the export destination; choose a new name")]
+    ExportDestinationExists,
     #[error("Unsupported database schema version {0}; refusing to modify a newer database")]
     UnsupportedSchema(i64),
     #[error("Unable to open local storage: {0}")]
@@ -190,7 +212,12 @@ impl TaskError {
             TaskUnchanged | ListUnchanged | RemovedUnchanged | NoteFolderUnchanged => "unchanged",
             AuditUnrecorded(refusal) => refusal.code(),
             NotAuthorized => "not_trusted",
-            DesktopOnly => "desktop_only",
+            DesktopOnly | RestoreNotAllowed | PrivateExportDesktopOnly => "desktop_only",
+            DatabaseRestored => "database_restored",
+            BackupNotFound => "not_found",
+            InvalidBackup(_) => "invalid_backup",
+            ExportDestinationExists => "invalid_input",
+            RestoreBusy => "storage_unavailable",
             UnsupportedSchema(_) => "unsupported_schema",
             Io(_) | Sqlite(_) | Clock => "storage_unavailable",
         }
@@ -474,7 +501,7 @@ pub(crate) fn read_task(row: &Row<'_>) -> rusqlite::Result<Task> {
 pub(crate) const COLUMNS: &str = "id, title, description, status, priority, progress, revision, created_at, updated_at, next_step, list_id, due_date, removed_at";
 
 /// The database schema this core reads and writes.
-pub const SCHEMA_VERSION: i64 = 12;
+pub const SCHEMA_VERSION: i64 = 13;
 
 /// How long a write waits for another process (the CLI, MCP) holding the database lock.
 pub const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -633,9 +660,16 @@ impl TaskStore {
             crate::privacy::migrate_v12(&migration)?;
             migration.commit()?;
         }
+        if version < 13 {
+            let migration = connection.transaction()?;
+            crate::backup::migrate_v13(&migration)?;
+            migration.commit()?;
+        }
+        let epoch = crate::backup::read_epoch(&connection)?;
         Ok(Self {
             path: path.to_path_buf(),
             interface: Interface::Desktop,
+            epoch: Arc::new(Mutex::new(epoch)),
         })
     }
 
@@ -652,11 +686,54 @@ impl TaskStore {
         self.interface
     }
 
+    pub(crate) fn path(&self) -> &Path {
+        &self.path
+    }
+
+    /// A connection for one operation. Refuses with `DatabaseRestored` when
+    /// the data was restored from a backup after this store was opened.
     pub(crate) fn connect(&self) -> Result<Connection, TaskError> {
         let connection = Connection::open(&self.path)?;
         connection.busy_timeout(BUSY_TIMEOUT)?;
         connection.pragma_update(None, "foreign_keys", true)?;
+        self.require_current_epoch(&connection)?;
         Ok(connection)
+    }
+
+    /// Every write transaction starts here: it takes the write lock first
+    /// and then checks the Restore Epoch under that lock, so a restore can
+    /// never slip in between the check and the write.
+    pub(crate) fn begin_write<'c>(
+        &self,
+        conn: &'c mut Connection,
+    ) -> Result<Transaction<'c>, TaskError> {
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        self.require_current_epoch(&tx)?;
+        Ok(tx)
+    }
+
+    fn require_current_epoch(&self, conn: &Connection) -> Result<(), TaskError> {
+        let current = crate::backup::read_epoch(conn)?;
+        if current == *self.epoch() {
+            Ok(())
+        } else {
+            Err(TaskError::DatabaseRestored)
+        }
+    }
+
+    pub(crate) fn epoch(&self) -> std::sync::MutexGuard<'_, String> {
+        // The guarded value is a plain string, so a poisoned lock is still sound.
+        self.epoch.lock().unwrap_or_else(|poison| poison.into_inner())
+    }
+
+    /// Accept the data as it is now, after a restore made elsewhere. The
+    /// caller must drop everything it read before (the desktop reloads its
+    /// window), or stale revisions could be written over the restored data.
+    pub fn adopt_restored_data(&self) -> Result<(), TaskError> {
+        let connection = Connection::open(&self.path)?;
+        connection.busy_timeout(BUSY_TIMEOUT)?;
+        *self.epoch() = crate::backup::read_epoch(&connection)?;
+        Ok(())
     }
 
     pub fn create_task(&self, input: CreateTask) -> Result<Task, TaskError> {
@@ -672,7 +749,7 @@ impl TaskStore {
         let (title, description) = validated_text(&input.title, &input.description)?;
         let now = current_millis()?;
         let mut conn = self.connect()?;
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let tx = self.begin_write(&mut conn)?;
         if let Some(id) = list_id {
             crate::organization::require_active_list(&tx, id)?;
         }
@@ -736,7 +813,7 @@ impl TaskStore {
         let (title, description) = validated_text(&input.title, &input.description)?;
         let now = current_millis()?;
         let mut conn = self.connect()?;
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let tx = self.begin_write(&mut conn)?;
         crate::removed::require_writable_task(&tx, &input.id)?;
         let sql = format!(
             "UPDATE tasks SET title = ?1, description = ?2,
@@ -838,7 +915,7 @@ impl TaskStore {
         }
 
         let mut conn = self.connect()?;
-        let transaction = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let transaction = self.begin_write(&mut conn)?;
         let sql =
             format!("SELECT {COLUMNS}, previous_incomplete_progress FROM tasks WHERE id = ?1");
         let current = transaction

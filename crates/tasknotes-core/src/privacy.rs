@@ -18,7 +18,7 @@
 //! link to it, recorded while that Note was excluded, even after the Note is
 //! shared again. Entries carry `hidden_from_ai`, fixed when they are written.
 
-use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
+use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use serde::Deserialize;
 
 use crate::audit::{AuditAction, Interface};
@@ -155,7 +155,7 @@ impl TaskStore {
     /// is missing, and a shared one cannot be hidden or shown by an AI.
     pub fn set_note_exclude_from_ai(&self, input: SetNoteExcludeFromAi) -> Result<Note, TaskError> {
         let mut conn = self.connect()?;
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let tx = self.begin_write(&mut conn)?;
         self.require_note_shown(&tx, &input.id)?;
         if self.hides_private() {
             return Err(TaskError::DesktopOnly);
