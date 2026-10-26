@@ -120,6 +120,9 @@ fn world() -> World {
     }
 }
 
+/// A tool's arguments naming the given id.
+type Arguments = Box<dyn Fn(&str) -> Value>;
+
 /// The envelope with `id` written as `<ID>`, so two answers about different
 /// ids can be compared byte for byte.
 fn masked(envelope: &Value, id: &str) -> String {
@@ -130,7 +133,7 @@ fn masked(envelope: &Value, id: &str) -> String {
 fn every_tool_naming_an_excluded_note_answers_as_for_an_unused_id() {
     let mut w = world();
     let task = w.task.id.clone();
-    let calls: Vec<(&str, Box<dyn Fn(&str) -> Value>)> = vec![
+    let calls: Vec<(&str, Arguments)> = vec![
         ("note_get", Box::new(|id| json!({"id": id}))),
         (
             "note_update",
