@@ -14,7 +14,7 @@ fn malformed_commands_and_options_are_invalid_input() {
         vec![],
         vec!["task"],
         vec!["task", "explode"],
-        vec!["note", "list"],
+        vec!["note", "explode"],
         vec!["task", "create"],
         vec!["task", "create", "--title"],
         vec!["task", "create", "--title", "   "],
