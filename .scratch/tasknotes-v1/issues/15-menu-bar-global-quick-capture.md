@@ -6,20 +6,20 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** not started — requires an explicit phase-transition instruction.
+**Implementation:** implemented, awaiting independent review (branch `feat/ticket-15-menu-bar-quick-capture`; plan `docs/plans/ticket-15-menu-bar-quick-capture-2026-10-26.md`).
 
 ## Acceptance criteria
 
-- [ ] Closing the window quits by default when menu-bar persistence is not enabled.
-- [ ] Optional menu-bar mode keeps Tasknotes available without a window and allows reopening the main UI.
-- [ ] A configurable global shortcut opens Quick Capture from another app when permissions permit.
-- [ ] Shortcut conflicts and permission denial show a comprehensible fallback without disabling ordinary Task creation.
-- [ ] App quit/launch and persisted menu-bar settings behave consistently across restarts.
+- [x] Closing the window quits by default when menu-bar persistence is not enabled. *(`close_action` unit tests in `src-tauri/src/shell_settings.rs`; closing still goes through the save-before-quit path; native check: checklist 1)*
+- [x] Optional menu-bar mode keeps Tasknotes available without a window and allows reopening the main UI. *(tray item Open Tasknotes / New Task… / Quit Tasknotes, Dock click reopens; closing quits if the item could not be shown; React tests "Menu bar setting"; native: checklist 2–3, not yet run)*
+- [x] A configurable global shortcut opens Quick Capture from another app when permissions permit. *(off by default; recorded in Settings; `tauri-plugin-global-shortcut` 2.4.1; opens the window on the ordinary New task field; React test "Quick Capture from the global shortcut"; native: checklist 4, not yet run)*
+- [x] Shortcut conflicts and permission denial show a comprehensible fallback without disabling ordinary Task creation. *(Rust validation/registration tests with a fake shortcut table; React tests for refused, taken and launch-time failures, each naming ⌘N, and ⌘N still focusing an enabled New task field)*
+- [x] App quit/launch and persisted menu-bar settings behave consistently across restarts. *(`shell-settings.json` round trip, unreadable file and launch with a taken shortcut tests; native restart: checklist 5, not yet run)*
 
 ## Verification
 
 - [ ] Verify native macOS tray/shortcut behavior through manual and supported automated acceptance checks.
-- [ ] Relevant tests pass and evidence is recorded here.
+- [x] Relevant tests pass and evidence is recorded here. *(see Comments, 2026-10-26)*
 - [ ] Run `/code-review` and address findings before marking complete.
 
 ## Delivery guardrails
@@ -33,3 +33,28 @@
 ## Comments
 
 **2026-10-25 — owner decision (Han):** The global Quick Capture shortcut is **off by default**. The user turns it on and picks the key combination in Settings, so nothing conflicts with other apps until then.
+
+**2026-10-26 — implementer (Ticket 15), implemented, awaiting independent review.** Status unchanged.
+
+Evidence (implementer's own runs on the branch, integration tip 57d0ec6 unchanged): `cargo test` in `src-tauri` 24 passed (1 before; 23 new in `shell_settings.rs` and `quick_capture.rs`); `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check` and `cargo build` clean. `pnpm test` 18 files / 196 tests passed (186 before; 10 new in `src/menu-bar-quick-capture.test.tsx`); `pnpm typecheck` and `pnpm build` clean. No core crate or schema touched, so core tests were not re-run. No native launch was done.
+
+Decisions (details in the plan):
+- saya pilih `shell-settings.json` beside the database karena the shell needs the settings before the page loads and they are device window behaviour, not core data (no schema change, no clash with Ticket 11).
+- saya pilih `tray-icon` + `tauri-plugin-global-shortcut =2.4.1`, used from Rust only, karena that needs no new capability or JS permission.
+- saya pilih Quick Capture = the ordinary New task field (window shown and focused) karena one capture path means one rule set.
+- saya pilih the shortcut rules in Rust (two modifiers or a function key; known macOS shortcuts and media keys refused) karena the UI must not duplicate them; a refused or taken combination is never saved and a working one keeps working.
+- saya pilih closing quits whenever the menu-bar item could not be shown karena hiding the window then would strand the app.
+
+For owner review: Dock icon kept in menu-bar mode; full-colour tray icon instead of a template glyph; menu-bar item wording; whole window rather than a floating capture panel; Settings wording; the two-modifier rule; section placement.
+
+Open: native macOS checks below not run; `/code-review` not run yet.
+
+Native click-checklist for Han (synthetic data only: a debug build with `TASKNOTES_DEV_DATA_DIR` pointing at an empty folder, or an isolated QA bundle; never the real data folder):
+1. Fresh data folder, launch. Settings → "Menu bar and Quick Capture": both checkboxes off; hint "Closing the window quits Tasknotes." Close the window (red button): the app quits (no menu-bar item, gone from the Dock).
+2. Relaunch, tick "Keep Tasknotes in the menu bar": the Tasknotes icon appears in the menu bar at once. Close the window: it disappears, the app keeps running. Click the menu-bar icon → Open Tasknotes: the window comes back where it was, with any unsaved Note text intact. Close again and click the Dock icon: the window comes back.
+3. With the window hidden, menu-bar icon → Quit Tasknotes: it quits (an unsaved Note is saved first, as with ⌘Q). ⌘Q with the window open also quits.
+4. Tick "Open Quick Capture with a global shortcut", press ⌃⌥Space: the hint reads "Press ⌃⌥Space in any app to add a task." Switch to Safari, press ⌃⌥Space: Tasknotes comes forward with the New task field focused; type a title, Return: the Task appears in All tasks. Also try it with the window hidden in menu-bar mode, and New Task… from the menu-bar item.
+5. Quit and relaunch: both settings are still on, the menu-bar icon is there without opening Settings, and ⌃⌥Space works from another app straight away. Untick both, relaunch: no menu-bar icon, ⌃⌥Space does nothing, the hint says the combination is kept.
+6. Conflicts: record ⌘N → refused, with the two-modifier explanation and "⌘N still creates a task inside Tasknotes."; press Esc and check ⌘N still focuses New task. Record ⌘⇧4 → "macOS uses this for Screenshots". Record a combination another running app already holds globally (e.g. one set in Raycast/Alfred): "already used by another app or by macOS…", the previous shortcut keeps working. While recording, ⌘K/⌘F do nothing.
+7. Edit `shell-settings.json` in the test data folder to `{ broken`, relaunch: the app opens with defaults (closing quits); change a setting and the file is rewritten valid.
+

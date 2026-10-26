@@ -305,6 +305,8 @@ Apple Notes columns: the folder sidebar, a Note list, then the editor.
 ### Settings
 A page like Removed: the Headline "Settings", then Label Strong section names ("Appearance", "Keyboard") in secondary gray. Appearance is a radio group of 28px folder-style rows (Lucide icon, label) with the accent as the radio color; keyboard focus outlines the whole row. Keyboard lists each shortcut as a hairline-separated row, label left and the keys right in secondary gray. Settings is a quiet folder at the bottom of the sidebar, above the appearance toggle.
 
+"Menu bar and Quick Capture" (between Appearance and Keyboard) uses the same 28px rows with checkboxes: "Keep Tasknotes in the menu bar" and "Open Quick Capture with a global shortcut", each followed by a tertiary hint saying what happens now. Recording a shortcut is a small "Press the new shortcut" button indented under its row; the chosen combination shows as `kbd` beside "Change shortcut". A refused or taken combination is plain text: the reason in red, then secondary gray lines naming what still works ("⌘N still creates a task inside Tasknotes."). No banners or dialogs.
+
 ### Command Palette (⌘K)
 A 560px sheet on the sidebar gray, 72px from the top of the window, with a 1px hairline edge and 8px radius; no shadow and no dimmed backdrop. A search field (accent underline when focused) over 28px command rows: label left, its group ("Go to", "Actions") right in tertiary gray. The highlighted row takes the selected-row color. Free text adds a last row, "Search for "text"".
 
