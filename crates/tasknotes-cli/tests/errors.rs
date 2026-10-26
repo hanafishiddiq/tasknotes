@@ -82,12 +82,14 @@ fn a_forged_or_foreign_cursor_is_refused() {
     }
     let page = cli.ok(&["task", "list", "--limit", "1"]);
     let cursor = page["next_cursor"].as_str().unwrap();
+    let first = page["items"][0]["id"].as_str().unwrap().to_owned();
     for args in [
         vec!["task", "list", "--cursor", "not-a-cursor"],
         // A cursor belongs to the query that produced it.
         vec!["task", "list", "--text", "errand", "--cursor", cursor],
         vec!["list", "list", "--cursor", "v2|x|y|active"],
         vec!["audit", "list", "--cursor", "a1|-4"],
+        vec!["task", "history", &first, "--cursor", "h1|x"],
     ] {
         assert_eq!(error_code(&cli.run(&args), 2), "invalid_cursor", "{args:?}");
     }

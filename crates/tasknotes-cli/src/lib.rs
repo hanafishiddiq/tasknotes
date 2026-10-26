@@ -253,10 +253,9 @@ fn task_command(store: &TaskStore, verb: &str, words: &[String]) -> Result<Value
                 .map(|raw| {
                     raw.strip_prefix("h1|")
                         .and_then(|n| n.parse::<i64>().ok())
-                        .ok_or_else(|| TaskError::InvalidHistoryCursor.into())
+                        .ok_or(TaskError::InvalidHistoryCursor)
                 })
-                .transpose()
-                .map_err(|e: CliError| e)?;
+                .transpose()?;
             let page = store.list_progress_entries(p.id(), p.limit()?, before)?;
             Ok(contract::success_page(
                 page.items.iter().map(contract::progress_entry).collect(),
