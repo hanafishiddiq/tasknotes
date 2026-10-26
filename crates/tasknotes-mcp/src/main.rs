@@ -9,6 +9,8 @@
 mod server;
 mod tools;
 mod tools_bulk;
+mod tools_note;
+mod tools_task;
 
 use std::process::ExitCode;
 

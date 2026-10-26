@@ -596,6 +596,7 @@ dependencies = [
 name = "tasknotes-cli"
 version = "0.1.0"
 dependencies = [
+ "schemars",
  "serde",
  "serde_json",
  "tasknotes-core",
@@ -626,7 +627,6 @@ dependencies = [
  "tasknotes-core",
  "tempfile",
  "tokio",
- "uuid",
 ]
 
 [[package]]

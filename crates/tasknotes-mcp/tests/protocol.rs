@@ -38,8 +38,58 @@ fn a_trusted_client_completes_the_handshake_and_lists_the_tools() {
             "{expected} missing from {names:?}"
         );
     }
+    // The whole set, so a tool added or lost shows up here (and in the docs).
+    let mut all = names.clone();
+    all.sort_unstable();
+    assert_eq!(
+        all,
+        [
+            "audit_list",
+            "bulk_preview",
+            "bulk_status",
+            "folder_create",
+            "folder_get",
+            "folder_list",
+            "folder_move",
+            "folder_remove",
+            "folder_rename",
+            "folder_restore",
+            "link_create",
+            "link_get",
+            "link_remove",
+            "link_restore",
+            "list_create",
+            "list_list",
+            "list_remove",
+            "list_rename",
+            "list_restore",
+            "note_create",
+            "note_get",
+            "note_list",
+            "note_move",
+            "note_remove",
+            "note_restore",
+            "note_tasks",
+            "note_update",
+            "removed_list",
+            "task_change",
+            "task_create",
+            "task_details",
+            "task_get",
+            "task_history",
+            "task_list",
+            "task_move",
+            "task_notes",
+            "task_progress",
+            "task_remove",
+            "task_restore",
+            "task_update",
+        ]
+    );
+    assert_eq!(tools.len(), 40);
     for tool in &tools {
         assert_eq!(tool["inputSchema"]["type"], "object", "{tool}");
+        assert!(tool["inputSchema"].get("oneOf").is_none(), "{tool}");
         assert!(tool["description"].as_str().unwrap().len() > 10, "{tool}");
     }
     assert_eq!(server.close(), Some(0));

@@ -1,209 +1,166 @@
-//! Bulk changes: `bulk_preview` asks the core for a preview and keeps its
-//! plan behind a random, single-use token for this session; `bulk_confirm`
-//! hands the plan back to the core, which applies it all or nothing or
-//! refuses it as stale. The selection limits, the stale-preview guard and
-//! the expiry are the core's (`tasknotes_core::bulk`).
+//! Bulk Changes over MCP: `bulk_preview` asks for one and `bulk_status`
+//! reads its outcome. Both are the CLI's flow (`tasknotes_cli::bulk`) over
+//! the core; there is no tool that approves. The person approves or
+//! declines in the Tasknotes app (owner decision A).
 
-use std::sync::Mutex;
+use std::borrow::Cow;
 
-use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
+use schemars::{JsonSchema, Schema, SchemaGenerator};
 use serde::Deserialize;
-use serde_json::{Value, json};
-use tasknotes_cli::contract::{self, CliError};
-use tasknotes_core::bulk::{BulkAction, BulkItem, BulkPlan};
-use tasknotes_core::notes::Note;
-use tasknotes_core::tasks::{TaskStore, WorkStatus};
+use serde_json::{Map, Value, json};
+use tasknotes_cli::bulk::{self, BulkArgs};
 
-use crate::tools::{Context, ToolDef, item, names_schema, task, tool_def};
+use crate::tools::{Context, Id, LIST_OR_INBOX, ToolDef, tool_def};
 
-/// How many unconfirmed previews one session keeps; the oldest goes first.
-const KEPT_PREVIEWS: usize = 16;
+/// `BulkArgs` with a flat object schema: one `action` enum and the union of
+/// every action's fields. Clients (and the MCP specification) want an
+/// object at the root, and several reject a root `oneOf`; the per-action
+/// rules are still enforced when the arguments are read.
+#[derive(Deserialize)]
+#[serde(transparent)]
+struct PreviewArgs(BulkArgs);
 
-/// This session's unconfirmed previews, by token.
-#[derive(Default)]
-pub struct Previews {
-    plans: Mutex<Vec<(String, BulkPlan)>>,
+impl JsonSchema for PreviewArgs {
+    fn schema_name() -> Cow<'static, str> {
+        "BulkPreviewArgs".into()
+    }
+
+    fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+        flatten(BulkArgs::json_schema(generator))
+    }
 }
 
-impl Previews {
-    fn keep(&self, plan: BulkPlan) -> String {
-        let token = uuid::Uuid::new_v4().simple().to_string();
-        let mut plans = self.plans.lock().unwrap_or_else(|e| e.into_inner());
-        if plans.len() >= KEPT_PREVIEWS {
-            plans.remove(0);
+/// Merge a serde-tagged enum's `oneOf` branches into one object schema.
+fn flatten(tagged: Schema) -> Schema {
+    let branches = tagged
+        .get("oneOf")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let mut actions = Vec::new();
+    let mut properties = Map::new();
+    let mut required: Option<Vec<Value>> = None;
+    for branch in &branches {
+        let Some(fields) = branch.get("properties").and_then(Value::as_object) else {
+            continue;
+        };
+        for (name, schema) in fields {
+            if name == "action" {
+                actions.extend(schema.get("const").cloned());
+                if let Some(names) = schema.get("enum").and_then(Value::as_array) {
+                    actions.extend(names.iter().cloned());
+                }
+                continue;
+            }
+            properties
+                .entry(name.clone())
+                .or_insert_with(|| schema.clone());
         }
-        plans.push((token.clone(), plan));
-        token
+        let here: Vec<Value> = branch
+            .get("required")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        required = Some(match required {
+            None => here,
+            Some(all) => all.into_iter().filter(|name| here.contains(name)).collect(),
+        });
     }
-
-    /// The plan for `token`, which is spent whatever happens next.
-    fn take(&self, token: &str) -> Option<BulkPlan> {
-        let mut plans = self.plans.lock().unwrap_or_else(|e| e.into_inner());
-        let index = plans.iter().position(|(t, _)| t == token)?;
-        Some(plans.remove(index).1)
+    properties.insert(
+        "action".into(),
+        json!({"type": "string", "enum": actions, "description": "What to do to every id."}),
+    );
+    if let Some(ids) = properties.get_mut("ids") {
+        ids["description"] = json!(
+            "1–100 distinct Task ids, Note ids for the *_notes actions, \
+             or exactly one List or Note Folder id for remove_list / remove_folder."
+        );
     }
-}
-
-const ACTIONS: [&str; 6] = [
-    "remove_tasks",
-    "restore_tasks",
-    "move_tasks",
-    "set_task_status",
-    "remove_notes",
-    "restore_notes",
-];
-
-fn action_schema(_: &mut SchemaGenerator) -> Schema {
-    json_schema!({"type": "string", "enum": ACTIONS})
-}
-
-fn status_schema(_: &mut SchemaGenerator) -> Schema {
-    names_schema(&WorkStatus::ALL)
-}
-
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-struct PreviewArgs {
-    /// What to do to every item.
-    #[schemars(schema_with = "action_schema")]
-    action: String,
-    /// 1–100 distinct Task ids (Note ids for the *_notes actions).
-    ids: Vec<String>,
-    /// move_tasks: the active List to move to; give this or inbox.
-    #[serde(default)]
-    list_id: Option<String>,
-    /// move_tasks: move to Inbox instead.
-    #[serde(default)]
-    inbox: bool,
-    /// set_task_status: the status to set.
-    #[serde(default)]
-    #[schemars(schema_with = "status_schema")]
-    status: Option<WorkStatus>,
-}
-
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-struct ConfirmArgs {
-    /// The token from bulk_preview.
-    token: String,
+    let mut schema = json!({
+        "type": "object",
+        "properties": properties,
+        "required": required.unwrap_or_default(),
+        "additionalProperties": false,
+    });
+    if let Some(defs) = tagged.get("$defs") {
+        schema["$defs"] = defs.clone();
+    }
+    Schema::try_from(schema).unwrap_or_default()
 }
 
 pub fn tools() -> Vec<ToolDef> {
     vec![
         tool_def(
             "bulk_preview",
-            false,
-            "Preview a change to several Tasks or Notes at once (remove, restore, move, \
-             set status). Changes nothing: returns each item before and after and a token. \
-             Show the preview to the person, then call bulk_confirm with the token \
-             within 10 minutes. Single items have their own tools.",
-            preview,
+            true,
+            "Ask to change several Tasks or Notes at once (remove, restore, move, set status), \
+             or to remove a List or Note Folder that holds anything. Nothing changes yet: \
+             returns a pending request (and, except for a List or folder, each item before \
+             and after). The person approves or declines it in the Tasknotes app; you cannot. \
+             Check the outcome with bulk_status. Single items have their own tools.",
+            |c: &Context, a: PreviewArgs| bulk::preview(c.store, a.0, LIST_OR_INBOX),
         ),
         tool_def(
-            "bulk_confirm",
-            true,
-            "Apply a bulk_preview, all or nothing. Refused as stale_preview if anything \
-             in it changed since, if it expired, or if the token was already used; \
-             then preview again.",
-            confirm,
+            "bulk_status",
+            false,
+            "The status of a bulk_preview request: pending (waiting for the person in the \
+             Tasknotes app), applied, declined, stale (something changed first; nothing was \
+             changed) or expired (nobody decided within a day).",
+            |c: &Context, a: Id| bulk::status(c.store, &a.id),
         ),
     ]
 }
 
-fn bulk_action(a: &PreviewArgs) -> Result<BulkAction, CliError> {
-    let wrong = |what: &str| Err(CliError::invalid(what.to_owned()));
-    let targets = a.list_id.is_some() || a.inbox;
-    if a.action != "move_tasks" && targets {
-        return wrong("list_id and inbox are only for move_tasks");
-    }
-    if a.action != "set_task_status" && a.status.is_some() {
-        return wrong("status is only for set_task_status");
-    }
-    Ok(match a.action.as_str() {
-        "remove_tasks" => BulkAction::RemoveTasks,
-        "restore_tasks" => BulkAction::RestoreTasks,
-        "move_tasks" if a.list_id.is_some() != a.inbox => BulkAction::MoveTasks {
-            list_id: a.list_id.clone(),
-        },
-        "move_tasks" => return wrong("move_tasks needs exactly one of list_id or inbox: true"),
-        "set_task_status" => match a.status {
-            Some(status) => BulkAction::SetTaskStatus { status },
-            None => return wrong("set_task_status needs a status"),
-        },
-        "remove_notes" => BulkAction::RemoveNotes,
-        "restore_notes" => BulkAction::RestoreNotes,
-        other => {
-            return Err(CliError::invalid(format!(
-                "Unknown bulk action {other:?}; use one of: {}",
-                ACTIONS.join(", ")
-            )));
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tasknotes_cli::contract::CliError;
+
+    #[test]
+    fn the_preview_schema_is_one_flat_object_naming_every_action() {
+        let schema = schemars::schema_for!(PreviewArgs);
+        let value = serde_json::to_value(&schema).unwrap();
+        assert_eq!(value["type"], "object", "{value}");
+        assert!(value.get("oneOf").is_none());
+        assert_eq!(value["additionalProperties"], false);
+        let actions: Vec<&str> = value["properties"]["action"]["enum"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|a| a.as_str().unwrap())
+            .collect();
+        assert_eq!(
+            actions,
+            [
+                "remove_tasks",
+                "restore_tasks",
+                "move_tasks",
+                "set_task_status",
+                "remove_notes",
+                "restore_notes",
+                "remove_list",
+                "remove_folder"
+            ]
+        );
+        // Each name is one the core reads.
+        for action in actions {
+            let args: Result<BulkArgs, CliError> = serde_json::from_value::<BulkArgs>(
+                json!({"action": action, "ids": ["x"], "status": "completed"}),
+            )
+            .or_else(|_| serde_json::from_value(json!({"action": action, "ids": ["x"]})))
+            .map_err(|e| CliError::invalid(e.to_string()));
+            assert!(args.is_ok(), "{action}: {args:?}");
         }
-    })
-}
-
-fn action_name(action: &BulkAction) -> &'static str {
-    match action {
-        BulkAction::RemoveTasks => "remove_tasks",
-        BulkAction::RestoreTasks => "restore_tasks",
-        BulkAction::MoveTasks { .. } => "move_tasks",
-        BulkAction::SetTaskStatus { .. } => "set_task_status",
-        BulkAction::RemoveNotes => "remove_notes",
-        BulkAction::RestoreNotes => "restore_notes",
+        let mut required: Vec<&str> = value["required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|a| a.as_str().unwrap())
+            .collect();
+        required.sort();
+        assert_eq!(required, ["action", "ids"]);
+        for field in ["list_id", "inbox", "status"] {
+            assert!(value["properties"].get(field).is_some(), "{field}");
+        }
     }
-}
-
-fn preview(c: &Context, a: PreviewArgs) -> Result<Value, CliError> {
-    let action = bulk_action(&a)?;
-    let preview = c.store.preview_bulk(action, a.ids)?;
-    let items = changes(c.store, &preview.items)?;
-    let plan = preview.plan;
-    item(json!({
-        "action": action_name(plan.action()),
-        "count": plan.len(),
-        "expires_at": plan.expires_at(),
-        "items": items,
-        "token": c.previews.keep(plan),
-    }))
-}
-
-fn confirm(c: &Context, a: ConfirmArgs) -> Result<Value, CliError> {
-    let plan = c.previews.take(&a.token).ok_or_else(|| {
-        CliError::new(
-            "stale_preview",
-            "This preview is unknown, already used or from another session; \
-             nothing was changed. Preview again",
-        )
-    })?;
-    let applied = c.store.apply_bulk(&plan)?;
-    item(json!({
-        "action": action_name(plan.action()),
-        "count": applied.len(),
-        "items": changes(c.store, &applied)?,
-    }))
-}
-
-fn changes(store: &TaskStore, items: &[BulkItem]) -> Result<Vec<Value>, CliError> {
-    items
-        .iter()
-        .map(|change| {
-            Ok(match change {
-                BulkItem::Task { before, after } => {
-                    json!({"before": task(before.clone()), "after": task(after.clone())})
-                }
-                BulkItem::Note { before, after } => {
-                    json!({"before": brief(store, before)?, "after": brief(store, after)?})
-                }
-            })
-        })
-        .collect()
-}
-
-/// A Note in a preview: everything but its text, so a preview of 100 Notes
-/// stays small.
-fn brief(store: &TaskStore, note: &Note) -> Result<Value, CliError> {
-    let mut value = contract::note_read(store, note)?;
-    if let Some(fields) = value.as_object_mut() {
-        fields.remove("markdown");
-    }
-    Ok(value)
 }

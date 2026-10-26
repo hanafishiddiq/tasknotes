@@ -48,6 +48,30 @@ fn malformed_lines_and_unknown_methods_do_not_stop_the_server() {
 }
 
 #[test]
+fn a_line_that_is_not_json_gets_no_reply_and_the_next_request_is_answered() {
+    let data = Data::trusted();
+    let mut s = data.server();
+    // rmcp, like the other official MCP SDKs, skips a line it cannot parse
+    // as JSON: deterministically no reply at all (not even an id-less
+    // error), and the server keeps serving.
+    for line in [
+        "this is not json",
+        "{\"jsonrpc\": \"2.0\", \"id\": 7, ",
+        "\u{1}\u{2}",
+    ] {
+        s.send_line(line);
+    }
+    assert!(
+        s.silent_for(std::time::Duration::from_millis(500)),
+        "no reply to unparsable lines"
+    );
+    let tools = s.request("tools/list", json!({}));
+    assert!(tools["result"]["tools"].is_array(), "{tools}");
+    s.ok("task_list", json!({}));
+    assert!(s.stderr().is_empty(), "stderr: {}", s.stderr());
+}
+
+#[test]
 fn bad_arguments_are_invalid_input_and_change_nothing() {
     let data = Data::trusted();
     let mut s = data.server();

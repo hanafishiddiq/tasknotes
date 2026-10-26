@@ -18,30 +18,33 @@ use tasknotes_core::ai_access;
 use tasknotes_core::audit::Interface;
 use tasknotes_core::tasks::TaskError;
 
-use crate::tools::{Context, Previews, ToolDef};
+use crate::tools::{Context, ToolDef};
 
 const INSTRUCTIONS: &str = "Tasknotes: the person's local Tasks, Lists and Notes. \
 Every tool answers with one JSON envelope {schema_version, ok, item | items + next_cursor | error}. \
 Changes name the revision you last read; a revision_conflict means someone else changed it, \
 so read again before retrying. Removed is reversible: nothing is ever deleted. \
-Changing several items at once goes through bulk_preview, then bulk_confirm with its token.";
+Changing several items at once, or removing a List or Note Folder that holds anything, goes through \
+bulk_preview: it waits for the person to approve it in the Tasknotes app (you cannot approve it); \
+read its outcome with bulk_status.";
 
 pub struct Tasknotes {
     data_dir: PathBuf,
-    /// Tool calls run one at a time. A client may send several at once, and
-    /// the first one may create and migrate the database.
-    serial: Mutex<()>,
+    /// Opening the store runs one at a time: a client may send several calls
+    /// at once, and the first may create and migrate the database, which
+    /// another connection opening in the same moment would find locked.
+    /// Once open, each call has its own connection and waits out SQLite's
+    /// busy timeout like any other writer (the CLI, the desktop).
+    opening: Mutex<()>,
     tools: Vec<ToolDef>,
-    previews: Previews,
 }
 
 impl Tasknotes {
     pub fn new(data_dir: PathBuf) -> Self {
         Self {
             data_dir,
-            serial: Mutex::new(()),
+            opening: Mutex::new(()),
             tools: crate::tools::all(),
-            previews: Previews::default(),
         }
     }
 
@@ -64,19 +67,15 @@ impl Tasknotes {
         let arguments = Value::Object(arguments.unwrap_or_default());
         // The core checks authorization again and refuses before the
         // database is opened, created or migrated.
-        let store = ai_access::open_authorized(&self.data_dir, Interface::Mcp).map_err(
-            |error| match error {
-                TaskError::NotAuthorized => not_trusted(),
-                error => CliError::from(error),
-            },
-        )?;
-        tool.call(
-            &Context {
-                store: &store,
-                previews: &self.previews,
-            },
-            arguments,
-        )
+        let store = {
+            let _one_at_a_time = self.opening.lock().unwrap_or_else(|e| e.into_inner());
+            ai_access::open_authorized(&self.data_dir, Interface::Mcp)
+        }
+        .map_err(|error| match error {
+            TaskError::NotAuthorized => not_trusted(),
+            error => CliError::from(error),
+        })?;
+        tool.call(&Context { store: &store }, arguments)
     }
 }
 
@@ -117,10 +116,7 @@ impl ServerHandler for Tasknotes {
             ));
         };
         // The core is synchronous SQLite; keep it off the async workers.
-        let envelope = tokio::task::block_in_place(|| {
-            let _one_at_a_time = self.serial.lock().unwrap_or_else(|e| e.into_inner());
-            self.run(tool, request.arguments)
-        });
+        let envelope = tokio::task::block_in_place(|| self.run(tool, request.arguments));
         let result = if envelope["ok"] == Value::Bool(true) {
             CallToolResult::structured(envelope)
         } else {
