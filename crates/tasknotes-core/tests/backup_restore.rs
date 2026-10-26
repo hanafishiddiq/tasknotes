@@ -644,3 +644,32 @@ fn backups_are_private_to_the_persons_account() {
         0o600
     );
 }
+
+/// The Restore Epoch protects a write only when it is checked under the
+/// write lock, which `begin_write` does. A write transaction opened any
+/// other way would skip it, so the core's sources may open one only there.
+#[test]
+fn every_write_transaction_checks_the_restore_epoch() {
+    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut opened = Vec::new();
+    for entry in std::fs::read_dir(src).unwrap() {
+        let path = entry.unwrap().path();
+        let text = std::fs::read_to_string(&path).unwrap();
+        for (line, code) in text.lines().enumerate() {
+            if code.contains("transaction_with_behavior") || code.contains("unchecked_transaction")
+            {
+                opened.push(format!(
+                    "{}:{}",
+                    path.file_name().unwrap().to_string_lossy(),
+                    line + 1
+                ));
+            }
+        }
+    }
+    assert_eq!(
+        opened.len(),
+        1,
+        "only begin_write opens a write transaction: {opened:?}"
+    );
+    assert!(opened[0].starts_with("tasks.rs:"), "{opened:?}");
+}
