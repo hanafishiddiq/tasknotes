@@ -3,6 +3,7 @@ import { Monitor, Moon, Sun } from "lucide-react";
 import { APPEARANCES, APPEARANCE_LABELS, type ThemePreference } from "../lib/use-theme";
 import { SHORTCUTS } from "../lib/shortcuts";
 import MenuBarSettings from "./MenuBarSettings";
+import DataSettings from "./DataSettings";
 
 const APPEARANCE_ICONS: Record<ThemePreference, typeof Sun> = { dark: Moon, light: Sun, system: Monitor };
 
@@ -41,6 +42,8 @@ export default function SettingsView({ hidden, preference, onPreference, childre
           {children}
 
           <MenuBarSettings active={!hidden} />
+
+          <DataSettings active={!hidden} onRestored={() => window.location.reload()} />
 
           <h2 className="settings-heading">Keyboard</h2>
           <dl className="settings-shortcuts">

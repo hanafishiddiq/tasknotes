@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./invoke";
 import type { Task, TaskList } from "./task-api";
 import type { Note, NoteFolder } from "./note-api";
 

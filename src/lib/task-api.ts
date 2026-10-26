@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./invoke";
 
 export type WorkStatus = "ready" | "in_progress" | "completed";
 export type Priority = "very_low" | "low" | "medium" | "high" | "very_high";

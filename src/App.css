@@ -765,6 +765,29 @@ button.folder-disclosure:hover:not(:disabled) {
   margin: 0;
   padding: 0;
 }
+/* Backups and export: one hairline row per backup, date left, Restore right */
+.settings-backups {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.settings-backup {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--sep);
+  color: var(--text);
+}
+.settings-backup-kind {
+  font-size: 12px;
+  color: var(--text-2);
+}
+.settings-confirm {
+  margin-top: 6px;
+}
 .settings-hint--error {
   color: var(--text-2);
 }

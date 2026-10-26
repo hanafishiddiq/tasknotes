@@ -554,6 +554,16 @@ fn priority_label(priority: Priority) -> &'static str {
     }
 }
 
+/// A file or directory name for an export made at `now_ms`, such as
+/// `Tasknotes export 2026-10-26 09.15.json` (UTC; no `:` for Finder).
+pub fn suggested_name(format: ExportFormat, now_ms: i64) -> String {
+    let stamp = iso_time(now_ms).replace(':', ".");
+    match format {
+        ExportFormat::Json => format!("Tasknotes export {stamp}.json"),
+        ExportFormat::Markdown => format!("Tasknotes export {stamp}"),
+    }
+}
+
 /// `2026-10-26 09:15` for Unix milliseconds, UTC.
 fn iso_time(ms: i64) -> String {
     let (year, month, day) = crate::backup::civil_from_days(ms.div_euclid(86_400_000));
@@ -624,6 +634,19 @@ mod tests {
         assert_eq!(names.file(dir, "Plan"), dir.join("Plan.md"));
         assert_eq!(names.file(dir, "plan"), dir.join("plan (2).md"));
         assert_eq!(names.file(dir, "Plan"), dir.join("Plan (3).md"));
+    }
+
+    #[test]
+    fn exports_get_a_dated_name() {
+        let now = 1_793_006_795_568;
+        assert_eq!(
+            suggested_name(ExportFormat::Json, now),
+            "Tasknotes export 2026-10-26 09.26.json"
+        );
+        assert_eq!(
+            suggested_name(ExportFormat::Markdown, now),
+            "Tasknotes export 2026-10-26 09.26"
+        );
     }
 
     #[test]

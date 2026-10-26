@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./invoke";
 import type { WorkStatus } from "./task-api";
 
 /** A reversible Task–Note association; unlinking keeps the row, so Undo restores the same link. */

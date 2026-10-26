@@ -14,6 +14,7 @@ use tasknotes_core::tasks::{
 };
 use tauri::{Manager, State};
 
+mod data;
 #[cfg(desktop)]
 mod platform;
 #[cfg(desktop)]
@@ -348,6 +349,7 @@ pub fn run() {
                 .map(std::path::PathBuf::from)
                 .unwrap_or(app_data_dir);
             let store = TaskStore::open(&app_data_dir.join("tasknotes.db"))?;
+            data::start_daily_backups(store.clone());
             app.manage(store);
             #[cfg(desktop)]
             shell::start(app.handle(), app_data_dir);
@@ -386,6 +388,11 @@ pub fn run() {
             set_note_removed,
             set_note_folder_removed,
             list_removed,
+            data::list_backups,
+            data::create_backup,
+            data::restore_backup,
+            data::adopt_restored_data,
+            data::export_data,
             quit::quit_ready,
             #[cfg(desktop)]
             shell::get_shell_settings,
