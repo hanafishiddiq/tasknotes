@@ -840,3 +840,34 @@ fn an_item_hidden_by_a_removed_container_cannot_be_removed_on_its_own() {
             .removed
     );
 }
+
+#[test]
+fn restoring_a_folder_brings_its_note_back_into_a_tasks_linked_notes() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("k.db"));
+    let launch = task(&store, "Plan product launch");
+    let work = folder(&store, "Work", None);
+    let meetings = folder(&store, "Meetings", Some(&work));
+    let minutes = note_at(&store, "# Launch minutes", &meetings);
+    store.link_note(&launch.id, &minutes.id).unwrap();
+    let linked = |store: &TaskStore| -> Vec<String> {
+        store
+            .list_task_notes(&launch.id, 50, None)
+            .unwrap()
+            .items
+            .into_iter()
+            .map(|n| n.title)
+            .collect()
+    };
+    assert_eq!(linked(&store), vec!["Launch minutes"]);
+
+    let work = store
+        .set_note_folder_removed(set(&work.id, work.revision, true))
+        .unwrap();
+    assert!(linked(&store).is_empty(), "hidden with the folder above it");
+
+    store
+        .set_note_folder_removed(set(&work.id, work.revision, false))
+        .unwrap();
+    assert_eq!(linked(&store), vec!["Launch minutes"]);
+}
