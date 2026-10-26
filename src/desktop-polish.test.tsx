@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
 import App from "./App";
@@ -117,5 +117,80 @@ describe("Settings and appearance", () => {
     act(() => media.listeners.forEach((listener) => listener()));
     expect(document.documentElement.dataset.theme).toBe("dark");
     expect(window.localStorage.getItem("tasknotes.theme")).toBe("system");
+  });
+});
+
+describe("Navigation and empty states", () => {
+  it("opens All tasks and reaches every place without showing a made-up Task", async () => {
+    lists = [{ id: "list-1", name: "Errands", revision: 1, removed: false, createdAt: 1, updatedAt: 1 } as TaskList];
+    const user = userEvent.setup();
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "All tasks" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "All tasks" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByText("Your list is clear")).toBeVisible();
+
+    for (const [place, heading] of [["Inbox", "Inbox"], ["Errands", "Errands"]] as const) {
+      await user.click(screen.getByRole("button", { name: place }));
+      expect(await screen.findByRole("heading", { name: heading })).toBeVisible();
+      expect(await screen.findByText("Your list is clear")).toBeVisible();
+    }
+    await user.click(screen.getByRole("button", { name: "Removed" }));
+    expect(await screen.findByText("Nothing in Removed")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "All notes" }));
+    expect(await screen.findByRole("heading", { name: "Notes" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    expect(screen.getByRole("heading", { name: "Settings" })).toBeVisible();
+
+    expect(screen.queryAllByRole("article")).toHaveLength(0);
+    expect(call.mock.calls.some(([command]) => String(command).startsWith("create"))).toBe(false);
+  });
+});
+
+/**
+ * jsdom has no layout. Give the scroll area a 600px window and each list item
+ * a height (an open Task is taller), so the virtualizer has something to measure.
+ */
+function withLayout() {
+  const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight")!;
+  Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+    configurable: true,
+    get(this: HTMLElement) {
+      if (this.classList.contains("main-scroll")) return 600;
+      if (this.dataset.index !== undefined) {
+        if (this.tagName === "H3") return 30;
+        return this.querySelector(".task-editor") ? 400 : 50;
+      }
+      return 0;
+    },
+  });
+  return () => Object.defineProperty(HTMLElement.prototype, "offsetHeight", original);
+}
+
+function scrollTasksTo(top: number) {
+  const area = document.querySelector<HTMLElement>("main:not([hidden]) .main-scroll")!;
+  area.scrollTop = top;
+  fireEvent.scroll(area);
+  return area;
+}
+
+describe("Virtualized Task rows", () => {
+  let restoreLayout: () => void;
+  beforeEach(() => {
+    restoreLayout = withLayout();
+    tasks = Array.from({ length: 300 }, (_, i) => task(i + 1));
+  });
+  afterEach(() => restoreLayout());
+
+  it("renders only the rows near the visible part of a sizeable page", async () => {
+    render(<App />);
+    expect(await screen.findByRole("article", { name: "Synthetic task 1" })).toBeInTheDocument();
+    expect(screen.getAllByRole("article").length).toBeLessThan(40);
+    expect(screen.queryByRole("article", { name: "Synthetic task 300" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Ready tasks" })).toBeInTheDocument();
+
+    await act(async () => { scrollTasksTo(30 + 50 * 199); });
+    expect(await screen.findByRole("article", { name: "Synthetic task 200" })).toBeInTheDocument();
+    expect(screen.queryByRole("article", { name: "Synthetic task 1" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("article").length).toBeLessThan(40);
   });
 });

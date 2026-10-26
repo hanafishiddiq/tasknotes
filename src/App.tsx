@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   ArrowDownWideNarrow, CheckCircle2, LoaderCircle, LockKeyhole, NotebookText, Search, SearchX, SquarePen,
   Tag,
@@ -11,6 +11,7 @@ import {
 import { PRIORITY_ORDER, PRIORITY_VIEW, STATUS_ORDER, STATUS_VIEW } from "./lib/task-visuals";
 import TaskRow from "./components/TaskRow";
 import TaskSidebar from "./components/TaskSidebar";
+import VirtualTaskList from "./components/VirtualTaskList";
 import { useLocalCalendarDay } from "./lib/use-local-calendar-day";
 import { useTheme } from "./lib/use-theme";
 import { errorMessage } from "./lib/error-message";
@@ -85,6 +86,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const appearance = useTheme();
   const titleInput = useRef<HTMLInputElement>(null);
+  const taskScroll = useRef<HTMLDivElement>(null);
   // Ignore stale results from older Task queries after a newer user action.
   const requestGeneration = useRef(0);
   const currentQuery = useRef({ sort, view, filters });
@@ -607,10 +609,7 @@ export default function App() {
     }
   }
 
-  const groups = STATUS_ORDER.map((status) => ({
-    status,
-    items: tasks.filter((task) => task.status === status),
-  })).filter((group) => group.items.length > 0);
+  const keepMounted = useMemo(() => new Set(expandedId ? [expandedId] : []), [expandedId]);
 
   const pageTitle = view.kind === "all" ? "All tasks"
     : view.kind === "inbox" ? "Inbox"
@@ -681,7 +680,7 @@ export default function App() {
           </button>
         </header>
 
-        <div className="main-scroll">
+        <div className="main-scroll" ref={taskScroll}>
           <div className="content-wrap">
             <div className="page-title">
               <h1>{pageTitle}</h1>
@@ -873,34 +872,31 @@ export default function App() {
                   <p>Type a title in New task above to add your first one.</p>
                 </div>
               ) : (
-                <div className="task-list">
-                  {groups.map(({ status, items }) => (
-                    <section className="task-group" key={status} aria-label={`${STATUS_VIEW[status].label} tasks`}>
-                      <h3 className="task-group-heading">
-                        {STATUS_VIEW[status].label}
-                        <span>{items.length}{nextCursor ? "+" : ""}</span>
-                      </h3>
-                      {items.map((task) => (
-                        <TaskRow
-                          key={task.id}
-                          task={task}
-                          expanded={expandedId === task.id}
-                          saving={savingId === task.id}
-                          onToggle={() => setExpandedId((current) => current === task.id ? null : task.id)}
-                          onSave={(nextTitle, nextDescription) => updateTask(task, nextTitle, nextDescription)}
-                          onChange={(change) => changeTask(task, change)}
-                          onRecordProgress={(update) => recordProgress(task, update)}
-                          lists={lists.filter((list) => !list.removed)}
-                          today={today}
-                          onMove={(listId) => moveTask(task, listId)}
-                          onUpdateDetails={(tags, dueDate) => updateDetails(task, tags, dueDate)}
-                          onOpenNote={openLinkedNote}
-                          onRemove={() => removeTask(task)}
-                          shown={workspace === "tasks"}
-                        />
-                      ))}
-                    </section>
-                  ))}
+                <>
+                  <VirtualTaskList
+                    tasks={tasks}
+                    hasMore={Boolean(nextCursor)}
+                    scrollRef={taskScroll}
+                    keepMounted={keepMounted}
+                    renderTask={(task) => (
+                      <TaskRow
+                        task={task}
+                        expanded={expandedId === task.id}
+                        saving={savingId === task.id}
+                        onToggle={() => setExpandedId((current) => current === task.id ? null : task.id)}
+                        onSave={(nextTitle, nextDescription) => updateTask(task, nextTitle, nextDescription)}
+                        onChange={(change) => changeTask(task, change)}
+                        onRecordProgress={(update) => recordProgress(task, update)}
+                        lists={lists.filter((list) => !list.removed)}
+                        today={today}
+                        onMove={(listId) => moveTask(task, listId)}
+                        onUpdateDetails={(tags, dueDate) => updateDetails(task, tags, dueDate)}
+                        onOpenNote={openLinkedNote}
+                        onRemove={() => removeTask(task)}
+                        shown={workspace === "tasks"}
+                      />
+                    )}
+                  />
                   {(previousPageCursors.length > 0 || nextCursor) && (
                     <div className="task-page-navigation" aria-label="Task pages">
                       {previousPageCursors.length > 0 && (
@@ -920,7 +916,7 @@ export default function App() {
                       )}
                     </div>
                   )}
-                </div>
+                </>
               )}
             </section>
           </div>
