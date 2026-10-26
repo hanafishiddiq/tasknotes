@@ -57,9 +57,33 @@ fn any_data_command_takes_the_days_backup_and_backups_can_be_listed_and_made() {
     for key in ["id", "created_at", "schema_version", "size_bytes", "sha256"] {
         assert!(!backup[key].is_null(), "{key} in {backup}");
     }
-    // The newest of the day is kept, so the manual one replaces the daily.
+    // Manual backups are their own bucket: the day's Daily one stays.
     let after = cli.ok(&["backup", "list"]);
     assert_eq!(after["items"][0]["id"], backup["id"]);
+    assert_eq!(after["items"][1]["kind"], "daily");
+    assert!(after.get("warnings").is_none(), "{after}");
+}
+
+/// Review finding: a failed automatic backup was silently ignored. The
+/// command still runs (a backup must not block work) but says so in the
+/// envelope; stderr stays empty per the CLI contract.
+#[test]
+fn a_failed_automatic_backup_is_reported_in_the_envelope() {
+    let cli = Cli::trusted();
+    // Something that is not a directory where the backups belong.
+    std::fs::write(cli.data_dir().join("backups"), b"synthetic").unwrap();
+    let run = cli.run(&["task", "create", "--title", "Synthetic task"]);
+    assert_eq!(run.code, 0, "{}", run.json);
+    assert_eq!(item(&run.json)["title"], "Synthetic task");
+    let warnings = run.json["warnings"].as_array().unwrap();
+    assert_eq!(warnings.len(), 1, "{}", run.json);
+    assert_eq!(warnings[0]["code"], "backup_failed");
+    assert!(warnings[0]["message"].as_str().unwrap().contains("backup"));
+    assert!(run.stderr.is_empty(), "{}", run.stderr);
+    // A failed command carries the warning too.
+    let failed = cli.run(&["task", "get", "00000000-0000-0000-0000-000000000000"]);
+    assert_eq!(error_code(&failed, 3), "not_found");
+    assert_eq!(failed.json["warnings"][0]["code"], "backup_failed");
 }
 
 #[test]

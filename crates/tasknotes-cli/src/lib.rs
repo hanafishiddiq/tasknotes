@@ -44,6 +44,7 @@ pub fn run(
     env: &Environment,
     confirm: impl FnOnce(&str) -> std::io::Result<String>,
 ) -> Outcome {
+    let mut warnings = Vec::new();
     let result = args
         .iter()
         .map(|arg| {
@@ -52,20 +53,23 @@ pub fn run(
                 .ok_or_else(|| CliError::invalid("Every argument must be valid UTF-8 text"))
         })
         .collect::<Result<Vec<_>, _>>()
-        .and_then(|args| dispatch(&args, env, confirm));
-    match result {
+        .and_then(|args| dispatch(&args, env, confirm, &mut warnings));
+    let mut outcome = match result {
         Ok(body) => Outcome { exit_code: 0, body },
         Err(error) => Outcome {
             exit_code: error.exit_code(),
             body: contract::failure(&error),
         },
-    }
+    };
+    contract::add_warnings(&mut outcome.body, warnings);
+    outcome
 }
 
 fn dispatch(
     args: &[String],
     env: &Environment,
     confirm: impl FnOnce(&str) -> std::io::Result<String>,
+    warnings: &mut Vec<Value>,
 ) -> Result<Value, CliError> {
     let (data_flag, rest) = match args {
         [flag, dir, rest @ ..] if flag == "--data-dir" => (Some(dir.as_str()), rest),
@@ -96,12 +100,12 @@ fn dispatch(
     // The core refuses before the database is opened, created or migrated.
     let store = ai_access::open_authorized(&data_dir, Interface::Cli)?;
     // Backups run while any Tasknotes process is active (spec): the first
-    // command of the day takes one. Best effort: a failed backup must not
-    // block the command, the next process tries again, and the contract
-    // keeps stderr empty.
-    let _ = store.ensure_daily_backup();
+    // command of the day takes one. A failed backup must not block the
+    // command (the next process tries again); it is reported as a warning
+    // in the envelope, since the contract keeps stderr empty.
+    data::daily_backup(&store, warnings);
     match noun {
-        "backup" => data::backup_command(&store, verb, words, env, confirm),
+        "backup" => data::backup_command(&store, verb, words, env, confirm, warnings),
         "export" => data::export_command(&store, verb, words),
         "task" => task_command(&store, verb, words),
         "list" => list_command(&store, verb, words),

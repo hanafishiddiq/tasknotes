@@ -400,6 +400,7 @@ name = "tasknotes-core"
 version = "0.1.0"
 dependencies = [
  "caseless",
+ "libc",
  "rusqlite",
  "serde",
  "serde_json",

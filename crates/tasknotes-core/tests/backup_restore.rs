@@ -507,13 +507,16 @@ fn an_interrupted_backup_or_restore_leaves_nothing_that_looks_like_a_backup() {
     let staging = dir.join(".restore-0000.sqlite3");
     std::fs::write(&partial, b"half a snapshot").unwrap();
     std::fs::write(&staging, b"half a staging copy").unwrap();
-    // A snapshot whose manifest was never written.
-    std::fs::write(dir.join("20261026T000001Z-daily-cafebabe.sqlite3"), b"x").unwrap();
+    // A snapshot whose manifest was never written, and a manifest partial.
+    let orphan = dir.join("20261026T000001Z-daily-cafebabe.sqlite3");
+    std::fs::write(&orphan, b"x").unwrap();
+    let manifest_partial = dir.join(".20261026T000001Z-daily-cafebabe.json.partial");
+    std::fs::write(&manifest_partial, b"{").unwrap();
     assert_eq!(store.list_backups().unwrap(), std::slice::from_ref(&backup));
 
     // Leftovers an hour old belong to no running process and are cleaned up.
     let old = std::time::SystemTime::now() - std::time::Duration::from_secs(2 * 3600);
-    for path in [&partial, &staging] {
+    for path in [&partial, &staging, &orphan, &manifest_partial] {
         std::fs::File::options()
             .write(true)
             .open(path)
@@ -522,7 +525,9 @@ fn an_interrupted_backup_or_restore_leaves_nothing_that_looks_like_a_backup() {
             .unwrap();
     }
     store.ensure_daily_backup().unwrap();
-    assert!(!partial.exists() && !staging.exists());
+    for path in [&partial, &staging, &orphan, &manifest_partial] {
+        assert!(!path.exists(), "{}", path.display());
+    }
     store.restore_backup(&backup.id).unwrap();
     assert_eq!(titles(&store), ["Synthetic task"]);
 }

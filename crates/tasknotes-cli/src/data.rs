@@ -18,12 +18,36 @@ use crate::{NO_FLAGS, ONE_ID, USAGE, flags};
 pub const RESTORE_PROMPT: &str = "Replace all current Tasknotes data with this backup? \
     A Pre-restore backup of the current data is kept. Type restore to confirm: ";
 
+/// Take the day's automatic backup if it is due; a failure becomes a
+/// warning, never an error of the command itself.
+pub fn daily_backup(store: &TaskStore, warnings: &mut Vec<Value>) {
+    match store.ensure_daily_backup() {
+        Ok(taken) => {
+            if let Some(error) = taken.and_then(|t| t.retention_error) {
+                warnings.push(retention_warning(&error));
+            }
+        }
+        Err(error) => warnings.push(contract::warning(
+            "backup_failed",
+            format!("Today's automatic backup could not be taken: {error}"),
+        )),
+    }
+}
+
+fn retention_warning(error: &str) -> Value {
+    contract::warning(
+        "backup_retention_failed",
+        format!("The backup was taken, but an old backup could not be removed: {error}"),
+    )
+}
+
 pub fn backup_command(
     store: &TaskStore,
     verb: &str,
     words: &[String],
     env: &Environment,
     confirm: impl FnOnce(&str) -> std::io::Result<String>,
+    warnings: &mut Vec<Value>,
 ) -> Result<Value, CliError> {
     match verb {
         "list" => {
@@ -36,7 +60,11 @@ pub fn backup_command(
         }
         "create" => {
             parse(words, &NO_FLAGS)?;
-            Ok(contract::success_item(backup(&store.create_backup()?)))
+            let taken = store.create_backup()?;
+            if let Some(error) = &taken.retention_error {
+                warnings.push(retention_warning(error));
+            }
+            Ok(contract::success_item(backup(&taken.backup)))
         }
         "restore" => {
             let p = parse(words, &ONE_ID)?;
