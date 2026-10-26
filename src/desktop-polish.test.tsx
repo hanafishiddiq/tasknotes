@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
 import App from "./App";
@@ -319,5 +319,100 @@ describe("Undo", () => {
     await user.keyboard("{Meta>}z{/Meta}");
     expect(await screen.findByRole("article", { name: "Synthetic task 1" })).toBeInTheDocument();
     expect(tasks[0].removedAt).toBeNull();
+  });
+});
+
+describe("Command palette and shortcuts", () => {
+  it("opens with Cmd+K, filters commands and runs the chosen one", async () => {
+    lists = [{ id: "list-1", name: "Errands", revision: 1, removed: false, createdAt: 1, updatedAt: 1 } as TaskList];
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("Your list is clear");
+    const before = screen.getByRole("button", { name: "Inbox" });
+    before.focus();
+
+    await user.keyboard("{Meta>}k{/Meta}");
+    const palette = screen.getByRole("dialog", { name: "Command palette" });
+    const input = within(palette).getByRole("combobox", { name: "Command" });
+    expect(input).toHaveFocus();
+    await user.type(input, "err");
+    const options = within(palette).getAllByRole("option");
+    expect(options[0]).toHaveTextContent("Errands");
+    expect(options[0]).toHaveAttribute("aria-selected", "true");
+    await user.keyboard("{Enter}");
+
+    expect(screen.queryByRole("dialog", { name: "Command palette" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Errands" })).toBeVisible();
+  });
+
+  it("moves through results with the arrow keys and closes with Escape", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("Your list is clear");
+    const before = screen.getByRole("button", { name: "Inbox" });
+    before.focus();
+    await user.keyboard("{Meta>}k{/Meta}");
+    const palette = screen.getByRole("dialog", { name: "Command palette" });
+    const options = within(palette).getAllByRole("option");
+    await user.keyboard("{ArrowDown}");
+    expect(options[1]).toHaveAttribute("aria-selected", "true");
+    expect(within(palette).getByRole("combobox", { name: "Command" }))
+      .toHaveAttribute("aria-activedescendant", options[1].id);
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(before).toHaveFocus();
+  });
+
+  it("searches Tasks and Notes for whatever was typed", async () => {
+    tasks = [task(1, { title: "Quarterly report" }), task(2, { title: "Water plants" })];
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("article", { name: "Water plants" });
+    await user.keyboard("{Meta>}k{/Meta}");
+    await user.type(screen.getByRole("combobox", { name: "Command" }), "report");
+    await user.click(screen.getByRole("option", { name: "Search for “report”" }));
+    expect(screen.getByRole("searchbox", { name: "Search tasks and notes" })).toHaveValue("report");
+    await waitFor(() => expect(screen.queryByRole("article", { name: "Water plants" })).not.toBeInTheDocument());
+    expect(screen.getByRole("article", { name: "Quarterly report" })).toBeInTheDocument();
+  });
+
+  it("offers Undo, appearance and Settings in the palette", async () => {
+    tasks = [task(1)];
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open Synthetic task 1" }));
+    await user.click(screen.getByRole("button", { name: "Move to Removed" }));
+    await screen.findByRole("status", { name: "Moved to Removed" });
+
+    await user.keyboard("{Meta>}k{/Meta}");
+    await user.type(screen.getByRole("combobox", { name: "Command" }), "undo");
+    await user.keyboard("{Enter}");
+    expect(await screen.findByRole("article", { name: "Synthetic task 1" })).toBeInTheDocument();
+
+    await user.keyboard("{Meta>}k{/Meta}");
+    await user.type(screen.getByRole("combobox", { name: "Command" }), "light");
+    await user.keyboard("{Enter}");
+    expect(document.documentElement.dataset.theme).toBe("light");
+
+    await user.keyboard("{Meta>}k{/Meta}");
+    expect(screen.queryByRole("option", { name: /Undo/ })).not.toBeInTheDocument();
+    await user.type(screen.getByRole("combobox", { name: "Command" }), "settings");
+    await user.keyboard("{Enter}");
+    expect(screen.getByRole("heading", { name: "Settings" })).toBeVisible();
+  });
+
+  it("focuses New task with Cmd+N, search with Cmd+F and opens Settings with Cmd+,", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("Your list is clear");
+    await user.keyboard("{Meta>}n{/Meta}");
+    expect(screen.getByRole("textbox", { name: "Task title" })).toHaveFocus();
+    await user.keyboard("{Meta>}f{/Meta}");
+    expect(screen.getByRole("searchbox", { name: "Search tasks and notes" })).toHaveFocus();
+    await user.keyboard("{Meta>},{/Meta}");
+    expect(screen.getByRole("heading", { name: "Settings" })).toBeVisible();
+    await user.keyboard("{Meta>}n{/Meta}");
+    expect(screen.getByRole("heading", { name: "All tasks" })).toBeVisible();
+    expect(screen.getByRole("textbox", { name: "Task title" })).toHaveFocus();
   });
 });

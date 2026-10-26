@@ -26,6 +26,7 @@ import NoteFolderTree from "./components/NoteFolderTree";
 import NoteSnippet from "./components/NoteSnippet";
 import RemovedView from "./components/RemovedView";
 import SettingsView from "./components/SettingsView";
+import CommandPalette, { type Command } from "./components/CommandPalette";
 import { removedApi, type RemovedItem } from "./lib/removed-api";
 import "./App.css";
 
@@ -56,6 +57,10 @@ export default function App() {
   const [undoable, setUndoable] = useState<Undoable | null>(null);
   const [undoing, setUndoing] = useState(false);
   const [undoError, setUndoError] = useState<string | null>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const paletteReturn = useRef<HTMLElement | null>(null);
+  // A field to focus once the Task view is showing (⌘N, ⌘F, palette).
+  const [focusRequest, setFocusRequest] = useState<{ field: "capture" | "search"; seq: number } | null>(null);
   // Bumped after a Note or folder is restored, so the Notes list asks again.
   const [notesRefresh, setNotesRefresh] = useState(0);
   // Once opened, Notes stay mounted so a pending autosave survives visiting Tasks.
@@ -100,6 +105,7 @@ export default function App() {
   const appearance = useTheme();
   const titleInput = useRef<HTMLInputElement>(null);
   const taskScroll = useRef<HTMLDivElement>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
   // Ignore stale results from older Task queries after a newer user action.
   const requestGeneration = useRef(0);
   const currentQuery = useRef({ sort, view, filters });
@@ -187,6 +193,12 @@ export default function App() {
     }
     // openLinkedTask reads the same busy flags listed here.
   }, [pendingLinkedTask, busyList, creating, savingId, loadingMore]);
+
+  useEffect(() => {
+    if (!focusRequest || workspace !== "tasks") return;
+    (focusRequest.field === "capture" ? titleInput.current : searchInput.current)?.focus();
+    setFocusRequest(null);
+  }, [focusRequest, workspace]);
 
   function resetTaskPages() {
     requestGeneration.current += 1;
@@ -670,12 +682,62 @@ export default function App() {
     }
   }
 
+  /** Shows the Task view (keeping its place) and then focuses one of its fields. */
+  function focusInTasks(field: "capture" | "search") {
+    if (workspace !== "tasks") navigate(view);
+    setFocusRequest((previous) => ({ field, seq: (previous?.seq ?? 0) + 1 }));
+  }
+
+  function closePalette() {
+    setPaletteOpen(false);
+    // Hand focus back unless the command moved it somewhere on purpose.
+    const previous = paletteReturn.current;
+    paletteReturn.current = null;
+    window.setTimeout(() => {
+      if (previous?.isConnected && document.activeElement === document.body) previous.focus();
+    });
+  }
+
+  function openPalette() {
+    if (paletteOpen) return;
+    paletteReturn.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setPaletteOpen(true);
+  }
+
   useShortcuts({
-    palette: () => undefined,
-    newTask: () => undefined,
-    search: () => undefined,
-    settings: () => undefined,
+    palette: openPalette,
+    newTask: () => focusInTasks("capture"),
+    search: () => focusInTasks("search"),
+    settings: openSettings,
     undo: runUndo,
+  });
+
+  const appearanceLabels = { dark: "Dark", light: "Light", system: "Match system" } as const;
+  const commands: Command[] = [
+    { id: "go-all", label: "All tasks", group: "Go to", run: () => navigate({ kind: "all" }) },
+    { id: "go-inbox", label: "Inbox", group: "Go to", run: () => navigate({ kind: "inbox" }) },
+    ...lists.filter((list) => !list.removed).map((list): Command => ({
+      id: `go-list-${list.id}`, label: list.name, group: "Go to", keywords: "list",
+      run: () => navigate({ kind: "list", listId: list.id }),
+    })),
+    { id: "go-notes", label: "All notes", group: "Go to", run: () => openNotes() },
+    { id: "go-removed", label: "Removed", group: "Go to", keywords: "trash restore", run: openRemoved },
+    { id: "go-settings", label: "Settings", group: "Go to", keywords: "preferences", run: openSettings },
+    { id: "new-task", label: "New task", group: "Actions", keywords: "add create capture", run: () => focusInTasks("capture") },
+    { id: "search", label: "Search tasks and notes", group: "Actions", keywords: "find", run: () => focusInTasks("search") },
+    ...(undoable ? [{
+      id: "undo", label: `Undo moving “${undoable.title}” to Removed`, group: "Actions", keywords: "restore",
+      run: () => void runUndo(),
+    }] : []),
+    ...(["dark", "light", "system"] as const).filter((value) => value !== appearance.preference)
+      .map((value): Command => ({
+        id: `appearance-${value}`, label: `Appearance: ${appearanceLabels[value]}`, group: "Actions",
+        keywords: "theme mode", run: () => appearance.setPreference(value),
+      })),
+  ];
+  const searchCommand = (text: string): Command => ({
+    id: "search-text", label: `Search for “${text}”`, group: "Actions",
+    run: () => { focusInTasks("search"); setSearchDraft(text); },
   });
 
   const keepMounted = useMemo(
@@ -723,6 +785,7 @@ export default function App() {
           <label className="toolbar-search" htmlFor="task-search">
             <Search size={15} aria-hidden="true" />
             <input
+              ref={searchInput}
               id="task-search"
               type="search"
               aria-label="Search tasks and notes"
@@ -999,6 +1062,9 @@ export default function App() {
             refreshKey={notesRefresh} onRemoved={noteRemoved}
             onScopeHidden={() => setNoteScope(ALL_NOTES)} />
         </Suspense>
+      )}
+      {paletteOpen && (
+        <CommandPalette commands={commands} textCommand={searchCommand} onClose={closePalette} />
       )}
       {undoError && !undoable && (
         <div role="alert" className="undo-bar undo-bar--error">
