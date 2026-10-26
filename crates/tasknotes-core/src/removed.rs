@@ -5,12 +5,11 @@
 
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use crate::notes::{Note, read_note};
 use crate::tasks::{COLUMNS, Task, TaskError, TaskStore, current_millis, read_task};
 
-pub(crate) const HIDDEN_FOLDERS: &str = hidden_folders!();
+const HIDDEN_FOLDERS: &str = hidden_folders!();
 
 /// Schema v9: Removed for Notes and Note Folders (Tasks and Lists have had it
 /// since v5 and v4). Folder names stay unique among active siblings only, as
@@ -125,14 +124,13 @@ pub struct RemovedPage {
 /// Everything Removed on its own; what a Removed container merely hides is
 /// not listed, since it comes back with the container.
 const REMOVED_ITEMS: &str = concat!(
-    "SELECT 'task' AS kind, t.id, t.title, t.revision, t.removed_at,
-            coalesce(l.removed_at IS NOT NULL, 0) AS blocked
-       FROM tasks t LEFT JOIN lists l ON l.id = t.list_id WHERE t.removed_at IS NOT NULL
+    "SELECT 'task' AS kind, t.id, t.title, t.revision, t.removed_at, ",
+    task_in_removed_list!("t"),
+    " AS blocked FROM tasks t WHERE t.removed_at IS NOT NULL
      UNION ALL
-     SELECT 'note', n.id, n.title, n.revision, n.removed_at,
-            coalesce(n.folder_id IN (",
-    hidden_folders!(),
-    "), 0)
+     SELECT 'note', n.id, n.title, n.revision, n.removed_at, ",
+    note_in_hidden_folder!("n"),
+    "
        FROM notes n WHERE n.removed_at IS NOT NULL
      UNION ALL
      SELECT 'list', id, name, revision, removed_at, 0 FROM lists WHERE removed_at IS NOT NULL
@@ -145,14 +143,7 @@ const REMOVED_ITEMS: &str = concat!(
 );
 
 fn parse_cursor(value: &str) -> Result<(i64, String), TaskError> {
-    let mut fields = value.split('|');
-    match (fields.next(), fields.next(), fields.next(), fields.next()) {
-        (Some("r1"), Some(time), Some(id), None) if Uuid::parse_str(id).is_ok() => Ok((
-            time.parse().map_err(|_| TaskError::InvalidRemovedCursor)?,
-            id.to_owned(),
-        )),
-        _ => Err(TaskError::InvalidRemovedCursor),
-    }
+    crate::search::parse_time_id_cursor(value, "r1", TaskError::InvalidRemovedCursor)
 }
 
 /// A Task can be written only while it is shown: not in Removed itself and
@@ -160,8 +151,11 @@ fn parse_cursor(value: &str) -> Result<(i64, String), TaskError> {
 pub(crate) fn require_writable_task(conn: &Connection, id: &str) -> Result<(), TaskError> {
     let state: Option<(bool, bool)> = conn
         .query_row(
-            "SELECT t.removed_at IS NOT NULL, coalesce(l.removed_at IS NOT NULL, 0)
-             FROM tasks t LEFT JOIN lists l ON l.id = t.list_id WHERE t.id = ?1",
+            concat!(
+                "SELECT t.removed_at IS NOT NULL, ",
+                task_in_removed_list!("t"),
+                " FROM tasks t WHERE t.id = ?1"
+            ),
             params![id],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
@@ -176,14 +170,15 @@ pub(crate) fn require_writable_task(conn: &Connection, id: &str) -> Result<(), T
 
 /// Whether the Task's List is in Removed.
 fn task_list_removed(conn: &Connection, task: &Task) -> Result<bool, TaskError> {
-    Ok(match &task.list_id {
-        None => false,
-        Some(list) => conn.query_row(
-            "SELECT removed_at IS NOT NULL FROM lists WHERE id = ?1",
-            params![list],
-            |row| row.get(0),
-        )?,
-    })
+    Ok(conn.query_row(
+        concat!(
+            "SELECT ",
+            task_in_removed_list!("t"),
+            " FROM tasks t WHERE t.id = ?1"
+        ),
+        params![task.id],
+        |row| row.get(0),
+    )?)
 }
 
 impl TaskStore {

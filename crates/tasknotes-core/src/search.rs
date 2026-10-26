@@ -85,6 +85,25 @@ pub(crate) fn search_terms(text: &str) -> Result<Vec<String>, TaskError> {
     Ok(terms)
 }
 
+/// A `version|time|id` keyset cursor, as the Removed view and link lists
+/// hand out; anything else is `invalid`.
+pub(crate) fn parse_time_id_cursor(
+    value: &str,
+    version: &str,
+    invalid: TaskError,
+) -> Result<(i64, String), TaskError> {
+    let mut fields = value.split('|');
+    match (fields.next(), fields.next(), fields.next(), fields.next()) {
+        (Some(v), Some(time), Some(id), None) if v == version && Uuid::parse_str(id).is_ok() => {
+            match time.parse() {
+                Ok(time) => Ok((time, id.to_owned())),
+                Err(_) => Err(invalid),
+            }
+        }
+        _ => Err(invalid),
+    }
+}
+
 /// FNV-1a: binds a cursor to the exact query that produced it.
 pub(crate) fn fingerprint(parts: &[&str]) -> String {
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
@@ -170,9 +189,7 @@ impl TaskStore {
         };
 
         let mut filters = vec![match query.scope {
-            TaskScope::Active => "tasks.removed_at IS NULL AND (tasks.list_id IS NULL OR EXISTS (
-                SELECT 1 FROM lists WHERE lists.id = tasks.list_id AND lists.removed_at IS NULL))"
-                .to_owned(),
+            TaskScope::Active => task_visible!("tasks").to_owned(),
             TaskScope::Removed => "tasks.removed_at IS NOT NULL".to_owned(),
         }];
         match &query.view {

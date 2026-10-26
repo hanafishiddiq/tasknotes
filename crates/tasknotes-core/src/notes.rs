@@ -482,10 +482,7 @@ impl TaskStore {
             format!("?{}", values.len())
         };
         // Removed Notes, and Notes in a Removed folder or below one, are hidden.
-        let mut filters = vec![format!(
-            "n.removed_at IS NULL AND (n.folder_id IS NULL OR n.folder_id NOT IN ({}))",
-            crate::removed::HIDDEN_FOLDERS
-        )];
+        let mut filters = vec![note_visible!("n").to_owned()];
         // All words must match; each is a quoted prefix term, so user text
         // never reaches FTS5 query syntax.
         let match_terms = terms.join(" ");

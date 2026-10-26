@@ -83,17 +83,7 @@ fn read_link(row: &Row<'_>) -> rusqlite::Result<NoteLink> {
 }
 
 fn parse_cursor(value: &str) -> Result<(i64, String), TaskError> {
-    let mut fields = value.split('|');
-    match (fields.next(), fields.next(), fields.next(), fields.next()) {
-        (Some("k1"), Some(time), Some(id), None) => {
-            let time = time
-                .parse::<i64>()
-                .map_err(|_| TaskError::InvalidLinkCursor)?;
-            Uuid::parse_str(id).map_err(|_| TaskError::InvalidLinkCursor)?;
-            Ok((time, id.to_owned()))
-        }
-        _ => Err(TaskError::InvalidLinkCursor),
-    }
+    crate::search::parse_time_id_cursor(value, "k1", TaskError::InvalidLinkCursor)
 }
 
 /// Which way a list of links is read: `owner` is the column holding the
@@ -109,12 +99,7 @@ const NOTES_OF_TASK: Side = Side {
     select: "n.id, n.title, n.updated_at",
     // Notes hidden by Removed (their own, or a Removed folder above them) are
     // left out; the link row stays, so restoring brings the Note back here.
-    join: concat!(
-        "JOIN notes n ON n.id = l.note_id AND n.removed_at IS NULL
-         AND (n.folder_id IS NULL OR n.folder_id NOT IN (",
-        hidden_folders!(),
-        "))"
-    ),
+    join: concat!("JOIN notes n ON n.id = l.note_id AND ", note_visible!("n")),
 };
 
 const TASKS_OF_NOTE: Side = Side {
@@ -122,9 +107,7 @@ const TASKS_OF_NOTE: Side = Side {
     select: "t.id, t.title, t.status",
     // Tasks hidden by Removed (their own, or their List's) are left out; the
     // link row stays, so restoring brings the Task back into this list.
-    join: "JOIN tasks t ON t.id = l.task_id AND t.removed_at IS NULL
-           AND (t.list_id IS NULL OR EXISTS (
-             SELECT 1 FROM lists WHERE lists.id = t.list_id AND lists.removed_at IS NULL))",
+    join: concat!("JOIN tasks t ON t.id = l.task_id AND ", task_visible!("t")),
 };
 
 /// One keyset page of active links on one side, most recently linked first.
