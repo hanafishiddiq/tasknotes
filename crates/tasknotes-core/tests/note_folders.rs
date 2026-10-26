@@ -60,6 +60,7 @@ fn v6_database(db: &Path) {
              CREATE INDEX notes_updated_order ON notes(updated_at DESC, id DESC);
              INSERT INTO notes VALUES ('00000000-0000-4000-8000-0000000000aa',
                '# Packing list\n\nPassport and tickets', 'Packing list', 3, 10, 20);
+             DROP TABLE IF EXISTS audit_entries;
              PRAGMA user_version = 6;",
         )
         .unwrap();
@@ -72,7 +73,7 @@ fn a_v6_database_keeps_its_notes_and_gains_folders() {
     v6_database(&db);
 
     let store = store_at(&db);
-    assert_eq!(version(&db), 9);
+    assert_eq!(version(&db), tasknotes_core::tasks::SCHEMA_VERSION);
     let kept = store
         .get_note("00000000-0000-4000-8000-0000000000aa")
         .unwrap()
@@ -127,7 +128,7 @@ fn a_failed_v8_migration_rolls_back_and_keeps_the_database_usable() {
         .execute_batch("DROP TABLE notes_fts;")
         .unwrap();
     let store = store_at(&db);
-    assert_eq!(version(&db), 9);
+    assert_eq!(version(&db), tasknotes_core::tasks::SCHEMA_VERSION);
     assert!(
         store
             .get_note("00000000-0000-4000-8000-0000000000aa")

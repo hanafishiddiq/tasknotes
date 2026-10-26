@@ -1,5 +1,5 @@
 use tasknotes_core::tasks::{
-    ChangeTask, CreateTask, Priority, RecordProgress, TaskStore, WorkStatus,
+    ChangeTask, CreateTask, Priority, RecordProgress, TaskError, TaskStore, WorkStatus,
 };
 
 fn task(store: &TaskStore) -> tasknotes_core::tasks::Task {
@@ -160,11 +160,14 @@ fn note_only_update_records_work_without_changing_percentage_and_paginates_histo
         assert_eq!(current.next_step, "Start tests");
     }
 
-    let mut cursor = None;
+    let mut cursor: Option<String> = None;
     let mut collected = Vec::new();
     let mut timestamps = Vec::new();
     loop {
-        let page = store.list_progress_entries(&current.id, 3, cursor).unwrap();
+        // The cursor is opaque: it is only ever handed back as it came.
+        let page = store
+            .list_progress_entries(&current.id, 3, cursor.as_deref())
+            .unwrap();
         assert!(page.items.len() <= 3);
         for entry in page.items {
             collected.push(entry.note);
@@ -185,9 +188,23 @@ fn note_only_update_records_work_without_changing_percentage_and_paginates_histo
     assert!(timestamps.windows(2).all(|pair| pair[0].0 > pair[1].0));
     assert!(store.list_progress_entries(&current.id, 0, None).is_err());
     assert!(store.list_progress_entries(&current.id, 51, None).is_err());
+    for garbage in ["not-a-cursor", "h1|-1", "h1|x", ""] {
+        assert!(matches!(
+            store.list_progress_entries(&current.id, 2, Some(garbage)),
+            Err(TaskError::InvalidHistoryCursor)
+        ));
+    }
+    // The desktop window pages by the raw sequence it was handed.
+    let first = store
+        .list_progress_entries_before(&current.id, 3, None)
+        .unwrap();
+    let second = store
+        .list_progress_entries_before(&current.id, 3, first.next_cursor)
+        .unwrap();
+    assert_eq!(second.items[0].note, "Session 3");
     assert!(
         store
-            .list_progress_entries(&current.id, 2, Some(-1))
+            .list_progress_entries_before(&current.id, 2, Some(-1))
             .is_err()
     );
     assert!(store.list_progress_entries("not-a-task", 2, None).is_err());
@@ -449,6 +466,7 @@ fn v2_database_upgrades_without_losing_completed_task_and_previous_progress() {
                  'Existing completed work', 'Keep this description',
                  'completed', 'very_high', 100, 7, 1000, 1001, 43
              );
+             DROP TABLE IF EXISTS audit_entries;
              PRAGMA user_version=2;",
         ).unwrap();
     }
@@ -492,7 +510,7 @@ fn v2_database_upgrades_without_losing_completed_task_and_previous_progress() {
     let version: i64 = conn
         .pragma_query_value(None, "user_version", |row| row.get(0))
         .unwrap();
-    assert_eq!(version, 9);
+    assert_eq!(version, tasknotes_core::tasks::SCHEMA_VERSION);
 }
 
 #[test]

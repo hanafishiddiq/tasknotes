@@ -242,6 +242,7 @@ fn a_v4_database_upgrades_to_v5_and_indexes_existing_history() {
                     previous_progress,progress,note,next_step,created_at)
              VALUES('bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb','{id}','ready','in_progress',
                     0,42,'Historic landlord note','Finish audit',123);
+             DROP TABLE IF EXISTS audit_entries;
              PRAGMA user_version=4;"
         ))
         .unwrap();
@@ -257,7 +258,7 @@ fn a_v4_database_upgrades_to_v5_and_indexes_existing_history() {
             .unwrap()
             .pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
             .unwrap(),
-        9
+        tasknotes_core::tasks::SCHEMA_VERSION
     );
 }
 
@@ -280,6 +281,7 @@ fn a_failed_v5_migration_rolls_back_and_keeps_the_v4_database_usable() {
              DROP TABLE task_fields_fts; DROP TABLE progress_fts;
              ALTER TABLE tasks DROP COLUMN removed_at;
              CREATE TABLE progress_fts(collision INTEGER);
+             DROP TABLE IF EXISTS audit_entries;
              PRAGMA user_version=4;",
         )
         .unwrap();
