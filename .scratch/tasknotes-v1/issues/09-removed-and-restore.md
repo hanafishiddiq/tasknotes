@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** in progress — implemented, awaiting independent review (branch `feat/ticket-09-removed-and-restore`, plan `docs/plans/ticket-09-removed-and-restore-2026-10-25.md`).
+**Implementation:** in progress — implemented and code-reviewed, awaiting owner review (branch `feat/ticket-09-removed-and-restore`, plan `docs/plans/ticket-09-removed-and-restore-2026-10-25.md`).
 
 ## Acceptance criteria
 
@@ -21,7 +21,7 @@
 
 - [x] Exercise nested List/Task Removed and restore sequences in core and UI, including individually Removed children and links.
 - [x] Relevant tests pass and evidence is recorded here.
-- [ ] Run `/code-review` and address findings before marking complete.
+- [x] Run `/code-review` and address findings before marking complete.
 
 ## Delivery guardrails
 
@@ -62,3 +62,14 @@
 5. Make folder A with subfolder B holding a Note; remove one Note in B on its own, then remove A from its row. A, B and their Notes vanish from the tree, All notes and search. In Removed, the Note says "Restore its folder first". Restore A: B and its other Notes return; the Note removed on its own stays in Removed.
 6. Remove a folder "Ideas", create a new "Ideas", then try to restore the old one: it is refused with the name message.
 7. Confirm nothing anywhere offers Delete, Erase or Empty, and Removed says items stay until restored.
+
+**2026-10-26 — review fixes (Ticket 09 implementer):** `/code-review` findings addressed on the same branch, not pushed, not merged.
+
+- **Owner approval (Han, 2026-10-26):** decisions 2, 3 and 4 above are approved and no longer open: Removed (or hidden) items are read-only until restored, including `restore_link` while its Task or Note is Removed; restoring into a container still in Removed is refused; a Removed folder frees its name and restoring over an active same-name sibling is refused. Recorded in ADR-0002. Decision 5 (restore does not bump a Note's edit time) is unchanged.
+- **Bug:** an item hidden by a Removed container can no longer be removed on its own (a Task in a Removed List: `TaskListRemoved`; a Note or folder below a Removed folder: `NoteFolderRemoved`), so restoring the container always brings back what it hid (spec: "except those separately Removed").
+- **Story 36:** the Removed view is searchable. `list_removed(text, limit, cursor)` matches every word against Task fields and Progress Entries and Note text (FTS word prefixes) and List/folder names; still keyset-paged, cursor bound to its search. Tauri `list_removed` takes `text`; RemovedView has a "Search Removed" field. `TaskScope::Removed` (Ticket 05) is left as is.
+- **One rule for "hidden by Removed":** `task_visible!` / `note_visible!` (with `task_in_removed_list!` / `note_in_hidden_folder!`) in `lib.rs`, used by search, Notes, links and the Removed view; shared `time|id` cursor parser for Removed and links. No behaviour change.
+- **Desktop:** App no longer walks folder ancestry; when the core refuses to list the open folder (`NoteFolderRemoved`) the Notes view returns to All notes. A failed folder-tree reload after a restore is now shown instead of swallowed. `removedApi` has one shape, `remove/restore(kind, {id, revision})`.
+- **New tests:** core `an_item_hidden_by_a_removed_container_cannot_be_removed_on_its_own`, `restoring_a_folder_brings_its_note_back_into_a_tasks_linked_notes`, `the_removed_view_can_be_searched_across_every_kind`; UI "searches Removed…", "leaves a subfolder's view when a folder above it is moved to Removed".
+- **Evidence (run in the worktree, 2026-10-26, by the implementer):** core `cargo test` 109 passed (16 in `tests/removed.rs`); Tauri `cargo test` 1 passed; `cargo clippy --all-targets -- -D warnings` and `cargo fmt --check` clean in both; `pnpm test` 159 passed in 15 files; `pnpm build` passed.
+- **Out of scope here:** Removed through the CLI and MCP (stories 48–49) belongs to Tickets 10–12. Native GUI click-checklist above still open for the owner.
