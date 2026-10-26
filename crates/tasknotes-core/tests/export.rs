@@ -360,3 +360,90 @@ fn an_empty_database_exports_cleanly() {
         .unwrap();
     assert!(md.join("README.md").is_file());
 }
+
+/// Review finding: "Café" typed precomposed (NFC) and decomposed (NFD) are
+/// one name on macOS file systems, so one Note's file silently replaced
+/// the other's. Names are compared after normalisation and case folding,
+/// and every file is created fresh (never overwritten).
+#[test]
+fn notes_whose_titles_differ_only_in_unicode_form_get_two_files() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = TaskStore::open(&dir.path().join("tasknotes.db")).unwrap();
+    for markdown in [
+        "# Caf\u{e9}\n\nSynthetic A",
+        "# Cafe\u{301}\n\nSynthetic B",
+        "# CAF\u{c9}\n\nSynthetic C",
+    ] {
+        store
+            .create_note(CreateNote {
+                markdown: markdown.into(),
+                folder_id: None,
+            })
+            .unwrap();
+    }
+    let out = dir.path().join("out");
+    let summary = store
+        .export_data(request(ExportFormat::Markdown, &out, false))
+        .unwrap();
+    assert_eq!(summary.notes, 3);
+    let bodies: Vec<String> = std::fs::read_dir(out.join("Notes"))
+        .unwrap()
+        .map(|e| std::fs::read_to_string(e.unwrap().path()).unwrap())
+        .collect();
+    assert_eq!(bodies.len(), 3);
+    for letter in ["A", "B", "C"] {
+        let text = format!("Synthetic {letter}");
+        assert_eq!(
+            bodies.iter().filter(|b| b.contains(&text)).count(),
+            1,
+            "{letter}"
+        );
+    }
+}
+
+/// Exports hold the person's data: private to their account, like backups.
+#[cfg(unix)]
+#[test]
+fn exports_are_private_to_the_persons_account() {
+    use std::os::unix::fs::PermissionsExt;
+    let fx = Fixture::new();
+    let desktop = fx.store(Interface::Desktop);
+    let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+    let json = fx.out("private.json");
+    desktop
+        .export_data(request(ExportFormat::Json, &json, false))
+        .unwrap();
+    assert_eq!(mode(&json), 0o600);
+    let md = fx.out("private-md");
+    desktop
+        .export_data(request(ExportFormat::Markdown, &md, false))
+        .unwrap();
+    let mut checked = 0;
+    let mut pending = vec![md.clone()];
+    while let Some(path) = pending.pop() {
+        if path.is_dir() {
+            assert_eq!(mode(&path), 0o700, "{}", path.display());
+            pending.extend(std::fs::read_dir(&path).unwrap().map(|e| e.unwrap().path()));
+        } else {
+            assert_eq!(mode(&path), 0o600, "{}", path.display());
+            checked += 1;
+        }
+    }
+    assert!(checked >= 3);
+}
+
+/// Review finding: a destination with no name was reported as "already
+/// exists".
+#[test]
+fn a_destination_without_a_name_is_its_own_error() {
+    let fx = Fixture::new();
+    let desktop = fx.store(Interface::Desktop);
+    let refused = desktop
+        .export_data(request(ExportFormat::Json, Path::new("/"), false))
+        .unwrap_err();
+    assert_eq!(refused.code(), "invalid_input");
+    assert!(
+        refused.to_string().contains("needs a file or folder name"),
+        "{refused}"
+    );
+}

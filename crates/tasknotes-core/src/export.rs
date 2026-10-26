@@ -12,7 +12,9 @@
 //! private Notes are left out unless they choose to include them.
 //!
 //! An export never overwrites: it is written beside the destination under a
-//! hidden partial name and renamed into place once complete.
+//! hidden partial name, every file created fresh (0600, directories 0700,
+//! like backups) and synced, then moved into place without replacing
+//! anything (`publish`).
 
 use std::collections::HashMap;
 use std::fs;
@@ -156,6 +158,11 @@ impl TaskStore {
             return Err(TaskError::PrivateExportDesktopOnly);
         }
         let destination = request.destination.clone();
+        let name = destination
+            .file_name()
+            .ok_or(TaskError::InvalidExportDestination)?
+            .to_string_lossy()
+            .into_owned();
         if destination.symlink_metadata().is_ok() {
             return Err(TaskError::ExportDestinationExists);
         }
@@ -181,25 +188,16 @@ impl TaskStore {
             .parent()
             .filter(|p| !p.as_os_str().is_empty())
             .unwrap_or_else(|| Path::new("."));
-        let name = destination
-            .file_name()
-            .ok_or(TaskError::ExportDestinationExists)?
-            .to_string_lossy();
         let partial = parent.join(format!(".{name}.partial-{}", Uuid::new_v4().simple()));
         let written = match request.format {
             ExportFormat::Json => serde_json::to_vec_pretty(&document)
                 .map_err(std::io::Error::other)
-                .and_then(|bytes| fs::write(&partial, bytes)),
+                .and_then(|bytes| write_private(&partial, &bytes)),
             ExportFormat::Markdown => write_markdown(&document, &partial),
         };
-        let finished = written.and_then(|()| {
-            // Checked again just before the rename, which would replace a
-            // file that appeared meanwhile.
-            if destination.symlink_metadata().is_ok() {
-                return Err(std::io::Error::from(std::io::ErrorKind::AlreadyExists));
-            }
-            fs::rename(&partial, &destination)
-        });
+        let finished = written
+            .and_then(|()| publish(&partial, &destination, request.format))
+            .and_then(|()| crate::backup::sync_dir(parent));
         if let Err(error) = finished {
             let _ = fs::remove_dir_all(&partial).or_else(|_| fs::remove_file(&partial));
             return Err(if error.kind() == std::io::ErrorKind::AlreadyExists {
@@ -377,11 +375,11 @@ fn collect<T>(
 /// `Tasks/<List>.md` (Inbox for Tasks in no List), `Notes/<folder tree>/
 /// <Note title>.md` with a front-matter header, and a README.
 fn write_markdown(doc: &Document, root: &Path) -> std::io::Result<()> {
-    fs::create_dir(root)?;
-    fs::write(root.join("README.md"), readme(doc))?;
+    private_dir(root)?;
+    write_private(&root.join("README.md"), readme(doc).as_bytes())?;
 
     let tasks_dir = root.join("Tasks");
-    fs::create_dir(&tasks_dir)?;
+    private_dir(&tasks_dir)?;
     let mut names = Names::default();
     let mut groups: Vec<(Option<&str>, String)> = vec![(None, "Inbox".to_owned())];
     groups.extend(
@@ -399,11 +397,11 @@ fn write_markdown(doc: &Document, root: &Path) -> std::io::Result<()> {
         for task in tasks {
             text.push_str(&task_markdown(task));
         }
-        fs::write(names.file(&tasks_dir, &heading), text)?;
+        write_private(&names.file(&tasks_dir, &heading), text.as_bytes())?;
     }
 
     let notes_dir = root.join("Notes");
-    fs::create_dir(&notes_dir)?;
+    private_dir(&notes_dir)?;
     let mut folder_dirs: HashMap<&str, PathBuf> = HashMap::new();
     // Parents before children; a damaged (cyclic) tree is cut at the root.
     let mut pending: Vec<&FolderRecord> = doc.note_folders.iter().collect();
@@ -427,8 +425,11 @@ fn write_markdown(doc: &Document, root: &Path) -> std::io::Result<()> {
             }
         }
     }
-    for dir in folder_dirs.values() {
-        fs::create_dir_all(dir)?;
+    // Parents sort before their children.
+    let mut dirs: Vec<&PathBuf> = folder_dirs.values().collect();
+    dirs.sort();
+    for dir in dirs {
+        private_dir(dir)?;
     }
     let mut linked: HashMap<&str, Vec<&str>> = HashMap::new();
     for link in doc.note_links.iter().filter(|l| l.unlinked_at.is_none()) {
@@ -441,7 +442,10 @@ fn write_markdown(doc: &Document, root: &Path) -> std::io::Result<()> {
             .and_then(|id| folder_dirs.get(id))
             .unwrap_or(&notes_dir);
         let tasks = linked.get(note.id.as_str()).cloned().unwrap_or_default();
-        fs::write(names.file(dir, &note.title), note_markdown(note, &tasks))?;
+        write_private(
+            &names.file(dir, &note.title),
+            note_markdown(note, &tasks).as_bytes(),
+        )?;
     }
     Ok(())
 }
@@ -576,10 +580,12 @@ fn iso_time(ms: i64) -> String {
     )
 }
 
-/// File names unique per directory, ignoring case (macOS file systems).
+/// File names unique per directory as macOS file systems compare them:
+/// ignoring case and Unicode form, so a precomposed "Café" and one with a
+/// combining accent are one name.
 #[derive(Default)]
 struct Names {
-    taken: HashMap<PathBuf, Vec<String>>,
+    taken: HashMap<PathBuf, std::collections::HashSet<String>>,
 }
 
 impl Names {
@@ -589,13 +595,49 @@ impl Names {
         let taken = self.taken.entry(dir.to_path_buf()).or_default();
         let mut candidate = base.clone();
         let mut n = 2;
-        while taken.contains(&candidate.to_lowercase()) {
+        while !taken.insert(crate::text_fold::fold(&candidate)) {
             candidate = format!("{base} ({n})");
             n += 1;
         }
-        taken.push(candidate.to_lowercase());
         dir.join(format!("{candidate}.md"))
     }
+}
+
+/// A new file only the person's account can read, written and synced.
+/// `create_new`: an existing file is an error, never overwritten.
+fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut file = crate::backup::private_file(path, true)?;
+    file.write_all(bytes)?;
+    file.sync_all()
+}
+
+/// A new directory only the person's account can open.
+fn private_dir(path: &Path) -> std::io::Result<()> {
+    let mut builder = fs::DirBuilder::new();
+    #[cfg(unix)]
+    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+    builder.create(path)
+}
+
+/// Move a finished export into place without replacing anything. A file
+/// is hard-linked to its name, which fails if the name is taken, then the
+/// partial name is removed; a file system without hard links falls back
+/// to a checked rename. A directory is renamed: `rename` refuses a
+/// non-empty directory or a file at the destination (an empty directory
+/// created there in the meantime is replaced, which loses nothing).
+fn publish(partial: &Path, destination: &Path, format: ExportFormat) -> std::io::Result<()> {
+    if format == ExportFormat::Json {
+        match fs::hard_link(partial, destination) {
+            Ok(()) => return fs::remove_file(partial),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => return Err(error),
+            Err(_) => {}
+        }
+    }
+    if destination.symlink_metadata().is_ok() {
+        return Err(std::io::Error::from(std::io::ErrorKind::AlreadyExists));
+    }
+    fs::rename(partial, destination)
 }
 
 /// A title as a file name: no path separators, reserved or control
