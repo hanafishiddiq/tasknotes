@@ -14,12 +14,16 @@ use tasknotes_core::tasks::{
 use tauri::{Manager, State};
 
 #[cfg(desktop)]
+mod platform;
+#[cfg(desktop)]
 mod quick_capture;
 mod quit;
 #[cfg(desktop)]
 mod shell;
 #[cfg(desktop)]
 mod shell_settings;
+#[cfg(desktop)]
+mod shell_state;
 
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
@@ -375,19 +379,27 @@ pub fn run() {
             #[cfg(desktop)]
             shell::set_keep_in_menu_bar,
             #[cfg(desktop)]
-            shell::set_quick_capture
+            shell::set_quick_capture,
+            #[cfg(desktop)]
+            shell::take_quick_capture,
+            #[cfg(desktop)]
+            shell::take_launch_notice
         ])
         .build(tauri::generate_context!())
         .expect("Unable to launch Tasknotes")
-        .run(|_app, _event| {
-            // Clicking the Dock icon brings back a window hidden to the menu bar.
-            #[cfg(target_os = "macos")]
-            if let tauri::RunEvent::Reopen {
-                has_visible_windows: false,
-                ..
-            } = _event
-            {
-                shell::show_main_window(_app);
-            }
-        });
+        .run(on_run_event);
+}
+
+/// Clicking the Dock icon brings back a window hidden to the menu bar. Other
+/// systems reopen from the tray item, so there is nothing to do there.
+#[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
+fn on_run_event(app: &tauri::AppHandle, event: tauri::RunEvent) {
+    #[cfg(target_os = "macos")]
+    if let tauri::RunEvent::Reopen {
+        has_visible_windows: false,
+        ..
+    } = event
+    {
+        shell::show_main_window(app);
+    }
 }
