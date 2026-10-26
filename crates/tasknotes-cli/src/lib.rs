@@ -4,6 +4,7 @@
 
 pub mod access;
 mod args;
+pub mod bulk;
 pub mod contract;
 mod notes;
 
@@ -99,7 +100,7 @@ fn dispatch(
     }
     if !matches!(
         noun,
-        "task" | "list" | "audit" | "note" | "folder" | "link" | "removed"
+        "task" | "list" | "audit" | "note" | "folder" | "link" | "removed" | "bulk"
     ) {
         return Err(CliError::invalid(USAGE));
     }
@@ -112,12 +113,14 @@ fn dispatch(
         "folder" => notes::folder_command(&store, verb, words),
         "link" => notes::link_command(&store, verb, words),
         "removed" => notes::removed_command(&store, verb, words),
+        "bulk" => bulk::bulk_command(&store, verb, words),
         _ => audit_command(&store, verb, words),
     }
 }
 
 pub(crate) const USAGE: &str = "Usage: tasknotes [--data-dir DIR] \
-    <task|list|note|folder|link|removed|audit|access> <command> [id] [--options]; \
+    <task|list|note|folder|link|removed|audit|bulk|access> <command> [id] [--options]; \
+    bulk preview --action A --id ID... | bulk status REQUEST_ID (approved only in the app); \
     access grant|revoke [--mcp]";
 
 fn access_status(data_dir: &Path) -> Value {
@@ -252,15 +255,15 @@ fn task_move(store: &TaskStore, words: &[String]) -> Result<Task, CliError> {
             positionals: 1,
         },
     )?;
-    if p.has("list") == p.has("inbox") {
-        return Err(CliError::invalid(
-            "Give exactly one of --list ID or --inbox",
-        ));
-    }
+    let list_id = contract::destination(
+        p.value("list").map(str::to_owned),
+        p.has("inbox"),
+        ("--list ID", "--inbox"),
+    )?;
     Ok(store.move_task(MoveTask {
         id: p.id().to_owned(),
         expected_revision: p.revision()?,
-        list_id: p.value("list").map(str::to_owned),
+        list_id,
     })?)
 }
 

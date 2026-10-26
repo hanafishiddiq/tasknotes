@@ -61,14 +61,14 @@ pub fn note_command(store: &TaskStore, verb: &str, words: &[String]) -> Result<V
                     positionals: 1,
                 },
             )?;
-            if p.has("folder") == p.has("no-folder") {
-                return Err(CliError::invalid(
-                    "Give exactly one of --folder ID or --no-folder",
-                ));
-            }
+            let folder_id = contract::destination(
+                p.value("folder").map(str::to_owned),
+                p.has("no-folder"),
+                ("--folder ID", "--no-folder"),
+            )?;
             store.move_note(MoveNote {
                 id: p.id().to_owned(),
-                folder_id: p.value("folder").map(str::to_owned),
+                folder_id,
                 expected_revision: Some(p.revision()?),
             })?
         }
@@ -155,15 +155,15 @@ pub fn folder_command(store: &TaskStore, verb: &str, words: &[String]) -> Result
                     positionals: 1,
                 },
             )?;
-            if p.has("parent") == p.has("top") {
-                return Err(CliError::invalid(
-                    "Give exactly one of --parent ID or --top",
-                ));
-            }
+            let parent_id = contract::destination(
+                p.value("parent").map(str::to_owned),
+                p.has("top"),
+                ("--parent ID", "--top"),
+            )?;
             store.move_note_folder(MoveNoteFolder {
                 id: p.id().to_owned(),
                 expected_revision: p.revision()?,
-                parent_id: p.value("parent").map(str::to_owned),
+                parent_id,
             })?
         }
         "remove" | "restore" => {

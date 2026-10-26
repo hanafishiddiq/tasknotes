@@ -57,7 +57,8 @@ impl CliError {
             "invalid_input" | "invalid_cursor" => 2,
             "not_found" => 3,
             "revision_conflict" | "stale_preview" => 4,
-            "removed" | "name_conflict" | "invalid_transition" | "unchanged" | "desktop_only" => 5,
+            "removed" | "name_conflict" | "invalid_transition" | "unchanged" | "desktop_only"
+            | "needs_approval" => 5,
             "not_trusted" => 6,
             "storage_unavailable" | "unsupported_schema" => 7,
             _ => 1,
@@ -76,6 +77,23 @@ impl From<TaskError> for CliError {
             },
         }
     }
+}
+
+/// The one move-target rule every adapter uses (single moves and bulk
+/// moves): exactly one of a destination id or the switch naming the other
+/// place (`--list ID` or `--inbox`; `list_id` or `inbox: true`). The id, or
+/// `None` for the switch's place.
+pub fn destination(
+    id: Option<String>,
+    switch: bool,
+    (id_name, switch_name): (&str, &str),
+) -> Result<Option<String>, CliError> {
+    if id.is_some() == switch {
+        return Err(CliError::invalid(format!(
+            "Give exactly one of {id_name} or {switch_name}"
+        )));
+    }
+    Ok(id)
 }
 
 pub fn success_item(item: Value) -> Value {
