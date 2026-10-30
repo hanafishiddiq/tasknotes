@@ -591,9 +591,17 @@ export default function App() {
     }
   }
 
-  /** A save of typed edits: once it succeeds, the edits it carried are no longer unsaved. */
+  /**
+   * A save of typed edits: once it succeeds, the edits it carried are no longer
+   * unsaved. They go with the new revision, not after the list refresh, or the
+   * row would take its own save for a change made elsewhere.
+   */
   async function saveEdits(task: Task, mutate: () => Promise<Task>) {
-    if (await commitTaskMutation(task, mutate)) drafts.set(task.id, undefined);
+    await commitTaskMutation(task, async () => {
+      const updated = await mutate();
+      drafts.set(task.id, undefined);
+      return updated;
+    });
   }
 
   async function changeTask(task: Task, change: TaskChange, expectedRevision: number) {

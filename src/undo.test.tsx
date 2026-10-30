@@ -16,6 +16,8 @@ let lists: TaskList[];
 let tasks: (Task & { removedAt: number | null })[];
 let clock: number;
 const PAGE = 5;
+/** While pending, every list refresh waits: the moment after a save lands. */
+let refreshGate: Promise<void> | undefined;
 
 function task(n: number): Task & { removedAt: number | null } {
   return {
@@ -40,12 +42,14 @@ beforeEach(() => {
   lists = [];
   tasks = [];
   clock = 1_000;
+  refreshGate = undefined;
   call.mockReset();
   call.mockImplementation(async (command, args) => {
     const body = (args ?? {}) as Record<string, any>;
     switch (command) {
       case "list_lists": return { items: lists.map((list) => ({ ...list })), nextCursor: null };
       case "list_tasks": {
+        await refreshGate;
         // As the core: a cursor is valid only for the query that produced it.
         const { cursor, limit: _limit, ...query } = body;
         const key = JSON.stringify(query);
@@ -75,6 +79,13 @@ beforeEach(() => {
         list.removed = body.input.removed;
         list.revision++;
         return { ...list };
+      }
+      case "record_progress": case "update_task_details": case "change_task": {
+        const found = tasks.find((item) => item.id === body.input.id)!;
+        const { id: _id, expectedRevision: _revision, note: _note, ...fields } = body.input;
+        Object.assign(found, fields, { revision: found.revision + 1, updatedAt: ++clock });
+        const { removedAt: _, ...shown } = found;
+        return { ...shown };
       }
       case "list_progress_entries": case "list_task_notes": return { items: [], nextCursor: null };
       case "quit_ready": return null;
@@ -209,5 +220,40 @@ describe("Undo refreshes the view showing now, not the one the Task left", () =>
     expect(await screen.findByRole("article", { name: "T6" })).toBeInTheDocument();
     expect(rows()).toEqual(["T6", "T7", "T8"]);
     expect(screen.getByRole("button", { name: "Previous page" })).toBeEnabled();
+  });
+});
+
+describe("Saving your own edits while the list refreshes", () => {
+  const saves: [string, (user: ReturnType<typeof userEvent.setup>) => Promise<void>, string, (saved: Task) => boolean][] = [
+    ["a progress update", (user) => user.type(screen.getByRole("textbox", { name: "Next step" }), "Call"),
+      "Save progress update", (saved) => saved.nextStep === "Call"],
+    ["a percentage", async (user) => {
+      const percent = screen.getByRole("spinbutton", { name: "Progress percentage" });
+      await user.clear(percent);
+      await user.type(percent, "33");
+    }, "Apply progress", (saved) => saved.progress === 33],
+    ["tags", (user) => user.type(screen.getByRole("textbox", { name: "Tags" }), "errands"),
+      "Save tags and deadline", (saved) => saved.tags?.[0] === "errands"],
+  ];
+
+  it.each(saves)("shows no Changed elsewhere for %s", async (_what, type, button, landed) => {
+    tasks = [task(1)];
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open T1" }));
+    await type(user);
+    let release = () => {};
+    refreshGate = new Promise((resolve) => { release = resolve; });
+
+    await user.click(screen.getByRole("button", { name: button }));
+    await waitFor(() => expect(landed(tasks[0])).toBe(true));
+    await settled();
+
+    expect(screen.queryByRole("alert", { name: "Changed elsewhere" })).not.toBeInTheDocument();
+    refreshGate = undefined;
+    release();
+    await settled();
+    expect(screen.queryByRole("alert", { name: "Changed elsewhere" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Unsaved edits")).not.toBeInTheDocument();
   });
 });
