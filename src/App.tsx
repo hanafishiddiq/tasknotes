@@ -461,6 +461,7 @@ export default function App() {
   async function createTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!title.trim() || creating || savingId || loading || loadError) return;
+    const form = event.currentTarget;
     setCreating(true);
     setError(null);
     try {
@@ -507,6 +508,10 @@ export default function App() {
       setError(errorMessage(reason));
     } finally {
       setCreating(false);
+      // The field was disabled while saving, which drops focus: hand it back for the next Task.
+      if (document.activeElement === document.body || form.contains(document.activeElement)) {
+        setFocusRequest((previous) => ({ field: "capture", seq: (previous?.seq ?? 0) + 1 }));
+      }
     }
   }
 

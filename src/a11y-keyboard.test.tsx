@@ -3,7 +3,9 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
 import App from "./App";
+import { QUICK_CAPTURE_REQUESTED } from "./lib/shell-api";
 import { freshWorld, SCENES, world, type User } from "./test/a11y-scenes";
+import { tauriEvents } from "./test/tauri-events";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 const call = vi.mocked(invoke);
@@ -121,6 +123,23 @@ describe("the keyboard checks themselves", () => {
   });
 });
 
+/**
+ * jsdom keeps focus on a control that becomes disabled; the HTML standard's focus
+ * fixup, and browsers, drop it to the body. This puts that back for one test.
+ */
+function dropFocusFromDisabledControls() {
+  const observer = new MutationObserver(() => {
+    const active = document.activeElement as HTMLInputElement | null;
+    if (!active?.matches(":disabled")) return;
+    // jsdom refuses to blur a disabled control, so enable it for the moment it takes.
+    active.disabled = false;
+    active.blur();
+    active.disabled = true;
+  });
+  observer.observe(document.body, { subtree: true, attributes: true, attributeFilter: ["disabled"] });
+  return () => observer.disconnect();
+}
+
 describe("focus when the command palette closes", () => {
   async function fromInbox() {
     const user = userEvent.setup();
@@ -165,6 +184,77 @@ describe("focus when the command palette closes", () => {
     // Later than the palette's own hand-back, which must not take it away again.
     await act(() => new Promise((done) => setTimeout(done)));
     expect(field).toHaveFocus();
+  });
+});
+
+describe("focus around Quick Capture", () => {
+  const capture = () => screen.getByRole("textbox", { name: "Task title" });
+  /** The shell queues the request, then tells the page. */
+  const requested = () => act(() => {
+    world.pendingCapture = true;
+    return tauriEvents.emit(QUICK_CAPTURE_REQUESTED);
+  });
+
+  it("reaches the field from behind an open palette", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("Your list is clear");
+    await user.keyboard("{Meta>}k{/Meta}");
+    await requested();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() => expect(capture()).toHaveFocus());
+  });
+
+  it("reaches the field from Notes", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "All notes" }));
+    await screen.findByRole("list", { name: "Notes" }, eventually);
+    await requested();
+    await waitFor(() => expect(capture()).toHaveFocus());
+  });
+
+  it("stays in the field after Return, ready for the next Task", async () => {
+    const restore = dropFocusFromDisabledControls();
+    try {
+      const user = userEvent.setup();
+      render(<App />);
+      await screen.findByText("Your list is clear");
+      await user.keyboard("{Meta>}n{/Meta}");
+      await user.keyboard("Synthetic first{Enter}");
+      await screen.findByRole("article", { name: "Synthetic first" });
+      await waitFor(() => expect(capture()).toHaveFocus());
+      expect(capture()).toHaveValue("");
+    } finally {
+      restore();
+    }
+  });
+
+  it("stays in the field after the core refuses, the text kept", async () => {
+    const restore = dropFocusFromDisabledControls();
+    try {
+      world.refuse.set("create_task", "Synthetic refusal");
+      const user = userEvent.setup();
+      render(<App />);
+      await screen.findByText("Your list is clear");
+      await user.keyboard("{Meta>}n{/Meta}");
+      await user.keyboard("Synthetic refused{Enter}");
+      await screen.findByText("Synthetic refusal");
+      await waitFor(() => expect(capture()).toHaveFocus());
+      expect(capture()).toHaveValue("Synthetic refused");
+    } finally {
+      restore();
+    }
+  });
+
+  it("comes back to the field after Add task is clicked and the extra fields close", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("Your list is clear");
+    await user.type(capture(), "Synthetic added");
+    await user.click(screen.getByRole("button", { name: "Add task" }));
+    await screen.findByRole("article", { name: "Synthetic added" });
+    await waitFor(() => expect(capture()).toHaveFocus());
   });
 });
 
