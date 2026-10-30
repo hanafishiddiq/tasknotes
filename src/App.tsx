@@ -115,6 +115,9 @@ export default function App() {
   // Ignore stale results from older Task queries after a newer user action.
   const requestGeneration = useRef(0);
   const currentQuery = useRef({ sort, view, filters });
+  // The page showing now, for Undo: it runs long after the render that queued it.
+  const currentPage = useRef(currentPageCursor);
+  currentPage.current = currentPageCursor;
 
   useEffect(() => {
     currentQuery.current = { sort, view, filters };
@@ -536,9 +539,9 @@ export default function App() {
     if (savingId) return false;
     setSavingId(task.id);
     setError(null);
-    // Paging is disabled while saving, so this is still the visible page.
+    // Paging is disabled while saving, so this stays the visible page.
     const queryAtStart = currentQuery.current;
-    const startCursor = currentPageCursor;
+    const startCursor = currentPage.current;
     try {
       const updated = await mutate();
       // The core decides completion (status or 100% progress); the cue follows its answer.
