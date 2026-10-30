@@ -4,6 +4,7 @@
 
 pub mod access;
 mod args;
+pub mod bulk;
 pub mod contract;
 mod notes;
 
@@ -32,11 +33,12 @@ pub struct Outcome {
 }
 
 /// Run one command. `confirm` asks the person at the terminal to type
-/// `allow`; it is only called by `access grant` on an interactive terminal.
+/// `allow` for the named interface; it is only called by `access grant` on
+/// an interactive terminal.
 pub fn run(
     args: &[OsString],
     env: &Environment,
-    confirm: impl FnOnce() -> std::io::Result<String>,
+    confirm: impl FnOnce(Interface) -> std::io::Result<String>,
 ) -> Outcome {
     let result = args
         .iter()
@@ -59,7 +61,7 @@ pub fn run(
 fn dispatch(
     args: &[String],
     env: &Environment,
-    confirm: impl FnOnce() -> std::io::Result<String>,
+    confirm: impl FnOnce(Interface) -> std::io::Result<String>,
 ) -> Result<Value, CliError> {
     let (data_flag, rest) = match args {
         [flag, dir, rest @ ..] if flag == "--data-dir" => (Some(dir.as_str()), rest),
@@ -72,17 +74,33 @@ fn dispatch(
     let data_dir = access::data_dir(data_flag, env)?;
 
     if noun == "access" {
-        parse(words, &NO_FLAGS)?;
+        // `--mcp` grants or revokes local MCP clients instead of the CLI.
+        let p = parse(
+            words,
+            &Spec {
+                values: &[],
+                repeated: &[],
+                switches: &["mcp"],
+                positionals: 0,
+            },
+        )?;
+        let interface = if p.has("mcp") {
+            Interface::Mcp
+        } else {
+            Interface::Cli
+        };
         return match verb {
-            "status" => Ok(access_status(&data_dir)),
-            "grant" => access::grant(&data_dir, env, confirm).map(|()| access_status(&data_dir)),
-            "revoke" => access::revoke(&data_dir).map(|()| access_status(&data_dir)),
+            "status" if !p.has("mcp") => Ok(access_status(&data_dir)),
+            "grant" => {
+                access::grant(&data_dir, interface, env, confirm).map(|()| access_status(&data_dir))
+            }
+            "revoke" => access::revoke(&data_dir, interface).map(|()| access_status(&data_dir)),
             _ => Err(CliError::invalid(USAGE)),
         };
     }
     if !matches!(
         noun,
-        "task" | "list" | "audit" | "note" | "folder" | "link" | "removed"
+        "task" | "list" | "audit" | "note" | "folder" | "link" | "removed" | "bulk"
     ) {
         return Err(CliError::invalid(USAGE));
     }
@@ -95,18 +113,20 @@ fn dispatch(
         "folder" => notes::folder_command(&store, verb, words),
         "link" => notes::link_command(&store, verb, words),
         "removed" => notes::removed_command(&store, verb, words),
+        "bulk" => bulk::bulk_command(&store, verb, words),
         _ => audit_command(&store, verb, words),
     }
 }
 
 pub(crate) const USAGE: &str = "Usage: tasknotes [--data-dir DIR] \
-    <task|list|note|folder|link|removed|audit|access> <command> [id] [--options]";
-
-const NO_FLAGS: Spec = flags(&[], 0);
+    <task|list|note|folder|link|removed|audit|bulk|access> <command> [id] [--options]; \
+    bulk preview --action A --id ID... | bulk status REQUEST_ID (approved only in the app); \
+    access grant|revoke [--mcp]";
 
 fn access_status(data_dir: &Path) -> Value {
     contract::success_item(json!({
         "cli": ai_access::is_authorized(data_dir, Interface::Cli),
+        "mcp": ai_access::is_authorized(data_dir, Interface::Mcp),
         "data_dir": data_dir.display().to_string(),
     }))
 }
@@ -235,15 +255,15 @@ fn task_move(store: &TaskStore, words: &[String]) -> Result<Task, CliError> {
             positionals: 1,
         },
     )?;
-    if p.has("list") == p.has("inbox") {
-        return Err(CliError::invalid(
-            "Give exactly one of --list ID or --inbox",
-        ));
-    }
+    let list_id = contract::destination(
+        p.value("list").map(str::to_owned),
+        p.has("inbox"),
+        ("--list ID", "--inbox"),
+    )?;
     Ok(store.move_task(MoveTask {
         id: p.id().to_owned(),
         expected_revision: p.revision()?,
-        list_id: p.value("list").map(str::to_owned),
+        list_id,
     })?)
 }
 

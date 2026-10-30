@@ -85,9 +85,11 @@ pub struct SetNoteExcludeFromAi {
 
 impl TaskStore {
     /// Whether this store serves an AI-facing interface, which must never
-    /// see a Note marked Exclude from AI.
+    /// see a Note marked Exclude from AI, or applies a Bulk Change one asked
+    /// for (whatever the person approved, the AI's request cannot reach a
+    /// Note it may not see).
     pub(crate) fn hides_private(&self) -> bool {
-        self.interface() != Interface::Desktop
+        self.interface() != Interface::Desktop || self.requested_by().is_some()
     }
 
     /// SQL that is true when the Note aliased `alias` may be shown to this

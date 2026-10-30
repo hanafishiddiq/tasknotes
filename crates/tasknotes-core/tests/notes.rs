@@ -267,7 +267,7 @@ fn v5_database(db: &Path) -> Task {
         .execute_batch(
             "DROP INDEX tasks_removed_order; DROP INDEX lists_removed_order;
              DROP TABLE task_note_links; DROP TABLE notes_fts; DROP TABLE notes; DROP TABLE note_folders;
-             DROP TABLE IF EXISTS audit_entries;
+             DROP TABLE IF EXISTS audit_entries; DROP TABLE IF EXISTS bulk_requests;
              PRAGMA user_version = 5;",
         )
         .unwrap();

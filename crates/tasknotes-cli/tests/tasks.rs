@@ -282,7 +282,15 @@ fn lists_are_created_renamed_removed_and_restored_through_the_cli() {
     assert_eq!(list["name"], "Vegetable garden");
     cli.ok(&["task", "create", "--title", "Sow beans", "--list", &lid]);
 
-    cli.ok(&["list", "remove", &lid, "--revision", "2"]);
+    // A List holding a Task is removed only with the person's approval in
+    // the desktop (owner decision B); restoring it needs none.
+    let run = cli.run(&["list", "remove", &lid, "--revision", "2"]);
+    assert_eq!(error_code(&run, 5), "needs_approval");
+    let asked = cli.ok(&["bulk", "preview", "--action", "remove_list", "--id", &lid]);
+    tasknotes_core::tasks::TaskStore::open(&cli.db())
+        .unwrap()
+        .approve_bulk_request(asked["item"]["request_id"].as_str().unwrap())
+        .unwrap();
     assert!(
         cli.ok(&["list", "list"])["items"]
             .as_array()

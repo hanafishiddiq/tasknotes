@@ -4,9 +4,7 @@
 //! fails as `not_found`, like an id that was never used.
 
 use serde_json::Value;
-use tasknotes_core::note_folders::{
-    CreateNoteFolder, MoveNoteFolder, NoteFolder, RenameNoteFolder,
-};
+use tasknotes_core::note_folders::{CreateNoteFolder, MoveNoteFolder, RenameNoteFolder};
 use tasknotes_core::notes::{CreateNote, MoveNote, Note, NoteQuery, NoteScope, UpdateNote};
 use tasknotes_core::removed::SetRemoved;
 use tasknotes_core::tasks::{TaskError, TaskStore};
@@ -19,13 +17,8 @@ fn page_flags(positionals: usize) -> Spec<'static> {
     flags(&["limit", "cursor"], positionals)
 }
 
-fn folder_path(store: &TaskStore, folder_id: Option<&str>) -> Result<Option<String>, CliError> {
-    Ok(folder_id.map(|id| store.note_folder_path(id)).transpose()?)
-}
-
 fn note_item(store: &TaskStore, note: &Note) -> Result<Value, CliError> {
-    let path = folder_path(store, note.folder_id.as_deref())?;
-    Ok(contract::success_item(contract::note(note, path)))
+    Ok(contract::success_item(contract::note_read(store, note)?))
 }
 
 pub fn note_command(store: &TaskStore, verb: &str, words: &[String]) -> Result<Value, CliError> {
@@ -68,14 +61,14 @@ pub fn note_command(store: &TaskStore, verb: &str, words: &[String]) -> Result<V
                     positionals: 1,
                 },
             )?;
-            if p.has("folder") == p.has("no-folder") {
-                return Err(CliError::invalid(
-                    "Give exactly one of --folder ID or --no-folder",
-                ));
-            }
+            let folder_id = contract::destination(
+                p.value("folder").map(str::to_owned),
+                p.has("no-folder"),
+                ("--folder ID", "--no-folder"),
+            )?;
             store.move_note(MoveNote {
                 id: p.id().to_owned(),
-                folder_id: p.value("folder").map(str::to_owned),
+                folder_id,
                 expected_revision: Some(p.revision()?),
             })?
         }
@@ -104,10 +97,7 @@ fn note_page(store: &TaskStore, words: &[String]) -> Result<Value, CliError> {
     let items = page
         .items
         .iter()
-        .map(|note| {
-            let path = folder_path(store, note.folder_id.as_deref())?;
-            Ok(contract::note_summary(note, path))
-        })
+        .map(|note| contract::note_summary_read(store, note))
         .collect::<Result<Vec<_>, CliError>>()?;
     Ok(contract::success_page(items, page.next_cursor))
 }
@@ -122,14 +112,6 @@ pub fn task_notes(store: &TaskStore, words: &[String]) -> Result<Value, CliError
     ))
 }
 
-fn folder_value(store: &TaskStore, folder: &NoteFolder) -> Result<Value, CliError> {
-    Ok(contract::folder(
-        folder,
-        store.note_folder_path(&folder.id)?,
-        store.count_folder_notes(Some(&folder.id))?,
-    ))
-}
-
 pub fn folder_command(store: &TaskStore, verb: &str, words: &[String]) -> Result<Value, CliError> {
     let folder = match verb {
         "list" => {
@@ -138,7 +120,7 @@ pub fn folder_command(store: &TaskStore, verb: &str, words: &[String]) -> Result
             let items = page
                 .items
                 .iter()
-                .map(|folder| folder_value(store, folder))
+                .map(|folder| contract::folder_read(store, folder))
                 .collect::<Result<Vec<_>, CliError>>()?;
             return Ok(contract::success_page(items, page.next_cursor));
         }
@@ -173,15 +155,15 @@ pub fn folder_command(store: &TaskStore, verb: &str, words: &[String]) -> Result
                     positionals: 1,
                 },
             )?;
-            if p.has("parent") == p.has("top") {
-                return Err(CliError::invalid(
-                    "Give exactly one of --parent ID or --top",
-                ));
-            }
+            let parent_id = contract::destination(
+                p.value("parent").map(str::to_owned),
+                p.has("top"),
+                ("--parent ID", "--top"),
+            )?;
             store.move_note_folder(MoveNoteFolder {
                 id: p.id().to_owned(),
                 expected_revision: p.revision()?,
-                parent_id: p.value("parent").map(str::to_owned),
+                parent_id,
             })?
         }
         "remove" | "restore" => {
@@ -194,7 +176,9 @@ pub fn folder_command(store: &TaskStore, verb: &str, words: &[String]) -> Result
         }
         _ => return Err(CliError::invalid(USAGE)),
     };
-    Ok(contract::success_item(folder_value(store, &folder)?))
+    Ok(contract::success_item(contract::folder_read(
+        store, &folder,
+    )?))
 }
 
 pub fn link_command(store: &TaskStore, verb: &str, words: &[String]) -> Result<Value, CliError> {

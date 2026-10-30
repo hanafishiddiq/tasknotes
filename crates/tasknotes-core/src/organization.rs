@@ -235,6 +235,26 @@ pub(crate) fn hydrate_tags(
     Ok(())
 }
 
+/// Whether any Task, in Removed or not, belongs to the List.
+pub(crate) fn list_holds_tasks(conn: &rusqlite::Connection, id: &str) -> Result<bool, TaskError> {
+    Ok(conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM tasks WHERE list_id = ?1)",
+        params![id],
+        |row| row.get(0),
+    )?)
+}
+
+/// The List as stored, or `ListNotFound`.
+pub(crate) fn get_list(conn: &rusqlite::Connection, id: &str) -> Result<List, TaskError> {
+    conn.query_row(
+        "SELECT id,name,revision,created_at,updated_at,removed_at FROM lists WHERE id=?1",
+        params![id],
+        read_list,
+    )
+    .optional()?
+    .ok_or(TaskError::ListNotFound)
+}
+
 /// Verify ownership inside the same transaction as the Task mutation.
 pub(crate) fn require_active_list(conn: &rusqlite::Connection, id: &str) -> Result<(), TaskError> {
     if Uuid::parse_str(id).is_err() {
@@ -363,6 +383,18 @@ impl TaskStore {
     fn move_task_inner(&self, input: MoveTask) -> Result<Task, TaskError> {
         let mut conn = self.connect()?;
         let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let updated = self.move_task_in(&tx, input)?;
+        tx.commit()?;
+        Ok(updated)
+    }
+
+    /// The move inside the caller's write transaction (also used by bulk
+    /// changes); the caller commits.
+    pub(crate) fn move_task_in(
+        &self,
+        tx: &rusqlite::Transaction,
+        input: MoveTask,
+    ) -> Result<Task, TaskError> {
         let old = tx
             .query_row(
                 &format!("SELECT {COLUMNS} FROM tasks WHERE id=?1"),
@@ -371,7 +403,7 @@ impl TaskStore {
             )
             .optional()?
             .ok_or(TaskError::NotFound)?;
-        crate::removed::require_writable_task(&tx, &old.id)?;
+        crate::removed::require_writable_task(tx, &old.id)?;
         if old.revision != input.expected_revision {
             return Err(TaskError::RevisionConflict);
         }
@@ -379,7 +411,7 @@ impl TaskStore {
             return Err(TaskError::TaskUnchanged);
         }
         if let Some(ref id) = input.list_id {
-            require_active_list(&tx, id)?;
+            require_active_list(tx, id)?;
         }
         let now = current_millis()?;
         let updated = tx.query_row(
@@ -391,10 +423,9 @@ impl TaskStore {
             params![input.list_id, now, input.id, input.expected_revision],
             read_task,
         )?;
-        self.audit_applied(&tx, AuditAction::TaskMove, &updated.id, updated.revision)?;
-        tx.commit()?;
+        self.audit_applied(tx, AuditAction::TaskMove, &updated.id, updated.revision)?;
         let mut updated = updated;
-        hydrate_tags(&conn, std::slice::from_mut(&mut updated))?;
+        hydrate_tags(tx, std::slice::from_mut(&mut updated))?;
         Ok(updated)
     }
 
@@ -489,6 +520,26 @@ impl TaskStore {
     ) -> Result<List, TaskError> {
         let mut conn = self.connect()?;
         let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let removing = input.removed;
+        let changed = self.set_list_removed_in(&tx, input, action)?;
+        // Owner decision B: through an AI interface, a List that holds any
+        // Task waits for the person's approval (`bulk`). Checked after the
+        // ordinary refusals; dropping `tx` rolls the change back.
+        if removing && self.needs_approval_to_empty() && list_holds_tasks(&tx, &changed.id)? {
+            return Err(TaskError::NeedsApproval);
+        }
+        tx.commit()?;
+        Ok(changed)
+    }
+
+    /// The change inside the caller's write transaction (also used by an
+    /// approved Bulk Change); the caller commits.
+    pub(crate) fn set_list_removed_in(
+        &self,
+        tx: &rusqlite::Transaction,
+        input: SetListRemoved,
+        action: AuditAction,
+    ) -> Result<List, TaskError> {
         let old = tx
             .query_row(
                 "SELECT id,name,revision,created_at,updated_at,removed_at FROM lists WHERE id=?1",
@@ -516,9 +567,15 @@ impl TaskStore {
             params![removed_at, now, input.id, input.expected_revision],
             read_list,
         )?;
-        self.audit_applied(&tx, action, &changed.id, changed.revision)?;
-        tx.commit()?;
+        self.audit_applied(tx, action, &changed.id, changed.revision)?;
         Ok(changed)
+    }
+
+    /// Through an AI interface, removing a List or Note Folder that holds
+    /// anything needs the person's approval. The desktop (also when it
+    /// applies an approved request) removes directly.
+    pub(crate) fn needs_approval_to_empty(&self) -> bool {
+        self.interface() != crate::audit::Interface::Desktop
     }
 
     pub fn list_lists(

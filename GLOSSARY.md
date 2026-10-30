@@ -57,3 +57,7 @@ A Note kept above the other Notes in every Note list it appears in. Pinning, lik
 
 **Audit Entry**:
 An immutable dated record that an official Tasknotes interface made or attempted a consequential change.
+
+**Bulk Change**:
+One request that removes, restores, moves or sets the status of several Tasks, or removes or restores several Notes; through an AI interface, also removing a List or Note Folder that holds anything. An AI interface can only ask for it: the request waits, with its preview, until the person approves or declines it in the desktop app, and the AI reads its status (pending, applied, declined, stale, expired). It applies all or nothing, and only while nothing it named (nor a move's target List) has changed; a request expires after a day.
+_Avoid_: Batch, mass edit.

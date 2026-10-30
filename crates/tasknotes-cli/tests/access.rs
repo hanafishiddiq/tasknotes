@@ -58,9 +58,9 @@ fn a_person_at_a_terminal_who_types_allow_grants_access_privately() {
         stdin_is_terminal: true,
         ..Environment::default()
     };
-    assert!(grant(&data, &terminal, || Ok("no\n".into())).is_err());
+    assert!(grant(&data, Interface::Cli, &terminal, |_| Ok("no\n".into())).is_err());
     assert!(!cli_trusted(&data));
-    grant(&data, &terminal, || Ok("allow\n".into())).unwrap();
+    grant(&data, Interface::Cli, &terminal, |_| Ok("allow\n".into())).unwrap();
     assert!(cli_trusted(&data));
     #[cfg(unix)]
     {
@@ -71,4 +71,47 @@ fn a_person_at_a_terminal_who_types_allow_grants_access_privately() {
             .mode();
         assert_eq!(mode & 0o777, 0o600);
     }
+}
+
+#[test]
+fn mcp_access_is_granted_and_revoked_separately_from_cli_access() {
+    use tasknotes_cli::access::{Environment, grant};
+    use tasknotes_core::ai_access::is_authorized;
+    use tasknotes_core::audit::Interface;
+
+    let cli = Cli::trusted();
+    let status = cli.ok(&["access", "status"]);
+    assert_eq!(status["item"]["cli"], true);
+    assert_eq!(status["item"]["mcp"], false);
+    // Not from a pipe: only the person at a terminal can grant it.
+    assert_eq!(
+        error_code(&cli.run(&["access", "grant", "--mcp"]), 6),
+        "not_trusted"
+    );
+    assert!(!is_authorized(cli.data_dir(), Interface::Mcp));
+
+    let terminal = Environment {
+        stdin_is_terminal: true,
+        ..Environment::default()
+    };
+    let mut asked = None;
+    grant(cli.data_dir(), Interface::Mcp, &terminal, |interface| {
+        asked = Some(interface);
+        Ok("allow\n".into())
+    })
+    .unwrap();
+    assert_eq!(asked, Some(Interface::Mcp), "the prompt names MCP");
+    let status = cli.ok(&["access", "status"]);
+    assert_eq!(
+        (status["item"]["cli"].clone(), status["item"]["mcp"].clone()),
+        (true.into(), true.into())
+    );
+
+    cli.ok(&["access", "revoke", "--mcp"]);
+    assert!(!is_authorized(cli.data_dir(), Interface::Mcp));
+    assert!(
+        is_authorized(cli.data_dir(), Interface::Cli),
+        "CLI access is kept"
+    );
+    cli.ok(&["task", "list"]);
 }

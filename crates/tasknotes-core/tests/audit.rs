@@ -313,6 +313,7 @@ fn v9_database(db: &Path) -> String {
             "DROP TRIGGER audit_entries_append_only_update;
              DROP TRIGGER audit_entries_append_only_delete;
              DROP TABLE audit_entries;
+             DROP TABLE bulk_requests;
              ALTER TABLE notes DROP COLUMN exclude_from_ai;
              PRAGMA user_version = 9;",
         )
