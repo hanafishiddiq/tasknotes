@@ -1089,7 +1089,7 @@ export default function App() {
       {paletteOpen && (
         <CommandPalette commands={commands} textCommand={searchCommand} onClose={closePalette} />
       )}
-      {undo.error && !undo.noticeShown && (
+      {undo.error && (
         <div role="alert" className="undo-bar undo-bar--error">
           <span>{undo.error}</span>
           <button className="button button-small" type="button" onClick={undo.dismissError}>

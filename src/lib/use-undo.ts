@@ -15,7 +15,10 @@ export const UNDO_DEPTH = 10;
 export interface UndoControl {
   /** The move Undo takes back next, if any. */
   next: Undoable | null;
-  /** Whether the notice for `next` is on screen; it leaves on navigation, the stack stays. */
+  /**
+   * Whether the notice for `next` is on screen; it leaves on navigation, the
+   * stack stays. A failed Undo takes its place in the bar until dismissed.
+   */
   noticeShown: boolean;
   undoing: boolean;
   error: string | null;
@@ -57,7 +60,7 @@ export function useUndo(): UndoControl {
   }
 
   return {
-    next, noticeShown: noticeShown && next !== null, undoing, error, push, run,
+    next, noticeShown: noticeShown && next !== null && error === null, undoing, error, push, run,
     forget: (key) => setStack((current) => current.filter((item) => item.key !== key)),
     hideNotice: () => setNoticeShown(false),
     dismissError: () => setError(null),
