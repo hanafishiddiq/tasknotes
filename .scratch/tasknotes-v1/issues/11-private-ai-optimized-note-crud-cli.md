@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** review findings fixed; re-review of the fixes in progress (2026-10-30); on `integration/tasknotes-v1-07-18` (Draft PR #20). Plan: `docs/plans/ticket-11-private-note-cli-2026-10-26.md`.
+**Implementation:** review findings fixed; re-review done on 2026-10-30 and its findings fixed; awaiting the owner's native check and merge decision; on `integration/tasknotes-v1-07-18` (Draft PR #20). Plan: `docs/plans/ticket-11-private-note-cli-2026-10-26.md`.
 
 ## Acceptance criteria
 
@@ -40,7 +40,7 @@
 - Saya pilih flag sebagai setelan seperti Pin (tidak menaikkan revision, tanpa revision check) karena nilainya absolut, hanya desktop yang boleh mengubahnya, dan autosave editor yang terbuka tidak boleh terputus. AI yang mencoba mengubahnya mendapat `not_found` (Note excluded) atau kode baru `desktop_only` (exit 5).
 - Saya pilih output AI tidak memuat field `exclude_from_ai` karena semua yang terlihat AI memang dibagikan.
 - Folder sesuai keputusan owner 2026-10-25: Note membawa `folder_id` + `folder_path` (`"Work/Client A"`); folder membawa `path` + `note_count`. Saya pilih `note_count` = Note langsung di folder itu yang boleh dilihat antarmuka ini, karena sama dengan isi `note list --folder`.
-- Saya pilih folder sendiri tidak privat: AI boleh mengelola folder yang hanya berisi Note excluded (terlihat `note_count: 0`), karena menolak justru membocorkan keberadaan Note itu; Removed tetap reversibel.
+- Saya pilih folder sendiri tidak privat: AI boleh melihat, mengganti nama dan memindahkan folder yang hanya berisi Note excluded (terlihat `note_count: 0`). Menghapusnya mengikuti keputusan owner B di Ticket 12: folder itu dihitung berisi, jadi permintaan langsung dijawab `needs_approval` dan menunggu persetujuan di desktop, tanpa jumlah atau isi untuk AI. Sisa yang diterima: AI bisa menyimpulkan "ada yang tidak terlihat" dari `needs_approval` pada folder yang tampak kosong, tidak pernah apa atau berapa.
 - Saya pilih move Note bisa membawa revision (`MoveNote.expected_revision`, wajib di CLI, opsional di desktop) karena aturan revision check berlaku untuk semua write AI; link tidak punya revision (desain Ticket 08).
 - Saya pilih Audit Entry untuk Note/folder/link (`note.*`, `folder.*`, `link.*`) dari semua antarmuka, dengan aturan penolakan sama seperti Task; riwayat yang dilihat AI menyembunyikan entri tentang Note excluded dan link-nya.
 - Saya pilih Pin tidak masuk CLI sampai diminta, dan snippet pencarian di CLI berupa teks polos.
@@ -59,3 +59,10 @@ Open: `/code-review` not run yet; native GUI check of the toggle not done (compo
 - Note and link stamps for AI are computed over what it can see, so an excluded Note's edit time cannot show through an AI's own timestamps.
 
 Evidence (implementer's own runs): core 137 passed, cli 33 passed, src-tauri 1 passed; clippy `-D warnings` and fmt clean in all three; `pnpm test` 188 passed; `pnpm build` ok. Still open: native GUI check of the toggle; export privacy belongs to Ticket 13.
+
+**2026-10-30 — re-review outcome (implementer).**
+- **Privacy, fixed (`a49afeb`).** An AI search could receive a snippet of text written after the Note was excluded, because the page and its snippets were separate reads with no shared transaction. `list_note_tasks` had the same gap between the privacy check and the page, so a link made after the exclusion could reach the AI. Both now run in one deferred read transaction on the `connect()` connection; `every_write_transaction_checks_the_restore_epoch` still passes.
+- **Tests.** `privacy::tests::an_ai_search_cuts_snippets_from_the_state_it_chose_the_page_in` and `an_ai_link_list_reads_the_state_it_checked_privacy_in` write through a `#[cfg(test)]` step between the two reads, so the race is deterministic. Both failed before the fix (the snippet read `Lease lease zzsecretword private`; the private Task was listed) and pass after it. The reviewer's 25-second race, run once as a throwaway: 441 queries, 350 writer cycles, 0 leaks.
+- **Docs.** The folder decision above and the plan now match owner decision B in Ticket 12: an AI may still list, rename and move a folder holding only excluded Notes, but removing it answers `needs_approval`.
+
+Evidence (implementer's own runs, synthetic data; these fixes have had no further independent review): `cargo test` core 204, CLI 45, MCP 34, src-tauri 42, all passed; `cargo clippy --all-targets -- -D warnings` and `cargo fmt --all -- --check` clean in all four; `pnpm test` 261 passed in 25 files; `pnpm typecheck` and `pnpm build` clean. Still open: native GUI check of the toggle.

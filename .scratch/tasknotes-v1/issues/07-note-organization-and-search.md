@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** review findings fixed; re-review of the fixes in progress (2026-10-30); on `integration/tasknotes-v1-07-18` (Draft PR #20).
+**Implementation:** review findings fixed; re-review done on 2026-10-30 and its findings fixed; awaiting the owner's native check and merge decision; on `integration/tasknotes-v1-07-18` (Draft PR #20).
 
 ## Acceptance criteria
 
@@ -134,3 +134,7 @@ Run a build with `TASKNOTES_DEV_DATA_DIR` pointing at a fresh folder (never the 
 **Checks after the fixes, in this worktree:** `pnpm test` 150 Vitest tests in 13 files (two runs); `pnpm typecheck`; `pnpm build` (main chunk 283 kB, Notes chunk 325 kB); `cargo test` core 93 and Tauri 1; core and Tauri `cargo clippy --all-targets -- -D warnings`; both `cargo fmt --all -- --check`.
 
 **2026-10-25 — owner decision (Han):** Merging Tags whose names are equal under full Unicode case folding during the v8 upgrade is accepted. Every Task keeps the Tag; only the second spelling of the Tag name disappears.
+
+**2026-10-30 — re-review outcome (implementer).** One finding touched this ticket's search: `query_notes` chose its page in one statement and cut snippets in others, so a snippet could come from text newer than the page. Page and snippets now read one deferred read transaction (`a49afeb`); ordering, paging and the snippet cost are unchanged. The privacy consequence and its test are recorded in Ticket 11.
+
+Evidence (implementer's own runs, synthetic data; these fixes have had no further independent review): `cargo test` core 204, CLI 45, MCP 34, src-tauri 42, all passed; `cargo clippy --all-targets -- -D warnings` and `cargo fmt --all -- --check` clean in all four; `pnpm test` 261 passed in 25 files; `pnpm typecheck` and `pnpm build` clean. Native checks in the click-checklist above are still the owner's.
