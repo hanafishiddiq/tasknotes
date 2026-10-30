@@ -5,7 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import App from "./App";
 import { QUICK_CAPTURE_REQUESTED } from "./lib/shell-api";
 import { freshWorld, SCENES, world, type User } from "./test/a11y-scenes";
-import { fixtureList } from "./test/a11y-world";
+import { fixtureList, fixtureTask } from "./test/a11y-world";
 import { tauriEvents } from "./test/tauri-events";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -377,6 +377,41 @@ describe("focus when an inline question closes", () => {
       await user.click(screen.getByRole("button", { name: "Cancel move" }));
       await waitFor(() => expect(row()).toHaveFocus());
     });
+  });
+
+  describe("linking a Note to a Task", () => {
+    async function picking() {
+      world.tasks = [fixtureTask("a")];
+      world.notes.seed("Synthetic choice", "Synthetic choice");
+      const user = userEvent.setup();
+      render(<App />);
+      await user.click(await screen.findByRole("button", { name: "Open Synthetic task a" }));
+      await user.click(await screen.findByRole("button", { name: "Link a Note" }));
+      await screen.findByRole("button", { name: "Synthetic choice" });
+      return user;
+    }
+
+    it("moves into the picker when it opens", async () => {
+      await picking();
+      await waitFor(() => expect(screen.getByRole("button", { name: "Synthetic choice" })).toHaveFocus());
+    });
+
+    it("goes back to Link a Note on Cancel", async () => {
+      const user = await picking();
+      await user.click(screen.getByRole("button", { name: "Cancel" }));
+      await waitFor(() => expect(screen.getByRole("button", { name: "Link a Note" })).toHaveFocus());
+    });
+  });
+
+  it("goes back to Link a Task when the Note's picker is cancelled", async () => {
+    world.notes.seed("Plain", "Plain");
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "All notes" }));
+    await user.click(await screen.findByRole("button", { name: "Link a Task" }, eventually));
+    expect(screen.getByRole("searchbox", { name: "Find a Task to link" })).toHaveFocus();
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Link a Task" })).toHaveFocus());
   });
 });
 

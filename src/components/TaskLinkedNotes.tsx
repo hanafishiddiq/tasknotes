@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FileText, Link2 } from "lucide-react";
 import { errorMessage } from "../lib/error-message";
 import { linkApi } from "../lib/link-api";
@@ -23,6 +23,17 @@ export default function TaskLinkedNotes({ taskId, shown, onOpenNote }: TaskLinke
   // Recent Notes offered for linking; null while the picker is closed.
   const [choices, setChoices] = useState<NoteSummary[] | null>(null);
   const [choicesCursor, setChoicesCursor] = useState<string | null>(null);
+  const opener = useRef<HTMLButtonElement>(null);
+  const picker = useRef<HTMLDivElement>(null);
+  const picking = choices !== null;
+  const wasPicking = useRef(picking);
+
+  // The button that opened the picker goes when it opens, and comes back when it closes: focus follows.
+  useEffect(() => {
+    if (picking && !wasPicking.current) picker.current?.querySelector("button")?.focus();
+    if (!picking && wasPicking.current) opener.current?.focus();
+    wasPicking.current = picking;
+  }, [picking]);
 
   async function loadChoices(cursor: string | null) {
     links.setError(null);
@@ -46,12 +57,12 @@ export default function TaskLinkedNotes({ taskId, shown, onOpenNote }: TaskLinke
     <LinkedList noun="Notes" links={links}
       icon={<FileText size={13} aria-hidden="true" />}
       onOpen={(item) => onOpenNote(item.noteId)}>
-      {choices === null ? (
-        <button type="button" className="text-link linked-add" onClick={() => void loadChoices(null)}>
+      {!picking ? (
+        <button ref={opener} type="button" className="text-link linked-add" onClick={() => void loadChoices(null)}>
           <Link2 size={13} aria-hidden="true" /> Link a Note
         </button>
       ) : (
-        <div className="linked-picker">
+        <div ref={picker} className="linked-picker">
           {offered.length === 0 && choicesCursor === null && (
             <p className="linked-empty">No other Notes to link.</p>
           )}
