@@ -628,7 +628,7 @@ fn writers_killed_mid_write_lose_nothing_they_acknowledged() {
                 description: String::new(),
             })
             .unwrap();
-        assert_eq!(find_task(&store, &token), [task.id.clone()]);
+        assert_eq!(find_task(&store, &token), std::slice::from_ref(&task.id));
         acks.push(Ack {
             kind: Kind::Task,
             id: task.id,
