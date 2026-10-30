@@ -29,6 +29,7 @@ use tasknotes_core::tasks::{CreateTask, TaskQuery, TaskStore};
 const WRITE_ROUNDS: u64 = 24;
 const BACKUP_ROUNDS: u32 = 10;
 const RESTORE_ROUNDS: u32 = 10;
+const FIRST_RUN_ROUNDS: u64 = 24;
 
 /// A small fixed-seed generator: timings vary from round to round and repeat
 /// from run to run, so a failure can be chased. No new dependency for it.
@@ -667,6 +668,37 @@ fn writers_killed_mid_write_lose_nothing_they_acknowledged() {
     let found = w.ok(&["task", "list", "--text", &last.token]);
     assert_eq!(found["items"][0]["id"], last.id.as_str());
     w.assert_only_whole_backups(&mut BTreeSet::new());
+}
+
+/// The very first command on a new machine creates and migrates the database.
+/// Killed anywhere in that, the next run just works.
+#[test]
+fn a_first_run_killed_part_way_leaves_a_database_the_next_run_can_use() {
+    let mut killed = 0;
+    for round in 0..FIRST_RUN_ROUNDS {
+        let w = World::new();
+        let mut child = w
+            .command(&["task", "create", "--title", "Synthetic first"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        std::thread::sleep(Duration::from_micros(round * 800));
+        if child.try_wait().unwrap().is_none() {
+            child.kill().unwrap();
+            killed += 1;
+        }
+        child.wait().unwrap();
+
+        let next = w.ok(&["task", "create", "--title", "Synthetic next"]);
+        assert_eq!(next["item"]["revision"], 1);
+        w.desktop();
+        w.assert_sound();
+        let conn = Connection::open(w.db()).unwrap();
+        assert_write_and_audit_stand_together(&conn, Kind::Task);
+    }
+    eprintln!("{FIRST_RUN_ROUNDS} first runs: {killed} killed");
+    assert!(killed >= 3, "too few kills landed: {killed}");
 }
 
 /// Enough data that a backup or a restore takes a while, so a kill can land

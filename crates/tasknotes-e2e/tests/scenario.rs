@@ -1230,3 +1230,78 @@ fn one_database_through_the_real_cli_the_real_mcp_server_and_the_desktop() {
     let Stage { mcp, .. } = s;
     assert_eq!(mcp.close(), Some(0));
 }
+
+/// A client that read revision 2, a restore that rewinds the Task to revision
+/// 1, and the person editing it to revision 2 again: the number the client
+/// holds now names the person's edit. Returns whether `write` landed, what it
+/// was told, and the title the person now has.
+fn a_stale_write_after_a_restore(
+    write: impl FnOnce(&World, &str) -> (bool, String),
+) -> (bool, String, String) {
+    let w = World::new();
+    let id = id_of(&w.ok(&["task", "create", "--title", "Synthetic original"]));
+    let backup = w.backup();
+    let read = w.ok(&[
+        "task",
+        "update",
+        &id,
+        "--revision",
+        "1",
+        "--title",
+        "Synthetic the client read this",
+    ]);
+    assert_eq!(read["item"]["revision"], 2);
+
+    let desktop = w.desktop();
+    desktop.restore_backup(&backup).unwrap();
+    desktop
+        .patch_task(PatchTask {
+            id: id.clone(),
+            expected_revision: 1,
+            title: Some("Synthetic the persons edit".into()),
+            description: None,
+        })
+        .unwrap();
+
+    let (landed, answer) = write(&w, &id);
+    let title = desktop.get_task(&id).unwrap().unwrap().title;
+    (landed, answer, title)
+}
+
+#[test]
+#[ignore = "product defect: a restore rewinds revisions and only a running MCP server or an \
+            open store remembers the Restore Epoch, so a CLI client's stale revision can match \
+            again and overwrite the person's edit; the fix needs an owner decision"]
+fn a_cli_write_from_before_a_restore_does_not_overwrite_the_persons_edit() {
+    let (landed, answer, title) = a_stale_write_after_a_restore(|w, id| {
+        let run = w.run(&[
+            "task",
+            "update",
+            id,
+            "--revision",
+            "2",
+            "--title",
+            "Synthetic stale overwrite",
+        ]);
+        (run.code == 0, run.stdout)
+    });
+    assert!(!landed, "the stale write landed: {answer}");
+    assert_eq!(title, "Synthetic the persons edit");
+}
+
+#[test]
+#[ignore = "product defect: the same as the CLI case, for an MCP server started after the \
+            restore: it has no earlier Restore Epoch to compare with, so a client that kept its \
+            revision across a reconnect is not told; the fix needs an owner decision"]
+fn an_mcp_write_from_before_a_restore_does_not_overwrite_the_persons_edit_after_a_reconnect() {
+    let (landed, answer, title) = a_stale_write_after_a_restore(|w, id| {
+        let mut server = w.server();
+        let envelope = server.call(
+            "task_update",
+            json!({"id": id, "revision": 2, "title": "Synthetic stale overwrite"}),
+        );
+        (envelope["ok"] == true, envelope.to_string())
+    });
+    assert!(!landed, "the stale write landed: {answer}");
+    assert_eq!(title, "Synthetic the persons edit");
+}
