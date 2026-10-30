@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** implemented and merged into `integration/tasknotes-v1-07-18` with Ticket 12 on 2026-10-30; `/code-review` done, two restore findings wait for the owner (see the Ticket 12 file's last comment). Native GUI check of the Settings section is open. Plan: `docs/plans/ticket-13-backup-restore-export-2026-10-26.md`.
+**Implementation:** implemented and merged into `integration/tasknotes-v1-07-18` with Ticket 12 on 2026-10-30; `/code-review` done; the owner's 2026-10-30 restore decisions are recorded in the Ticket 12 file's last comment. Native GUI check of the Settings section is open. Plan: `docs/plans/ticket-13-backup-restore-export-2026-10-26.md`.
 
 ## Acceptance criteria
 

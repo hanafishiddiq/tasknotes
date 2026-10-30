@@ -889,6 +889,59 @@ fn a_refusal_racing_a_restore_is_kept_or_reported_unrecorded() {
     }
 }
 
+/// Owner decision, 2026-10-30: a Note private now stays private through a
+/// restore, so restoring can never open a Note to AI. A Note private in the
+/// backup stays private too; sharing one again is a choice made in the window.
+#[test]
+fn a_note_private_before_or_after_the_backup_stays_private_through_a_restore() {
+    let fx = Fixture::new();
+    let store = fx.desktop();
+    let note = |markdown: &str| {
+        store
+            .create_note(CreateNote {
+                markdown: markdown.into(),
+                folder_id: None,
+            })
+            .unwrap()
+            .id
+    };
+    let set = |id: &str, exclude_from_ai: bool| {
+        store
+            .set_note_exclude_from_ai(SetNoteExcludeFromAi {
+                id: id.to_owned(),
+                exclude_from_ai,
+            })
+            .unwrap()
+    };
+    let private_later = note("# Synthetic private later");
+    let private_earlier = note("# Synthetic private earlier");
+    let shared = note("# Synthetic shared");
+    set(&private_earlier, true);
+    let backup = store.create_backup().unwrap().backup;
+    set(&private_later, true);
+    set(&private_earlier, false);
+
+    store.restore_backup(&backup.id).unwrap();
+
+    let ai = TaskStore::open_as(&fx.db(), Interface::Mcp).unwrap();
+    assert!(ai.get_note(&private_later).unwrap().is_none());
+    assert!(ai.get_note(&private_earlier).unwrap().is_none());
+    assert!(ai.get_note(&shared).unwrap().is_some());
+    for entry in ai.list_audit_entries(None, 100, None).unwrap().items {
+        assert_ne!(entry.entity_id, private_later, "{entry:?}");
+    }
+    // The person keeps every Note and can still share it again.
+    assert!(
+        store
+            .get_note(&private_later)
+            .unwrap()
+            .unwrap()
+            .exclude_from_ai
+    );
+    set(&private_later, false);
+    assert!(ai.get_note(&private_later).unwrap().is_some());
+}
+
 /// Review finding: any SQLite file with a plausible `user_version` was
 /// accepted. A Tasknotes database is one whose migrated schema matches a
 /// freshly created one.

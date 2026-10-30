@@ -755,3 +755,55 @@ fn a_request_made_after_the_backup_does_not_come_back_from_a_restore() {
 fn task_now_in(store: &TaskStore, id: &str) -> Task {
     store.get_task(id).unwrap().unwrap()
 }
+
+/// Owner decision, 2026-10-30: a person's decision outlives a restore. Undoing
+/// an approval by restoring must not offer the same request again.
+#[test]
+fn a_decision_stands_through_a_restore() {
+    for (approve, status) in [
+        (true, BulkRequestStatus::Applied),
+        (false, BulkRequestStatus::Declined),
+    ] {
+        let w = world();
+        let all = tasks(&w.ai, 2);
+        let id =
+            w.ai.request_bulk(BulkAction::RemoveTasks, ids(&all))
+                .unwrap()
+                .request
+                .id;
+        let backup = w.desktop.create_backup().unwrap().backup;
+        if approve {
+            w.desktop.approve_bulk_request(&id).unwrap();
+        } else {
+            w.desktop.decline_bulk_request(&id).unwrap();
+        }
+
+        w.desktop.restore_backup(&backup.id).unwrap();
+
+        assert_eq!(w.desktop.count_pending_bulk_requests().unwrap(), 0);
+        assert_eq!(w.desktop.bulk_request(&id).unwrap().status, status);
+        assert_eq!(
+            w.desktop.approve_bulk_request(&id).unwrap_err().code(),
+            "unchanged"
+        );
+        assert!(!task_now(&w, &all[0].id).removed, "the restore undid it");
+    }
+}
+
+#[test]
+fn a_request_still_waiting_keeps_waiting_through_a_restore() {
+    let w = world();
+    let all = tasks(&w.ai, 2);
+    let id =
+        w.ai.request_bulk(BulkAction::RemoveTasks, ids(&all))
+            .unwrap()
+            .request
+            .id;
+    let backup = w.desktop.create_backup().unwrap().backup;
+
+    w.desktop.restore_backup(&backup.id).unwrap();
+
+    assert_eq!(w.desktop.count_pending_bulk_requests().unwrap(), 1);
+    w.desktop.approve_bulk_request(&id).unwrap();
+    assert!(task_now(&w, &all[0].id).removed);
+}

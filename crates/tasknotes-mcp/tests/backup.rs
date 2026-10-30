@@ -135,6 +135,32 @@ fn a_write_from_before_a_restore_is_refused_once_and_the_persons_edit_survives()
     assert_eq!(title(&desktop), "Synthetic fresh write");
 }
 
+#[test]
+fn a_restore_does_not_open_a_private_note_to_a_running_server() {
+    let data = Data::trusted();
+    let desktop = data.desktop();
+    let note = desktop
+        .create_note(tasknotes_core::notes::CreateNote {
+            markdown: "# Synthetic private later".into(),
+            folder_id: None,
+        })
+        .unwrap();
+    let backup = desktop.create_backup().unwrap().backup;
+    desktop
+        .set_note_exclude_from_ai(tasknotes_core::privacy::SetNoteExcludeFromAi {
+            id: note.id.clone(),
+            exclude_from_ai: true,
+        })
+        .unwrap();
+    let mut server = data.server();
+    server.refused("note_get", json!({"id": note.id}), "not_found");
+
+    desktop.restore_backup(&backup.id).unwrap();
+
+    server.refused("note_get", json!({"id": note.id}), "database_restored");
+    server.refused("note_get", json!({"id": note.id}), "not_found");
+}
+
 /// What a running restore looks like from outside: its lock held and the live
 /// epoch a fence token. Every call is refused and nothing is written.
 #[test]

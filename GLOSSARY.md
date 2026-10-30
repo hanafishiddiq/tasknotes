@@ -69,7 +69,7 @@ A consistent local copy of all Tasknotes data, taken automatically once a local 
 The record beside each Backup of when and why it was taken, its schema version, size and checksum; a restore refuses a Backup that does not match its manifest.
 
 **Restore**:
-Replacing all current data with a validated Backup, after stopping every other writer and keeping a Backup of the current data. The Audit Entries made since the Backup are kept, and the restore itself is recorded as one. Windows and commands that opened the data before must reload before they can change anything.
+Replacing all current data with a validated Backup, after stopping every other writer and keeping a Backup of the current data. The Audit Entries made since the Backup are kept, and the restore itself is recorded as one. A Note marked Exclude from AI now stays so, and a Bulk Change the person decided since the Backup stays decided. Windows and commands that opened the data before must reload before they can change anything.
 _Avoid_: Restore alone where restoring an item from Removed is meant.
 
 **Export**:

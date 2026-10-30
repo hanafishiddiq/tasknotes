@@ -10,7 +10,7 @@ Tujuan akhir: Tasknotes terpasang di Mac Han dan dipakai dengan data asli, setel
   - [x] Server MCP mengambil backup harian
   - [x] Review independen selesai, 4 temuan teknis diperbaiki
   - [ ] Hasil gabungan di-push dan CI hijau
-- [ ] Terapkan keputusan Han soal dua perilaku restore
+- [x] Terapkan keputusan Han soal dua perilaku restore
 - [ ] Rapikan status tiket dan deskripsi PR, lalu selesaikan review yang masih terbuka
   - [ ] Tambah tes CLI dan MCP ke CI
 - [ ] Kerjakan tiket 17: ukur performa dengan 50.000 Task dan 10.000 Note sintetis
@@ -21,9 +21,6 @@ Tujuan akhir: Tasknotes terpasang di Mac Han dan dipakai dengan data asli, setel
 
 ## Perlu Han lakukan
 
-- [ ] Putuskan nasib Exclude from AI dan permintaan massal setelah restore
-  - Cara: jawab dua pertanyaan yang diajukan AI di sesi ini.
-  - Menahan: Terapkan keputusan Han soal dua perilaku restore
 - [ ] Cek klik aplikasi dengan data sintetis
   - Cara: AI menggabungkan checklist semua tiket jadi satu daftar, lalu Han mengikutinya di aplikasi uji.
   - Menahan: Han mengecek aplikasi dengan data sintetis, lalu menyetujui merge ke main

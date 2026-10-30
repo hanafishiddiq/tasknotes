@@ -575,7 +575,8 @@ impl Staging {
     /// Step 3 of a restore, once writers are fenced: append every live
     /// Audit Entry the snapshot lacks (in append order, with its id, and
     /// hidden from AI if it is hidden from AI now) and a `backup.restore`
-    /// entry, give the copy a
+    /// entry, keep what the person set since the snapshot that must survive
+    /// (a Note's privacy, a decision on a Bulk Change), give the copy a
     /// fresh Restore Epoch and fold its log into the file. Returns the
     /// epoch.
     fn carry_over(
@@ -608,6 +609,24 @@ impl Staging {
                     "l.entity_id"
                 ),
             ),
+            [],
+        )?;
+        // Owner decisions, 2026-10-30. A restore can never open a Note to AI:
+        // one private now stays private. And a person's decision stands: a
+        // request decided since the snapshot does not come back as waiting.
+        tx.execute(
+            "UPDATE main.notes SET exclude_from_ai = 1
+             WHERE id IN (SELECT id FROM live.notes WHERE exclude_from_ai = 1)",
+            [],
+        )?;
+        tx.execute(
+            "UPDATE main.bulk_requests
+             SET (status, decided_at) = (SELECT l.status, l.decided_at
+                                         FROM live.bulk_requests AS l
+                                         WHERE l.id = bulk_requests.id)
+             WHERE status = 'pending'
+               AND EXISTS (SELECT 1 FROM live.bulk_requests AS l
+                           WHERE l.id = bulk_requests.id AND l.status <> 'pending')",
             [],
         )?;
         crate::audit::record_restore(&tx, interface, backup_id)?;

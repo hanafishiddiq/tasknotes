@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** implemented and merged into `integration/tasknotes-v1-07-18` with Ticket 13 on 2026-10-30; independent review of the meeting done, two findings wait for the owner (see the last comment). Plan: `docs/plans/ticket-12-mcp-stdio-2026-10-26.md`.
+**Implementation:** implemented and merged into `integration/tasknotes-v1-07-18` with Ticket 13 on 2026-10-30; independent review of the meeting done and its findings resolved (see the last comment). Plan: `docs/plans/ticket-12-mcp-stdio-2026-10-26.md`.
 
 ## Acceptance criteria
 
@@ -74,10 +74,10 @@ Fixed at the merge, each with a test written first:
 - A revision read before a restore could match again and land on a later server call, because each call opens its own store. The server now remembers the Restore Epoch and refuses the first call after a restore with `database_restored` (`a_write_from_before_a_restore_is_refused_once_and_the_persons_edit_survives`).
 - The desktop's approval poll bypassed the wrapper that reloads after a restore made elsewhere, so an idle window never reloaded (`src/approvals.test.tsx`).
 
-**Waiting for the owner (not fixed):**
+**Owner decisions (Han, 2026-10-30), implemented with tests written first:**
 
-1. A restore brings back the snapshot's Exclude from AI flag, so a Note excluded after the backup becomes readable by AI clients again.
-2. A Bulk Change request pending in the snapshot comes back as pending after a restore, even if the person already decided it, and can be approved again within its 24 hours.
+1. A Note marked Exclude from AI at restore time stays excluded, even if the Backup holds it as shared (`a_note_private_before_or_after_the_backup_stays_private_through_a_restore`, `a_restore_does_not_open_a_private_note_to_a_running_server`). A Note excluded in the Backup also stays excluded; sharing it again is a choice made in the window.
+2. The person's decision on a Bulk Change stands: a request decided since the Backup keeps that decision, and one still waiting keeps waiting until it expires (`a_decision_stands_through_a_restore`, `a_request_still_waiting_keeps_waiting_through_a_restore`). A request made after the Backup is not in the restored data; its Audit Entry remains.
 
 **Known and left for Ticket 18:**
 
