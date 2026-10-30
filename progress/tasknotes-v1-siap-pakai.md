@@ -27,11 +27,11 @@ Tujuan akhir: Tasknotes terpasang di Mac Han dan dipakai dengan data asli, setel
 ## Perlu Han lakukan
 
 - [ ] Jalankan pengukuran di layar
-  - Cara: buka kunci Mac, jalankan `/Users/hanafi/Desktop/Rumah/Playground/tasknotes/.worktrees/ticket-17/scripts/qa/run-ticket17-ui.sh` di Terminal, lalu biarkan jendelanya sekitar 3 menit dan bilang "sudah".
+  - Cara: buka kunci Mac, di Terminal masuk ke folder `.worktrees/ticket-17` di dalam proyek, jalankan `scripts/qa/run-ticket17-ui.sh`, lalu biarkan jendelanya sekitar 3 menit dan bilang "sudah".
   - Menahan: Kerjakan tiket 17: ukur performa dengan 50.000 Task dan 10.000 Note sintetis
 
 - [ ] Cek klik aplikasi dengan data sintetis
-  - Cara: AI menggabungkan checklist semua tiket jadi satu daftar, lalu Han mengikutinya di aplikasi uji.
+  - Cara: ikuti `docs/qa/owner-check-2026-10-30.md`, sekitar 45 menit.
   - Menahan: Han mengecek aplikasi dengan data sintetis, lalu menyetujui merge ke main
 - [ ] Persetujuan merge dan pemasangan ke data asli
   - Cara: bilang "merge" setelah cek klik beres; persetujuan pasang ke data asli diminta terpisah.
