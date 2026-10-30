@@ -5,6 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import App from "./App";
 import { QUICK_CAPTURE_REQUESTED } from "./lib/shell-api";
 import { freshWorld, SCENES, world, type User } from "./test/a11y-scenes";
+import { fixtureList } from "./test/a11y-world";
 import { tauriEvents } from "./test/tauri-events";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -311,6 +312,71 @@ describe("focus when an inline question closes", () => {
     await user.click(screen.getByRole("button", { name: "Replace and restore" }));
     await screen.findByRole("alert");
     await waitFor(() => expect(restore).toHaveFocus());
+  });
+
+  describe("renaming a List", () => {
+    async function renaming() {
+      world.lists = [fixtureList("l1", "Synthetic list")];
+      const user = userEvent.setup();
+      render(<App />);
+      await user.click(await screen.findByRole("button", { name: "Rename Synthetic list" }));
+      expect(screen.getByRole("textbox", { name: "Rename list" })).toHaveFocus();
+      return user;
+    }
+
+    it("goes back to the List's row on Cancel", async () => {
+      const user = await renaming();
+      await user.click(screen.getByRole("button", { name: "Cancel rename" }));
+      await waitFor(() => expect(screen.getByRole("button", { name: "Synthetic list" })).toHaveFocus());
+    });
+
+    it("goes back to the List's row once saved", async () => {
+      const user = await renaming();
+      await user.keyboard(" two{Enter}");
+      const row = await screen.findByRole("button", { name: "Synthetic list two" });
+      await waitFor(() => expect(row).toHaveFocus());
+    });
+  });
+
+  describe("a folder's inline forms", () => {
+    async function withFolder(action: string) {
+      world.notes.folder("Synthetic folder");
+      world.notes.folder("Synthetic other");
+      const user = userEvent.setup();
+      render(<App />);
+      await user.click(await screen.findByRole("button", { name: "All notes" }));
+      await user.click(await screen.findByRole("button", { name: `${action} Synthetic folder` }, eventually));
+      return user;
+    }
+    const row = () => screen.getByRole("button", { name: "Synthetic folder" });
+
+    it("goes back to the row when a rename is cancelled", async () => {
+      const user = await withFolder("Rename");
+      expect(screen.getByRole("textbox", { name: "Rename folder" })).toHaveFocus();
+      await user.click(screen.getByRole("button", { name: "Cancel rename" }));
+      await waitFor(() => expect(row()).toHaveFocus());
+    });
+
+    it("goes back to the row once renamed", async () => {
+      const user = await withFolder("Rename");
+      await user.keyboard(" two{Enter}");
+      const renamed = await screen.findByRole("button", { name: "Synthetic folder two" }, eventually);
+      await waitFor(() => expect(renamed).toHaveFocus());
+    });
+
+    it("goes back to the row when a new subfolder is cancelled", async () => {
+      const user = await withFolder("New folder in");
+      expect(screen.getByRole("textbox", { name: "New folder name in Synthetic folder" })).toHaveFocus();
+      await user.click(screen.getByRole("button", { name: "Cancel new folder" }));
+      await waitFor(() => expect(row()).toHaveFocus());
+    });
+
+    it("goes back to the row when a move is cancelled", async () => {
+      const user = await withFolder("Move");
+      expect(screen.getByRole("combobox", { name: "Move Synthetic folder to" })).toHaveFocus();
+      await user.click(screen.getByRole("button", { name: "Cancel move" }));
+      await waitFor(() => expect(row()).toHaveFocus());
+    });
   });
 });
 

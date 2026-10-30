@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   Check, ClipboardCheck, Folder, Inbox, ListChecks, Moon, NotebookText, Pencil,
   Plus, Settings, Sun, Trash2, X,
@@ -48,6 +48,20 @@ export default function TaskSidebar({
   const [name, setName] = useState("");
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
+  const listsNav = useRef<HTMLElement>(null);
+  // The List whose rename just closed, taking its focused field along: its row gets focus instead.
+  const renamed = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (renaming || !renamed.current) return;
+    listsNav.current?.querySelector<HTMLElement>(`[data-list-id="${CSS.escape(renamed.current)}"]`)?.focus();
+    renamed.current = null;
+  }, [renaming]);
+
+  function closeRename() {
+    renamed.current = renaming;
+    setRenaming(null);
+  }
 
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -58,7 +72,7 @@ export default function TaskSidebar({
   async function rename(event: FormEvent<HTMLFormElement>, list: TaskList) {
     event.preventDefault();
     if (busy || !renameDraft.trim()) return;
-    if (await onRenameList(list, renameDraft)) setRenaming(null);
+    if (await onRenameList(list, renameDraft)) closeRename();
   }
 
   // While Notes are open, no Task view is the current place.
@@ -112,7 +126,7 @@ export default function TaskSidebar({
 
       <div className="sidebar-heading">Lists</div>
       {listError && <p className="sidebar-error" role="status">{listError}</p>}
-      <nav aria-label="Lists" className="sidebar-nav">
+      <nav ref={listsNav} aria-label="Lists" className="sidebar-nav">
         {lists.filter((list) => !list.removed).map((list) => (
           <div className="folder-row" key={list.id}>
             {renaming === list.id ? (
@@ -126,12 +140,13 @@ export default function TaskSidebar({
                   <Check size={14} />
                 </button>
                 <button type="button" className="folder-action"
-                  aria-label="Cancel rename" onClick={() => setRenaming(null)}><X size={14} /></button>
+                  aria-label="Cancel rename" onClick={closeRename}><X size={14} /></button>
               </form>
             ) : (
               <>
                 <button type="button" disabled={busy}
                   aria-label={list.name}
+                  data-list-id={list.id}
                   aria-current={isCurrent({ kind: "list", listId: list.id }) ? "page" : undefined}
                   className="folder"
                   onClick={() => onNavigate({ kind: "list", listId: list.id })}>

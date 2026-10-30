@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import {
   Check, ChevronDown, ChevronRight, Folder, FolderInput, FolderPlus, Pencil, Plus, Trash2, X,
 } from "lucide-react";
@@ -26,6 +26,20 @@ export default function NoteFolderTree({ folders, currentId, disabled, onOpen, o
   const [draft, setDraft] = useState("");
   const [newName, setNewName] = useState("");
   const busy = disabled || folders.busy;
+  const tree = useRef<HTMLUListElement>(null);
+  // The folder whose inline form just closed, taking its focused field along: its row gets focus instead.
+  const closedOn = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (editing || !closedOn.current) return;
+    tree.current?.querySelector<HTMLElement>(`[data-folder-id="${CSS.escape(closedOn.current)}"]`)?.focus();
+    closedOn.current = null;
+  }, [editing]);
+
+  function closeForm() {
+    closedOn.current = editing?.id ?? null;
+    setEditing(null);
+  }
 
   function start(kind: "create" | "rename" | "move", folder: NoteFolder) {
     setEditing({ kind, id: folder.id });
@@ -38,11 +52,11 @@ export default function NoteFolderTree({ folders, currentId, disabled, onOpen, o
     const saved = editing.kind === "create"
       ? await folders.create(draft, folder.id)
       : await folders.rename(folder, draft);
-    if (saved) setEditing(null);
+    if (saved) closeForm();
   }
 
   async function moveTo(folder: NoteFolder, destination: string) {
-    if (await folders.move(folder, destination === TOP_LEVEL ? null : destination)) setEditing(null);
+    if (await folders.move(folder, destination === TOP_LEVEL ? null : destination)) closeForm();
   }
 
   async function createTopLevel(event: FormEvent<HTMLFormElement>) {
@@ -100,7 +114,7 @@ export default function NoteFolderTree({ folders, currentId, disabled, onOpen, o
                     <button type="submit" className="folder-action" aria-label="Save folder name"
                       disabled={busy || !draft.trim()}><Check size={14} /></button>
                     <button type="button" className="folder-action" aria-label="Cancel rename"
-                      onClick={() => setEditing(null)}><X size={14} /></button>
+                      onClick={closeForm}><X size={14} /></button>
                   </form>
                 ) : (
                   <>
@@ -139,7 +153,7 @@ export default function NoteFolderTree({ folders, currentId, disabled, onOpen, o
                   <input aria-label={`New folder name in ${folder.name}`} placeholder="New Folder" autoFocus
                     maxLength={100} value={draft} disabled={busy} onChange={(event) => setDraft(event.target.value)} />
                   <button type="button" className="folder-action" aria-label="Cancel new folder"
-                    onClick={() => setEditing(null)}><X size={14} /></button>
+                    onClick={closeForm}><X size={14} /></button>
                 </form>
               )}
               {edit === "move" && (
@@ -155,7 +169,7 @@ export default function NoteFolderTree({ folders, currentId, disabled, onOpen, o
                     ))}
                   </select>
                   <button type="button" className="folder-action" aria-label="Cancel move"
-                    onClick={() => setEditing(null)}><X size={14} /></button>
+                    onClick={closeForm}><X size={14} /></button>
                 </div>
               )}
               {open && <ul className="folder-tree">{rows(folder.id, depth + 1)}</ul>}
@@ -181,7 +195,7 @@ export default function NoteFolderTree({ folders, currentId, disabled, onOpen, o
             onClick={folders.dismissError}><X size={13} /></button>
         </div>
       )}
-      <ul className="folder-tree" aria-label="Folders" onKeyDown={onKeyDown}>{rows(null, 0)}</ul>
+      <ul ref={tree} className="folder-tree" aria-label="Folders" onKeyDown={onKeyDown}>{rows(null, 0)}</ul>
       <form className="folder-form folder-form--new" onSubmit={(event) => void createTopLevel(event)}>
         <Plus size={16} aria-hidden="true" />
         <input aria-label="New folder name" placeholder="New Folder" maxLength={100}
