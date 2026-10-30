@@ -1,6 +1,6 @@
 # Cek klik sebelum merge
 
-Daftar ini menggabungkan checklist semua tiket jadi alur yang paling penting. Perkiraan waktu sekitar 45 menit untuk bagian A–F. Semuanya memakai aplikasi **Tasknotes QA** dengan folder data sendiri, jadi data asli tidak tersentuh.
+Daftar ini menggabungkan checklist semua tiket jadi alur yang paling penting. Perkiraan waktu sekitar 45 menit untuk bagian A–G. Semuanya memakai aplikasi **Tasknotes QA** dengan folder data sendiri, jadi data asli tidak tersentuh.
 
 **Mulai:** dari folder proyek, jalankan:
 
@@ -57,6 +57,14 @@ Catat yang terasa salah atau aneh, cukup nomornya dan apa yang terjadi. Jangan p
 28. Lewat CLI, jalankan `bulk preview --action remove_tasks --id … --id …` untuk dua Task. Di aplikasi, sidebar menampilkan **Waiting for approval**. Buka, lalu Approve: kedua Task masuk Removed. Ulangi, lalu Decline: tidak ada yang berubah.
 29. Ulangi nomor 25 dengan Note dari nomor 27 yang privat setelah backup dibuat: Note tetap privat setelah restore. Permintaan massal yang sudah Han putuskan tidak muncul menunggu lagi.
 
-## G. Hanya kalau ada waktu
+## G. Rasa di data besar
+
+Jalankan `scripts/qa/run-owner-check.sh --large`, yang membuat 50.000 Task dan 10.000 Note sintetis (sekitar 5 menit).
+
+30. Gulir daftar Task dengan trackpad, cepat dan pelan, dengan baris tertutup lalu satu baris terbuka: terasa mulus, tanpa patah atau baris kosong. Ini satu-satunya hal yang tidak bisa diukur otomatis, sekaligus pemeriksaan keluhan lag lama (Issue 19).
+31. Ketik di kolom pencarian: hasil muncul tanpa jeda mengganggu, termasuk saat baru satu huruf. Ulangi di Notes.
+32. Buka beberapa Note panjang dan ketik: tidak tersendat.
+
+## H. Hanya kalau ada waktu
 
 Langkah rinci per fitur ada di tiket: [07](../../.scratch/tasknotes-v1/issues/07-note-organization-and-search.md), [08](../../.scratch/tasknotes-v1/issues/08-reversible-task-note-links.md), [09](../../.scratch/tasknotes-v1/issues/09-removed-and-restore.md), [12](../../.scratch/tasknotes-v1/issues/12-mcp-stdio-and-safe-bulk-mutations.md), [14](../../.scratch/tasknotes-v1/issues/14-desktop-interaction-accessibility-polish.md), dan [15](../../.scratch/tasknotes-v1/issues/15-menu-bar-global-quick-capture.md).
