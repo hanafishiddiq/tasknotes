@@ -18,6 +18,8 @@ use tauri::{Manager, State};
 mod data;
 #[cfg(desktop)]
 mod platform;
+#[cfg(feature = "qa-probe")]
+mod qa_probe;
 #[cfg(desktop)]
 mod quick_capture;
 mod quit;
@@ -382,6 +384,8 @@ pub fn run() {
             let app_data_dir = std::env::var_os("TASKNOTES_DEV_DATA_DIR")
                 .map(std::path::PathBuf::from)
                 .unwrap_or(app_data_dir);
+            #[cfg(feature = "qa-probe")]
+            let app_data_dir = qa_probe::prepare(app.handle(), app_data_dir)?;
             let store = TaskStore::open(&app_data_dir.join("tasknotes.db"))?;
             data::start_daily_backups(store.clone());
             app.manage(store);
@@ -432,6 +436,10 @@ pub fn run() {
             data::adopt_restored_data,
             data::export_data,
             quit::quit_ready,
+            #[cfg(feature = "qa-probe")]
+            qa_probe::qa_report,
+            #[cfg(feature = "qa-probe")]
+            qa_probe::qa_probe_active,
             #[cfg(desktop)]
             shell::get_shell_settings,
             #[cfg(desktop)]

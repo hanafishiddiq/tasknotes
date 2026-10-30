@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use std::time::Instant;
 
 use rusqlite::{Connection, params};
-use tasknotes_core::notes::{NoteQuery, NoteScope};
+use tasknotes_core::notes::{CreateNote, NoteQuery, NoteScope};
 use tasknotes_core::tasks::TaskStore;
 
 const NOTES: usize = 5_000;
@@ -203,5 +203,46 @@ fn search_snippets_cost_the_page_not_every_match() {
     assert!(
         page_of_one * 3 < page_of_hundred,
         "a 1-Note page took {page_of_one:?}, a 100-Note page {page_of_hundred:?}"
+    );
+}
+
+/// A short prefix expands to thousands of words. Looking each Note on the page
+/// up through the search index repeated that expansion once per Note, so one
+/// typed letter cost seconds at 10,000 Notes. A page of 50 must cost about what
+/// a page of one costs. A ratio holds in debug and release builds alike.
+#[test]
+fn a_page_of_snippets_repeats_no_search_for_a_short_prefix() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = TaskStore::open(&dir.path().join("tasknotes.db")).unwrap();
+    for note in 0..400 {
+        let words: Vec<String> = (0..100).map(|word| format!("b{note}x{word}")).collect();
+        store
+            .create_note(CreateNote {
+                markdown: format!("# Synthetic {note}\n\n{}", words.join(" ")),
+                folder_id: None,
+            })
+            .unwrap();
+    }
+    let query = NoteQuery {
+        text: "b".into(),
+        ..NoteQuery::default()
+    };
+    let fastest = |limit: u32| {
+        (0..5)
+            .map(|_| {
+                let started = Instant::now();
+                let page = store.query_notes(&query, limit, None).unwrap();
+                assert_eq!(page.items.len(), limit as usize);
+                assert!(page.items.iter().all(|n| n.snippet.is_some()));
+                started.elapsed()
+            })
+            .min()
+            .unwrap()
+    };
+    let one = fastest(1);
+    let fifty = fastest(50);
+    assert!(
+        fifty < one * 8,
+        "50 Notes took {fifty:?}, one took {one:?}: the search repeats per Note"
     );
 }

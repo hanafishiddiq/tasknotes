@@ -1,0 +1,547 @@
+{
+  "dataset": {
+    "fingerprint": "0fa6884722568054",
+    "folder": "21bc32c8-223f-4523-a891-c06309e266c8",
+    "links": 1975,
+    "list": "0db25a67-356e-4ab0-a188-07495daa3dad",
+    "notes": 10000,
+    "seed": 8386110886392067173,
+    "seed_seconds": 278,
+    "tag": "tag07",
+    "tasks": 50000
+  },
+  "scenarios": [
+    {
+      "fresh_process": {
+        "max_ms": 1.3,
+        "p50_ms": 1.23,
+        "p95_ms": 1.3,
+        "p99_ms": 1.3,
+        "runs": 20
+      },
+      "records_on_page": 50,
+      "scenario": "tasks: first page, priority order",
+      "search": false,
+      "warm": {
+        "max_ms": 1.46,
+        "p50_ms": 0.56,
+        "p95_ms": 0.97,
+        "p99_ms": 1.28,
+        "runs": 200
+      }
+    },
+    {
+      "fresh_process": {
+        "max_ms": 1.25,
+        "p50_ms": 1.18,
+        "p95_ms": 1.25,
+        "p99_ms": 1.25,
+        "runs": 20
+      },
+      "records_on_page": 50,
+      "scenario": "tasks: first page, newest order",
+      "search": false,
+      "warm": {
+        "max_ms": 0.66,
+        "p50_ms": 0.51,
+        "p95_ms": 0.57,
+        "p99_ms": 0.62,
+        "runs": 200
+      }
+    },
+    {
+      "fresh_process": {
+        "max_ms": 2.33,
+        "p50_ms": 2.12,
+        "p95_ms": 2.3,
+        "p99_ms": 2.33,
+        "runs": 20
+      },
+      "records_on_page": 50,
+      "scenario": "tasks: one List",
+      "search": false,
+      "warm": {
+        "max_ms": 1.68,
+        "p50_ms": 1.25,
+        "p95_ms": 1.37,
+        "p99_ms": 1.45,
+        "runs": 200
+      }
+    },
+    {
+      "fresh_process": {
+        "max_ms": 9.03,
+        "p50_ms": 8.77,
+        "p95_ms": 8.88,
+        "p99_ms": 9.03,
+        "runs": 20
+      },
+      "records_on_page": 50,
+      "scenario": "tasks: Inbox",
+      "search": false,
+      "warm": {
+        "max_ms": 9.72,
+        "p50_ms": 7.76,
+        "p95_ms": 8.02,
+        "p99_ms": 8.26,
+        "runs": 200
+      }
+    },
+    {
+      "fresh_process": {
+        "max_ms": 5.24,
+        "p50_ms": 4.9,
+        "p95_ms": 5.1,
+        "p99_ms": 5.24,
+        "runs": 20
+      },
+      "records_on_page": 50,
+      "scenario": "tasks: Removed",
+      "search": false,
+      "warm": {
+        "max_ms": 4.37,
+        "p50_ms": 3.86,
+        "p95_ms": 4.03,
+        "p99_ms": 4.29,
+        "runs": 200
+      }
+    },
+    {
+      "fresh_process": {
+        "max_ms": 227.51,
+        "p50_ms": 214.23,
+        "p95_ms": 218.38,
+        "p99_ms": 227.51,
+        "runs": 20
+      },
+      "records_on_page": 50,
+      "scenario": "tasks: walking 100 pages, total",
+      "search": false,
+      "warm": {
+        "max_ms": 227.51,
+        "p50_ms": 207.76,
+        "p95_ms": 214.17,
+        "p99_ms": 218.66,
+        "runs": 200
+      }
+    },
+    {
+      "fresh_process": {
+        "max_ms": 2.77,
+        "p50_ms": 2.63,
+        "p95_ms": 2.76,
+        "p99_ms": 2.77,
+        "runs": 20
+      },
+      "records_on_page": 50,
+      "scenario": "tasks: filter by status and priority",
+      "search": false,
+      "warm": {
+        "max_ms": 1.98,
+        "p50_ms": 1.73,
+        "p95_ms": 1.83,
+        "p99_ms": 1.91,
+        "runs": 200
+      }
+    },
+    {
+      "fresh_process": {
+        "max_ms": 9.04,
+        "p50_ms": 8.05,
+        "p95_ms": 8.74,
+        "p99_ms": 9.04,
+        "runs": 20
+      },
+      "records_on_page": 50,
+      "scenario": "tasks: filter by tag",
+      "search": false,
+      "warm": {
+        "max_ms": 11.43,
+        "p50_ms": 6.97,
+        "p95_ms": 7.44,
+        "p99_ms": 8.8,
+        "runs": 200
+      }
+    },
+    {
+      "fresh_process": {
+        "max_ms": 66.99,
+        "p50_ms": 65.46,
+        "p95_ms": 66.92,
+        "p99_ms": 66.99,
+        "runs": 20
+      },
+      "records_on_page": 50,
+      "scenario": "search tasks: one letter (typing starts)",
+      "search": true,
+      "warm": {
+        "max_ms": 67.47,
+        "p50_ms": 64.1,
+        "p95_ms": 64.78,
+        "p99_ms": 65.5,
+        "runs": 200
+      }
+    },
+    {
+      "fresh_process": {
+        "max_ms": 28.0,
+        "p50_ms": 26.84,
+        "p95_ms": 27.96,
+        "p99_ms": 28.0,
+        "runs": 20
+      },
+      "records_on_page": 50,
+      "scenario": "search tasks: two letters",
+      "search": true,
+      "warm": {
+        "max_ms": 27.53,
+        "p50_ms": 25.6,
+        "p95_ms": 26.39,
+        "p99_ms": 27.25,
+        "runs": 200
+      }
+    },
+    {
+      "fresh_process": {
+        "max_ms": 9.26,
+        "p50_ms": 9.12,
+        "p95_ms": 9.18,
+        "p99_ms": 9.26,
+        "runs": 20
+      },
+      "records_on_page": 50,
+      "scenario": "search tasks: common word (20%)",
+      "search": true,
+      "warm": {
+        "max_ms": 15.36,
+        "p50_ms": 8.18,
+        "p95_ms": 8.92,
+        "p99_ms": 9.49,
+        "runs": 200
+      }
+    },
+    {
+      "fresh_process": {
+        "max_ms": 10.41,
+        "p50_ms": 9.17,
+        "p95_ms": 10.15,
+        "p99_ms": 10.41,
+        "runs": 20
+      },
+      "records_on_page": 50,
+      "scenario": "search tasks: common prefix",
+      "search": true,
+      "warm": {
+        "max_ms": 9.22,
+        "p50_ms": 7.95,
+        "p95_ms": 8.46,
+        "p99_ms": 8.97,
+        "runs": 200
+      }
+    },
+    {
+      "fresh_process": {
+        "max_ms": 4.37,
+        "p50_ms": 3.84,
+        "p95_ms": 4.25,
+        "p99_ms": 4.37,
+        "runs": 20
+      },
+      "records_on_page": 50,
+      "scenario": "search tasks: medium word (5%)",
+      "search": true,
+      "warm": {
+        "max_ms": 3.23,
+        "p50_ms": 2.81,
+        "p95_ms": 2.98,
+        "p99_ms": 3.07,
+        "runs": 200
+      }
+    },
+    {
+      "fresh_process": {
+        "max_ms": 1.51,
+        "p50_ms": 1.4,
+        "p95_ms": 1.48,
+        "p99_ms": 1.51,
+        "runs": 20
+      },
+      "records_on_page": 39,
+      "scenario": "search tasks: rare word (0.1%)",
+      "search": true,
+      "warm": {
+        "max_ms": 0.87,
+        "p50_ms": 0.62,
+        "p95_ms": 0.7,
+        "p99_ms": 0.8,
+        "runs": 200
+      }
+    },
+    {
+      "fresh_process": {
+        "max_ms": 7.01,
+        "p50_ms": 6.76,
+        "p95_ms": 6.94,
+        "p99_ms": 7.01,
+        "runs": 20
+      },
+      "records_on_page": 50,
+      "scenario": "search tasks: Progress Entry word",
+      "search": true,
+      "warm": {
+        "max_ms": 6.5,
+        "p50_ms": 5.62,
+        "p95_ms": 5.91,
+        "p99_ms": 6.14,
+        "runs": 200
+      }
+    },
+    {
+      "fresh_process": {
+        "max_ms": 7.71,
+        "p50_ms": 7.37,
+        "p95_ms": 7.54,
+        "p99_ms": 7.71,
+        "runs": 20
+      },
+      "records_on_page": 50,
+      "scenario": "search tasks: two common words",
+      "search": true,
+      "warm": {
+        "max_ms": 6.81,
+        "p50_ms": 6.19,
+        "p95_ms": 6.46,
+        "p99_ms": 6.68,
+        "runs": 200
+      }
+    },
+    {
+      "fresh_process": {
+        "max_ms": 1.24,
+        "p50_ms": 1.18,
+        "p95_ms": 1.23,
+        "p99_ms": 1.24,
+        "runs": 20
+      },
+      "records_on_page": 0,
+      "scenario": "search tasks: no match",
+      "search": true,
+      "warm": {
+        "max_ms": 0.65,
+        "p50_ms": 0.5,
+        "p95_ms": 0.57,
+        "p99_ms": 0.63,
+        "runs": 200
+      }
+    },
+    {
+      "fresh_process": {
+        "max_ms": 2.45,
+        "p50_ms": 2.33,
+        "p95_ms": 2.42,
+        "p99_ms": 2.45,
+        "runs": 20
+      },
+      "records_on_page": 50,
+      "scenario": "search tasks: word in one List",
+      "search": true,
+      "warm": {
+        "max_ms": 1.72,
+        "p50_ms": 1.48,
+        "p95_ms": 1.58,
+        "p99_ms": 1.65,
+        "runs": 200
+      }
+    },
+    {
+      "fresh_process": {
+        "max_ms": 9.01,
+        "p50_ms": 8.7,
+        "p95_ms": 8.88,
+        "p99_ms": 9.01,
+        "runs": 20
+      },
+      "records_on_page": 50,
+      "scenario": "search tasks: word and status",
+      "search": true,
+      "warm": {
+        "max_ms": 7.92,
+        "p50_ms": 7.51,
+        "p95_ms": 7.76,
+        "p99_ms": 7.86,
+        "runs": 200
+      }
+    },
+    {
+      "fresh_process": {
+        "max_ms": 13.5,
+        "p50_ms": 13.26,
+        "p95_ms": 13.38,
+        "p99_ms": 13.5,
+        "runs": 20
+      },
+      "records_on_page": 50,
+      "scenario": "search tasks: word and tag",
+      "search": true,
+      "warm": {
+        "max_ms": 12.97,
+        "p50_ms": 12.13,
+        "p95_ms": 12.43,
+        "p99_ms": 12.78,
+        "runs": 200
+      }
+    },
+    {
+      "fresh_process": {
+        "max_ms": 10.84,
+        "p50_ms": 10.48,
+        "p95_ms": 10.82,
+        "p99_ms": 10.84,
+        "runs": 20
+      },
+      "records_on_page": 50,
+      "scenario": "search tasks: word, newest order",
+      "search": true,
+      "warm": {
+        "max_ms": 9.86,
+        "p50_ms": 9.25,
+        "p95_ms": 9.58,
+        "p99_ms": 9.8,
+        "runs": 200
+      }
+    },
+    {
+      "fresh_process": {
+        "max_ms": 1.14,
+        "p50_ms": 1.09,
+        "p95_ms": 1.13,
+        "p99_ms": 1.14,
+        "runs": 20
+      },
+      "records_on_page": 50,
+      "scenario": "notes: first page",
+      "search": false,
+      "warm": {
+        "max_ms": 0.64,
+        "p50_ms": 0.45,
+        "p95_ms": 0.53,
+        "p99_ms": 0.6,
+        "runs": 200
+      }
+    },
+    {
+      "fresh_process": {
+        "max_ms": 1.21,
+        "p50_ms": 1.14,
+        "p95_ms": 1.17,
+        "p99_ms": 1.21,
+        "runs": 20
+      },
+      "records_on_page": 27,
+      "scenario": "notes: one folder",
+      "search": false,
+      "warm": {
+        "max_ms": 0.6,
+        "p50_ms": 0.45,
+        "p95_ms": 0.5,
+        "p99_ms": 0.54,
+        "runs": 200
+      }
+    },
+    {
+      "fresh_process": {
+        "max_ms": 91.64,
+        "p50_ms": 89.27,
+        "p95_ms": 90.93,
+        "p99_ms": 91.64,
+        "runs": 20
+      },
+      "records_on_page": 50,
+      "scenario": "search notes: one letter (typing starts)",
+      "search": true,
+      "warm": {
+        "max_ms": 94.75,
+        "p50_ms": 88.21,
+        "p95_ms": 89.63,
+        "p99_ms": 91.07,
+        "runs": 200
+      }
+    },
+    {
+      "fresh_process": {
+        "max_ms": 5.25,
+        "p50_ms": 5.03,
+        "p95_ms": 5.17,
+        "p99_ms": 5.25,
+        "runs": 20
+      },
+      "records_on_page": 50,
+      "scenario": "search notes: common word (30%)",
+      "search": true,
+      "warm": {
+        "max_ms": 4.8,
+        "p50_ms": 3.96,
+        "p95_ms": 4.17,
+        "p99_ms": 4.4,
+        "runs": 200
+      }
+    },
+    {
+      "fresh_process": {
+        "max_ms": 1.49,
+        "p50_ms": 1.41,
+        "p95_ms": 1.49,
+        "p99_ms": 1.49,
+        "runs": 20
+      },
+      "records_on_page": 16,
+      "scenario": "search notes: rare word (0.2%)",
+      "search": true,
+      "warm": {
+        "max_ms": 0.89,
+        "p50_ms": 0.69,
+        "p95_ms": 0.77,
+        "p99_ms": 0.84,
+        "runs": 200
+      }
+    },
+    {
+      "fresh_process": {
+        "max_ms": 1.17,
+        "p50_ms": 1.11,
+        "p95_ms": 1.16,
+        "p99_ms": 1.17,
+        "runs": 20
+      },
+      "records_on_page": 0,
+      "scenario": "search notes: no match",
+      "search": true,
+      "warm": {
+        "max_ms": 0.66,
+        "p50_ms": 0.44,
+        "p95_ms": 0.52,
+        "p99_ms": 0.58,
+        "runs": 200
+      }
+    },
+    {
+      "fresh_process": {
+        "max_ms": 1.06,
+        "p50_ms": 0.99,
+        "p95_ms": 1.02,
+        "p99_ms": 1.06,
+        "runs": 20
+      },
+      "records_on_page": 50,
+      "scenario": "audit: first page",
+      "search": false,
+      "warm": {
+        "max_ms": 0.54,
+        "p50_ms": 0.36,
+        "p95_ms": 0.43,
+        "p99_ms": 0.48,
+        "runs": 200
+      }
+    }
+  ]
+}

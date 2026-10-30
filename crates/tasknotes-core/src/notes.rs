@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use rusqlite::{OptionalExtension, Row, Transaction, params, params_from_iter, types::Value};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -586,16 +588,24 @@ impl TaskStore {
         crate::privacy::between_reads();
         // Snippets only for the page: cutting one reads the whole Note, so
         // doing it for every match before LIMIT cost seconds on long Notes.
-        if !terms.is_empty() {
-            let mut cut = tx.prepare(
-                "SELECT snippet(notes_fts, 0, char(2), char(3), '…', 12)
-                 FROM notes_fts WHERE notes_fts MATCH ?1 AND rowid = ?2",
-            )?;
+        // One statement reads the match once: the `+` keeps SQLite from
+        // looking each rowid up through the index, which repeats the whole
+        // search per Note and cost seconds on a one-letter prefix.
+        if !terms.is_empty() && !rows.is_empty() {
+            let marks = vec!["?"; rows.len()].join(", ");
+            let mut cut = tx.prepare(&format!(
+                "SELECT rowid, snippet(notes_fts, 0, char(2), char(3), '…', 12)
+                 FROM notes_fts WHERE notes_fts MATCH ? AND +rowid IN ({marks})"
+            ))?;
+            let bound = std::iter::once(Value::Text(match_terms))
+                .chain(rows.iter().map(|(_, rowid)| Value::Integer(*rowid)));
+            let cuts = cut
+                .query_map(params_from_iter(bound), |row| {
+                    Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+                })?
+                .collect::<rusqlite::Result<HashMap<_, _>>>()?;
             for (summary, rowid) in &mut rows {
-                summary.snippet = cut
-                    .query_row(params![match_terms, *rowid], |row| row.get::<_, String>(0))
-                    .optional()?
-                    .map(|raw| plain_snippet(&raw));
+                summary.snippet = cuts.get(rowid).map(|raw| plain_snippet(raw));
             }
         }
         let items: Vec<NoteSummary> = rows.into_iter().map(|(summary, _)| summary).collect();

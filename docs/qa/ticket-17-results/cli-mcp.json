@@ -1,0 +1,92 @@
+{
+  "cli_first_command_with_backup_ms": 1241.7,
+  "cli": {
+    "task list, first page": {
+      "runs": 30,
+      "p50_ms": 5.69,
+      "p95_ms": 6.82,
+      "max_ms": 6.83,
+      "peak_rss_mb": 5.3
+    },
+    "task list, common word": {
+      "runs": 30,
+      "p50_ms": 14.78,
+      "p95_ms": 15.42,
+      "max_ms": 15.99,
+      "peak_rss_mb": 8.0
+    },
+    "task list, one letter": {
+      "runs": 30,
+      "p50_ms": 70.91,
+      "p95_ms": 72.2,
+      "max_ms": 72.52,
+      "peak_rss_mb": 12.4
+    },
+    "note list, common word": {
+      "runs": 30,
+      "p50_ms": 25.85,
+      "p95_ms": 26.71,
+      "max_ms": 27.81,
+      "peak_rss_mb": 7.8
+    }
+  },
+  "cli_limit_over_the_maximum": {
+    "exit": 2,
+    "code": "invalid_input"
+  },
+  "cli_walk_tasks": {
+    "pages": 495,
+    "records": 49493,
+    "largest_answer": 100,
+    "peak_rss_mb": 7.8,
+    "finished": true
+  },
+  "cli_walk_notes": {
+    "pages": 97,
+    "records": 9674,
+    "largest_answer": 100,
+    "peak_rss_mb": 5.6,
+    "finished": true
+  },
+  "mcp": {
+    "task_list, first page": {
+      "runs": 100,
+      "p50_ms": 1.35,
+      "p95_ms": 1.63,
+      "max_ms": 5.33
+    },
+    "task_list, common word": {
+      "runs": 100,
+      "p50_ms": 9.14,
+      "p95_ms": 9.5,
+      "max_ms": 9.94
+    },
+    "task_list, one letter": {
+      "runs": 100,
+      "p50_ms": 67.52,
+      "p95_ms": 69.53,
+      "max_ms": 70.32
+    },
+    "note_list, common word": {
+      "runs": 100,
+      "p50_ms": 20.38,
+      "p95_ms": 23.6,
+      "max_ms": 28.71
+    }
+  },
+  "mcp_limit_over_the_maximum": "invalid_input",
+  "mcp_walk_tasks": {
+    "pages": 495,
+    "records": 49493,
+    "largest_answer": 100,
+    "peak_rss_mb": 16.7,
+    "finished": true
+  },
+  "mcp_walk_notes": {
+    "pages": 97,
+    "records": 9674,
+    "largest_answer": 100,
+    "peak_rss_mb": 16.7,
+    "finished": true
+  }
+}
