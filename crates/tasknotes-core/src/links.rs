@@ -304,10 +304,15 @@ impl TaskStore {
         limit: u32,
         cursor: Option<&str>,
     ) -> Result<LinkPage<LinkedTask>, TaskError> {
-        let conn = self.connect()?;
+        let mut conn = self.connect()?;
+        // One read transaction: the page comes from the state the check saw.
+        // Nothing is written, so dropping it needs no commit.
+        let tx = conn.transaction()?;
         // To an AI interface an excluded Note is missing, Tasks and all.
-        self.require_note_shown(&conn, note_id)?;
-        page(&conn, &TASKS_OF_NOTE, note_id, None, limit, cursor, |row| {
+        self.require_note_shown(&tx, note_id)?;
+        #[cfg(test)]
+        crate::privacy::between_reads();
+        page(&tx, &TASKS_OF_NOTE, note_id, None, limit, cursor, |row| {
             let status: String = row.get(4)?;
             Ok(LinkedTask {
                 link_id: row.get(1)?,

@@ -557,11 +557,15 @@ impl TaskStore {
             filters.join(" AND ")
         );
 
-        let conn = self.connect()?;
+        let mut conn = self.connect()?;
+        // One read transaction: snippets come from the state the page was
+        // chosen in, so a Note excluded from AI meanwhile cannot show its new
+        // text. Nothing is written, so dropping it needs no commit.
+        let tx = conn.transaction()?;
         if let NoteScope::Folder(id) = &query.folder {
-            crate::note_folders::require_folder(&conn, id)?;
+            crate::note_folders::require_folder(&tx, id)?;
         }
-        let mut stmt = conn.prepare(&sql)?;
+        let mut stmt = tx.prepare(&sql)?;
         let mut rows = stmt
             .query_map(params_from_iter(values), |row| {
                 let summary = NoteSummary {
@@ -578,10 +582,12 @@ impl TaskStore {
             .collect::<rusqlite::Result<Vec<_>>>()?;
         let more = rows.len() > limit as usize;
         rows.truncate(limit as usize);
+        #[cfg(test)]
+        crate::privacy::between_reads();
         // Snippets only for the page: cutting one reads the whole Note, so
         // doing it for every match before LIMIT cost seconds on long Notes.
         if !terms.is_empty() {
-            let mut cut = conn.prepare(
+            let mut cut = tx.prepare(
                 "SELECT snippet(notes_fts, 0, char(2), char(3), '…', 12)
                  FROM notes_fts WHERE notes_fts MATCH ?1 AND rowid = ?2",
             )?;

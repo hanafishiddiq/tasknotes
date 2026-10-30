@@ -26,6 +26,21 @@ use crate::audit::{AuditAction, Interface};
 use crate::notes::{COLUMNS, Note, read_note};
 use crate::tasks::{TaskError, TaskStore};
 
+/// Test seam: a step run between two reads of one operation, standing in for
+/// another process writing at that moment. Per thread, so tests stay apart.
+#[cfg(test)]
+thread_local! {
+    static BETWEEN_READS: std::cell::RefCell<Option<Box<dyn FnOnce()>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+pub(crate) fn between_reads() {
+    if let Some(step) = BETWEEN_READS.take() {
+        step();
+    }
+}
+
 /// Schema v11: the per-Note flag. Existing Notes stay visible to AI, as they
 /// were before the flag existed.
 pub(crate) fn migrate_v11(migration: &Transaction) -> Result<(), TaskError> {
@@ -201,5 +216,100 @@ impl TaskStore {
         self.audit_applied(&tx, AuditAction::NotePrivacy, &note.id, note.revision)?;
         tx.commit()?;
         Ok(note)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::notes::{CreateNote, NoteQuery, UpdateNote};
+    use crate::tasks::CreateTask;
+
+    fn stores() -> (tempfile::TempDir, TaskStore, TaskStore) {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("privacy.db");
+        let desktop = TaskStore::open(&db).unwrap();
+        let ai = TaskStore::open_as(&db, Interface::Cli).unwrap();
+        (dir, desktop, ai)
+    }
+
+    fn exclude(desktop: &TaskStore, id: &str) {
+        desktop
+            .set_note_exclude_from_ai(SetNoteExcludeFromAi {
+                id: id.to_owned(),
+                exclude_from_ai: true,
+            })
+            .unwrap();
+    }
+
+    /// Review finding (2026-10-30): the page and its snippets were separate
+    /// reads, so the person could mark the Note private and its autosave land
+    /// between them, and the AI's snippet showed the private text.
+    #[test]
+    fn an_ai_search_cuts_snippets_from_the_state_it_chose_the_page_in() {
+        let (_dir, desktop, ai) = stores();
+        let note = desktop
+            .create_note(CreateNote {
+                markdown: "# Lease\n\nlease public words".into(),
+                folder_id: None,
+            })
+            .unwrap();
+        BETWEEN_READS.set(Some(Box::new(move || {
+            exclude(&desktop, &note.id);
+            desktop
+                .update_note(UpdateNote {
+                    id: note.id.clone(),
+                    markdown: "# Lease\n\nlease zzsecretword private".into(),
+                    expected_revision: note.revision,
+                })
+                .unwrap();
+        })));
+        let page = ai
+            .query_notes(
+                &NoteQuery {
+                    text: "lease".into(),
+                    ..NoteQuery::default()
+                },
+                100,
+                None,
+            )
+            .unwrap();
+        assert_eq!(page.items.len(), 1);
+        let snippet = page.items[0].snippet.as_deref().unwrap();
+        assert!(snippet.contains("public"), "{snippet}");
+        assert!(!snippet.contains("zzsecretword"), "{snippet}");
+    }
+
+    /// The same finding for the Tasks of a Note: the privacy check and the
+    /// page were separate reads, so a link made after the Note was excluded
+    /// could reach the AI.
+    #[test]
+    fn an_ai_link_list_reads_the_state_it_checked_privacy_in() {
+        let (_dir, desktop, ai) = stores();
+        let task = |title: &str| {
+            desktop
+                .create_task(CreateTask {
+                    title: title.into(),
+                    description: String::new(),
+                })
+                .unwrap()
+        };
+        let note = desktop
+            .create_note(CreateNote {
+                markdown: "# Shared".into(),
+                folder_id: None,
+            })
+            .unwrap();
+        let shared = task("Synthetic shared errand");
+        let private = task("Synthetic private errand");
+        desktop.link_note(&shared.id, &note.id).unwrap();
+        let note_id = note.id.clone();
+        BETWEEN_READS.set(Some(Box::new(move || {
+            exclude(&desktop, &note_id);
+            desktop.link_note(&private.id, &note_id).unwrap();
+        })));
+        let page = ai.list_note_tasks(&note.id, 100, None).unwrap();
+        let titles: Vec<&str> = page.items.iter().map(|item| item.title.as_str()).collect();
+        assert_eq!(titles, ["Synthetic shared errand"]);
     }
 }
