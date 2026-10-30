@@ -44,10 +44,9 @@ async fn main() -> ExitCode {
         Ok(dir) => dir,
         Err(error) => return fail(&error.message),
     };
-    let service = match server::Tasknotes::new(data_dir)
-        .serve(rmcp::transport::stdio())
-        .await
-    {
+    let tasknotes = server::Tasknotes::new(data_dir);
+    tasknotes.keep_daily_backups();
+    let service = match tasknotes.serve(rmcp::transport::stdio()).await {
         Ok(service) => service,
         Err(error) => return fail(&format!("MCP handshake failed: {error}")),
     };

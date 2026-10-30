@@ -3,8 +3,9 @@
 //! opened, so a revoked client is refused at once and an untrusted one learns
 //! nothing about the data.
 
-use std::path::PathBuf;
-use std::sync::Mutex;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use rmcp::model::{
     CallToolRequestParams, CallToolResponse, CallToolResult, Implementation, ListToolsResult,
@@ -19,6 +20,10 @@ use tasknotes_core::audit::Interface;
 use tasknotes_core::tasks::TaskError;
 
 use crate::tools::{Context, ToolDef};
+
+/// How often a running server checks whether the day's backup is due, like
+/// the desktop.
+const BACKUP_CHECK: Duration = Duration::from_secs(60 * 60);
 
 const INSTRUCTIONS: &str = "Tasknotes: the person's local Tasks, Lists and Notes. \
 Every tool answers with one JSON envelope {schema_version, ok, item | items + next_cursor | error}. \
@@ -35,7 +40,7 @@ pub struct Tasknotes {
     /// another connection opening in the same moment would find locked.
     /// Once open, each call has its own connection and waits out SQLite's
     /// busy timeout like any other writer (the CLI, the desktop).
-    opening: Mutex<()>,
+    opening: Arc<Mutex<()>>,
     tools: Vec<ToolDef>,
 }
 
@@ -43,9 +48,25 @@ impl Tasknotes {
     pub fn new(data_dir: PathBuf) -> Self {
         Self {
             data_dir,
-            opening: Mutex::new(()),
+            opening: Arc::new(Mutex::new(())),
             tools: crate::tools::all(),
         }
+    }
+
+    /// Backups run while any Tasknotes process is active (spec): check now
+    /// and then every hour, for as long as the server lives. A failure is
+    /// reported on stderr and never reaches a tool.
+    pub fn keep_daily_backups(&self) {
+        let data_dir = self.data_dir.clone();
+        let opening = Arc::clone(&self.opening);
+        std::thread::spawn(move || {
+            loop {
+                if let Some(problem) = daily_backup(&data_dir, &opening) {
+                    eprintln!("tasknotes-mcp: {problem}");
+                }
+                std::thread::sleep(BACKUP_CHECK);
+            }
+        });
     }
 
     /// Run one tool call to its envelope.
@@ -76,6 +97,27 @@ impl Tasknotes {
             error => CliError::from(error),
         })?;
         tool.call(&Context { store: &store }, arguments)
+    }
+}
+
+/// Take the day's backup if it is due. Before the person has authorized MCP,
+/// or before a database exists, there is nothing to do and nothing is opened.
+fn daily_backup(data_dir: &Path, opening: &Mutex<()>) -> Option<String> {
+    let database = data_dir.join(ai_access::DATABASE_FILE);
+    if !ai_access::is_authorized(data_dir, Interface::Mcp) || !database.exists() {
+        return None;
+    }
+    let store = {
+        let _one_at_a_time = opening.lock().unwrap_or_else(|e| e.into_inner());
+        ai_access::open_authorized(data_dir, Interface::Mcp)
+    };
+    match store.and_then(|store| store.ensure_daily_backup()) {
+        Ok(taken) => taken.and_then(|t| t.retention_error).map(|error| {
+            format!("The backup was taken, but an old backup could not be removed: {error}")
+        }),
+        Err(error) => Some(format!(
+            "Today's automatic backup could not be taken: {error}"
+        )),
     }
 }
 
