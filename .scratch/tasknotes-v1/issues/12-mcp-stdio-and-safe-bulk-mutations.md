@@ -81,7 +81,7 @@ Fixed at the merge, each with a test written first:
 
 **Known and left for Ticket 18:**
 
-- Two processes opening a database at the same moment can make one open fail, with no data damage: the migration is transactional, and a retry succeeds. Forced with barrier threads it fails often (40 of 80 on a fresh directory); a real server start against a desktop open failed 0 of 60.
+- ~~Two processes opening a database at the same moment can make one open fail.~~ Fixed the same day: they take turns upgrading (`stores_opening_at_the_same_moment_all_succeed`).
 - A database created by a build of this branch alone (v14 with no `database_epoch` table) does not open. Throw such QA directories away; no real data was ever opened by that build.
-- The Restore Epoch guards one running MCP server. A client that remembers a revision across a server restart, or across separate `tasknotes` commands, is still protected only by the revision check.
+- ~~The Restore Epoch guards one running MCP server only.~~ Fixed the same day: a restore gives whatever changed since the snapshot a revision no version of it has had, so a client holding an old one is refused, across restarts and CLI commands too (`a_cli_write_from_before_a_restore_does_not_overwrite_the_persons_edit`).
 

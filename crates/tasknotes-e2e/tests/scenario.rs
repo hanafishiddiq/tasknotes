@@ -1180,7 +1180,7 @@ fn restores_while_an_mcp_server_stays_running(s: &mut Stage, private: &Private) 
     // Now the real CLI restores, at a terminal, with the server still up:
     // back to the Pre-restore backup, the data as it was just before.
     let before_second = s.mcp.ok("task_get", json!({"id": kept}));
-    assert_eq!(before_second["item"]["revision"], 1);
+    assert_eq!(before_second["item"]["revision"], read["item"]["revision"]);
     let second = s.w.restore(&outcome.pre_restore.id);
     assert_eq!(second["item"]["restored"]["kind"], "pre_restore");
 
@@ -1242,9 +1242,9 @@ fn one_database_through_the_real_cli_the_real_mcp_server_and_the_desktop() {
 }
 
 /// A client that read revision 2, a restore that rewinds the Task to revision
-/// 1, and the person editing it to revision 2 again: the number the client
-/// holds now names the person's edit. Returns whether `write` landed, what it
-/// was told, and the title the person now has.
+/// 1, and the person editing it afterwards: the number the client holds must not
+/// name anything now. Returns whether `write` landed, what it was told, and the
+/// title the person now has.
 fn a_stale_write_after_a_restore(
     write: impl FnOnce(&World, &str) -> (bool, String),
 ) -> (bool, String, String) {
@@ -1264,10 +1264,12 @@ fn a_stale_write_after_a_restore(
 
     let desktop = w.desktop();
     desktop.restore_backup(&backup).unwrap();
+    let restored = desktop.get_task(&id).unwrap().unwrap();
+    assert!(restored.revision > 2, "revision 2 is not used again");
     desktop
         .patch_task(PatchTask {
             id: id.clone(),
-            expected_revision: 1,
+            expected_revision: restored.revision,
             title: Some("Synthetic the persons edit".into()),
             description: None,
         })
