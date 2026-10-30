@@ -1,6 +1,6 @@
 # Ticket 17: large-dataset performance, 2026-10-30
 
-**Status: incomplete.** Through the core, CLI and MCP, search and paging meet their targets. Nothing about the app on screen is settled: the Mac's screen was locked and asleep during the runs, so its window got no real frames and macOS throttled it. Scrolling is **not measured**, and search through the app is measured only in that throttled state, where the one-letter searches are over target. [The on-screen run](#what-is-still-open) decides both.
+**Status: measured; targets met.** Search under 250 ms and scrolling at 60 FPS, with 50,000 Tasks and 10,000 Notes, on the screen of the target Mac. Still unmeasured: how a real trackpad feels, which is in the [owner check](owner-check-2026-10-30.md), and a truly cold disk.
 
 ## Setup
 
@@ -74,24 +74,39 @@ Record counts are below 50,000 and 10,000 because Removed items and, for an AI, 
 
 ## The app
 
-Raw results: [ui-screen-locked.json](ticket-17-results/ui-screen-locked.json). **These ran on a locked screen in a hidden window.** macOS throttles such a window, so its timings say little about using the app, in either direction. Nothing here counts as passing or failing a target.
+Raw results: [ui.json](ticket-17-results/ui.json), a release build in the real window, unlocked and in front (`frame_timings_valid: true`). Other work was running on the Mac during this run (load average about 4), so these are not best-case numbers. The display ran at 60 Hz.
 
-- **First Task row after the page loads:** 173 ms here, 83–173 ms across runs. An unpainted window does less work, so this may be optimistic.
-- **Memory:** 111.3 MB for the app process plus 224.2 MB for its WebKit helper processes, without painting. Helpers are found as WebKit processes that appeared after launch.
-- **Rows in the page:** 16 of the 50 on the page were in the DOM at rest. Rows while scrolling are not measured.
-- **Search through the app's IPC:** the slowest is one letter, Tasks p95 326 ms and Notes p95 405 ms. That is over 250 ms but throttled; the core takes 64.78 ms and 89.63 ms for the same queries.
-- **Typing to settled results, 250 ms debounce included:** one letter in Tasks p50 918 ms, a whole word p50 322 ms.
-- **Opening a row:** p50 15 ms, but p95 2193 ms. One slow open in 12 needs checking on screen before it is called throttling.
-- An earlier run reported 60 FPS. It is discarded: the display was asleep for most of it.
+**Scrolling. Target near 60 FPS: met.** Scripted: each frame sets `scrollTop`, the costly main-thread path, at 1,800 px/s. This is an upper bound on what a trackpad costs, and says nothing about how a finger on one feels.
+
+| Scroll | Frames | FPS | p50 ms | p95 ms | max ms | Frames over 20 ms | Most rows in DOM |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Task rows, collapsed | 600 | 59.99 | 17 | 18 | 18 | 0 | 26 of 50 |
+| Task rows, one open | 601 | 60 | 17 | 18 | 18 | 0 | 27 of 50 |
+| Note list | 300 | 60 | 17 | 18 | 18 | 0 | 19 of 50 |
+
+The app shows 50 Tasks per page by design (Ticket 04), so the list scrolled is a page, not all 50,000.
+
+**Search through the app's IPC. Target p95 under 250 ms: met.** The slowest is one letter: Notes p95 91 ms, Tasks p95 68 ms. A whole word: Tasks p95 10 ms, Notes p95 5 ms.
+
+**Other timings on screen:**
+
+| Action | p50 ms | p95 ms |
+| --- | --- | --- |
+| Open a Task row | 17 | 21 |
+| Next page | 17 | 33 |
+| Typing one letter to settled Tasks and Note hits, 250 ms debounce included | 442 | 785 |
+| Typing a word to settled Tasks and Note hits, debounce included | 284 | 519 |
+| Typing one letter to settled Notes, debounce included | 363 | 377 |
+
+Typing takes five samples each, so its p95 is close to one slow run. Opening a row took about 2 s once in a run on a locked screen ([ui-screen-locked.json](ticket-17-results/ui-screen-locked.json)); on screen the slowest of 12 is 21 ms, so that was throttling.
+
+- **First Task row after the page loads:** 203 ms.
+- **Open Notes the first time:** 334 ms, loading its editor bundle included.
+- **Memory:** 108.9 MB for the app process and 290.9 MB for its WebKit helper processes, at their highest during the run. Helpers are found as WebKit processes that appeared after launch, so one started by another app in that time would be counted.
 
 ## What is still open
 
-1. **Scroll near 60 FPS with collapsed and open rows: not measured.** Run with the Mac unlocked and the screen on, leaving the window alone for about three minutes:
+1. **How a real trackpad feels at this size:** in the [owner check](owner-check-2026-10-30.md).
+2. **A truly cold disk:** not measured, because emptying the OS file cache needs administrator rights.
 
-   ```bash
-   scripts/qa/run-ticket17-ui.sh
-   ```
-
-   The scroll is scripted: each frame sets `scrollTop`, which is the costly main-thread path, so it is an upper bound on what a trackpad costs. It says nothing about how a finger on a trackpad feels; that stays in the owner's click-checklist.
-2. **Search through IPC, typing to settled results, opening a row and memory while painting:** same run.
-3. **A truly cold disk:** not measured, as above.
+The lag reported on 2026-10-12 ([Issue 19](../../.scratch/tasknotes-v1/issues/19-native-interaction-lag.md)) did not appear in these scripted runs. Its root cause was never proven, so this does not prove it cannot return with a trackpad.
