@@ -86,6 +86,7 @@ beforeEach(() => {
       }
       case "update_task":
       case "record_progress":
+      case "change_task":
       case "update_task_details": {
         const found = tasks.find((item) => item.id === body.input.id)!;
         if (found.revision !== body.input.expectedRevision) {
@@ -300,6 +301,61 @@ describe("Unsaved Task edits", () => {
     await user.click(within(notice).getByRole("button", { name: "Discard my edits" }));
     expect(screen.getByRole("textbox", { name: "Edit title" })).toHaveValue("Renamed by CLI");
     expect(screen.queryByRole("alert", { name: "Changed elsewhere" })).not.toBeInTheDocument();
+  });
+
+  describe("a save names the revision its edits were typed against", () => {
+    /** Types, the Task changes elsewhere, the list reloads: the draft is now on an older revision. */
+    async function typeThenChangeElsewhere(
+      user: ReturnType<typeof userEvent.setup>, type: () => Promise<void>,
+    ) {
+      tasks = [task(1, { revision: 3, status: "in_progress", progress: 10 })];
+      render(<App />);
+      await user.click(await screen.findByRole("button", { name: "Open Synthetic task 1" }));
+      await type();
+      changeElsewhere("task-1", { description: "Changed by CLI" });
+      await reloadBySorting(user, "Newest first");
+      if (!screen.queryByRole("region", { name: "Task details" })) {
+        await user.click(screen.getByRole("button", { name: "Open Synthetic task 1" }));
+      }
+      screen.getByRole("alert", { name: "Changed elsewhere" });
+    }
+
+    it("for a progress update", async () => {
+      const user = userEvent.setup();
+      await typeThenChangeElsewhere(user, () => user.type(screen.getByRole("textbox", { name: "Next step" }), "Call"));
+      await user.click(screen.getByRole("button", { name: "Save progress update" }));
+      expect(await screen.findByText(/Revision conflict/)).toBeInTheDocument();
+      expect(call).toHaveBeenCalledWith("record_progress", {
+        input: { id: "task-1", expectedRevision: 3, nextStep: "Call" },
+      });
+      expect(tasks[0].nextStep).toBe("");
+    });
+
+    it("for a percentage alone", async () => {
+      const user = userEvent.setup();
+      await typeThenChangeElsewhere(user, async () => {
+        const percent = screen.getByRole("spinbutton", { name: "Progress percentage" });
+        await user.clear(percent);
+        await user.type(percent, "33");
+      });
+      await user.click(screen.getByRole("button", { name: "Apply progress" }));
+      expect(await screen.findByText(/Revision conflict/)).toBeInTheDocument();
+      expect(call).toHaveBeenCalledWith("change_task", {
+        input: { id: "task-1", expectedRevision: 3, progress: 33 },
+      });
+      expect(tasks[0].progress).toBe(10);
+    });
+
+    it("for tags and a deadline", async () => {
+      const user = userEvent.setup();
+      await typeThenChangeElsewhere(user, () => user.type(screen.getByRole("textbox", { name: "Tags" }), "errands"));
+      await user.click(screen.getByRole("button", { name: "Save tags and deadline" }));
+      expect(await screen.findByText(/Revision conflict/)).toBeInTheDocument();
+      expect(call).toHaveBeenCalledWith("update_task_details", {
+        input: { id: "task-1", expectedRevision: 3, tags: ["errands"], dueDate: null },
+      });
+      expect(tasks[0].tags).toEqual([]);
+    });
   });
 
   it("keeps a progress draft through a change elsewhere and saves it only once kept on purpose", async () => {

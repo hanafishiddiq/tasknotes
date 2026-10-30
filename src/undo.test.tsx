@@ -87,6 +87,13 @@ beforeEach(() => {
         const { removedAt: _, ...shown } = found;
         return { ...shown };
       }
+      case "list_removed": {
+        const items = tasks.filter((item) => item.removedAt !== null).map((item) => ({
+          kind: "task", id: item.id, title: item.title, revision: item.revision,
+          removedAt: item.removedAt, inRemovedContainer: false,
+        }));
+        return { items, nextCursor: null };
+      }
       case "list_progress_entries": case "list_task_notes": return { items: [], nextCursor: null };
       case "quit_ready": return null;
       default: return backend.handle(command, body);
@@ -102,6 +109,31 @@ const settled = () => act(() => new Promise((resolve) => setTimeout(resolve, 20)
 const rows = () => screen.queryAllByRole("article").map((row) => row.getAttribute("aria-label"));
 
 const notice = () => screen.queryByRole("status", { name: "Moved to Removed" });
+
+describe("Restoring from Removed", () => {
+  it("drops the item from the Undo stack, so Undo takes back the older move", async () => {
+    tasks = [task(1), task(2)];
+    const user = userEvent.setup();
+    render(<App />);
+    for (const name of ["T1", "T2"]) {
+      await user.click(await screen.findByRole("button", { name: `Open ${name}` }));
+      await user.click(screen.getByRole("button", { name: "Move to Removed" }));
+      await waitFor(() => expect(screen.queryByRole("article", { name })).not.toBeInTheDocument());
+    }
+    await user.click(screen.getByRole("button", { name: "Removed" }));
+    const removed = await screen.findByRole("region", { name: "Removed items" });
+    await user.click(await within(removed).findByRole("button", { name: "Restore T2" }));
+    await waitFor(() => expect(tasks[1].removedAt).toBeNull());
+    const restores = () => call.mock.calls.filter(([command, args]) =>
+      command === "set_task_removed" && (args as any).input.removed === false);
+    expect(restores()).toHaveLength(1);
+
+    await user.keyboard("{Meta>}z{/Meta}");
+
+    await waitFor(() => expect(tasks[0].removedAt).toBeNull());
+    expect(restores().map(([, args]) => (args as any).input.id)).toEqual(["task-2", "task-1"]);
+  });
+});
 
 describe("a refused Undo", () => {
   it("shows at once while older moves remain, and they stay undoable", async () => {
