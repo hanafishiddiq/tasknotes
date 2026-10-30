@@ -557,10 +557,15 @@ impl Server {
     }
 
     /// Close stdin and wait for the server to exit; returns its status code.
+    /// Whatever it still wrote on the way out must be JSON too.
     pub fn close(mut self) -> Option<i32> {
         drop(self.stdin.take());
         for _ in 0..150 {
             if let Some(status) = self.child.try_wait().unwrap() {
+                while let Poll::Line(line) = self.poll(Duration::from_millis(100)) {
+                    serde_json::from_str::<Value>(&line)
+                        .unwrap_or_else(|e| panic!("stdout line is not JSON ({e}): {line:?}"));
+                }
                 return status.code();
             }
             std::thread::sleep(Duration::from_millis(100));

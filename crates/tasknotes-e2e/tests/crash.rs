@@ -299,10 +299,7 @@ fn run_cli_writer(data_dir: PathBuf, round: u64, fate: &Fate) -> Report {
             .stderr(Stdio::piped())
             .spawn()
             .unwrap();
-        let status = loop {
-            if let Some(status) = child.try_wait().unwrap() {
-                break status;
-            }
+        while child.try_wait().unwrap().is_none() {
             if fate.due() {
                 child.kill().unwrap();
                 child.wait().unwrap();
@@ -310,9 +307,8 @@ fn run_cli_writer(data_dir: PathBuf, round: u64, fate: &Fate) -> Report {
                 return report;
             }
             std::thread::sleep(Duration::from_micros(50));
-        };
+        }
         let mut output = child.wait_with_output().unwrap();
-        output.status = status;
         output.stdout = std::fs::read(&stdout_path).unwrap();
         let run = finish(output);
         assert!(run.stderr.is_empty(), "CLI stderr: {}", run.stderr);
@@ -491,25 +487,21 @@ fn assert_search_finds_what_is_there(
     acks: &[Ack],
     since: i64,
 ) {
-    let current: BTreeMap<(&str, String), String> = [(Kind::Task, "tasks"), (Kind::Note, "notes")]
-        .iter()
-        .flat_map(|(_, table)| {
-            let mut rows = conn
-                .prepare(&format!(
-                    "SELECT id, title FROM {table} WHERE updated_at >= ?1"
-                ))
-                .unwrap();
-            let found: Vec<(String, String)> = rows
-                .query_map(params![since], |row| Ok((row.get(0)?, row.get(1)?)))
-                .unwrap()
-                .collect::<Result<_, _>>()
-                .unwrap();
-            found
-                .into_iter()
-                .map(|(id, title)| ((*table, id), title))
-                .collect::<Vec<_>>()
-        })
-        .collect();
+    let mut current: BTreeMap<(&str, String), String> = BTreeMap::new();
+    for table in ["tasks", "notes"] {
+        let mut changed = conn
+            .prepare(&format!(
+                "SELECT id, title FROM {table} WHERE updated_at >= ?1"
+            ))
+            .unwrap();
+        let rows = changed
+            .query_map(params![since], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap();
+        for row in rows {
+            let (id, title): (String, String) = row.unwrap();
+            current.insert((table, id), title);
+        }
+    }
     for ((table, id), title) in &current {
         let word = title.rsplit(' ').next().unwrap();
         let found = if *table == "tasks" {
@@ -769,7 +761,10 @@ fn a_backup_killed_part_way_leaves_nothing_that_looks_like_a_backup() {
             std::thread::sleep(Duration::from_micros(100));
         };
         if writing {
-            std::thread::sleep(whole * round / BACKUP_ROUNDS);
+            // Even rounds die early, wherever a loaded machine puts "early";
+            // odd rounds reach for the end, the renames included.
+            let share = if round % 2 == 0 { round } else { 4 * round };
+            std::thread::sleep(whole * share / (4 * BACKUP_ROUNDS));
         }
         if child.try_wait().unwrap().is_none() {
             child.kill().unwrap();
