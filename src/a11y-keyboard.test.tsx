@@ -1,11 +1,11 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
 import App from "./App";
 import { QUICK_CAPTURE_REQUESTED } from "./lib/shell-api";
 import { freshWorld, SCENES, world, type User } from "./test/a11y-scenes";
-import { fixtureList, fixtureTask } from "./test/a11y-world";
+import { everyRowKind, fixtureList, fixtureRequest, fixtureTask } from "./test/a11y-world";
 import { tauriEvents } from "./test/tauri-events";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -445,5 +445,93 @@ describe("Tab in the Note text", () => {
     await user.tab({ shift: true });
     expect(text).not.toHaveFocus();
     expect(document.activeElement).not.toBe(document.body);
+  });
+});
+
+/**
+ * The control just used has gone, and focus falls to the body, so Tab starts again
+ * from the top of the window. Where it should land instead is the owner's call, so
+ * these pin today's behaviour rather than wanting it: when one goes red because
+ * focus now lands somewhere, that is the fix arriving, and the test should say where.
+ */
+describe("waiting for the owner: focus falls to the body when the control used disappears", () => {
+  const fallsToBody = () => waitFor(() => expect(document.activeElement).toBe(document.body));
+
+  it("Move to Removed on an open Task", async () => {
+    world.tasks = everyRowKind();
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open Synthetic draft" }));
+    await user.click(screen.getByRole("button", { name: "Move to Removed" }));
+    await screen.findByRole("status", { name: "Moved to Removed" });
+    await fallsToBody();
+  });
+
+  it("Undo in the Undo bar", async () => {
+    world.tasks = [fixtureTask("a")];
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open Synthetic task a" }));
+    await user.click(screen.getByRole("button", { name: "Move to Removed" }));
+    const notice = await screen.findByRole("status", { name: "Moved to Removed" });
+    await user.click(within(notice).getByRole("button", { name: "Undo" }));
+    await screen.findByRole("article", { name: "Synthetic task a" });
+    await fallsToBody();
+  });
+
+  it("Restore on a row in Removed", async () => {
+    world.tasks = [fixtureTask("t", { title: "Synthetic removed" })];
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open Synthetic removed" }));
+    await user.click(screen.getByRole("button", { name: "Move to Removed" }));
+    await screen.findByRole("status", { name: "Moved to Removed" });
+    await user.click(screen.getByRole("button", { name: "Removed" }));
+    await user.click(await screen.findByRole("button", { name: "Restore Synthetic removed" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Restore Synthetic removed" })).toBeNull());
+    await fallsToBody();
+  });
+
+  it("Decline on a request waiting for approval", async () => {
+    world.pending = [fixtureRequest("r1")];
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /^Waiting for approval/ }));
+    await user.click(await screen.findByRole("button", { name: /^Decline/ }));
+    await screen.findByText("Nothing waiting for approval");
+    await fallsToBody();
+  });
+
+  it("Clear search and filters", async () => {
+    world.tasks = everyRowKind();
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("article", { name: "Synthetic draft" });
+    await user.selectOptions(screen.getByRole("combobox", { name: "Filter by status" }), "in_progress");
+    await user.click(await screen.findByRole("button", { name: "Clear search and filters" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Clear search and filters" })).toBeNull());
+    await fallsToBody();
+  });
+
+  it("Dismiss on the launch notice", async () => {
+    world.launchNotice = "Synthetic notice.";
+    const user = userEvent.setup();
+    render(<App />);
+    const notice = await screen.findByRole("status", { name: "Quick Capture shortcut" });
+    await user.click(within(notice).getByRole("button", { name: "Dismiss" }));
+    await fallsToBody();
+  });
+
+  it("opening a linked Task from a Note: focus stays behind in the hidden Notes view", async () => {
+    world.tasks = [fixtureTask("a")];
+    world.notes.seed("Plain", "Plain");
+    world.tasksOfNote = [{ linkId: "lk", taskId: "a", title: "Synthetic linked task", status: "ready" }];
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "All notes" }));
+    await user.click(await screen.findByRole("button", { name: /^Synthetic linked task/ }, eventually));
+    await screen.findByRole("status", { name: "Linked Task" }, eventually);
+    // jsdom leaves it on the hidden button; browsers drop a hidden element's focus to the body.
+    expect(document.activeElement?.closest("[hidden]")).not.toBeNull();
   });
 });
