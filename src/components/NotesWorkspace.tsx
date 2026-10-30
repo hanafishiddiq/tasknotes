@@ -424,7 +424,7 @@ export default function NotesWorkspace({
   }
 
   return (
-    <div className="notes-workspace" hidden={hidden}>
+    <main className="notes-workspace" hidden={hidden}>
       <section className="note-list-pane" aria-label="Notes list">
         <header className="note-list-header">
           <h1>{scopeName}</h1>
@@ -521,6 +521,6 @@ export default function NotesWorkspace({
           <NoteEditor key={editor.key} initialMarkdown={editor.markdown} onEdit={edited} editorRef={editorRef} />
         )}
       </section>
-    </div>
+    </main>
   );
 }
