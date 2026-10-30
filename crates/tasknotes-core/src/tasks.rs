@@ -590,11 +590,27 @@ pub(crate) fn open_connection(path: &Path) -> Result<Connection, TaskError> {
     Ok(connection)
 }
 
+fn database_version(connection: &Connection) -> Result<i64, TaskError> {
+    Ok(connection.pragma_query_value(None, "user_version", |row| row.get(0))?)
+}
+
+/// Held for one upgrade; the operating system releases it even if the process dies.
+fn lock_upgrades(database: &Path) -> Result<std::fs::File, TaskError> {
+    let lock = std::fs::File::options()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(database.with_extension("upgrade.lock"))?;
+    lock.lock()?;
+    Ok(lock)
+}
+
 /// Transactional, forward-only migrations to `SCHEMA_VERSION`. Used on
 /// launch, on a restore's staging copy and for the reference schema a
 /// restored backup is compared with.
 pub(crate) fn migrate(connection: &mut Connection) -> Result<(), TaskError> {
-    let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    let version = database_version(connection)?;
     if version > SCHEMA_VERSION {
         return Err(TaskError::UnsupportedSchema(version));
     }
@@ -760,6 +776,14 @@ impl TaskStore {
         }
 
         let mut connection = open_connection(path)?;
+        // Several processes may open the same older or new database at once.
+        // One upgrades it while the others wait, then find it done; migrate
+        // reads the version again under the lock.
+        let _one_upgrade_at_a_time = if database_version(&connection)? < SCHEMA_VERSION {
+            Some(lock_upgrades(path)?)
+        } else {
+            None
+        };
         migrate(&mut connection)?;
         let epoch = crate::backup::settled_epoch(path, &connection)?;
         Ok(Self {

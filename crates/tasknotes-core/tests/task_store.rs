@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use rusqlite::Connection;
 use tasknotes_core::tasks::{CreateTask, Priority, TaskStore, UpdateTask, WorkStatus};
 
 fn new_store(dir: &tempfile::TempDir) -> TaskStore {
@@ -155,4 +156,44 @@ fn newer_incompatible_schema_is_refused_without_mutating_the_file() {
         .pragma_query_value(None, "user_version", |r| r.get(0))
         .unwrap();
     assert_eq!(version, 99);
+}
+
+/// Several processes may open the same database at the same moment: the app
+/// and an MCP client started together, on a fresh folder or after an update.
+/// One upgrades it; the others wait and find it done. Threads stand in for
+/// processes: each open takes its own file lock and its own connection.
+#[test]
+fn stores_opening_at_the_same_moment_all_succeed() {
+    for older in [
+        None,
+        Some(
+            "DROP TABLE bulk_requests;
+                 ALTER TABLE audit_entries DROP COLUMN requested_by;
+                 PRAGMA user_version = 13;",
+        ),
+    ] {
+        for _round in 0..10 {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("tasknotes.db");
+            if let Some(sql) = older {
+                drop(TaskStore::open(&path).unwrap());
+                Connection::open(&path).unwrap().execute_batch(sql).unwrap();
+            }
+            let start = std::sync::Arc::new(std::sync::Barrier::new(8));
+            let openers: Vec<_> = (0..8)
+                .map(|_| {
+                    let (start, path) = (start.clone(), path.clone());
+                    std::thread::spawn(move || {
+                        start.wait();
+                        TaskStore::open(&path)
+                            .map(|_| ())
+                            .map_err(|e| e.to_string())
+                    })
+                })
+                .collect();
+            for opener in openers {
+                assert_eq!(opener.join().unwrap(), Ok(()));
+            }
+        }
+    }
 }
