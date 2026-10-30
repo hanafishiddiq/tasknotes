@@ -115,6 +115,9 @@ export default function App() {
   // Ignore stale results from older Task queries after a newer user action.
   const requestGeneration = useRef(0);
   const currentQuery = useRef({ sort, view, filters });
+  // The page showing now, for Undo: it runs long after the render that queued it.
+  const currentPage = useRef(currentPageCursor);
+  currentPage.current = currentPageCursor;
 
   useEffect(() => {
     currentQuery.current = { sort, view, filters };
@@ -392,7 +395,8 @@ export default function App() {
     }
   }
 
-  async function setListRemoved(list: TaskList, removed: boolean) {
+  /** Rejects when the core refuses, so Undo can say so in whatever view is showing. */
+  async function applyListRemoved(list: TaskList, removed: boolean) {
     setBusyList(true);
     setError(null);
     try {
@@ -402,7 +406,7 @@ export default function App() {
       setLists((all) => all.map((item) => item.id === list.id ? updated : item));
       setRemovedKey((key) => key + 1);
       if (removed) {
-        undo.push({ key: `list:${updated.id}`, title: updated.name, undo: () => setListRemoved(updated, false) });
+        undo.push({ key: `list:${updated.id}`, title: updated.name, undo: () => applyListRemoved(updated, false) });
       }
       if (removed && view.kind === "list" && view.listId === list.id) {
         setTasks([]);
@@ -418,8 +422,17 @@ export default function App() {
       try { await refreshLists(); } catch (reason) {
         setError("List updated, but the sidebar could not refresh: " + errorMessage(reason));
       }
-    } catch (reason) { setError(errorMessage(reason)); }
-    finally { setBusyList(false); }
+    } finally {
+      setBusyList(false);
+    }
+  }
+
+  async function setListRemoved(list: TaskList, removed: boolean) {
+    try {
+      await applyListRemoved(list, removed);
+    } catch (reason) {
+      setError(errorMessage(reason));
+    }
   }
 
   async function loadMoreLists() {
@@ -518,14 +531,17 @@ export default function App() {
     }
   }
 
-  /** Resolves true once the mutation itself succeeded. */
-  async function commitTaskMutation(task: Task, mutate: () => Promise<Task>): Promise<boolean> {
+  /**
+   * Resolves true once the mutation itself succeeded. Rejects when the core
+   * refuses, so Undo can say so in whatever view is showing.
+   */
+  async function applyTaskMutation(task: Task, mutate: () => Promise<Task>): Promise<boolean> {
     if (savingId) return false;
     setSavingId(task.id);
     setError(null);
-    // Paging is disabled while saving, so this is still the visible page.
+    // Paging is disabled while saving, so this stays the visible page.
     const queryAtStart = currentQuery.current;
-    const startCursor = currentPageCursor;
+    const startCursor = currentPage.current;
     try {
       const updated = await mutate();
       // The core decides completion (status or 100% progress); the cue follows its answer.
@@ -560,17 +576,32 @@ export default function App() {
         setError("Change saved, but the ordered list could not refresh: " + errorMessage(reason));
       }
       return true;
-    } catch (reason) {
-      setError(errorMessage(reason));
-      return false;
     } finally {
       setSavingId(null);
     }
   }
 
-  /** A save of typed edits: once it succeeds, the edits it carried are no longer unsaved. */
+  /** A change made in the Task view: a refusal shows in its banner. */
+  async function commitTaskMutation(task: Task, mutate: () => Promise<Task>): Promise<boolean> {
+    try {
+      return await applyTaskMutation(task, mutate);
+    } catch (reason) {
+      setError(errorMessage(reason));
+      return false;
+    }
+  }
+
+  /**
+   * A save of typed edits: once it succeeds, the edits it carried are no longer
+   * unsaved. They go with the new revision, not after the list refresh, or the
+   * row would take its own save for a change made elsewhere.
+   */
   async function saveEdits(task: Task, mutate: () => Promise<Task>) {
-    if (await commitTaskMutation(task, mutate)) drafts.set(task.id, undefined);
+    await commitTaskMutation(task, async () => {
+      const updated = await mutate();
+      drafts.set(task.id, undefined);
+      return updated;
+    });
   }
 
   async function changeTask(task: Task, change: TaskChange, expectedRevision: number) {
@@ -600,7 +631,7 @@ export default function App() {
       undo.push({
         key: `task:${removed.id}`, title: removed.title,
         undo: async () => {
-          if (await commitTaskMutation(removed, () => removedApi.restore<Task>("task", removed))) {
+          if (await applyTaskMutation(removed, () => removedApi.restore<Task>("task", removed))) {
             setRemovedKey((key) => key + 1);
           }
         },
@@ -1089,7 +1120,7 @@ export default function App() {
       {paletteOpen && (
         <CommandPalette commands={commands} textCommand={searchCommand} onClose={closePalette} />
       )}
-      {undo.error && !undo.noticeShown && (
+      {undo.error && (
         <div role="alert" className="undo-bar undo-bar--error">
           <span>{undo.error}</span>
           <button className="button button-small" type="button" onClick={undo.dismissError}>

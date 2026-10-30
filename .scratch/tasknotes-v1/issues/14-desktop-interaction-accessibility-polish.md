@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** review findings fixed; re-review of the fixes in progress (2026-10-30); on `integration/tasknotes-v1-07-18` (Draft PR #20). Plan: `docs/plans/ticket-14-desktop-polish-2026-10-26.md`.
+**Implementation:** review findings fixed; re-review done on 2026-10-30 and its findings fixed; awaiting the owner's native check and merge decision; on `integration/tasknotes-v1-07-18` (Draft PR #20). Plan: `docs/plans/ticket-14-desktop-polish-2026-10-26.md`.
 
 ## Acceptance criteria
 
@@ -74,3 +74,14 @@ Evidence (implementer's own runs, after merging integration tip a73f031, Ticket 
 
 Not done: after a refused save the window does not reload the Task by itself (the error banner shows; the notice appears on the next list refresh), as before this ticket. Unsaved edits are not kept across quitting the app.
 
+**2026-10-30 — re-review outcome (implementer).** Each fix went red first against the mocked Tauri seam (`src/undo.test.tsx`):
+1. A refused Undo shows at once while older moves remain (`01bfc7e`). Saya pilih the failure takes the Undo bar until dismissed, then the older move's notice returns, because both bars share the window's last grid row and would overlap. The refused move stays off the stack, as before; it is still in Removed.
+2. A refused Task or List Undo shows in every view (`c25e747`): both now reject instead of reporting through the Task view's banner, which is hidden in Settings, Removed and Notes.
+3. Undo refreshes the view showing now (`cacaa4c`): it reads the current page, not the cursor from when the Task was removed. After going to another view the refresh is no longer refused; after going back a page, page 1 stays with its controls; still on the same page, it stays there.
+4. No false "Changed elsewhere" for your own save (`e18c726`): the draft is cleared when the save lands, not after the list refresh.
+
+Test gaps closed (`da246db`): a progress update, a percentage alone and tags/deadline each name the base revision, and restoring from Removed drops the item from the Undo stack. Mutation checks, each failing exactly its one test: `task.revision` in each of the three saves, `forget` as a no-op.
+
+Not changed: "Change saved, but the ordered list could not refresh" and "List updated, but the sidebar could not refresh" still show only in the Task view's banner. The restore itself succeeded in those cases.
+
+Evidence (implementer's own runs, synthetic data; these fixes have had no further independent review): `cargo test` core 204, CLI 45, MCP 34, src-tauri 42, all passed; `cargo clippy --all-targets -- -D warnings` and `cargo fmt --all -- --check` clean in all four; `pnpm test` 261 passed in 25 files; `pnpm typecheck` and `pnpm build` clean. Native macOS checks are still the owner's.
