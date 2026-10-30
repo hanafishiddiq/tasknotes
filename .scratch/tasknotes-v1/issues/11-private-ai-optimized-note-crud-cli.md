@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** implemented; independent review findings fixed 2026-10-26, awaiting re-review (branch `feat/ticket-11-private-note-cli`, plan `docs/plans/ticket-11-private-note-cli-2026-10-26.md`).
+**Implementation:** review findings fixed; re-review of the fixes in progress (2026-10-30); on `integration/tasknotes-v1-07-18` (Draft PR #20). Plan: `docs/plans/ticket-11-private-note-cli-2026-10-26.md`.
 
 ## Acceptance criteria
 

@@ -4,12 +4,12 @@ Tujuan akhir: Tasknotes terpasang di Mac Han dan dipakai dengan data asli, setel
 
 ## Progres
 
-- [ ] Push tiket 12 dan 13, selesaikan bentroknya, lalu jalankan semua tes gabungan
+- [x] Push tiket 12 dan 13, selesaikan bentroknya, lalu jalankan semua tes gabungan
   - [x] Branch tiket 12 dan 13 di-push
   - [x] Bentrok 12 file selesai, semua penulisan lewat pagar restore
   - [x] Server MCP mengambil backup harian
   - [x] Review independen selesai, 4 temuan teknis diperbaiki
-  - [ ] Hasil gabungan di-push dan CI hijau
+  - [x] Hasil gabungan di-push dan CI hijau
 - [x] Terapkan keputusan Han soal dua perilaku restore
 - [ ] Rapikan status tiket dan deskripsi PR, lalu selesaikan review yang masih terbuka
   - [ ] Tambah tes CLI dan MCP ke CI
@@ -29,3 +29,5 @@ Tujuan akhir: Tasknotes terpasang di Mac Han dan dipakai dengan data asli, setel
   - Menahan: Backup data asli, lalu pasang di Mac Han
 
 ## Riwayat sesi
+
+- 2026-10-30 · af2e1d1e

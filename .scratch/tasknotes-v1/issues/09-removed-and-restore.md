@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** in progress — implemented and code-reviewed, awaiting owner review (branch `feat/ticket-09-removed-and-restore`, plan `docs/plans/ticket-09-removed-and-restore-2026-10-25.md`).
+**Implementation:** implemented and code-reviewed; on `integration/tasknotes-v1-07-18` (Draft PR #20), awaiting the owner's native check and merge decision. Plan: `docs/plans/ticket-09-removed-and-restore-2026-10-25.md`.
 
 ## Acceptance criteria
 

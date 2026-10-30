@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** implemented, review findings addressed, awaiting re-review (branch `feat/ticket-14-desktop-polish`; plan `docs/plans/ticket-14-desktop-polish-2026-10-26.md`).
+**Implementation:** review findings fixed; re-review of the fixes in progress (2026-10-30); on `integration/tasknotes-v1-07-18` (Draft PR #20). Plan: `docs/plans/ticket-14-desktop-polish-2026-10-26.md`.
 
 ## Acceptance criteria
 

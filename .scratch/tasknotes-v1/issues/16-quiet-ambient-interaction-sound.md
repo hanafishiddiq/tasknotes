@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** implemented, awaiting independent review (branch `feat/ticket-16-ambient-sound`; plan `docs/plans/ticket-16-ambient-sound-2026-10-26.md`).
+**Implementation:** implemented and code-reviewed; on `integration/tasknotes-v1-07-18` (Draft PR #20), awaiting the owner's native check and merge decision. Plan: `docs/plans/ticket-16-ambient-sound-2026-10-26.md`.
 
 ## Acceptance criteria
 

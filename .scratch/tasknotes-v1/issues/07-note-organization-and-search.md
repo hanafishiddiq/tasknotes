@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** in progress — implemented, awaiting independent review
+**Implementation:** review findings fixed; re-review of the fixes in progress (2026-10-30); on `integration/tasknotes-v1-07-18` (Draft PR #20).
 
 ## Acceptance criteria
 
@@ -21,7 +21,7 @@
 
 - [ ] Run Notes UI organization/search tests and SQLite indexing tests with synthetic Notes.
 - [ ] Relevant tests pass and evidence is recorded here.
-- [ ] Run `/code-review` and address findings before marking complete.
+- [x] Run `/code-review` and address findings before marking complete. *(see the review section below)*
 
 ## Delivery guardrails
 

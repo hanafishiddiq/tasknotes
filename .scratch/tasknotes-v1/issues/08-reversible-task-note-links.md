@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** in progress — implemented; independent review APPROVE (2026-10-25) with its findings fixed below; awaiting the owner's native check and merge decision. [Plan](../../../docs/plans/ticket-08-task-note-links-2026-10-25.md).
+**Implementation:** implemented and code-reviewed; on `integration/tasknotes-v1-07-18` (Draft PR #20), awaiting the owner's native check and merge decision. Plan: `docs/plans/ticket-08-task-note-links-2026-10-25.md`.
 
 ## Acceptance criteria
 
@@ -20,7 +20,7 @@
 
 - [ ] Run core link-integrity tests and desktop cross-navigation/link/unlink scenarios.
 - [ ] Relevant tests pass and evidence is recorded here.
-- [ ] Run `/code-review` and address findings before marking complete.
+- [x] Run `/code-review` and address findings before marking complete. *(see the review section below)*
 
 ## Delivery guardrails
 

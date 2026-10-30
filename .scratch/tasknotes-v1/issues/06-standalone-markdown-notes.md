@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** in progress — slices 1–5 and the independent review are done (2026-10-22); awaiting the owner's approval to push and open the Draft PR. [Plan](../../../docs/plans/ticket-06-markdown-notes-2026-10-22.md).
+**Implementation:** implemented and code-reviewed; Draft PR #19, awaiting the owner's merge decision. [Plan](../../../docs/plans/ticket-06-markdown-notes-2026-10-22.md).
 
 ## Acceptance criteria
 
