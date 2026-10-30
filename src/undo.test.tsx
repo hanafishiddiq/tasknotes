@@ -175,6 +175,7 @@ describe("a refused Undo", () => {
     await user.click(screen.getByRole("button", { name: "Remove Errands" }));
     await screen.findByRole("status", { name: "Moved to Removed" });
     await user.click(screen.getByRole("button", { name: "Settings" }));
+    expect(await screen.findByRole("heading", { name: "Settings" })).toBeVisible();
 
     backend.refuse("set_list_removed", "A List with this name already exists");
     await user.keyboard("{Meta>}z{/Meta}");
@@ -191,6 +192,7 @@ describe("a refused Undo", () => {
     await user.click(screen.getByRole("button", { name: "Move to Removed" }));
     await screen.findByRole("status", { name: "Moved to Removed" });
     await user.click(screen.getByRole("button", { name: "Settings" }));
+    expect(await screen.findByRole("heading", { name: "Settings" })).toBeVisible();
 
     backend.refuse("set_task_removed", "Revision conflict: the Task has changed; reload before saving");
     await user.keyboard("{Meta>}z{/Meta}");
