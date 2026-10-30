@@ -14,14 +14,16 @@ import { noteApi } from "../lib/note-api";
 
 const SOUND_KEY = "tasknotes.sound";
 let firstRowAt = 0;
-let commandLogError = "";
-/** Every call to the core, for reading where a slow interaction spends its time. */
-const commands: { command: string; at_ms: number; took_ms: number }[] = [];
 const TASK_WORDS = ["b", "ba", "qua", "quarterly", "roadmap", "zephyrine", "quarterly roadmap", "nomatchanywhere"];
 const NOTE_WORDS = ["b", "meeting", "kelvinite", "nomatchanywhere"];
 const IPC_RUNS = 60;
 const SCROLL_MS = 10_000;
 const SCROLL_PX_PER_S = 1800;
+
+/** Only the backend built for this answers; anything else mounts the app as usual. */
+export function isActive() {
+  return invoke("qa_probe_active").then(() => true, () => false);
+}
 
 /** Before the app starts: keep the Mac quiet during a run. */
 export function prepare() {
@@ -32,18 +34,6 @@ export function prepare() {
       observer.disconnect();
     }
   }).observe(document.documentElement, { subtree: true, childList: true });
-  // Tauri may freeze this; the run must still go on without the command log.
-  try {
-    const internals = (window as unknown as { __TAURI_INTERNALS__: { invoke: (...args: unknown[]) => Promise<unknown> } }).__TAURI_INTERNALS__;
-    const real = internals.invoke;
-    internals.invoke = (...args: unknown[]) => {
-      const entry = { command: String(args[0]), at_ms: round(performance.now()), took_ms: -1 };
-      commands.push(entry);
-      return real.apply(internals, args).finally(() => { entry.took_ms = round(performance.now() - entry.at_ms); });
-    };
-  } catch (error) {
-    commandLogError = String(error);
-  }
   window.localStorage.setItem(SOUND_KEY, JSON.stringify({
     interaction: { volume: 0, muted: true }, ambient: { volume: 0, muted: true },
   }));
@@ -82,10 +72,11 @@ function percentile(sorted: number[], percent: number) {
 
 const round = (value: number) => Math.round(value * 100) / 100;
 
-function timing(samples: number[]) {
-  const sorted = [...samples].sort((a, b) => a - b);
+function timing(samples: (number | null)[]) {
+  const sorted = samples.filter((sample) => sample !== null).sort((a, b) => a - b);
   return {
     runs: sorted.length,
+    no_change_seen: samples.length - sorted.length,
     p50_ms: round(percentile(sorted, 50)),
     p95_ms: round(percentile(sorted, 95)),
     max_ms: round(sorted[sorted.length - 1] ?? 0),
@@ -97,8 +88,9 @@ function frames(deltas: number[]) {
   return {
     ...timing(deltas),
     fps: round((deltas.length * 1000) / Math.max(total, 1)),
-    over_16_7_ms: deltas.filter((delta) => delta > 16.7).length,
-    over_33_4_ms: deltas.filter((delta) => delta > 33.4).length,
+    // WebKit rounds timestamps to 1 ms, so an on-time 60 Hz frame reads 16 or 17.
+    over_20_ms: deltas.filter((delta) => delta > 20).length,
+    over_34_ms: deltas.filter((delta) => delta > 34).length,
   };
 }
 
@@ -139,16 +131,19 @@ function setInput(input: HTMLInputElement, value: string) {
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-/** From typing to the last change on screen, debounce included. */
-async function settleAfter(root: Element, act: () => void, quietMs = 500) {
-  let last = performance.now();
+/**
+ * From typing to the last change on screen, debounce included. Null when nothing
+ * changed in the wait: results that look the same, or slower than the wait.
+ */
+async function settleAfter(root: Element, act: () => void, quietMs = 1500) {
+  let last = 0;
   const observer = new MutationObserver(() => { last = performance.now(); });
   observer.observe(root, { subtree: true, childList: true, characterData: true, attributes: true });
   const started = performance.now();
   act();
   await until(() => performance.now() - Math.max(last, started) > quietMs);
   observer.disconnect();
-  return last - started;
+  return last === 0 ? null : last - started;
 }
 
 async function timed<T>(call: () => Promise<T>, runs: number) {
@@ -166,8 +161,7 @@ async function measure() {
   const report: Record<string, unknown> = {};
   const row = await until(firstRow, 60_000);
   report.first_row_after_load_ms = round(firstRowAt);
-  report.startup_commands = commands.slice();
-  report.command_log_error = commandLogError;
+  report.rows_in_page_at_rest = rowCount();
   report.first_row = row.getAttribute("aria-label");
   report.window = {
     visibility: document.visibilityState,
@@ -233,20 +227,16 @@ async function measure() {
   }
   report.next_page = timing(paging);
 
-  const typed: Record<string, number[]> = {};
-  const commandsPerWord: Record<string, unknown> = {};
+  const typed: Record<string, (number | null)[]> = {};
   const search = await until(() => document.querySelector<HTMLInputElement>('input[aria-label="Search tasks and notes"]'));
   for (let round_ = 0; round_ < 5; round_ += 1) {
     for (const word of TASK_WORDS) {
       await settleAfter(area, () => setInput(search, ""));
-      commands.length = 0;
       const spent = await settleAfter(area, () => setInput(search, word));
       (typed[word] ??= []).push(spent);
-      commandsPerWord[word] = commands.map(({ command, took_ms }) => ({ command, took_ms }));
     }
   }
   await settleAfter(area, () => setInput(search, ""));
-  report.search_commands = commandsPerWord;
   report.search_typed_to_settled = Object.fromEntries(
     Object.entries(typed).map(([word, samples]) => [word, timing(samples)]),
   );
@@ -275,7 +265,7 @@ async function measure() {
     : notMeasured;
 
   const noteSearch = await until(() => document.querySelector<HTMLInputElement>('input[aria-label="Search notes"]'));
-  const noteTyped: Record<string, number[]> = {};
+  const noteTyped: Record<string, (number | null)[]> = {};
   for (let round_ = 0; round_ < 5; round_ += 1) {
     for (const word of NOTE_WORDS) {
       await settleAfter(list, () => setInput(noteSearch, ""));
@@ -298,7 +288,6 @@ export async function run() {
       ok: false,
       error: String(error),
       first_row_after_load_ms: round(firstRowAt),
-      commands: commands.slice(0, 40),
     };
   }
   await invoke("qa_report", { report });

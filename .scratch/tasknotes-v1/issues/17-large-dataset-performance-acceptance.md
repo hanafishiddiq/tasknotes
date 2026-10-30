@@ -6,14 +6,14 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** in progress on `feat/ticket-17-performance`: search, paging and memory are measured and meet their targets; on-screen scrolling is not measured yet. [Report](../../../docs/qa/ticket-17-performance-2026-10-30.md).
+**Implementation:** in progress on `feat/ticket-17-performance`: through the core, CLI and MCP, search and paging meet their targets; nothing about the app on screen is settled yet (scrolling not measured, search through the app only in a throttled window). [Report](../../../docs/qa/ticket-17-performance-2026-10-30.md).
 
 ## Acceptance criteria
 
 - [x] Create a deterministic, public-safe synthetic dataset containing 50,000 Tasks and 10,000 Notes without importing personal data. *(`crates/tasknotes-bench`; content is deterministic, ids and timestamps come from the core)*
-- [x] Record query/search p95 and warm/cold behavior on the target Mac against the under-250 ms search goal using reproducible scenarios. *(through the core, CLI and MCP; IPC on screen still open; "cold" is a fresh process with a warm OS cache)*
+- [ ] Record query/search p95 and warm/cold behavior on the target Mac against the under-250 ms search goal using reproducible scenarios. *(through the core, CLI and MCP; IPC on screen still open; "cold" is a fresh process with a warm OS cache)*
 - [ ] Measure scroll performance close to 60 FPS with collapsed/expanded variable-height Task rows; record hardware, frame-time method and dataset.
-- [x] Verify UI/CLI/MCP paging and memory do not load all 60,000 records into a single process result or UI render.
+- [ ] Verify UI/CLI/MCP paging and memory do not load all 60,000 records into a single process result or UI render. *(CLI and MCP verified; the UI shows pages of 50, but its memory while painting needs the on-screen run)*
 - [x] Identify and address measured regressions, or explicitly report unmet acceptance targets rather than claiming benchmark success. *(one-letter Note search fixed; scrolling reported as not measured)*
 
 ## Incoming performance defect gate

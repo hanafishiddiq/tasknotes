@@ -438,6 +438,8 @@ pub fn run() {
             quit::quit_ready,
             #[cfg(feature = "qa-probe")]
             qa_probe::qa_report,
+            #[cfg(feature = "qa-probe")]
+            qa_probe::qa_probe_active,
             #[cfg(desktop)]
             shell::get_shell_settings,
             #[cfg(desktop)]

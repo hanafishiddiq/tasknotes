@@ -26,6 +26,10 @@ pub fn prepare(app: &AppHandle, _default: PathBuf) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
+/// Answers only in this build, so the probe never runs on a normal backend.
+#[tauri::command]
+pub fn qa_probe_active() {}
+
 /// Save what the probe measured and end the run.
 #[tauri::command]
 pub fn qa_report(app: AppHandle, report: serde_json::Value) -> Result<(), String> {

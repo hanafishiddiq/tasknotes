@@ -43,7 +43,7 @@
 | 17 | Performance and synthetic benchmarks | 05, 07, 12, 14 |
 | 18 | macOS release-quality verification | 12, 13, 15, 16, 17 |
 
-**Current frontier (2026-10-30):** Ticket **17 (performance)**, then **18 (release quality)**. Their blockers are implemented on the integration branch but not yet merged, so neither can be marked completed before the owner approves 06–16.
+**Current frontier (2026-10-30):** Ticket **17 (performance)**, whose on-screen run needs the Mac unlocked, then **18 (release quality)**. Their blockers are implemented on the integration branch but not yet merged, so neither can be marked completed before the owner approves 06–16.
 
 ## Privacy and public repository rules
 

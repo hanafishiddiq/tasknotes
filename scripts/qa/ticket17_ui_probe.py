@@ -34,9 +34,24 @@ def rss_kb(pid):
     return int(out.strip() or 0)
 
 
+def webkit_processes():
+    """WebKit's helper processes by pid: the page's DOM and script live there."""
+    out = subprocess.run(["ps", "-axo", "pid=,rss=,comm="], capture_output=True, text=True).stdout
+    found = {}
+    for line in out.splitlines():
+        pid, rss, command = line.split(None, 2)
+        if "com.apple.WebKit" in command:
+            found[int(pid)] = int(rss)
+    return found
+
+
 def main():
     binary, dataset, out = sys.argv[1:4]
+    with open(binary, "rb") as handle:
+        if b"TASKNOTES_QA_REPORT" not in handle.read():
+            sys.exit(f"{binary} is not a qa-probe build; a normal build would open real data")
     before = screen_state()
+    others = set(webkit_processes())
     if not os.path.exists(os.path.join(dataset, "synthetic-dataset.json")):
         sys.exit(f"{dataset} holds no synthetic dataset")
     with tempfile.TemporaryDirectory(prefix="tasknotes-ticket17-") as work:
@@ -45,18 +60,21 @@ def main():
         report_file = os.path.join(work, "report.json")
         env = dict(os.environ, TASKNOTES_DEV_DATA_DIR=data, TASKNOTES_QA_REPORT=report_file)
         child = subprocess.Popen([binary], env=env)
-        peak, deadline = 0, time.time() + 360
+        peak, webkit_peak, deadline = 0, 0, time.time() + 480
         while child.poll() is None and time.time() < deadline:
             peak = max(peak, rss_kb(child.pid))
+            ours = webkit_processes()
+            webkit_peak = max(webkit_peak, sum(rss for pid, rss in ours.items() if pid not in others))
             time.sleep(0.25)
         if child.poll() is None:
             child.terminate()
-            sys.exit("the probe did not finish in 6 minutes")
+            sys.exit("the probe did not finish in 8 minutes")
         if not os.path.exists(report_file):
             sys.exit(f"the app exited with {child.returncode} and no report")
         with open(report_file) as handle:
             report = json.load(handle)
     report["app_process_peak_rss_mb"] = round(peak / 1024, 1)
+    report["webkit_processes_peak_rss_mb"] = round(webkit_peak / 1024, 1)
     after = screen_state()
     report["screen"] = {"before": before, "after": after}
     report["frame_timings_valid"] = bool(report.get("frames_flow")) and not any(
