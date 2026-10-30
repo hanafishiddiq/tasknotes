@@ -26,8 +26,8 @@ use crate::audit::{AuditAction, Interface};
 use crate::notes::{COLUMNS, Note, read_note};
 use crate::tasks::{TaskError, TaskStore};
 
-/// Test seam: a step run between two reads of one operation, standing in for
-/// another process writing at that moment. Per thread, so tests stay apart.
+// Test seam: a step run between two reads of one operation, standing in for
+// another process writing at that moment. Per thread, so tests stay apart.
 #[cfg(test)]
 thread_local! {
     static BETWEEN_READS: std::cell::RefCell<Option<Box<dyn FnOnce()>>> =
