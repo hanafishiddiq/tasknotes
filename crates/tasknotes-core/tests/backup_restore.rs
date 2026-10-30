@@ -861,6 +861,8 @@ fn a_refusal_racing_a_restore_is_kept_or_reported_unrecorded() {
         let backup = store.create_backup().unwrap().backup;
         let db = fx.db();
         let stale = target.clone();
+        // Before the writer starts, so its every rename is the stale one.
+        rename(&store, &target, "Synthetic newer").unwrap();
         let writer = std::thread::spawn(move || {
             let other = TaskStore::open_as(&db, Interface::Cli).unwrap();
             let mut recorded = 0;
@@ -876,7 +878,6 @@ fn a_refusal_racing_a_restore_is_kept_or_reported_unrecorded() {
             }
             (recorded, unrecorded)
         });
-        rename(&store, &target, "Synthetic newer").unwrap();
         std::thread::sleep(std::time::Duration::from_millis(10));
         store.restore_backup(&backup.id).unwrap();
         let (recorded, _unrecorded) = writer.join().unwrap();
