@@ -1011,7 +1011,7 @@ export default function App() {
               {loading ? (
                 <div className="loading-state" role="status"><LoaderCircle className="spin" size={16} /> Loading your tasks...</div>
               ) : loadError && filtering ? (
-                <div className="empty-state" aria-label="Search unavailable">
+                <div className="empty-state" role="group" aria-label="Search unavailable">
                   <SearchX size={26} strokeWidth={1.5} aria-hidden="true" />
                   <h2>Search couldn't run</h2>
                   <p>Check the message above, or clear the search and filters to see your tasks.</p>
@@ -1023,7 +1023,7 @@ export default function App() {
                   </div>
                 </div>
               ) : loadError && tasks.length === 0 ? (
-                <div className="empty-state" aria-label="Tasks unavailable">
+                <div className="empty-state" role="group" aria-label="Tasks unavailable">
                   <LockKeyhole size={26} strokeWidth={1.5} aria-hidden="true" />
                   <h2>Couldn't load your tasks</h2>
                   <p>The local database couldn't be opened. Nothing has been changed; check the message above and try again.</p>
@@ -1075,7 +1075,7 @@ export default function App() {
                     )}
                   />
                   {(previousPageCursors.length > 0 || nextCursor) && (
-                    <div className="task-page-navigation" aria-label="Task pages">
+                    <nav className="task-page-navigation" aria-label="Task pages">
                       {previousPageCursors.length > 0 && (
                         <button className="button button-small" type="button"
                           disabled={loadingMore || Boolean(savingId) || creating}
@@ -1091,7 +1091,7 @@ export default function App() {
                           {loadingMore && <LoaderCircle className="spin" size={14} />}
                         </button>
                       )}
-                    </div>
+                    </nav>
                   )}
                 </>
               )}

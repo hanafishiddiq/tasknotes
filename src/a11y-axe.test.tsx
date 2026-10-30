@@ -472,9 +472,6 @@ const KNOWN: Record<string, string[]> = {
   "Notes: a checklist Note": ["aria-allowed-role", "list"],
 };
 
-/** Being fixed one at a time in the commits that follow this one. */
-const UNFIXED = new Set(["aria-prohibited-attr"]);
-
 beforeAll(async () => {
   adoptIndexHtml();
   await import("./components/NotesWorkspace");
@@ -499,7 +496,7 @@ describe.each(["dark", "light"] as const)("axe in the %s appearance", (theme) =>
 
     const found = await runAxe();
     expect(found.crashed, "axe rules that threw, so tested nothing").toEqual([]);
-    const rules = [...found.violations, ...found.incomplete].filter((rule) => !UNFIXED.has(rule)).sort();
+    const rules = [...found.violations, ...found.incomplete].sort();
     expect({ rules, details: found.details }).toEqual({ rules: KNOWN[name] ?? [], details: expect.anything() });
   });
 });
