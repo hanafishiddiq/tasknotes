@@ -31,7 +31,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        crate: [tasknotes-core, tasknotes-cli, tasknotes-mcp, tasknotes-bench]
+        crate: [tasknotes-core, tasknotes-cli, tasknotes-mcp, tasknotes-bench, tasknotes-e2e]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
