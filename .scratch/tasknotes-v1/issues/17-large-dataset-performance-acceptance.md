@@ -6,14 +6,14 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** in progress on `feat/ticket-17-performance`: through the core, CLI and MCP, search and paging meet their targets; nothing about the app on screen is settled yet (scrolling not measured, search through the app only in a throttled window). [Report](../../../docs/qa/ticket-17-performance-2026-10-30.md).
+**Implementation:** measured and code-reviewed; on `integration/tasknotes-v1-07-18` (Draft PR #20), awaiting the owner's trackpad check and merge decision. [Report](../../../docs/qa/ticket-17-performance-2026-10-30.md).
 
 ## Acceptance criteria
 
 - [x] Create a deterministic, public-safe synthetic dataset containing 50,000 Tasks and 10,000 Notes without importing personal data. *(`crates/tasknotes-bench`; content is deterministic, ids and timestamps come from the core)*
-- [ ] Record query/search p95 and warm/cold behavior on the target Mac against the under-250 ms search goal using reproducible scenarios. *(through the core, CLI and MCP; IPC on screen still open; "cold" is a fresh process with a warm OS cache)*
-- [ ] Measure scroll performance close to 60 FPS with collapsed/expanded variable-height Task rows; record hardware, frame-time method and dataset.
-- [ ] Verify UI/CLI/MCP paging and memory do not load all 60,000 records into a single process result or UI render. *(CLI and MCP verified; the UI shows pages of 50, but its memory while painting needs the on-screen run)*
+- [x] Record query/search p95 and warm/cold behavior on the target Mac against the under-250 ms search goal using reproducible scenarios. *(through the core, CLI, MCP and the app; "cold" is a fresh process with a warm OS cache)*
+- [x] Measure scroll performance close to 60 FPS with collapsed/expanded variable-height Task rows; record hardware, frame-time method and dataset. *(scripted, 60 FPS on a 60 Hz display; a real trackpad stays in the owner check)*
+- [x] Verify UI/CLI/MCP paging and memory do not load all 60,000 records into a single process result or UI render.
 - [x] Identify and address measured regressions, or explicitly report unmet acceptance targets rather than claiming benchmark success. *(one-letter Note search fixed; scrolling reported as not measured)*
 
 ## Incoming performance defect gate
@@ -23,8 +23,8 @@
 ## Verification
 
 - [x] Commit a repeatable synthetic benchmark harness and review the measured profile and result summary.
-- [ ] Relevant tests pass and evidence is recorded here.
-- [ ] Run `/code-review` and address findings before marking complete.
+- [x] Relevant tests pass and evidence is recorded here.
+- [x] Run `/code-review` and address findings before marking complete.
 
 ## Delivery guardrails
 
@@ -35,3 +35,5 @@
 - This is an implementation ticket, not proof that implementation has begun.
 
 ## Comments
+
+**2026-10-30 — the Issue 19 gate.** Scripted scrolling on the real window, in front and unlocked, held 60 FPS with no frame over 20 ms at this dataset. Issue 19 is closed as `wontfix` on the owner's report that the ordinary app is smooth, and its root cause was never proven. The owner's trackpad check at this dataset settles the gate.

@@ -1,0 +1,276 @@
+{
+  "first_row": "davamu lekala kimo",
+  "first_row_after_load_ms": 203,
+  "frames_flow": true,
+  "idle_frames": {
+    "fps": 60.14,
+    "max_ms": 21,
+    "no_change_seen": 0,
+    "over_20_ms": 1,
+    "over_34_ms": 0,
+    "p50_ms": 17,
+    "p95_ms": 17,
+    "runs": 240
+  },
+  "next_page": {
+    "max_ms": 33,
+    "no_change_seen": 0,
+    "p50_ms": 17,
+    "p95_ms": 33,
+    "runs": 20
+  },
+  "note_search_typed_to_settled": {
+    "b": {
+      "max_ms": 377,
+      "no_change_seen": 0,
+      "p50_ms": 363,
+      "p95_ms": 377,
+      "runs": 5
+    },
+    "kelvinite": {
+      "max_ms": 262,
+      "no_change_seen": 0,
+      "p50_ms": 259,
+      "p95_ms": 262,
+      "runs": 5
+    },
+    "meeting": {
+      "max_ms": 270,
+      "no_change_seen": 0,
+      "p50_ms": 265,
+      "p95_ms": 270,
+      "runs": 5
+    },
+    "nomatchanywhere": {
+      "max_ms": 261,
+      "no_change_seen": 0,
+      "p50_ms": 257,
+      "p95_ms": 261,
+      "runs": 5
+    }
+  },
+  "ok": true,
+  "open_notes_ms": 334,
+  "open_row": {
+    "max_ms": 21,
+    "no_change_seen": 0,
+    "p50_ms": 17,
+    "p95_ms": 21,
+    "runs": 12
+  },
+  "rows_in_page_at_rest": 16,
+  "scroll_collapsed": {
+    "fps": 59.99,
+    "max_ms": 18,
+    "most_rows_in_dom": 26,
+    "no_change_seen": 0,
+    "over_20_ms": 0,
+    "over_34_ms": 0,
+    "p50_ms": 17,
+    "p95_ms": 18,
+    "runs": 600,
+    "scroll_height_px": 2949
+  },
+  "scroll_note_list": {
+    "fps": 60,
+    "max_ms": 18,
+    "most_rows_in_dom": 19,
+    "no_change_seen": 0,
+    "over_20_ms": 0,
+    "over_34_ms": 0,
+    "p50_ms": 17,
+    "p95_ms": 18,
+    "runs": 300,
+    "scroll_height_px": 2724
+  },
+  "scroll_with_open_row": {
+    "fps": 60,
+    "max_ms": 18,
+    "most_rows_in_dom": 27,
+    "no_change_seen": 0,
+    "over_20_ms": 0,
+    "over_34_ms": 0,
+    "p50_ms": 17,
+    "p95_ms": 18,
+    "runs": 601,
+    "scroll_height_px": 3569
+  },
+  "search_through_ipc": {
+    "notes: b": {
+      "max_ms": 92,
+      "no_change_seen": 0,
+      "p50_ms": 89,
+      "p95_ms": 91,
+      "runs": 60
+    },
+    "notes: first page": {
+      "max_ms": 1,
+      "no_change_seen": 0,
+      "p50_ms": 1,
+      "p95_ms": 1,
+      "runs": 60
+    },
+    "notes: kelvinite": {
+      "max_ms": 1,
+      "no_change_seen": 0,
+      "p50_ms": 1,
+      "p95_ms": 1,
+      "runs": 60
+    },
+    "notes: meeting": {
+      "max_ms": 6,
+      "no_change_seen": 0,
+      "p50_ms": 5,
+      "p95_ms": 5,
+      "runs": 60
+    },
+    "notes: nomatchanywhere": {
+      "max_ms": 1,
+      "no_change_seen": 0,
+      "p50_ms": 1,
+      "p95_ms": 1,
+      "runs": 60
+    },
+    "tasks: b": {
+      "max_ms": 69,
+      "no_change_seen": 0,
+      "p50_ms": 66,
+      "p95_ms": 68,
+      "runs": 60
+    },
+    "tasks: ba": {
+      "max_ms": 31,
+      "no_change_seen": 0,
+      "p50_ms": 27,
+      "p95_ms": 28,
+      "runs": 60
+    },
+    "tasks: first page": {
+      "max_ms": 1,
+      "no_change_seen": 0,
+      "p50_ms": 1,
+      "p95_ms": 1,
+      "runs": 60
+    },
+    "tasks: nomatchanywhere": {
+      "max_ms": 1,
+      "no_change_seen": 0,
+      "p50_ms": 1,
+      "p95_ms": 1,
+      "runs": 60
+    },
+    "tasks: qua": {
+      "max_ms": 10,
+      "no_change_seen": 0,
+      "p50_ms": 9,
+      "p95_ms": 10,
+      "runs": 60
+    },
+    "tasks: quarterly": {
+      "max_ms": 10,
+      "no_change_seen": 0,
+      "p50_ms": 9,
+      "p95_ms": 10,
+      "runs": 60
+    },
+    "tasks: quarterly roadmap": {
+      "max_ms": 9,
+      "no_change_seen": 0,
+      "p50_ms": 7,
+      "p95_ms": 8,
+      "runs": 60
+    },
+    "tasks: roadmap": {
+      "max_ms": 6,
+      "no_change_seen": 0,
+      "p50_ms": 3,
+      "p95_ms": 4,
+      "runs": 60
+    },
+    "tasks: zephyrine": {
+      "max_ms": 2,
+      "no_change_seen": 0,
+      "p50_ms": 1,
+      "p95_ms": 1,
+      "runs": 60
+    }
+  },
+  "search_typed_to_settled": {
+    "b": {
+      "max_ms": 785,
+      "no_change_seen": 0,
+      "p50_ms": 442,
+      "p95_ms": 785,
+      "runs": 5
+    },
+    "ba": {
+      "max_ms": 349,
+      "no_change_seen": 0,
+      "p50_ms": 334,
+      "p95_ms": 349,
+      "runs": 5
+    },
+    "nomatchanywhere": {
+      "max_ms": 278,
+      "no_change_seen": 0,
+      "p50_ms": 263,
+      "p95_ms": 278,
+      "runs": 5
+    },
+    "qua": {
+      "max_ms": 301,
+      "no_change_seen": 0,
+      "p50_ms": 277,
+      "p95_ms": 301,
+      "runs": 5
+    },
+    "quarterly": {
+      "max_ms": 519,
+      "no_change_seen": 0,
+      "p50_ms": 284,
+      "p95_ms": 519,
+      "runs": 5
+    },
+    "quarterly roadmap": {
+      "max_ms": 341,
+      "no_change_seen": 0,
+      "p50_ms": 292,
+      "p95_ms": 341,
+      "runs": 5
+    },
+    "roadmap": {
+      "max_ms": 351,
+      "no_change_seen": 0,
+      "p50_ms": 270,
+      "p95_ms": 351,
+      "runs": 5
+    },
+    "zephyrine": {
+      "max_ms": 295,
+      "no_change_seen": 0,
+      "p50_ms": 269,
+      "p95_ms": 295,
+      "runs": 5
+    }
+  },
+  "window": {
+    "device_pixel_ratio": 2,
+    "has_focus": true,
+    "height": 708,
+    "visibility": "visible",
+    "width": 1120
+  },
+  "app_process_peak_rss_mb": 108.9,
+  "webkit_processes_peak_rss_mb": 290.9,
+  "screen": {
+    "before": {
+      "display_asleep": false,
+      "screen_locked": false
+    },
+    "after": {
+      "display_asleep": false,
+      "screen_locked": false
+    }
+  },
+  "frame_timings_valid": true
+}
