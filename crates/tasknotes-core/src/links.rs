@@ -1,4 +1,4 @@
-use rusqlite::{Connection, OptionalExtension, Row, Transaction, TransactionBehavior, params};
+use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
 use serde::Serialize;
 use uuid::Uuid;
 
@@ -173,7 +173,7 @@ impl TaskStore {
     pub fn link_note(&self, task_id: &str, note_id: &str) -> Result<NoteLink, TaskError> {
         let now = current_millis()?;
         let mut conn = self.connect()?;
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let tx = self.begin_write(&mut conn)?;
         crate::removed::require_writable_task(&tx, task_id)?;
         self.require_note_shown(&tx, note_id)?;
         crate::removed::require_writable_note(&tx, note_id)?;
@@ -200,7 +200,7 @@ impl TaskStore {
     pub fn unlink_note(&self, link_id: &str) -> Result<NoteLink, TaskError> {
         let now = current_millis()?;
         let mut conn = self.connect()?;
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let tx = self.begin_write(&mut conn)?;
         let link = tx
             .query_row(
                 &format!(
@@ -224,7 +224,7 @@ impl TaskStore {
     /// An unlinked link stays unlinked while its Task or Note is Removed.
     pub fn restore_link(&self, link_id: &str) -> Result<NoteLink, TaskError> {
         let mut conn = self.connect()?;
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let tx = self.begin_write(&mut conn)?;
         let link = tx
             .query_row(
                 &format!(

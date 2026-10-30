@@ -9,16 +9,17 @@
 //!
 //! Every AI-facing Note read goes through one of the helpers below
 //! (`note_shown_sql`, `require_note_shown`, `link_shown_sql`,
-//! `ai_audit_filter_sql`); none writes `exclude_from_ai` itself. A new Note
-//! read that skips them would leak, so `tests/note_privacy.rs` walks every
-//! public Note read with an AI store against an excluded Note.
+//! `ai_audit_filter_sql`, `shared_with_ai_sql`); none writes
+//! `exclude_from_ai` itself. A new Note read that skips them would leak, so
+//! `tests/note_privacy.rs` walks every public Note read with an AI store
+//! against an excluded Note, and `tests/export.rs` checks every export.
 //!
 //! Audit history (coordinator decision 2026-10-26, the owner may revisit):
 //! an AI never sees a `note.privacy` entry, nor any entry about a Note, or a
 //! link to it, recorded while that Note was excluded, even after the Note is
 //! shared again. Entries carry `hidden_from_ai`, fixed when they are written.
 
-use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
+use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use serde::Deserialize;
 
 use crate::audit::{AuditAction, Interface};
@@ -55,14 +56,41 @@ fn excluded_sql(alias: &str) -> String {
     format!("{alias}.exclude_from_ai = 1")
 }
 
+/// SQL that is true when the Note aliased `alias` is shared with AI: what
+/// an AI interface may read, and what a human export holds unless the
+/// person includes private Notes (`export`).
+pub(crate) fn shared_with_ai_sql(alias: &str) -> String {
+    format!("NOT ({})", excluded_sql(alias))
+}
+
 /// True when `entity` (an SQL expression holding an id) names an excluded
 /// Note or a link to one.
 fn about_excluded_note_sql(entity: &str) -> String {
+    about_excluded_note_in("main", entity)
+}
+
+/// `about_excluded_note_sql` against the database `schema` (`main`, or one
+/// attached under that name).
+fn about_excluded_note_in(schema: &str, entity: &str) -> String {
     format!(
-        "(EXISTS (SELECT 1 FROM notes xn WHERE xn.id = {entity} AND {excluded})
-          OR EXISTS (SELECT 1 FROM task_note_links xl JOIN notes xn ON xn.id = xl.note_id
+        "(EXISTS (SELECT 1 FROM {schema}.notes xn WHERE xn.id = {entity} AND {excluded})
+          OR EXISTS (SELECT 1 FROM {schema}.task_note_links xl
+                     JOIN {schema}.notes xn ON xn.id = xl.note_id
                      WHERE xl.id = {entity} AND {excluded}))",
         excluded = excluded_sql("xn"),
+    )
+}
+
+/// 1 when an existing Audit Entry (its `hidden_from_ai`, action and entity
+/// id given as SQL expressions) is hidden from AI right now in the database
+/// `schema`, else 0: `ai_audit_filter_sql` as one value. A restore freezes
+/// it into the entries it carries over, since the Note that hides them may
+/// be missing, or shared, in the restored data.
+pub(crate) fn hidden_now_sql(schema: &str, hidden: &str, action: &str, entity: &str) -> String {
+    format!(
+        "CASE WHEN {hidden} = 1 OR {action} = '{privacy}' OR {about} THEN 1 ELSE 0 END",
+        privacy = AuditAction::NotePrivacy.as_str(),
+        about = about_excluded_note_in(schema, entity),
     )
 }
 
@@ -96,7 +124,7 @@ impl TaskStore {
     /// interface. Every Note read, listing, link list and count uses it.
     pub(crate) fn note_shown_sql(&self, alias: &str) -> String {
         if self.hides_private() {
-            format!("NOT ({})", excluded_sql(alias))
+            shared_with_ai_sql(alias)
         } else {
             "1".to_owned()
         }
@@ -157,7 +185,7 @@ impl TaskStore {
     /// is missing, and a shared one cannot be hidden or shown by an AI.
     pub fn set_note_exclude_from_ai(&self, input: SetNoteExcludeFromAi) -> Result<Note, TaskError> {
         let mut conn = self.connect()?;
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let tx = self.begin_write(&mut conn)?;
         self.require_note_shown(&tx, &input.id)?;
         if self.hides_private() {
             return Err(TaskError::DesktopOnly);

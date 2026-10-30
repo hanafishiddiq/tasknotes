@@ -1,7 +1,7 @@
 //! Nested Note Folders: a tree independent of Task Lists, at most five levels
 //! deep, with case-insensitively unique names among siblings.
 
-use rusqlite::{Connection, OptionalExtension, Row, Transaction, TransactionBehavior, params};
+use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -251,7 +251,7 @@ impl TaskStore {
         let name = folder_name(&input.name)?;
         let fold = name_fold(name);
         let mut conn = self.connect()?;
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let tx = self.begin_write(&mut conn)?;
         if let Some(parent) = input.parent_id.as_deref() {
             require_folder(&tx, parent)?;
             if ancestors(&tx, parent)?.len() as i64 >= MAX_FOLDER_DEPTH {
@@ -290,7 +290,7 @@ impl TaskStore {
     fn rename_note_folder_inner(&self, input: RenameNoteFolder) -> Result<NoteFolder, TaskError> {
         let name = folder_name(&input.name)?;
         let mut conn = self.connect()?;
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let tx = self.begin_write(&mut conn)?;
         let old = current_folder(&tx, &input.id, input.expected_revision)?;
         if old.name == name {
             return Err(TaskError::NoteFolderUnchanged);
@@ -323,7 +323,7 @@ impl TaskStore {
 
     fn move_note_folder_inner(&self, input: MoveNoteFolder) -> Result<NoteFolder, TaskError> {
         let mut conn = self.connect()?;
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let tx = self.begin_write(&mut conn)?;
         let old = current_folder(&tx, &input.id, input.expected_revision)?;
         if old.parent_id == input.parent_id {
             return Err(TaskError::NoteFolderUnchanged);
@@ -462,7 +462,7 @@ impl TaskStore {
         action: AuditAction,
     ) -> Result<NoteFolder, TaskError> {
         let mut conn = self.connect()?;
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let tx = self.begin_write(&mut conn)?;
         let removing = input.removed;
         let changed = self.set_note_folder_removed_in(&tx, input, action)?;
         // Owner decision B: through an AI interface, a folder holding any

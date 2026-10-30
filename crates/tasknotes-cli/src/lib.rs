@@ -6,6 +6,7 @@ pub mod access;
 mod args;
 pub mod bulk;
 pub mod contract;
+mod data;
 mod notes;
 
 use std::ffi::OsString;
@@ -32,14 +33,28 @@ pub struct Outcome {
     pub body: Value,
 }
 
-/// Run one command. `confirm` asks the person at the terminal to type
-/// `allow` for the named interface; it is only called by `access grant` on
-/// an interactive terminal.
+/// Shown at the terminal by `access grant`; the person types `allow`.
+fn grant_prompt(interface: Interface) -> String {
+    let through = match interface {
+        Interface::Mcp => "MCP clients you set up to start tasknotes-mcp",
+        _ => "the tasknotes command",
+    };
+    format!(
+        "Allow local AI clients to read and change your Tasks and Notes \
+         (except Notes marked Exclude from AI) through {through}? \
+         Type allow to confirm: "
+    )
+}
+
+/// Run one command. `confirm` shows the person at the terminal a prompt and
+/// returns what they typed; it is only called on an interactive terminal,
+/// by `access grant` and `backup restore`.
 pub fn run(
     args: &[OsString],
     env: &Environment,
-    confirm: impl FnOnce(Interface) -> std::io::Result<String>,
+    confirm: impl FnOnce(&str) -> std::io::Result<String>,
 ) -> Outcome {
+    let mut warnings = Vec::new();
     let result = args
         .iter()
         .map(|arg| {
@@ -48,20 +63,23 @@ pub fn run(
                 .ok_or_else(|| CliError::invalid("Every argument must be valid UTF-8 text"))
         })
         .collect::<Result<Vec<_>, _>>()
-        .and_then(|args| dispatch(&args, env, confirm));
-    match result {
+        .and_then(|args| dispatch(&args, env, confirm, &mut warnings));
+    let mut outcome = match result {
         Ok(body) => Outcome { exit_code: 0, body },
         Err(error) => Outcome {
             exit_code: error.exit_code(),
             body: contract::failure(&error),
         },
-    }
+    };
+    contract::add_warnings(&mut outcome.body, warnings);
+    outcome
 }
 
 fn dispatch(
     args: &[String],
     env: &Environment,
-    confirm: impl FnOnce(Interface) -> std::io::Result<String>,
+    confirm: impl FnOnce(&str) -> std::io::Result<String>,
+    warnings: &mut Vec<Value>,
 ) -> Result<Value, CliError> {
     let (data_flag, rest) = match args {
         [flag, dir, rest @ ..] if flag == "--data-dir" => (Some(dir.as_str()), rest),
@@ -91,22 +109,39 @@ fn dispatch(
         };
         return match verb {
             "status" if !p.has("mcp") => Ok(access_status(&data_dir)),
-            "grant" => {
-                access::grant(&data_dir, interface, env, confirm).map(|()| access_status(&data_dir))
-            }
+            "grant" => access::grant(&data_dir, interface, env, |asked| {
+                confirm(&grant_prompt(asked))
+            })
+            .map(|()| access_status(&data_dir)),
             "revoke" => access::revoke(&data_dir, interface).map(|()| access_status(&data_dir)),
             _ => Err(CliError::invalid(USAGE)),
         };
     }
     if !matches!(
         noun,
-        "task" | "list" | "audit" | "note" | "folder" | "link" | "removed" | "bulk"
+        "task"
+            | "list"
+            | "audit"
+            | "note"
+            | "folder"
+            | "link"
+            | "removed"
+            | "bulk"
+            | "backup"
+            | "export"
     ) {
         return Err(CliError::invalid(USAGE));
     }
     // The core refuses before the database is opened, created or migrated.
     let store = ai_access::open_authorized(&data_dir, Interface::Cli)?;
+    // Backups run while any Tasknotes process is active (spec): the first
+    // command of the day takes one. A failed backup must not block the
+    // command (the next process tries again); it is reported as a warning
+    // in the envelope, since the contract keeps stderr empty.
+    data::daily_backup(&store, warnings);
     match noun {
+        "backup" => data::backup_command(&store, verb, words, env, confirm, warnings),
+        "export" => data::export_command(&store, verb, words),
         "task" => task_command(&store, verb, words),
         "list" => list_command(&store, verb, words),
         "note" => notes::note_command(&store, verb, words),
@@ -119,9 +154,11 @@ fn dispatch(
 }
 
 pub(crate) const USAGE: &str = "Usage: tasknotes [--data-dir DIR] \
-    <task|list|note|folder|link|removed|audit|bulk|access> <command> [id] [--options]; \
+    <task|list|note|folder|link|removed|audit|bulk|backup|export|access> <command> [id] [--options]; \
     bulk preview --action A --id ID... | bulk status REQUEST_ID (approved only in the app); \
     access grant|revoke [--mcp]";
+
+pub(crate) const NO_FLAGS: Spec = flags(&[], 0);
 
 fn access_status(data_dir: &Path) -> Value {
     contract::success_item(json!({

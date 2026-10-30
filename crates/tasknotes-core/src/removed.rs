@@ -4,9 +4,7 @@
 //! container leaves anything Removed on its own in Removed.
 
 use rusqlite::types::Value;
-use rusqlite::{
-    Connection, OptionalExtension, Transaction, TransactionBehavior, params, params_from_iter,
-};
+use rusqlite::{Connection, OptionalExtension, Transaction, params, params_from_iter};
 use serde::{Deserialize, Serialize};
 
 use crate::audit::AuditAction;
@@ -301,7 +299,7 @@ impl TaskStore {
         action: AuditAction,
     ) -> Result<Task, TaskError> {
         let mut conn = self.connect()?;
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let tx = self.begin_write(&mut conn)?;
         let changed = self.set_task_removed_in(&tx, input, action)?;
         tx.commit()?;
         Ok(changed)
@@ -374,7 +372,7 @@ impl TaskStore {
         action: AuditAction,
     ) -> Result<Note, TaskError> {
         let mut conn = self.connect()?;
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let tx = self.begin_write(&mut conn)?;
         let changed = self.set_note_removed_in(&tx, input, action)?;
         tx.commit()?;
         Ok(changed)

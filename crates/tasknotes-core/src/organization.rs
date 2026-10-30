@@ -318,7 +318,7 @@ impl TaskStore {
         let tags = clean_tags(&input.tags)?;
         let due_date = calendar_date(input.due_date.as_deref())?;
         let mut conn = self.connect()?;
-        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let tx = self.begin_write(&mut conn)?;
         let mut before = tx
             .query_row(
                 &format!("SELECT {COLUMNS} FROM tasks WHERE id=?1"),
@@ -382,7 +382,7 @@ impl TaskStore {
 
     fn move_task_inner(&self, input: MoveTask) -> Result<Task, TaskError> {
         let mut conn = self.connect()?;
-        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let tx = self.begin_write(&mut conn)?;
         let updated = self.move_task_in(&tx, input)?;
         tx.commit()?;
         Ok(updated)
@@ -432,7 +432,7 @@ impl TaskStore {
     pub fn create_list(&self, input: CreateList) -> Result<List, TaskError> {
         let name = list_name(&input.name)?;
         let mut conn = self.connect()?;
-        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let tx = self.begin_write(&mut conn)?;
         if tx.query_row(
             "SELECT EXISTS(SELECT 1 FROM lists WHERE name = ?1 COLLATE NOCASE AND removed_at IS NULL)",
             params![name], |r| r.get::<_, bool>(0)
@@ -467,7 +467,7 @@ impl TaskStore {
     fn rename_list_inner(&self, input: RenameList) -> Result<List, TaskError> {
         let name = list_name(&input.name)?;
         let mut conn = self.connect()?;
-        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let tx = self.begin_write(&mut conn)?;
         let old = tx
             .query_row(
                 "SELECT id,name,revision,created_at,updated_at,removed_at FROM lists WHERE id=?1",
@@ -519,7 +519,7 @@ impl TaskStore {
         action: AuditAction,
     ) -> Result<List, TaskError> {
         let mut conn = self.connect()?;
-        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let tx = self.begin_write(&mut conn)?;
         let removing = input.removed;
         let changed = self.set_list_removed_in(&tx, input, action)?;
         // Owner decision B: through an AI interface, a List that holds any

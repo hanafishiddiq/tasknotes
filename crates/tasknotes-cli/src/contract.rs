@@ -7,6 +7,11 @@
 //! Failure: `{"schema_version":1,"ok":false,"error":{"code":"..","message":".."}}`.
 //! A refusal the core meant to audit but could not also carries
 //! `"audit_recorded": false` in `error`; the refusal itself is unchanged.
+//! Either envelope may carry `"warnings":[{"code":"..","message":".."}]`
+//! for something that went wrong beside the command, which still ran:
+//! `backup_failed` (the day's automatic backup) or `backup_retention_failed`
+//! (a backup was taken but an old one could not be removed). The key is
+//! absent when there is nothing to report.
 //! Keys are snake_case and times are Unix milliseconds.
 
 use serde::Serialize;
@@ -56,9 +61,9 @@ impl CliError {
         match self.code {
             "invalid_input" | "invalid_cursor" => 2,
             "not_found" => 3,
-            "revision_conflict" | "stale_preview" => 4,
+            "revision_conflict" | "stale_preview" | "database_restored" => 4,
             "removed" | "name_conflict" | "invalid_transition" | "unchanged" | "desktop_only"
-            | "needs_approval" => 5,
+            | "needs_approval" | "invalid_backup" => 5,
             "not_trusted" => 6,
             "storage_unavailable" | "unsupported_schema" => 7,
             _ => 1,
@@ -107,6 +112,17 @@ pub fn success_page(items: Vec<Value>, next_cursor: Option<String>) -> Value {
         "items": items,
         "next_cursor": next_cursor,
     })
+}
+
+pub fn warning(code: &'static str, message: String) -> Value {
+    json!({"code": code, "message": message})
+}
+
+/// Attach warnings to an envelope; nothing when there are none.
+pub fn add_warnings(envelope: &mut Value, warnings: Vec<Value>) {
+    if !warnings.is_empty() {
+        envelope["warnings"] = Value::Array(warnings);
+    }
 }
 
 pub fn failure(error: &CliError) -> Value {

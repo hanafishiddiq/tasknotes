@@ -61,3 +61,16 @@ An immutable dated record that an official Tasknotes interface made or attempted
 **Bulk Change**:
 One request that removes, restores, moves or sets the status of several Tasks, or removes or restores several Notes; through an AI interface, also removing a List or Note Folder that holds anything. An AI interface can only ask for it: the request waits, with its preview, until the person approves or declines it in the desktop app, and the AI reads its status (pending, applied, declined, stale, expired). It applies all or nothing, and only while nothing it named (nor a move's target List) has changed; a request expires after a day.
 _Avoid_: Batch, mass edit.
+
+**Backup**:
+A consistent local copy of all Tasknotes data, taken automatically once a local calendar day while Tasknotes runs (Daily), on request (Manual), and just before a restore (Pre-restore). Daily backups follow the 7 daily / 4 weekly / 3 monthly retention, the 10 newest Manual backups are kept, and Pre-restore backups are never removed automatically. Retention prunes backup copies only, never live Tasks, Notes or Lists.
+
+**Backup Manifest**:
+The record beside each Backup of when and why it was taken, its schema version, size and checksum; a restore refuses a Backup that does not match its manifest.
+
+**Restore**:
+Replacing all current data with a validated Backup, after stopping every other writer and keeping a Backup of the current data. The Audit Entries made since the Backup are kept, and the restore itself is recorded as one. Windows and commands that opened the data before must reload before they can change anything.
+_Avoid_: Restore alone where restoring an item from Removed is meant.
+
+**Export**:
+A copy of Tasks and Notes written as JSON or Markdown for the person to keep or move elsewhere. An export made through an AI interface never contains Notes marked Exclude from AI.

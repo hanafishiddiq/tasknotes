@@ -26,7 +26,7 @@
 
 use std::collections::HashSet;
 
-use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
+use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -256,7 +256,7 @@ impl TaskStore {
         let now = current_millis()?;
         let mut conn = self.connect()?;
         let (plan, items) = {
-            let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            let tx = self.begin_write(&mut conn)?;
             let plan = self.plan_in(&tx, action, ids)?;
             let items = self
                 .run_plan(&tx, &plan)
@@ -278,7 +278,7 @@ impl TaskStore {
             serde_json::to_string(&plan).map_err(|e| TaskError::Io(std::io::Error::other(e)))?;
         // A change between the preview above and this insert only makes the
         // request stale: it holds the revisions the preview was made from.
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let tx = self.begin_write(&mut conn)?;
         tx.execute(
             "INSERT INTO bulk_requests
                (id, requested_by, plan, item_count, created_at, expires_at, status)
@@ -354,7 +354,7 @@ impl TaskStore {
         self.require_desktop()?;
         let mut conn = self.connect()?;
         let failure = {
-            let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            let tx = self.begin_write(&mut conn)?;
             let (request, plan) = read_request(&tx, id, now)?;
             let acting = self.acting_for(request.requested_by);
             match request.status {
@@ -378,7 +378,7 @@ impl TaskStore {
             // Dropping the transaction rolls back every item applied so far.
         };
         let (status, error, acting) = failure;
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let tx = self.begin_write(&mut conn)?;
         let (request, _) = read_request(&tx, id, now)?;
         if matches!(
             request.status,
@@ -396,7 +396,7 @@ impl TaskStore {
         self.require_desktop()?;
         let now = current_millis()?;
         let mut conn = self.connect()?;
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let tx = self.begin_write(&mut conn)?;
         let (request, _) = read_request(&tx, id, now)?;
         let acting = self.acting_for(request.requested_by);
         let declined = match request.status {
@@ -598,7 +598,7 @@ impl TaskStore {
         let total = lines.len();
         let stale = {
             let mut writer = self.connect()?;
-            let tx = writer.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            let tx = self.begin_write(&mut writer)?;
             // Dropped without committing: only whether it would apply.
             match self.acting_for(request.requested_by).run_plan(&tx, plan) {
                 Ok(_) => false,

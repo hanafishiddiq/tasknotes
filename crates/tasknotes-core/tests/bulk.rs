@@ -671,3 +671,87 @@ fn a_request_lives_in_the_database_not_the_process() {
     );
     desktop.approve_bulk_request(&id).unwrap();
 }
+
+fn asked_by_an_ai(desktop: &TaskStore) -> usize {
+    audit(desktop)
+        .iter()
+        .filter(|e| e.requested_by == Some(Interface::Mcp))
+        .count()
+}
+
+#[test]
+fn a_restore_keeps_who_asked_for_an_approved_bulk_change() {
+    let w = world();
+    let all = tasks(&w.ai, 2);
+    let backup = w.desktop.create_backup().unwrap().backup;
+    let id =
+        w.ai.request_bulk(BulkAction::RemoveTasks, ids(&all))
+            .unwrap()
+            .request
+            .id;
+    w.desktop.approve_bulk_request(&id).unwrap();
+    let before = asked_by_an_ai(&w.desktop);
+    assert!(before > 0);
+
+    w.desktop.restore_backup(&backup.id).unwrap();
+
+    // Audit Entries stay append-only across a restore, whole.
+    assert_eq!(asked_by_an_ai(&w.desktop), before);
+}
+
+#[test]
+fn a_store_opened_before_a_restore_can_neither_ask_nor_approve() {
+    let w = world();
+    let all = tasks(&w.ai, 2);
+    let id =
+        w.ai.request_bulk(BulkAction::RemoveTasks, ids(&all))
+            .unwrap()
+            .request
+            .id;
+    let backup = w.desktop.create_backup().unwrap().backup;
+    let path = w._dir.path().join("tasknotes.db");
+    let other_window = TaskStore::open(&path).unwrap();
+    other_window.restore_backup(&backup.id).unwrap();
+
+    assert_eq!(
+        w.desktop.approve_bulk_request(&id).unwrap_err().code(),
+        "database_restored"
+    );
+    assert_eq!(
+        w.desktop.decline_bulk_request(&id).unwrap_err().code(),
+        "database_restored"
+    );
+    assert_eq!(
+        w.ai.request_bulk(BulkAction::RemoveTasks, ids(&all))
+            .unwrap_err()
+            .code(),
+        "database_restored"
+    );
+    assert!(!task_now_in(&other_window, &all[0].id).removed);
+}
+
+#[test]
+fn a_request_made_after_the_backup_does_not_come_back_from_a_restore() {
+    let w = world();
+    let all = tasks(&w.ai, 2);
+    let backup = w.desktop.create_backup().unwrap().backup;
+    let id =
+        w.ai.request_bulk(BulkAction::RemoveTasks, ids(&all))
+            .unwrap()
+            .request
+            .id;
+
+    w.desktop.restore_backup(&backup.id).unwrap();
+
+    assert_eq!(w.desktop.count_pending_bulk_requests().unwrap(), 0);
+    assert_eq!(
+        w.desktop.approve_bulk_request(&id).unwrap_err().code(),
+        "not_found"
+    );
+    // Its Audit Entry remains: what was asked is history, not current data.
+    assert!(audit(&w.desktop).iter().any(|e| e.entity_id == id));
+}
+
+fn task_now_in(store: &TaskStore, id: &str) -> Task {
+    store.get_task(id).unwrap().unwrap()
+}

@@ -1,7 +1,4 @@
-use rusqlite::{
-    OptionalExtension, Row, Transaction, TransactionBehavior, params, params_from_iter,
-    types::Value,
-};
+use rusqlite::{OptionalExtension, Row, Transaction, params, params_from_iter, types::Value};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -377,7 +374,7 @@ impl TaskStore {
         let folder_id = input.folder_id.as_deref();
         let now = current_millis()?;
         let mut conn = self.connect()?;
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let tx = self.begin_write(&mut conn)?;
         if let Some(folder) = folder_id {
             crate::note_folders::require_folder(&tx, folder)?;
         }
@@ -411,7 +408,7 @@ impl TaskStore {
 
     fn move_note_inner(&self, input: MoveNote) -> Result<Note, TaskError> {
         let mut conn = self.connect()?;
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let tx = self.begin_write(&mut conn)?;
         self.require_note_shown(&tx, &input.id)?;
         crate::removed::require_writable_note(&tx, &input.id)?;
         if let Some(folder) = input.folder_id.as_deref() {
@@ -437,7 +434,7 @@ impl TaskStore {
     /// Placement only, like a move; pinning twice is harmless.
     pub fn set_note_pinned(&self, input: SetNotePinned) -> Result<Note, TaskError> {
         let mut conn = self.connect()?;
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let tx = self.begin_write(&mut conn)?;
         self.require_note_shown(&tx, &input.id)?;
         crate::removed::require_writable_note(&tx, &input.id)?;
         let note = tx.query_row(
@@ -462,7 +459,7 @@ impl TaskStore {
         check_length(&input.markdown)?;
         let now = current_millis()?;
         let mut conn = self.connect()?;
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let tx = self.begin_write(&mut conn)?;
         self.require_note_shown(&tx, &input.id)?;
         crate::removed::require_writable_note(&tx, &input.id)?;
         let updated = tx
