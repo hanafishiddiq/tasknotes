@@ -392,7 +392,8 @@ export default function App() {
     }
   }
 
-  async function setListRemoved(list: TaskList, removed: boolean) {
+  /** Rejects when the core refuses, so Undo can say so in whatever view is showing. */
+  async function applyListRemoved(list: TaskList, removed: boolean) {
     setBusyList(true);
     setError(null);
     try {
@@ -402,7 +403,7 @@ export default function App() {
       setLists((all) => all.map((item) => item.id === list.id ? updated : item));
       setRemovedKey((key) => key + 1);
       if (removed) {
-        undo.push({ key: `list:${updated.id}`, title: updated.name, undo: () => setListRemoved(updated, false) });
+        undo.push({ key: `list:${updated.id}`, title: updated.name, undo: () => applyListRemoved(updated, false) });
       }
       if (removed && view.kind === "list" && view.listId === list.id) {
         setTasks([]);
@@ -418,8 +419,17 @@ export default function App() {
       try { await refreshLists(); } catch (reason) {
         setError("List updated, but the sidebar could not refresh: " + errorMessage(reason));
       }
-    } catch (reason) { setError(errorMessage(reason)); }
-    finally { setBusyList(false); }
+    } finally {
+      setBusyList(false);
+    }
+  }
+
+  async function setListRemoved(list: TaskList, removed: boolean) {
+    try {
+      await applyListRemoved(list, removed);
+    } catch (reason) {
+      setError(errorMessage(reason));
+    }
   }
 
   async function loadMoreLists() {
@@ -518,8 +528,11 @@ export default function App() {
     }
   }
 
-  /** Resolves true once the mutation itself succeeded. */
-  async function commitTaskMutation(task: Task, mutate: () => Promise<Task>): Promise<boolean> {
+  /**
+   * Resolves true once the mutation itself succeeded. Rejects when the core
+   * refuses, so Undo can say so in whatever view is showing.
+   */
+  async function applyTaskMutation(task: Task, mutate: () => Promise<Task>): Promise<boolean> {
     if (savingId) return false;
     setSavingId(task.id);
     setError(null);
@@ -560,11 +573,18 @@ export default function App() {
         setError("Change saved, but the ordered list could not refresh: " + errorMessage(reason));
       }
       return true;
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  /** A change made in the Task view: a refusal shows in its banner. */
+  async function commitTaskMutation(task: Task, mutate: () => Promise<Task>): Promise<boolean> {
+    try {
+      return await applyTaskMutation(task, mutate);
     } catch (reason) {
       setError(errorMessage(reason));
       return false;
-    } finally {
-      setSavingId(null);
     }
   }
 
@@ -600,7 +620,7 @@ export default function App() {
       undo.push({
         key: `task:${removed.id}`, title: removed.title,
         undo: async () => {
-          if (await commitTaskMutation(removed, () => removedApi.restore<Task>("task", removed))) {
+          if (await applyTaskMutation(removed, () => removedApi.restore<Task>("task", removed))) {
             setRemovedKey((key) => key + 1);
           }
         },
