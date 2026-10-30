@@ -730,7 +730,7 @@ fn a_backup_killed_part_way_leaves_nothing_that_looks_like_a_backup() {
             }
             let began = common::file_names(&w.backups())
                 .iter()
-                .any(|name| name.ends_with(".partial") && !existing.contains(name));
+                .any(|name| !existing.contains(name));
             if began {
                 break true;
             }
@@ -847,6 +847,11 @@ fn a_restore_killed_part_way_leaves_the_old_data_or_the_new_whole() {
             "--title",
             &format!("Synthetic after {round}"),
         ]);
+        let epoch: String = Connection::open(w.db())
+            .unwrap()
+            .query_row("SELECT epoch FROM database_epoch", [], |row| row.get(0))
+            .unwrap();
+        assert!(!epoch.starts_with("restoring-"), "the fence was not lifted");
         w.assert_only_whole_backups(&mut checked);
         // The client is told if the data moved, then reads what is there.
         let call = server.call("task_list", json!({"limit": 100}));

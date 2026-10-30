@@ -271,6 +271,19 @@ fn a_recovery_drill_through_the_real_cli_is_a_round_trip_and_destroys_nothing() 
         std::fs::write(manifest_of(&w, &good), &manifest).unwrap();
     };
 
+    // One byte of a Note's text: a sound database, with different words in it.
+    // Only the manifest can tell.
+    let mut flipped = original.clone();
+    let word = b"zzsharedword";
+    let at = flipped
+        .windows(word.len())
+        .position(|window| window == word)
+        .unwrap();
+    flipped[at] = b'y';
+    std::fs::write(snapshot_of(&w, &good), &flipped).unwrap();
+    assert_refused_and_untouched(&w, &good, 5, "invalid_backup", "one changed byte of text");
+    put_back();
+
     let mut flipped = original.clone();
     let middle = flipped.len() / 2;
     flipped[middle] ^= 0xFF;
