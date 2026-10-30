@@ -104,9 +104,12 @@ export const SCENES: Record<string, Scene> = {
       await screen.findByRole("article", { name: "Synthetic draft" });
       await user.selectOptions(screen.getByRole("combobox", { name: "Filter by status" }), "in_progress");
       await user.selectOptions(screen.getByRole("combobox", { name: "Filter by priority" }), "high");
-      await user.type(screen.getByRole("textbox", { name: "Filter by tag" }), "alpha");
+      const tag = screen.getByRole("textbox", { name: "Filter by tag" });
+      await user.type(tag, "alpha");
+      // The tag reaches the core only once typing has settled.
+      await waitFor(() => expect(tag.closest("label")).toHaveClass("filter-chip--active"), eventually);
       await screen.findByRole("button", { name: "Clear search and filters" });
-      await screen.findByRole("article", { name: "Synthetic review" });
+      await screen.findByRole("article", { name: "Synthetic review" }, eventually);
       await waitFor(() => expect(screen.queryByRole("article", { name: "Synthetic draft" })).toBeNull(), eventually);
     },
   },

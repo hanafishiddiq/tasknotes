@@ -43,15 +43,32 @@ function summaries(results: axe.Result[]): string[] {
     `${result.id} (${result.impact ?? "no impact"}): ${result.nodes.map((node) => node.target.join(" ")).join(", ")}`);
 }
 
+/**
+ * Axe yields between rules, so a re-render during a run (a debounce firing, a late
+ * answer) would have it judge half of each state. An answer only counts if nothing
+ * changed while it was being worked out.
+ */
+async function axeOnStillPage() {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const changes = new MutationObserver(() => undefined);
+    changes.observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
+    const results = await axe.run(document, {
+      rules: {
+        ...Object.fromEntries(Object.keys(RULES_JSDOM_CANNOT_JUDGE).map((rule) => [rule, { enabled: false }])),
+        ...Object.fromEntries(EXTRA_RULES.map((rule) => [rule, { enabled: true }])),
+      },
+      resultTypes: ["violations", "incomplete"],
+    });
+    const changed = changes.takeRecords().length > 0;
+    changes.disconnect();
+    if (!changed) return results;
+  }
+  throw new Error("The page kept changing, so axe never saw one state of it");
+}
+
 /** Runs axe over the whole document, so portals and page-level rules are included. */
 export async function runAxe() {
-  const results = await axe.run(document, {
-    rules: {
-      ...Object.fromEntries(Object.keys(RULES_JSDOM_CANNOT_JUDGE).map((rule) => [rule, { enabled: false }])),
-      ...Object.fromEntries(EXTRA_RULES.map((rule) => [rule, { enabled: true }])),
-    },
-    resultTypes: ["violations", "incomplete"],
-  });
+  const results = await axeOnStillPage();
   const crashed = results.incomplete.filter((result) =>
     result.nodes.some((node) => [...node.any, ...node.all, ...node.none].some((check) => check.id === "error-occurred")));
   return {
