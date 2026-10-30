@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { dataApi, type Backup, type BackupKind, type ExportFormat, type ExportSummary } from "../lib/data-api";
 import { errorMessage } from "../lib/error-message";
 
@@ -31,6 +31,20 @@ export default function DataSettings({ active, onRestored }: DataSettingsProps) 
   const [error, setError] = useState<string | null>(null);
   const [includePrivate, setIncludePrivate] = useState(false);
   const [exported, setExported] = useState<ExportSummary | null>(null);
+  const cancelRestore = useRef<HTMLButtonElement>(null);
+  // The Restore… button that asked; focus goes back there once the question closes.
+  const askedBy = useRef<HTMLButtonElement | null>(null);
+
+  // The question sits below the list: take the keyboard to it, on the answer that changes nothing.
+  useEffect(() => {
+    if (confirming) cancelRestore.current?.focus();
+  }, [confirming]);
+
+  useEffect(() => {
+    if (confirming || busy) return;
+    askedBy.current?.focus();
+    askedBy.current = null;
+  }, [confirming, busy]);
 
   useEffect(() => {
     if (!active || requested) return;
@@ -90,7 +104,7 @@ export default function DataSettings({ active, onRestored }: DataSettingsProps) 
                 <span className="settings-backup-kind">{KIND_LABELS[backup.kind]}</span>
                 <button type="button" className="button button-small" disabled={busy}
                   aria-label={`Restore the backup from ${when.format(backup.createdAt)}`}
-                  onClick={() => setConfirming(backup)}>
+                  onClick={(event) => { askedBy.current = event.currentTarget; setConfirming(backup); }}>
                   Restore…
                 </button>
               </li>
@@ -109,7 +123,8 @@ export default function DataSettings({ active, onRestored }: DataSettingsProps) 
                   onClick={() => restore(confirming)}>
                   Replace and restore
                 </button>
-                <button type="button" className="button button-small" onClick={() => setConfirming(null)}>
+                <button ref={cancelRestore} type="button" className="button button-small"
+                  onClick={() => setConfirming(null)}>
                   Cancel
                 </button>
               </div>

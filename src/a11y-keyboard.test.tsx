@@ -283,6 +283,37 @@ describe("focus when the shortcut recorder closes", () => {
   });
 });
 
+describe("focus when an inline question closes", () => {
+  async function askToRestore() {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Settings" }));
+    const restore = (await screen.findAllByRole("button", { name: /^Restore the backup/ }))[1];
+    await user.click(restore);
+    return { user, restore };
+  }
+
+  it("moves to the Restore question when it opens, on its safe answer", async () => {
+    await askToRestore();
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+  });
+
+  it("goes back to the backup's Restore button on Cancel", async () => {
+    const { user, restore } = await askToRestore();
+    await user.keyboard("{Enter}");
+    expect(screen.queryByRole("button", { name: "Replace and restore" })).toBeNull();
+    expect(restore).toHaveFocus();
+  });
+
+  it("goes back to the backup's Restore button when the restore is refused", async () => {
+    world.refuse.set("restore_backup", "Synthetic refusal");
+    const { user, restore } = await askToRestore();
+    await user.click(screen.getByRole("button", { name: "Replace and restore" }));
+    await screen.findByRole("alert");
+    await waitFor(() => expect(restore).toHaveFocus());
+  });
+});
+
 describe("Tab in the Note text", () => {
   it.each([
     ["a paragraph", "Plain"],
