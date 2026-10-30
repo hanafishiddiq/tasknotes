@@ -153,6 +153,14 @@ export default function VirtualTaskList({
     focusTask(next);
   }
 
+  // An open Task that closed itself (a save) took the focused field along: its row gets focus instead.
+  const wasExpanded = useRef(expandedId);
+  useLayoutEffect(() => {
+    const closed = wasExpanded.current;
+    wasExpanded.current = expandedId;
+    if (closed && !expandedId && document.activeElement === document.body) focusTask(closed);
+  }, [expandedId]);
+
   const virtualItems = virtualizer.getVirtualItems();
   const total = virtualizer.getTotalSize();
 

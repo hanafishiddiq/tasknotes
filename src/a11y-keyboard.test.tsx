@@ -415,6 +415,18 @@ describe("focus when an inline question closes", () => {
   });
 });
 
+describe("focus when an open Task closes itself", () => {
+  it("goes back to the row after Return saves the title", async () => {
+    world.tasks = [fixtureTask("a")];
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open Synthetic task a" }));
+    await user.type(screen.getByRole("textbox", { name: "Edit title" }), " two{Enter}");
+    const row = await screen.findByRole("button", { name: "Open Synthetic task a two" });
+    await waitFor(() => expect(row).toHaveFocus());
+  });
+});
+
 describe("Tab in the Note text", () => {
   it.each([
     ["a paragraph", "Plain"],
