@@ -576,7 +576,8 @@ impl Staging {
     /// Audit Entry the snapshot lacks (in append order, with its id, and
     /// hidden from AI if it is hidden from AI now) and a `backup.restore`
     /// entry, keep what the person set since the snapshot that must survive
-    /// (a Note's privacy, a decision on a Bulk Change), give the copy a
+    /// (a Note's privacy, a decision on a Bulk Change), retire the revisions
+    /// of what changed, give the copy a
     /// fresh Restore Epoch and fold its log into the file. Returns the
     /// epoch.
     fn carry_over(
@@ -614,6 +615,18 @@ impl Staging {
         // Owner decisions, 2026-10-30. A restore can never open a Note to AI:
         // one private now stays private. And a person's decision stands: a
         // request decided since the snapshot does not come back as waiting.
+        // A restore must not reuse a revision: a client still holding one could
+        // otherwise overwrite what the person writes next. What changed since
+        // the snapshot gets a number no version of it has had; what did not
+        // change keeps its own, so a request waiting on it stays valid.
+        for table in ["tasks", "notes", "lists", "note_folders"] {
+            tx.execute_batch(&format!(
+                "UPDATE main.{table} SET revision =
+                   (SELECT l.revision + 1 FROM live.{table} AS l WHERE l.id = {table}.id)
+                 WHERE EXISTS (SELECT 1 FROM live.{table} AS l
+                               WHERE l.id = {table}.id AND l.revision <> {table}.revision);"
+            ))?;
+        }
         tx.execute(
             "UPDATE main.notes SET exclude_from_ai = 1
              WHERE id IN (SELECT id FROM live.notes WHERE exclude_from_ai = 1)",

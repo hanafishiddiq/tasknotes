@@ -8,7 +8,9 @@ mod common;
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-use common::{World, assert_refused, assert_same_content, id_of, sha256_hex, text};
+use common::{
+    World, assert_refused, assert_same_content, id_of, sha256_hex, text, without_revisions,
+};
 use rusqlite::Connection;
 use serde_json::{Value, json};
 use tasknotes_core::notes::CreateNote;
@@ -29,7 +31,7 @@ fn cli_view(w: &World) -> Value {
     for task in tasks.as_array().unwrap() {
         history.push(w.ok(&["task", "history", text(&task["id"])])["items"].clone());
     }
-    json!({
+    without_revisions(&json!({
         "tasks": tasks,
         "removed": w.ok(&["task", "list", "--removed", "--limit", "100"])["items"],
         "history": history,
@@ -37,7 +39,7 @@ fn cli_view(w: &World) -> Value {
         "removed_view": w.ok(&["removed", "list", "--limit", "100"])["items"],
         "lists": w.ok(&["list", "list", "--include-removed"])["items"],
         "folders": w.ok(&["folder", "list"])["items"],
-    })
+    }))
 }
 
 fn snapshot_of(w: &World, id: &str) -> PathBuf {

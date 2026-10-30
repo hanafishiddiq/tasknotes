@@ -142,9 +142,10 @@ impl World {
         server
     }
 
-    /// Every Task and Note table, row by row, exactly as stored: what a
-    /// restore must bring back. Audit Entries and Bulk Change decisions are
-    /// left out because a restore keeps those on purpose.
+    /// Every Task and Note table, row by row, as stored: what a restore must
+    /// bring back. Audit Entries and Bulk Change decisions are left out because
+    /// a restore keeps those on purpose, and revisions because it retires those
+    /// of whatever changed, so a client holding an old one is refused.
     pub fn content(&self) -> BTreeMap<String, Vec<String>> {
         let conn = Connection::open(self.db()).unwrap();
         let mut content = BTreeMap::new();
@@ -340,11 +341,17 @@ fn rows(conn: &Connection, table: &str) -> Vec<String> {
     let mut statement = conn
         .prepare(&format!("SELECT * FROM {table} ORDER BY 1, 2"))
         .unwrap();
-    let columns = statement.column_count();
+    let kept: Vec<usize> = statement
+        .column_names()
+        .iter()
+        .enumerate()
+        .filter(|(_, name)| **name != "revision")
+        .map(|(index, _)| index)
+        .collect();
     statement
         .query_map([], |row| {
-            (0..columns)
-                .map(|i| {
+            kept.iter()
+                .map(|&i| {
                     Ok(match row.get_ref(i)? {
                         ValueRef::Text(bytes) => String::from_utf8_lossy(bytes).into_owned(),
                         other => format!("{other:?}"),
@@ -356,6 +363,21 @@ fn rows(conn: &Connection, table: &str) -> Vec<String> {
         .unwrap()
         .collect::<Result<_, _>>()
         .unwrap()
+}
+
+/// A JSON record or list of them without its revisions, which a restore retires.
+pub fn without_revisions(value: &Value) -> Value {
+    match value {
+        Value::Object(fields) => Value::Object(
+            fields
+                .iter()
+                .filter(|(name, _)| *name != "revision")
+                .map(|(name, field)| (name.clone(), without_revisions(field)))
+                .collect(),
+        ),
+        Value::Array(items) => Value::Array(items.iter().map(without_revisions).collect()),
+        other => other.clone(),
+    }
 }
 
 /// A new terminal: its controlling end, and the end a process has as stdin.

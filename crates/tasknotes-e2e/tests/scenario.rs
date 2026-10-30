@@ -8,6 +8,7 @@ mod common;
 
 use common::{
     NEVER, NEVER_LINK, Server, World, assert_same_content, id_of, internet_sockets, text,
+    without_revisions,
 };
 use serde_json::{Value, json};
 use tasknotes_cli::contract;
@@ -1041,10 +1042,11 @@ fn restores_while_an_mcp_server_stays_running(s: &mut Stage, private: &Private) 
     s.desktop.approve_bulk_request(&approved).unwrap();
     s.desktop.decline_bulk_request(&declined).unwrap();
     assert_eq!(s.task(&approved_task)["removed"], true);
-    s.mcp.ok(
+    let edited = s.mcp.ok(
         "task_update",
         json!({"id": kept, "revision": 1, "title": "Synthetic edit since the backup"}),
     );
+    let wrote_revision = edited["item"]["revision"].as_i64();
     let later = s.create_on_cli("Synthetic made since the backup");
     // Made and made private since the Backup: the restore takes the Note away
     // but keeps the Audit Entries, which must not name it to an AI then.
@@ -1085,8 +1087,13 @@ fn restores_while_an_mcp_server_stays_running(s: &mut Stage, private: &Private) 
     // Then fresh reads.
     let read = s.mcp.ok("task_get", json!({"id": kept}));
     assert_eq!(
-        read["item"], at_backup,
+        without_revisions(&read["item"]),
+        without_revisions(&at_backup),
         "the restored Task, not what it wrote"
+    );
+    assert!(
+        read["item"]["revision"].as_i64() > wrote_revision,
+        "a revision used before the restore is not used again"
     );
     s.mcp.refused("task_get", json!({"id": later}), "not_found");
 
@@ -1098,7 +1105,10 @@ fn restores_while_an_mcp_server_stays_running(s: &mut Stage, private: &Private) 
             "database_restored"
         );
     }
-    assert_eq!(s.task(&kept), at_backup);
+    assert_eq!(
+        without_revisions(&s.task(&kept)),
+        without_revisions(&at_backup)
+    );
     s.w.refused(&["task", "get", &later], 3, "not_found");
     // The data is the Backup's, but for the one flag a restore keeps.
     let mut expected = backed_up.clone();
@@ -1269,9 +1279,6 @@ fn a_stale_write_after_a_restore(
 }
 
 #[test]
-#[ignore = "product defect: a restore rewinds revisions and only a running MCP server or an \
-            open store remembers the Restore Epoch, so a CLI client's stale revision can match \
-            again and overwrite the person's edit; the fix needs an owner decision"]
 fn a_cli_write_from_before_a_restore_does_not_overwrite_the_persons_edit() {
     let (landed, answer, title) = a_stale_write_after_a_restore(|w, id| {
         let run = w.run(&[
@@ -1290,9 +1297,6 @@ fn a_cli_write_from_before_a_restore_does_not_overwrite_the_persons_edit() {
 }
 
 #[test]
-#[ignore = "product defect: the same as the CLI case, for an MCP server started after the \
-            restore: it has no earlier Restore Epoch to compare with, so a client that kept its \
-            revision across a reconnect is not told; the fix needs an owner decision"]
 fn an_mcp_write_from_before_a_restore_does_not_overwrite_the_persons_edit_after_a_reconnect() {
     let (landed, answer, title) = a_stale_write_after_a_restore(|w, id| {
         let mut server = w.server();
