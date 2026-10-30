@@ -473,7 +473,7 @@ const KNOWN: Record<string, string[]> = {
 };
 
 /** Being fixed one at a time in the commits that follow this one. */
-const UNFIXED = new Set(["heading-order", "landmark-one-main", "aria-prohibited-attr"]);
+const UNFIXED = new Set(["landmark-one-main", "aria-prohibited-attr"]);
 
 beforeAll(async () => {
   adoptIndexHtml();

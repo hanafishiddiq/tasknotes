@@ -106,7 +106,7 @@ export default function ApprovalsView({ hidden, refreshKey, onDecided }: Approva
           ) : requests.length === 0 ? (
             <div className="empty-state">
               <ClipboardCheck size={26} strokeWidth={1.5} aria-hidden="true" />
-              <h3>Nothing waiting for approval</h3>
+              <h2>Nothing waiting for approval</h2>
             </div>
           ) : (
             <ul className="approval-list">

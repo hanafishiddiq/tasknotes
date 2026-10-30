@@ -977,7 +977,7 @@ export default function App() {
 
             {(noteHits || noteHitsFailed) && (
               <section className="note-hits" aria-label="Matching notes">
-                <h3 className="task-group-heading">Notes</h3>
+                <h2 className="task-group-heading">Notes</h2>
                 {noteHitsFailed ? (
                   <p className="note-hits-empty">Notes couldn't be searched.</p>
                 ) : noteHits && noteHits.items.length === 0 ? (
@@ -1013,7 +1013,7 @@ export default function App() {
               ) : loadError && filtering ? (
                 <div className="empty-state" aria-label="Search unavailable">
                   <SearchX size={26} strokeWidth={1.5} aria-hidden="true" />
-                  <h3>Search couldn't run</h3>
+                  <h2>Search couldn't run</h2>
                   <p>Check the message above, or clear the search and filters to see your tasks.</p>
                   <div className="empty-state-actions">
                     <button className="button button-small" type="button" onClick={clearFilters}>
@@ -1025,14 +1025,14 @@ export default function App() {
               ) : loadError && tasks.length === 0 ? (
                 <div className="empty-state" aria-label="Tasks unavailable">
                   <LockKeyhole size={26} strokeWidth={1.5} aria-hidden="true" />
-                  <h3>Couldn't load your tasks</h3>
+                  <h2>Couldn't load your tasks</h2>
                   <p>The local database couldn't be opened. Nothing has been changed; check the message above and try again.</p>
                   <button className="button button-small" type="button" onClick={retryFirstLoad}>Try again</button>
                 </div>
               ) : tasks.length === 0 && previousPageCursors.length === 0 && filtering ? (
                 <div className="empty-state">
                   <SearchX size={26} strokeWidth={1.5} aria-hidden="true" />
-                  <h3>No matching tasks</h3>
+                  <h2>No matching tasks</h2>
                   <p>Nothing in this view matches the search and filters.</p>
                   <button className="button button-small" type="button" onClick={clearFilters}>
                     Clear search and filters
@@ -1041,7 +1041,7 @@ export default function App() {
               ) : tasks.length === 0 && previousPageCursors.length === 0 ? (
                 <div className="empty-state">
                   <CheckCircle2 size={26} strokeWidth={1.5} aria-hidden="true" />
-                  <h3>Your list is clear</h3>
+                  <h2>Your list is clear</h2>
                   <p>Type a title in New task above to add your first one.</p>
                 </div>
               ) : (
