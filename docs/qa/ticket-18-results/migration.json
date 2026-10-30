@@ -1,0 +1,98 @@
+[
+  {
+    "commit": "b799cce",
+    "label": "Ticket 01",
+    "version_before": 1,
+    "version_after": 14,
+    "tasks": 3,
+    "records_unchanged": true,
+    "search_hits": {
+      "drill0": 1,
+      "drillbody1": 1
+    },
+    "note_search_hits": null,
+    "integrity_check": "ok",
+    "foreign_key_problems": 0,
+    "write_after_upgrade_ok": true,
+    "backup_after_upgrade_ok": true,
+    "schema_differences_from_a_new_database": []
+  },
+  {
+    "commit": "bc8ac50",
+    "label": "Ticket 02",
+    "version_before": 2,
+    "version_after": 14,
+    "tasks": 3,
+    "records_unchanged": true,
+    "search_hits": {
+      "drill0": 1,
+      "drillbody1": 1
+    },
+    "note_search_hits": null,
+    "integrity_check": "ok",
+    "foreign_key_problems": 0,
+    "write_after_upgrade_ok": true,
+    "backup_after_upgrade_ok": true,
+    "schema_differences_from_a_new_database": []
+  },
+  {
+    "commit": "2937c9a",
+    "label": "Ticket 03",
+    "version_before": 3,
+    "version_after": 14,
+    "tasks": 3,
+    "records_unchanged": true,
+    "search_hits": {
+      "drill0": 1,
+      "drillbody1": 1,
+      "drillnote2": 1,
+      "drillnext": 3
+    },
+    "note_search_hits": null,
+    "integrity_check": "ok",
+    "foreign_key_problems": 0,
+    "write_after_upgrade_ok": true,
+    "backup_after_upgrade_ok": true,
+    "schema_differences_from_a_new_database": []
+  },
+  {
+    "commit": "80de645",
+    "label": "Ticket 05, today's main",
+    "version_before": 5,
+    "version_after": 14,
+    "tasks": 3,
+    "records_unchanged": true,
+    "search_hits": {
+      "drill0": 1,
+      "drillbody1": 1,
+      "drillnote2": 1,
+      "drillnext": 3
+    },
+    "note_search_hits": null,
+    "integrity_check": "ok",
+    "foreign_key_problems": 0,
+    "write_after_upgrade_ok": true,
+    "backup_after_upgrade_ok": true,
+    "schema_differences_from_a_new_database": []
+  },
+  {
+    "commit": "a98dc16",
+    "label": "Ticket 06",
+    "version_before": 6,
+    "version_after": 14,
+    "tasks": 3,
+    "records_unchanged": true,
+    "search_hits": {
+      "drill0": 1,
+      "drillbody1": 1,
+      "drillnote2": 1,
+      "drillnext": 3
+    },
+    "note_search_hits": 1,
+    "integrity_check": "ok",
+    "foreign_key_problems": 0,
+    "write_after_upgrade_ok": true,
+    "backup_after_upgrade_ok": true,
+    "schema_differences_from_a_new_database": []
+  }
+]
