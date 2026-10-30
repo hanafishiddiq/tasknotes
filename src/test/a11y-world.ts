@@ -68,6 +68,7 @@ export const RICH_NOTE = [
 export class World {
   notes = new NoteBackend();
   tasks: Task[] = [];
+  private removedTasks: Task[] = [];
   /** Set to make the Task list say another page follows. */
   taskNextCursor: string | null = null;
   lists: TaskList[] = [];
@@ -84,6 +85,8 @@ export class World {
   };
   /** What the shell answers to the next set_quick_capture. */
   nextCapture: QuickCaptureStatus = { state: "active", label: "⌃⌥Space" };
+  /** The shell's queued Quick Capture, collected by the page when it is told. */
+  pendingCapture = false;
   /** Commands that answer with this refusal, as the core would. */
   refuse = new Map<string, string>();
   private clock = FIXTURE_NOW;
@@ -109,13 +112,15 @@ export class World {
         return { ...found };
       }
       case "set_task_removed": {
-        const found = this.tasks.find((task) => task.id === args.input.id)!;
+        const found = [...this.tasks, ...this.removedTasks].find((task) => task.id === args.input.id)!;
         found.revision++;
         if (args.input.removed) {
           this.tasks = this.tasks.filter((task) => task !== found);
+          this.removedTasks.push(found);
           this.removed.push({ kind: "task", id: found.id, title: found.title, revision: found.revision, removedAt: ++this.clock, inRemovedContainer: false });
         } else {
           this.tasks.push(found);
+          this.removedTasks = this.removedTasks.filter((task) => task !== found);
           this.removed = this.removed.filter((item) => item.id !== found.id);
         }
         return { ...found };
@@ -158,7 +163,11 @@ export class World {
         };
         return { ...this.shell };
       }
-      case "take_quick_capture": return false;
+      case "take_quick_capture": {
+        const pending = this.pendingCapture;
+        this.pendingCapture = false;
+        return pending;
+      }
       case "take_launch_notice": {
         const notice = this.launchNotice;
         this.launchNotice = null;
