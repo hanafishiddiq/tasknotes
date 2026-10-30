@@ -60,6 +60,8 @@ export default function ApprovalsView({ hidden, refreshKey, onDecided }: Approva
   const [requests, setRequests] = useState<PendingBulkRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [deciding, setDeciding] = useState<string | null>(null);
+  // Kept apart: a list that loads must not wipe why the last decision was refused.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -67,8 +69,8 @@ export default function ApprovalsView({ hidden, refreshKey, onDecided }: Approva
     if (hidden) return;
     let active = true;
     approvalApi.pending()
-      .then((items) => { if (active) { setRequests(items); setError(null); } })
-      .catch((reason) => { if (active) setError("Couldn't load requests: " + errorMessage(reason)); })
+      .then((items) => { if (active) { setRequests(items); setLoadError(null); } })
+      .catch((reason) => { if (active) setLoadError("Couldn't load requests: " + errorMessage(reason)); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [hidden, refreshKey, reloadKey]);
@@ -100,7 +102,7 @@ export default function ApprovalsView({ hidden, refreshKey, onDecided }: Approva
           <p className="removed-hint">
             Changes an AI client asked for. Nothing changes until you approve; a request expires after a day.
           </p>
-          {error && <div role="alert" className="error-banner"><span>{error}</span></div>}
+          {(error ?? loadError) && <div role="alert" className="error-banner"><span>{error ?? loadError}</span></div>}
           {loading ? (
             <div className="loading-state" role="status"><LoaderCircle className="spin" size={16} /> Loading requests...</div>
           ) : requests.length === 0 ? (
