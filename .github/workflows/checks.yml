@@ -23,13 +23,15 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      - name: The measuring probe stays out of a normal build
+        run: "! grep -rq qa_report dist"
 
   rust:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        crate: [tasknotes-core, tasknotes-cli, tasknotes-mcp]
+        crate: [tasknotes-core, tasknotes-cli, tasknotes-mcp, tasknotes-bench]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -56,5 +58,6 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: cargo test --manifest-path src-tauri/Cargo.toml
+      - run: cargo check --manifest-path src-tauri/Cargo.toml --features qa-probe
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings

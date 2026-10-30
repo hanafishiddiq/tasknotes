@@ -6,6 +6,8 @@ Usage: ticket17_ui_probe.py BINARY DATASET_DIR OUT_JSON
 BINARY is `src-tauri/target/release/tasknotes` built with the qa-probe feature.
 The copy keeps the seeded dataset clean, because the app takes a backup on launch.
 """
+import ctypes
+import ctypes.util
 import json
 import os
 import shutil
@@ -15,6 +17,18 @@ import tempfile
 import time
 
 
+def screen_state():
+    """Frames mean nothing on a sleeping or locked screen; the report says which it was."""
+    graphics = ctypes.CDLL(ctypes.util.find_library("CoreGraphics"))
+    graphics.CGMainDisplayID.restype = ctypes.c_uint32
+    graphics.CGDisplayIsAsleep.argtypes = [ctypes.c_uint32]
+    session = subprocess.run(["ioreg", "-n", "Root", "-d1"], capture_output=True, text=True).stdout
+    return {
+        "display_asleep": bool(graphics.CGDisplayIsAsleep(graphics.CGMainDisplayID())),
+        "screen_locked": "CGSSessionScreenIsLocked" in session,
+    }
+
+
 def rss_kb(pid):
     out = subprocess.run(["ps", "-o", "rss=", "-p", str(pid)], capture_output=True, text=True).stdout
     return int(out.strip() or 0)
@@ -22,6 +36,7 @@ def rss_kb(pid):
 
 def main():
     binary, dataset, out = sys.argv[1:4]
+    before = screen_state()
     if not os.path.exists(os.path.join(dataset, "synthetic-dataset.json")):
         sys.exit(f"{dataset} holds no synthetic dataset")
     with tempfile.TemporaryDirectory(prefix="tasknotes-ticket17-") as work:
@@ -30,18 +45,23 @@ def main():
         report_file = os.path.join(work, "report.json")
         env = dict(os.environ, TASKNOTES_DEV_DATA_DIR=data, TASKNOTES_QA_REPORT=report_file)
         child = subprocess.Popen([binary], env=env)
-        peak, deadline = 0, time.time() + 600
+        peak, deadline = 0, time.time() + 360
         while child.poll() is None and time.time() < deadline:
             peak = max(peak, rss_kb(child.pid))
             time.sleep(0.25)
         if child.poll() is None:
             child.terminate()
-            sys.exit("the probe did not finish in 10 minutes")
+            sys.exit("the probe did not finish in 6 minutes")
         if not os.path.exists(report_file):
             sys.exit(f"the app exited with {child.returncode} and no report")
         with open(report_file) as handle:
             report = json.load(handle)
     report["app_process_peak_rss_mb"] = round(peak / 1024, 1)
+    after = screen_state()
+    report["screen"] = {"before": before, "after": after}
+    report["frame_timings_valid"] = bool(report.get("frames_flow")) and not any(
+        state["display_asleep"] or state["screen_locked"] for state in (before, after)
+    )
     with open(out, "w") as handle:
         json.dump(report, handle, indent=2)
     print(json.dumps(report, indent=2))

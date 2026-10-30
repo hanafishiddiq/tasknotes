@@ -89,7 +89,7 @@ pub fn scenarios(manifest: &Value) -> Vec<Scenario> {
             }),
         ),
         s(
-            "tasks: page 100 of the list",
+            "tasks: walking 100 pages, total",
             false,
             Query::TasksDeep(TaskQuery::default(), 100),
         ),

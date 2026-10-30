@@ -18,10 +18,10 @@ use tauri::{Manager, State};
 mod data;
 #[cfg(desktop)]
 mod platform;
-#[cfg(desktop)]
-mod quick_capture;
 #[cfg(feature = "qa-probe")]
 mod qa_probe;
+#[cfg(desktop)]
+mod quick_capture;
 mod quit;
 #[cfg(desktop)]
 mod shell;

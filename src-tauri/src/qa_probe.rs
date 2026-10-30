@@ -9,8 +9,9 @@ use tauri::{AppHandle, Manager};
 const DATA_DIR: &str = "TASKNOTES_DEV_DATA_DIR";
 const REPORT_FILE: &str = "TASKNOTES_QA_REPORT";
 
-/// The data directory to use. Keeps the window on top without taking focus,
-/// because macOS stops drawing a covered window and frames would say nothing.
+/// The data directory to use. Brings the window to the front and keeps it there,
+/// because macOS stops drawing a covered or inactive window and frames would say
+/// nothing.
 pub fn prepare(app: &AppHandle, _default: PathBuf) -> Result<PathBuf, String> {
     let dir = std::env::var_os(DATA_DIR)
         .map(PathBuf::from)
@@ -20,6 +21,7 @@ pub fn prepare(app: &AppHandle, _default: PathBuf) -> Result<PathBuf, String> {
     }
     if let Some(window) = app.get_webview_window("main") {
         window.set_always_on_top(true).map_err(|e| e.to_string())?;
+        window.set_focus().map_err(|e| e.to_string())?;
     }
     Ok(dir)
 }
