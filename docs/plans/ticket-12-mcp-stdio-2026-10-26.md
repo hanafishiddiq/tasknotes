@@ -78,7 +78,7 @@ Add `"args": ["--data-dir", "/path/to/data"]` to use another data directory. The
 3. A move binds its target List's revision; renaming or removing it makes the request stale (core `renaming_or_removing_the_target_list_makes_a_move_stale`, MCP `moves_bind_the_target_list_and_use_the_shared_target_rule`).
 4. Tool count is 40 (exact set asserted); a non-JSON line gets no reply and the server answers the next request.
 5. Shared move-target rule; `BulkAction` is a serde enum and `BulkArgs` a tagged enum; tools split by noun; mutex narrowed to opening; bulk status changes share `checked_change`.
-6. **Open:** Ticket 13 integration (`ensure_daily_backup` at MCP start-up and periodically, bulk writes through the epoch-checked `begin_write`, MCP refused during restore, schema renumbering) waits for Ticket 13 to merge into `integration/tasknotes-v1-07-18`.
+6. **Done 2026-10-30 at the merge:** Ticket 13 integration (`ensure_daily_backup` at MCP start-up and periodically, bulk writes through the epoch-checked `begin_write`, MCP refused during restore, schema renumbering).
 
 ## Evidence (implementer's own runs, 2026-10-26)
 

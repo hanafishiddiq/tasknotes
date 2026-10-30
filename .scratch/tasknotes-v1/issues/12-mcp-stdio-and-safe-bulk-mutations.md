@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** implemented, awaiting independent review (branch `feat/ticket-12-mcp-stdio`; plan `docs/plans/ticket-12-mcp-stdio-2026-10-26.md`).
+**Implementation:** implemented and merged into `integration/tasknotes-v1-07-18` with Ticket 13 on 2026-10-30; independent review of the meeting done, two findings wait for the owner (see the last comment). Plan: `docs/plans/ticket-12-mcp-stdio-2026-10-26.md`.
 
 ## Acceptance criteria
 
@@ -21,7 +21,7 @@
 
 - [x] Run MCP stdio protocol integration tests with synthetic records, including privacy and bulk-confirmation negative controls. — 24 tests spawning the real binary
 - [x] Relevant tests pass and evidence is recorded here. — see the 2026-10-26 comment
-- [x] Run `/code-review` and address findings before marking complete. — review findings 1–5 and 7 addressed 2026-10-26; finding 6 (Ticket 13 integration) waits for Ticket 13's merge
+- [x] Run `/code-review` and address findings before marking complete. — review findings 1–5 and 7 addressed 2026-10-26; finding 6 (Ticket 13 integration) addressed 2026-10-30 at the merge
 
 ## Native click-checklist (owner, real desktop app, synthetic data only)
 
@@ -62,4 +62,26 @@ Owner decisions (Han, 2026-10-26), recorded here as decided:
 Review fixes: (1) stale refusals → one generic `bulk.approve` audit entry about the request; (2) CLI `tasknotes bulk preview|status` shares `tasknotes_cli::bulk` with MCP; (3) a move binds the target List revision, tested for rename and removal; (4) tool count corrected to 40 with an exact-set test, and a non-JSON stdin line deterministically gets no reply while the server keeps serving; (5) one move-target rule (`contract::destination`), `BulkAction` serde enum, `BulkArgs` tagged enum, tools split by noun, mutex narrowed to opening the store, bulk status changes share `checked_change` (parity test); (6) **open** until Ticket 13 merges into integration: `ensure_daily_backup` at MCP start-up and periodically, bulk writes through `begin_write`, MCP refused during restore; (7) plan, GLOSSARY, client setup and this ticket updated; native click-checklist added.
 
 Evidence (implementer's runs): core 151 passed, CLI 38, MCP 25, src-tauri 41; clippy `-D warnings` and `fmt --check` clean in all four; `pnpm test` 239 passed; `pnpm typecheck`, `pnpm build` ok. Status unchanged.
+
+### 2026-10-30 — Ticket 12 meets Ticket 13 (integration)
+
+Both branches started from a05b6ec and merged into `integration/tasknotes-v1-07-18`. Backups take schema v13, Bulk Change requests v14; every write, a Bulk Change's included, goes through the epoch-checked `begin_write`.
+
+Fixed at the merge, each with a test written first:
+
+- A restore dropped `requested_by` from the Audit Entries it carries over (`a_restore_keeps_who_asked_for_an_approved_bulk_change`).
+- The MCP server takes the day's backup: it checks at start-up, then hourly, and every 5 s until access and a database both exist; a failure goes to stderr and never reaches a tool (`crates/tasknotes-mcp/tests/backup.rs`).
+- A revision read before a restore could match again and land on a later server call, because each call opens its own store. The server now remembers the Restore Epoch and refuses the first call after a restore with `database_restored` (`a_write_from_before_a_restore_is_refused_once_and_the_persons_edit_survives`).
+- The desktop's approval poll bypassed the wrapper that reloads after a restore made elsewhere, so an idle window never reloaded (`src/approvals.test.tsx`).
+
+**Waiting for the owner (not fixed):**
+
+1. A restore brings back the snapshot's Exclude from AI flag, so a Note excluded after the backup becomes readable by AI clients again.
+2. A Bulk Change request pending in the snapshot comes back as pending after a restore, even if the person already decided it, and can be approved again within its 24 hours.
+
+**Known and left for Ticket 18:**
+
+- Two processes opening a database at the same moment can make one open fail, with no data damage: the migration is transactional, and a retry succeeds. Forced with barrier threads it fails often (40 of 80 on a fresh directory); a real server start against a desktop open failed 0 of 60.
+- A database created by a build of this branch alone (v14 with no `database_epoch` table) does not open. Throw such QA directories away; no real data was ever opened by that build.
+- The Restore Epoch guards one running MCP server. A client that remembers a revision across a server restart, or across separate `tasknotes` commands, is still protected only by the revision check.
 
