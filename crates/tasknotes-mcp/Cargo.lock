@@ -681,6 +681,7 @@ name = "tasknotes-mcp"
 version = "0.1.0"
 dependencies = [
  "rmcp",
+ "rusqlite",
  "schemars",
  "serde",
  "serde_json",

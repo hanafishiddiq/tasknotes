@@ -17,18 +17,22 @@ use serde_json::{Map, Value};
 use tasknotes_cli::contract::{self, CliError};
 use tasknotes_core::ai_access;
 use tasknotes_core::audit::Interface;
-use tasknotes_core::tasks::TaskError;
+use tasknotes_core::tasks::{TaskError, TaskStore};
 
 use crate::tools::{Context, ToolDef};
 
 /// How often a running server checks whether the day's backup is due, like
 /// the desktop.
 const BACKUP_CHECK: Duration = Duration::from_secs(60 * 60);
+/// How often it looks for access and a database until both exist, so the
+/// first write of a short session still gets its backup. Opens nothing.
+const BACKUP_WAIT: Duration = Duration::from_secs(5);
 
 const INSTRUCTIONS: &str = "Tasknotes: the person's local Tasks, Lists and Notes. \
 Every tool answers with one JSON envelope {schema_version, ok, item | items + next_cursor | error}. \
 Changes name the revision you last read; a revision_conflict means someone else changed it, \
-so read again before retrying. Removed is reversible: nothing is ever deleted. \
+so read again before retrying. A database_restored means the person restored a backup: \
+forget what you read and read again before changing anything. Removed is reversible: nothing is ever deleted. \
 Changing several items at once, or removing a List or Note Folder that holds anything, goes through \
 bulk_preview: it waits for the person to approve it in the Tasknotes app (you cannot approve it); \
 read its outcome with bulk_status.";
@@ -41,6 +45,10 @@ pub struct Tasknotes {
     /// Once open, each call has its own connection and waits out SQLite's
     /// busy timeout like any other writer (the CLI, the desktop).
     opening: Arc<Mutex<()>>,
+    /// The Restore Epoch of the last call. Each call opens its own store, so
+    /// the store's own guard cannot span two calls, and a restore rewinds
+    /// revisions: one the client read before could match again.
+    seen_epoch: Mutex<Option<String>>,
     tools: Vec<ToolDef>,
 }
 
@@ -49,6 +57,7 @@ impl Tasknotes {
         Self {
             data_dir,
             opening: Arc::new(Mutex::new(())),
+            seen_epoch: Mutex::new(None),
             tools: crate::tools::all(),
         }
     }
@@ -61,6 +70,10 @@ impl Tasknotes {
         let opening = Arc::clone(&self.opening);
         std::thread::spawn(move || {
             loop {
+                if !can_back_up(&data_dir) {
+                    std::thread::sleep(BACKUP_WAIT);
+                    continue;
+                }
                 if let Some(problem) = daily_backup(&data_dir, &opening) {
                     eprintln!("tasknotes-mcp: {problem}");
                 }
@@ -96,17 +109,33 @@ impl Tasknotes {
             TaskError::NotAuthorized => not_trusted(),
             error => CliError::from(error),
         })?;
+        self.require_same_data(&store)?;
         tool.call(&Context { store: &store }, arguments)
+    }
+
+    /// Refuse the first call after a restore, whatever it is, so the client
+    /// learns to read again before a stale revision can land. Then carry on.
+    fn require_same_data(&self, store: &TaskStore) -> Result<(), CliError> {
+        let current = store.restore_epoch();
+        let mut seen = self.seen_epoch.lock().unwrap_or_else(|e| e.into_inner());
+        let restored = seen.as_ref().is_some_and(|last| *last != current);
+        *seen = Some(current);
+        if restored {
+            return Err(CliError::from(TaskError::DatabaseRestored));
+        }
+        Ok(())
     }
 }
 
-/// Take the day's backup if it is due. Before the person has authorized MCP,
-/// or before a database exists, there is nothing to do and nothing is opened.
+/// Before the person has authorized MCP, or before a database exists, there
+/// is nothing to back up and nothing may be opened.
+fn can_back_up(data_dir: &Path) -> bool {
+    ai_access::is_authorized(data_dir, Interface::Mcp)
+        && data_dir.join(ai_access::DATABASE_FILE).exists()
+}
+
+/// Take the day's backup if it is due; what went wrong, if anything.
 fn daily_backup(data_dir: &Path, opening: &Mutex<()>) -> Option<String> {
-    let database = data_dir.join(ai_access::DATABASE_FILE);
-    if !ai_access::is_authorized(data_dir, Interface::Mcp) || !database.exists() {
-        return None;
-    }
     let store = {
         let _one_at_a_time = opening.lock().unwrap_or_else(|e| e.into_inner());
         ai_access::open_authorized(data_dir, Interface::Mcp)

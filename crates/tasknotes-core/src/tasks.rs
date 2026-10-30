@@ -845,6 +845,12 @@ impl TaskStore {
         }
     }
 
+    /// The Restore Epoch this store last saw: it changes when the data is
+    /// restored from a backup. For an adapter whose calls outlive one store.
+    pub fn restore_epoch(&self) -> String {
+        self.epoch().clone()
+    }
+
     pub(crate) fn epoch(&self) -> std::sync::MutexGuard<'_, String> {
         // The guarded value is a plain string, so a poisoned lock is still sound.
         self.epoch

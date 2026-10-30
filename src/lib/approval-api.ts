@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./invoke";
 import type { WorkStatus } from "./task-api";
 
 /** What an AI interface asked to do, by the core's action names. */

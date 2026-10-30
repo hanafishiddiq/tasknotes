@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
 import App from "./App";
 import type { Task } from "./lib/task-api";
-import type { PendingBulkRequest } from "./lib/approval-api";
+import { approvalApi, type PendingBulkRequest } from "./lib/approval-api";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 const call = vi.mocked(invoke);
@@ -76,7 +76,7 @@ describe("Waiting for approval", () => {
   it("shows nothing in the sidebar while no AI request waits", async () => {
     render(<App />);
     await screen.findByRole("article", { name: "Synthetic draft" });
-    await waitFor(() => expect(call).toHaveBeenCalledWith("count_pending_bulk_requests"));
+    await waitFor(() => expect(call).toHaveBeenCalledWith("count_pending_bulk_requests", undefined));
     expect(screen.queryByRole("button", { name: /Waiting for approval/ })).not.toBeInTheDocument();
   });
 
@@ -149,5 +149,20 @@ describe("Waiting for approval", () => {
     pending = [request("req-5")];
     window.dispatchEvent(new Event("focus"));
     expect(await screen.findByRole("button", { name: "Waiting for approval, 1" })).toBeInTheDocument();
+  });
+});
+
+describe("a restore made elsewhere", () => {
+  it("reloads the window from the approval poll, the only call an idle window makes", async () => {
+    const reload = vi.fn();
+    vi.stubGlobal("location", { ...window.location, reload });
+    call.mockImplementation(async (command) => {
+      if (command === "adopt_restored_data") return null;
+      throw "Tasknotes data was restored from a backup since this was opened; reload Tasknotes to continue";
+    });
+    await expect(approvalApi.count()).rejects.toContain("restored from a backup");
+    await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+    expect(call).toHaveBeenCalledWith("adopt_restored_data");
+    vi.unstubAllGlobals();
   });
 });

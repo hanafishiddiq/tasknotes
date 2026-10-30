@@ -1,5 +1,6 @@
 //! Ticket 13 meets Ticket 12: backups run while any Tasknotes process is
-//! active, the MCP server included. A failed backup never fails a tool.
+//! active, the MCP server included, and no client can write over restored
+//! data with what it read before. A failed backup never fails a tool.
 //! Synthetic data only.
 
 mod common;
@@ -70,4 +71,108 @@ fn a_failed_backup_never_fails_a_tool() {
         "stderr: {}",
         server.stderr()
     );
+}
+
+#[test]
+fn a_backup_follows_soon_after_the_first_write_creates_the_database() {
+    let data = Data::trusted();
+    let mut server = data.server();
+    server.ok("task_create", json!({"title": "Synthetic"}));
+    assert_eq!(wait_for_backups(&data).len(), 1);
+}
+
+#[test]
+fn a_backup_follows_soon_after_the_person_grants_access() {
+    let data = Data::untrusted();
+    data.desktop();
+    let mut server = data.server();
+    assert!(server.silent_for(Duration::from_millis(200)));
+    assert!(data.desktop().list_backups().unwrap().is_empty());
+    data.write_access(r#"{"schema_version":1,"mcp":true}"#);
+    assert_eq!(wait_for_backups(&data).len(), 1);
+}
+
+/// Restoring rewinds revisions, so a revision a client read before can match
+/// again: the Restore Epoch has to stop it, across calls of one server.
+#[test]
+fn a_write_from_before_a_restore_is_refused_once_and_the_persons_edit_survives() {
+    let data = Data::trusted();
+    let desktop = data.desktop();
+    let mut server = data.server();
+    let task = server.ok("task_create", json!({"title": "Synthetic original"}));
+    let id = task["item"]["id"].as_str().unwrap().to_owned();
+    let backup = desktop.create_backup().unwrap().backup;
+    server.ok(
+        "task_update",
+        json!({"id": id, "revision": 1, "title": "Synthetic AI saw this"}),
+    );
+    desktop.restore_backup(&backup.id).unwrap();
+    // The person carries on in the restored data: revision 2 again.
+    desktop
+        .patch_task(tasknotes_core::tasks::PatchTask {
+            id: id.clone(),
+            expected_revision: 1,
+            title: Some("Synthetic persons edit".into()),
+            description: None,
+        })
+        .unwrap();
+
+    server.refused(
+        "task_update",
+        json!({"id": id, "revision": 2, "title": "Synthetic stale write"}),
+        "database_restored",
+    );
+    let title = |d: &tasknotes_core::tasks::TaskStore| d.get_task(&id).unwrap().unwrap().title;
+    assert_eq!(title(&desktop), "Synthetic persons edit");
+
+    // Told once: the client reads again and carries on.
+    let read = server.ok("task_get", json!({"id": id}));
+    assert_eq!(read["item"]["title"], "Synthetic persons edit");
+    server.ok(
+        "task_update",
+        json!({"id": id, "revision": read["item"]["revision"], "title": "Synthetic fresh write"}),
+    );
+    assert_eq!(title(&desktop), "Synthetic fresh write");
+}
+
+/// What a running restore looks like from outside: its lock held and the live
+/// epoch a fence token. Every call is refused and nothing is written.
+#[test]
+fn every_call_is_refused_while_a_restore_runs_and_works_again_after() {
+    let data = Data::trusted();
+    let desktop = data.desktop();
+    let task = desktop
+        .create_task(tasknotes_core::tasks::CreateTask {
+            title: "Synthetic".into(),
+            description: String::new(),
+        })
+        .unwrap();
+    drop(desktop);
+    std::fs::create_dir_all(data.path().join("backups")).unwrap();
+    let lock = std::fs::File::options()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(data.path().join("backups/.restore.lock"))
+        .unwrap();
+    lock.try_lock().unwrap();
+    rusqlite::Connection::open(data.db())
+        .unwrap()
+        .execute(
+            "UPDATE database_epoch SET epoch = 'restoring-synthetic'",
+            [],
+        )
+        .unwrap();
+    let mut server = data.server();
+    for (tool, arguments) in [
+        ("task_list", json!({})),
+        ("task_get", json!({"id": task.id})),
+        ("task_create", json!({"title": "Synthetic during restore"})),
+    ] {
+        server.refused(tool, arguments, "storage_unavailable");
+    }
+    drop(lock);
+    let listed = server.ok("task_list", json!({}));
+    assert_eq!(listed["items"].as_array().unwrap().len(), 1);
 }
