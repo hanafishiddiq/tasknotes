@@ -627,13 +627,19 @@ pub fn assert_same_content(
     }
 }
 
-/// Whether this process holds any internet socket. `None` when `lsof` is not
-/// installed, which the caller reports rather than treats as a pass.
-pub fn internet_sockets(pid: u32) -> Option<String> {
+/// The internet sockets this process holds, as `lsof` lists them. A missing or
+/// failing `lsof` fails the test, so the check can never pass without running.
+pub fn internet_sockets(pid: u32) -> String {
     let output = Command::new("lsof")
         .args(["-nP", "-a", "-p", &pid.to_string(), "-i"])
         .output()
-        .ok()?;
-    // lsof prints nothing (and exits 1) when there is none.
-    Some(String::from_utf8_lossy(&output.stdout).trim().to_owned())
+        .expect("the socket check needs lsof");
+    // lsof exits 1 with no output when there is none; anything it says on
+    // stderr means it could not look.
+    assert!(
+        output.status.success() || (output.status.code() == Some(1) && output.stderr.is_empty()),
+        "lsof failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8_lossy(&output.stdout).trim().to_owned()
 }

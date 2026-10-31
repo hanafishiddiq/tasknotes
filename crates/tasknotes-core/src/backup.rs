@@ -52,7 +52,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use crate::audit::Interface;
+use crate::audit::{AuditAction, Interface};
 use crate::calendar::{DAY_MS, TimeZone, civil_from_days};
 use crate::tasks::{
     BUSY_TIMEOUT, SCHEMA_VERSION, TaskError, TaskStore, current_millis, migrate, open_connection,
@@ -572,12 +572,77 @@ impl Staging {
         Ok(())
     }
 
+    /// What a restore must not undo, in the copy with live data attached and
+    /// every Audit Entry already carried over. A row can have left at one
+    /// restore and come back at this one, so nothing live remembers it: the
+    /// Audit Entries, which every restore keeps, stand in for the rows.
+    fn keep_what_must_survive(tx: &Transaction) -> Result<(), TaskError> {
+        // A client still holding a revision must not overwrite what the person
+        // writes next. A row older than its newest number ever gets one no
+        // version of it has had; the newest version keeps its own, so a request
+        // waiting on it stays valid.
+        for table in ["tasks", "notes", "lists", "note_folders"] {
+            let newest = format!(
+                "max(COALESCE((SELECT l.revision FROM live.{table} AS l WHERE l.id = {table}.id), 0),
+                     COALESCE((SELECT max(a.revision) FROM main.audit_entries AS a
+                               WHERE a.entity_id = {table}.id), 0))"
+            );
+            tx.execute(
+                &format!(
+                    "UPDATE main.{table} SET revision = 1 + {newest} WHERE revision < {newest}"
+                ),
+                [],
+            )?;
+        }
+        // Owner decision, 2026-10-30: a restore can never open a Note to AI. A
+        // Note private now stays private. One absent from live may have been
+        // made private before it left; the entries do not say which way the
+        // last change went, so any change of privacy keeps it private, and the
+        // person can share it again.
+        tx.execute(
+            "UPDATE main.notes SET exclude_from_ai = 1
+             WHERE id IN (SELECT id FROM live.notes WHERE exclude_from_ai = 1)
+                OR (id NOT IN (SELECT id FROM live.notes)
+                    AND id IN (SELECT entity_id FROM main.audit_entries WHERE action = ?1))",
+            params![AuditAction::NotePrivacy.as_str()],
+        )?;
+        // Owner decision, 2026-10-30: a person's decision stands. From the live
+        // request when there is one, else from its last Audit Entry.
+        tx.execute(
+            "UPDATE main.bulk_requests
+             SET (status, decided_at) = (SELECT l.status, l.decided_at
+                                         FROM live.bulk_requests AS l
+                                         WHERE l.id = bulk_requests.id)
+             WHERE status = 'pending'
+               AND EXISTS (SELECT 1 FROM live.bulk_requests AS l
+                           WHERE l.id = bulk_requests.id AND l.status <> 'pending')",
+            [],
+        )?;
+        tx.execute(
+            "UPDATE main.bulk_requests
+             SET (status, decided_at) = (
+               SELECT CASE WHEN a.action = ?1 THEN 'declined'
+                           WHEN a.outcome = 'applied' THEN 'applied'
+                           ELSE 'stale' END,
+                      a.created_at
+               FROM main.audit_entries AS a
+               WHERE a.entity_id = bulk_requests.id AND a.action IN (?1, ?2)
+               ORDER BY a.sequence DESC LIMIT 1)
+             WHERE status = 'pending'
+               AND EXISTS (SELECT 1 FROM main.audit_entries AS a
+                           WHERE a.entity_id = bulk_requests.id AND a.action IN (?1, ?2))",
+            params![
+                AuditAction::BulkDecline.as_str(),
+                AuditAction::BulkApprove.as_str()
+            ],
+        )?;
+        Ok(())
+    }
+
     /// Step 3 of a restore, once writers are fenced: append every live
     /// Audit Entry the snapshot lacks (in append order, with its id, and
     /// hidden from AI if it is hidden from AI now) and a `backup.restore`
-    /// entry, keep what the person set since the snapshot that must survive
-    /// (a Note's privacy, a decision on a Bulk Change), retire the revisions
-    /// of what changed, give the copy a
+    /// entry, keep what must survive (`keep_what_must_survive`), give the copy a
     /// fresh Restore Epoch and fold its log into the file. Returns the
     /// epoch.
     fn carry_over(
@@ -615,33 +680,7 @@ impl Staging {
         // Owner decisions, 2026-10-30. A restore can never open a Note to AI:
         // one private now stays private. And a person's decision stands: a
         // request decided since the snapshot does not come back as waiting.
-        // A restore must not reuse a revision: a client still holding one could
-        // otherwise overwrite what the person writes next. What changed since
-        // the snapshot gets a number no version of it has had; what did not
-        // change keeps its own, so a request waiting on it stays valid.
-        for table in ["tasks", "notes", "lists", "note_folders"] {
-            tx.execute_batch(&format!(
-                "UPDATE main.{table} SET revision =
-                   (SELECT l.revision + 1 FROM live.{table} AS l WHERE l.id = {table}.id)
-                 WHERE EXISTS (SELECT 1 FROM live.{table} AS l
-                               WHERE l.id = {table}.id AND l.revision <> {table}.revision);"
-            ))?;
-        }
-        tx.execute(
-            "UPDATE main.notes SET exclude_from_ai = 1
-             WHERE id IN (SELECT id FROM live.notes WHERE exclude_from_ai = 1)",
-            [],
-        )?;
-        tx.execute(
-            "UPDATE main.bulk_requests
-             SET (status, decided_at) = (SELECT l.status, l.decided_at
-                                         FROM live.bulk_requests AS l
-                                         WHERE l.id = bulk_requests.id)
-             WHERE status = 'pending'
-               AND EXISTS (SELECT 1 FROM live.bulk_requests AS l
-                           WHERE l.id = bulk_requests.id AND l.status <> 'pending')",
-            [],
-        )?;
+        Self::keep_what_must_survive(&tx)?;
         crate::audit::record_restore(&tx, interface, backup_id)?;
         tx.execute(
             "UPDATE main.database_epoch SET epoch = ?1 WHERE id = 1",

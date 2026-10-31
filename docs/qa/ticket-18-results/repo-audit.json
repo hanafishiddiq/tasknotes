@@ -32,7 +32,7 @@
       "path": "crates/tasknotes-core/tests/backup_restore.rs"
     },
     {
-      "bytes": 39053,
+      "bytes": 39118,
       "path": "src/App.css"
     }
   ],
@@ -50,13 +50,8 @@
       "where": []
     },
     "home directory": {
-      "count": 8,
+      "count": 3,
       "where": [
-        "docs/qa/ticket-18-results/package-smoke.json:13",
-        "docs/qa/ticket-18-results/package-smoke.json:14",
-        "docs/qa/ticket-18-results/package-smoke.json:15",
-        "docs/qa/ticket-18-results/package-smoke.json:16",
-        "docs/qa/ticket-18-results/package-smoke.json:17",
         "src/data-settings.test.tsx:36",
         "src/data-settings.test.tsx:106",
         "src/test/a11y-world.ts:180"
@@ -68,7 +63,11 @@
       "commits_touching": 0
     },
     "home directory": {
-      "commits_touching": 4
+      "commits_touching": 5
     }
+  },
+  "private_emails_in_commit_metadata": {
+    "distinct": 1,
+    "occurrences": 7
   }
 }

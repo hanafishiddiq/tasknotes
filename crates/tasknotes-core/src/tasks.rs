@@ -594,15 +594,28 @@ fn database_version(connection: &Connection) -> Result<i64, TaskError> {
     Ok(connection.pragma_query_value(None, "user_version", |row| row.get(0))?)
 }
 
+/// How long a process waits for another's upgrade before saying so. Longer than
+/// the upgrade of 60,000 records takes, and a stopped process can hold the lock.
+const UPGRADE_WAIT: Duration = Duration::from_secs(30);
+
 /// Held for one upgrade; the operating system releases it even if the process dies.
-fn lock_upgrades(database: &Path) -> Result<std::fs::File, TaskError> {
+fn lock_upgrades(database: &Path, wait: Duration) -> Result<std::fs::File, TaskError> {
     let lock = std::fs::File::options()
         .read(true)
         .write(true)
         .create(true)
         .truncate(false)
         .open(database.with_extension("upgrade.lock"))?;
-    lock.lock()?;
+    let deadline = std::time::Instant::now() + wait;
+    while let Err(std::fs::TryLockError::WouldBlock) = lock.try_lock() {
+        if std::time::Instant::now() >= deadline {
+            return Err(TaskError::Io(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "another Tasknotes process is upgrading this database; try again when it has finished",
+            )));
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
     Ok(lock)
 }
 
@@ -780,7 +793,7 @@ impl TaskStore {
         // One upgrades it while the others wait, then find it done; migrate
         // reads the version again under the lock.
         let _one_upgrade_at_a_time = if database_version(&connection)? < SCHEMA_VERSION {
-            Some(lock_upgrades(path)?)
+            Some(lock_upgrades(path, UPGRADE_WAIT)?)
         } else {
             None
         };
@@ -1302,5 +1315,24 @@ impl TaskStore {
             limit,
             cursor,
         )
+    }
+}
+
+#[cfg(test)]
+mod upgrade_lock_tests {
+    use super::*;
+
+    #[test]
+    fn a_stopped_holder_makes_an_open_say_so_instead_of_hanging() {
+        let dir = tempfile::tempdir().unwrap();
+        let database = dir.path().join("tasknotes.db");
+        let held = lock_upgrades(&database, Duration::ZERO).unwrap();
+
+        let error = lock_upgrades(&database, Duration::from_millis(100)).unwrap_err();
+        assert!(error.to_string().contains("upgrading"), "{error}");
+        assert_eq!(error.code(), "storage_unavailable");
+
+        drop(held);
+        assert!(lock_upgrades(&database, Duration::ZERO).is_ok());
     }
 }

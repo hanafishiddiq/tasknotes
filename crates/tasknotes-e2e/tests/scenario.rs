@@ -142,10 +142,8 @@ impl Stage {
         );
         let stderr = self.mcp.stderr();
         assert!(stderr.is_empty(), "MCP stderr: {stderr}");
-        match internet_sockets(self.mcp.pid()) {
-            Some(sockets) => assert!(sockets.is_empty(), "MCP opened a socket: {sockets}"),
-            None => eprintln!("lsof is not available; the socket check did not run"),
-        }
+        let sockets = internet_sockets(self.mcp.pid());
+        assert!(sockets.is_empty(), "MCP opened a socket: {sockets}");
     }
 }
 

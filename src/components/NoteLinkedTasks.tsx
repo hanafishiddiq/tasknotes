@@ -36,7 +36,11 @@ export default function NoteLinkedTasks({ noteId, shown, onOpenTask }: NoteLinke
     wasPicking.current = picking;
   }, [picking]);
 
-  useEffect(() => { setPicking(false); }, [noteId]);
+  // Opening another Note closes the picker, but focus stays with what opened it.
+  useEffect(() => {
+    wasPicking.current = false;
+    setPicking(false);
+  }, [noteId]);
 
   // Finding a Task reuses the core Task search, so it matches what the Task view finds.
   useEffect(() => {

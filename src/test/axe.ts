@@ -50,8 +50,10 @@ function summaries(results: axe.Result[]): string[] {
  */
 async function axeOnStillPage() {
   for (let attempt = 0; attempt < 5; attempt++) {
-    const changes = new MutationObserver(() => undefined);
-    changes.observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
+    let changed = false;
+    const changes = new MutationObserver(() => { changed = true; });
+    // The body only: axe adds and removes its own style element in the head.
+    changes.observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
     const results = await axe.run(document, {
       rules: {
         ...Object.fromEntries(Object.keys(RULES_JSDOM_CANNOT_JUDGE).map((rule) => [rule, { enabled: false }])),
@@ -59,7 +61,7 @@ async function axeOnStillPage() {
       },
       resultTypes: ["violations", "incomplete"],
     });
-    const changed = changes.takeRecords().length > 0;
+    changed ||= changes.takeRecords().length > 0;
     changes.disconnect();
     if (!changed) return results;
   }

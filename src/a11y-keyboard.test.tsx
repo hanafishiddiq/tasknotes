@@ -535,3 +535,37 @@ describe("waiting for the owner: focus falls to the body when the control used d
     expect(document.activeElement?.closest("[hidden]")).not.toBeNull();
   });
 });
+
+describe("focus and messages around a change of view", () => {
+  it("leaves focus on the Note just opened when that closes the link picker", async () => {
+    world.notes.seed("# First\n\nA", "First");
+    world.notes.seed("# Second\n\nB", "Second");
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "All notes" }));
+    await user.click(await screen.findByRole("button", { name: "Link a Task" }, { timeout: 5000 }));
+    await screen.findByRole("searchbox", { name: "Find a Task to link" });
+    const rows = within(screen.getByRole("list", { name: "Notes" })).getAllByRole("button")
+      .filter((row) => row.getAttribute("aria-current") !== "true");
+    await user.click(rows[0]);
+    await waitFor(() => expect(screen.queryByRole("searchbox", { name: "Find a Task to link" })).toBeNull(), { timeout: 5000 });
+    await new Promise((settled) => setTimeout(settled, 50));
+    expect(document.activeElement).toBe(rows[0]);
+  });
+
+  it("does not keep a refused approval's reason after the person leaves", async () => {
+    world.pending = [fixtureRequest("r1")];
+    world.refuse.set("approve_bulk_request", "Synthetic refusal");
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /^Waiting for approval/ }));
+    await user.click(await screen.findByRole("button", { name: /^Approve/ }));
+    await screen.findByRole("alert");
+    await user.click(screen.getByRole("button", { name: "All tasks" }));
+    world.pending = [];
+    await user.click(await screen.findByRole("button", { name: /^Waiting for approval/ }));
+    await screen.findByText("Nothing waiting for approval");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+

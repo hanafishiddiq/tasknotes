@@ -15,6 +15,8 @@ import subprocess
 import sys
 import tempfile
 
+CURRENT_SCHEMA = 14
+
 # (commit, schema the commit writes, label)
 OLD = [
     ("b799cce", 1, "Ticket 01"),
@@ -176,6 +178,7 @@ def main():
     print(json.dumps(results, indent=2, ensure_ascii=False))
     ok = all(
         r["records_unchanged"] and r["integrity_check"] == "ok" and not r["foreign_key_problems"]
+        and r["version_after"] == CURRENT_SCHEMA and r["note_search_hits"] in (None, 1)
         and r["write_after_upgrade_ok"] and r["backup_after_upgrade_ok"]
         and not r["schema_differences_from_a_new_database"] and all(r["search_hits"].values())
         for r in results

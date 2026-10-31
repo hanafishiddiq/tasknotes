@@ -78,3 +78,18 @@ describe("the axe check itself", () => {
     for (const rule of Object.keys(RULES_JSDOM_CANNOT_JUDGE)) expect(known).toContain(rule);
   });
 });
+
+describe("the axe harness", () => {
+  it("refuses an answer from a page that keeps changing", async () => {
+    render(<main><h1>Synthetic</h1></main>);
+    const heading = screen.getByRole("heading");
+    let count = 0;
+    const changing = window.setInterval(() => { heading.setAttribute("data-count", String(count++)); }, 1);
+    try {
+      await expect(runAxe()).rejects.toThrow("kept changing");
+    } finally {
+      window.clearInterval(changing);
+    }
+  });
+});
+

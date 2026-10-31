@@ -65,6 +65,11 @@ export default function ApprovalsView({ hidden, refreshKey, onDecided }: Approva
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
+  // Why the last decision was refused matters while the person is here to read it.
+  useEffect(() => {
+    if (hidden) setError(null);
+  }, [hidden]);
+
   useEffect(() => {
     if (hidden) return;
     let active = true;
