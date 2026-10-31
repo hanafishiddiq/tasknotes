@@ -105,7 +105,7 @@ pub fn tools() -> Vec<ToolDef> {
         tool(
             "list_list",
             Kind::Read,
-            "List the Lists, newest first.",
+            "List the Lists, in the person's manual order.",
             |c, a: ListPage| {
                 let page =
                     c.store

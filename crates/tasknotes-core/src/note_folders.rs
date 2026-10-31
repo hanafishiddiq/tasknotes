@@ -70,6 +70,15 @@ pub struct PlaceNoteFolder {
     pub after_id: Option<String>,
 }
 
+/// Puts a folder directly after a sibling, or first, under the parent it has
+/// when the write happens.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ReorderNoteFolder {
+    pub id: String,
+    pub expected_revision: i64,
+    pub after_id: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NoteFolderPage {
@@ -402,30 +411,47 @@ impl TaskStore {
             AuditAction::FolderReorder
         };
         self.audited(action, input, |input| {
-            self.place_note_folder_inner(input, action)
+            self.place_inner(
+                &input.id,
+                input.expected_revision,
+                Some(input.parent_id.as_deref()),
+                input.after_id.as_deref(),
+                action,
+            )
         })
     }
 
-    fn place_note_folder_inner(
+    /// Moves a folder among its siblings; for an interface that names no parent.
+    pub fn reorder_note_folder(&self, input: ReorderNoteFolder) -> Result<NoteFolder, TaskError> {
+        self.audited(AuditAction::FolderReorder, input, |input| {
+            self.place_inner(
+                &input.id,
+                input.expected_revision,
+                None,
+                input.after_id.as_deref(),
+                AuditAction::FolderReorder,
+            )
+        })
+    }
+
+    /// `destination` is the new parent (`Some(None)` the top level), or `None`
+    /// to stay under the current one.
+    fn place_inner(
         &self,
-        input: PlaceNoteFolder,
+        id: &str,
+        expected_revision: i64,
+        destination: Option<Option<&str>>,
+        after_id: Option<&str>,
         action: AuditAction,
     ) -> Result<NoteFolder, TaskError> {
         let mut conn = self.connect()?;
         let tx = self.begin_write(&mut conn)?;
-        let old = current_folder(&tx, &input.id, input.expected_revision)?;
-        let parent_id = input.parent_id.as_deref();
-        let leaves_parent = old.parent_id != input.parent_id;
-        if leaves_parent {
+        let old = current_folder(&tx, id, expected_revision)?;
+        let parent_id = destination.unwrap_or(old.parent_id.as_deref());
+        if parent_id != old.parent_id.as_deref() {
             require_destination(&tx, &old, parent_id)?;
         }
-        let changed = manual_order::place(
-            &tx,
-            Siblings::Folders { parent_id },
-            &old.id,
-            input.after_id.as_deref(),
-        )?;
-        if !changed {
+        if !manual_order::place(&tx, Siblings::Folders { parent_id }, &old.id, after_id)? {
             return Err(TaskError::NoteFolderUnchanged);
         }
         let placed = write_folder(&tx, &old, parent_id, &old.name)?;

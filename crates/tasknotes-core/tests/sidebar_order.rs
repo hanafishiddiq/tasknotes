@@ -7,7 +7,7 @@ use rusqlite::{Connection, params};
 
 use tasknotes_core::note_folders::{
     CreateNoteFolder, MAX_FOLDER_DEPTH, MoveNoteFolder, NoteFolder, PlaceNoteFolder,
-    RenameNoteFolder,
+    RenameNoteFolder, ReorderNoteFolder,
 };
 use tasknotes_core::removed::SetRemoved;
 use tasknotes_core::tasks::{
@@ -611,4 +611,85 @@ fn folder_pages_walk_the_manual_order_without_repeats_or_gaps() {
 
     assert_eq!(walked, expected);
     assert_eq!(expected[0], "F4");
+}
+
+#[test]
+fn a_folder_cannot_land_after_a_removed_sibling_and_comes_back_where_it_was() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("folder-removed.db"));
+    let a = folder(&store, "A", None);
+    let b = folder(&store, "B", None);
+    let c = folder(&store, "C", None);
+    let d = folder(&store, "D", None);
+    let removed = store
+        .set_note_folder_removed(SetRemoved {
+            id: b.id.clone(),
+            expected_revision: b.revision,
+            removed: true,
+        })
+        .unwrap();
+
+    assert!(matches!(
+        place(&store, &c, None, Some(&removed)),
+        Err(TaskError::OrderAnchorChanged)
+    ));
+    place(&store, &d, None, None).unwrap();
+    assert_eq!(folder_names(&store, None), ["D", "A", "C"]);
+    assert_eq!(
+        store.get_note_folder(&a.id).unwrap().unwrap().revision,
+        a.revision
+    );
+
+    store
+        .set_note_folder_removed(SetRemoved {
+            id: b.id.clone(),
+            expected_revision: removed.revision,
+            removed: false,
+        })
+        .unwrap();
+    assert_eq!(folder_names(&store, None), ["D", "A", "B", "C"]);
+}
+
+#[test]
+fn reordering_without_naming_a_parent_stays_under_the_parent_it_has_at_that_moment() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("stay.db"));
+    let work = folder(&store, "Work", None);
+    let one = folder(&store, "One", Some(&work));
+    let two = folder(&store, "Two", Some(&work));
+
+    let moved = store
+        .reorder_note_folder(ReorderNoteFolder {
+            id: two.id.clone(),
+            expected_revision: two.revision,
+            after_id: None,
+        })
+        .unwrap();
+
+    assert_eq!(moved.parent_id.as_deref(), Some(work.id.as_str()));
+    assert_eq!(folder_names(&store, Some(&work)), ["Two", "One"]);
+    let audit = store.list_audit_entries(Some(&two.id), 10, None).unwrap();
+    assert!(
+        audit
+            .items
+            .iter()
+            .any(|entry| entry.action.as_str() == "folder.reorder")
+    );
+    // Stale revision and an anchor under another parent are refused the same way.
+    assert!(matches!(
+        store.reorder_note_folder(ReorderNoteFolder {
+            id: two.id.clone(),
+            expected_revision: two.revision,
+            after_id: None,
+        }),
+        Err(TaskError::NoteFolderRevisionConflict)
+    ));
+    assert!(matches!(
+        store.reorder_note_folder(ReorderNoteFolder {
+            id: one.id.clone(),
+            expected_revision: one.revision,
+            after_id: Some(work.id.clone()),
+        }),
+        Err(TaskError::OrderAnchorChanged)
+    ));
 }

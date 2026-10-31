@@ -111,6 +111,7 @@ export default function NoteFolderTree({ folders, currentId, disabled, onOpen, o
    */
   function moveWithKeys(event: KeyboardEvent, folder: NoteFolder) {
     event.preventDefault();
+    if (busy) return;
     const ids = siblingIds(folder.parentId);
     const at = ids.indexOf(folder.id);
     refocus.current = folder.id;
@@ -217,7 +218,7 @@ export default function NoteFolderTree({ folders, currentId, disabled, onOpen, o
                       data-folder-id={folder.id}
                       aria-current={currentId === folder.id ? "page" : undefined}
                       aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown Alt+ArrowLeft Alt+ArrowRight"
-                      onMouseDown={(event) => drag.start(event, folder.id, folder.name)}
+                      onMouseDown={(event) => drag.start(event, folder.id)}
                       onClick={() => onOpen(folder)}>
                       <Folder size={17} aria-hidden="true" /><span className="folder-name">{folder.name}</span>
                     </button>

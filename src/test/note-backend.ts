@@ -163,6 +163,9 @@ export class NoteBackend {
       if (current.revision !== input.expectedRevision) throw "This folder changed elsewhere; reload before saving";
       const next: NoteFolder = { ...current, parentId: input.parentId, revision: current.revision + 1, updatedAt: ++this.clock };
       const others = [...this.folders.values()].filter((folder) => folder.id !== input.id);
+      if (input.afterId !== null && !others.some((folder) => folder.id === input.afterId && folder.parentId === input.parentId)) {
+        throw "The sidebar changed while this was moving; reload and try again";
+      }
       others.splice(input.afterId === null ? 0 : others.findIndex((folder) => folder.id === input.afterId) + 1, 0, next);
       this.folders = new Map(others.map((folder) => [folder.id, folder]));
       return this.withChildren(next);

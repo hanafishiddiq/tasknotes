@@ -5,7 +5,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use tasknotes_cli::contract::{self, CliError};
 use tasknotes_core::note_folders::{
-    CreateNoteFolder, MoveNoteFolder, PlaceNoteFolder, RenameNoteFolder,
+    CreateNoteFolder, MoveNoteFolder, PlaceNoteFolder, RenameNoteFolder, ReorderNoteFolder,
 };
 use tasknotes_core::notes::{CreateNote, MoveNote, NoteQuery, NoteScope, UpdateNote};
 use tasknotes_core::tasks::TaskError;
@@ -378,24 +378,22 @@ struct FolderReorderArgs {
 
 fn folder_reorder(c: &Context, a: FolderReorderArgs) -> Result<Value, CliError> {
     let after_id = contract::destination(a.after_id, a.first, ("after_id", "first: true"))?;
-    let parent_id = if a.parent_id.is_none() && !a.top {
-        // Without a new parent it stays among its siblings.
-        c.store
-            .get_note_folder(&a.id)?
-            .ok_or(TaskError::NoteFolderNotFound)?
-            .parent_id
-    } else {
-        contract::destination(a.parent_id, a.top, ("parent_id", "top: true"))?
-    };
-    folder(
-        c,
-        c.store.place_note_folder(PlaceNoteFolder {
-            expected_revision: revision(a.revision)?,
+    let expected_revision = revision(a.revision)?;
+    let placed = if a.parent_id.is_none() && !a.top {
+        c.store.reorder_note_folder(ReorderNoteFolder {
             id: a.id,
-            parent_id,
+            expected_revision,
             after_id,
-        })?,
-    )
+        })?
+    } else {
+        c.store.place_note_folder(PlaceNoteFolder {
+            parent_id: contract::destination(a.parent_id, a.top, ("parent_id", "top: true"))?,
+            id: a.id,
+            expected_revision,
+            after_id,
+        })?
+    };
+    folder(c, placed)
 }
 
 #[derive(Deserialize, JsonSchema)]

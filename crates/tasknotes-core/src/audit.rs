@@ -318,6 +318,7 @@ revisioned!(
     crate::note_folders::RenameNoteFolder,
     crate::note_folders::MoveNoteFolder,
     crate::note_folders::PlaceNoteFolder,
+    crate::note_folders::ReorderNoteFolder,
 );
 
 impl Revisioned for crate::notes::MoveNote {

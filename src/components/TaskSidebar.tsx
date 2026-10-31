@@ -37,8 +37,8 @@ interface TaskSidebarProps {
   onOpenNotes: () => void;
   onCreateList: (name: string) => Promise<boolean>;
   onRenameList: (list: TaskList, name: string) => Promise<boolean>;
-  /** Puts the List directly after another, or first when `afterId` is null. */
-  onReorderList: (list: TaskList, afterId: string | null) => Promise<void>;
+  /** Puts the List directly after another, or first when `afterId` is null; false when refused. */
+  onReorderList: (list: TaskList, afterId: string | null) => Promise<boolean>;
   onRemoveList: (list: TaskList) => Promise<void>;
   onLoadMoreLists: () => Promise<void>;
 }
@@ -78,11 +78,17 @@ export default function TaskSidebar({
     refocus.current = null;
   }, [lists]);
 
-  function placeList(list: TaskList, afterId: string | null) {
-    if (busy || alreadyThere(listIds, list.id, afterId)) return;
+  // One move at a time: a second would name the revision the first is replacing.
+  const moving = useRef(false);
+
+  async function placeList(list: TaskList, afterId: string | null) {
+    if (busy || moving.current || alreadyThere(listIds, list.id, afterId)) return;
+    moving.current = true;
     const after = afterId && activeLists.find((item) => item.id === afterId)?.name;
-    setMoved(after ? `${list.name} moved after ${after}` : `${list.name} moved to the top`);
-    void onReorderList(list, afterId);
+    const placed = await onReorderList(list, afterId);
+    moving.current = false;
+    if (placed) setMoved(after ? `${list.name} moved after ${after}` : `${list.name} moved to the top`);
+    else refocus.current = null;
   }
 
   const drag = useRowDrag({
@@ -93,7 +99,7 @@ export default function TaskSidebar({
       const list = activeLists.find((item) => item.id === dragged);
       if (!list || drop.edge === "into") return;
       const others = listIds.filter((id) => id !== dragged);
-      placeList(list, drop.id === null ? others[others.length - 1] ?? null : anchorFor(listIds, dragged, drop.id, drop.edge));
+      void placeList(list, drop.id === null ? others[others.length - 1] ?? null : anchorFor(listIds, dragged, drop.id, drop.edge));
     },
   });
 
@@ -101,9 +107,9 @@ export default function TaskSidebar({
     if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
     event.preventDefault();
     const at = listIds.indexOf(list.id);
-    if (event.key === "ArrowUp" ? at === 0 : at === listIds.length - 1) return;
+    if (busy || moving.current || (event.key === "ArrowUp" ? at === 0 : at === listIds.length - 1)) return;
     refocus.current = list.id;
-    placeList(list, event.key === "ArrowUp" ? listIds[at - 2] ?? null : listIds[at + 1]);
+    void placeList(list, event.key === "ArrowUp" ? listIds[at - 2] ?? null : listIds[at + 1]);
   }
 
   const dropEdge = (id: string) => {
@@ -200,7 +206,7 @@ export default function TaskSidebar({
                   aria-current={isCurrent({ kind: "list", listId: list.id }) ? "page" : undefined}
                   aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
                   className="folder"
-                  onMouseDown={(event) => drag.start(event, list.id, list.name)}
+                  onMouseDown={(event) => drag.start(event, list.id)}
                   onKeyDown={(event) => moveWithKeys(event, list)}
                   onClick={() => onNavigate({ kind: "list", listId: list.id })}>
                   <Folder size={17} aria-hidden="true" /><span className="folder-name">{list.name}</span>

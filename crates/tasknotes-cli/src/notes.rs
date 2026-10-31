@@ -5,7 +5,7 @@
 
 use serde_json::Value;
 use tasknotes_core::note_folders::{
-    CreateNoteFolder, MoveNoteFolder, PlaceNoteFolder, RenameNoteFolder,
+    CreateNoteFolder, MoveNoteFolder, PlaceNoteFolder, RenameNoteFolder, ReorderNoteFolder,
 };
 use tasknotes_core::notes::{CreateNote, MoveNote, Note, NoteQuery, NoteScope, UpdateNote};
 use tasknotes_core::removed::SetRemoved;
@@ -184,21 +184,24 @@ pub fn folder_command(store: &TaskStore, verb: &str, words: &[String]) -> Result
                 ("--after ID", "--first"),
             )?;
             let parent = p.value("parent").map(str::to_owned);
-            let parent_id = if parent.is_none() && !p.has("top") {
-                // Without a new parent it stays among its siblings.
-                store
-                    .get_note_folder(p.id())?
-                    .ok_or(TaskError::NoteFolderNotFound)?
-                    .parent_id
+            if parent.is_none() && !p.has("top") {
+                store.reorder_note_folder(ReorderNoteFolder {
+                    id: p.id().to_owned(),
+                    expected_revision: p.revision()?,
+                    after_id,
+                })?
             } else {
-                contract::destination(parent, p.has("top"), ("--parent ID", "--top"))?
-            };
-            store.place_note_folder(PlaceNoteFolder {
-                id: p.id().to_owned(),
-                expected_revision: p.revision()?,
-                parent_id,
-                after_id,
-            })?
+                store.place_note_folder(PlaceNoteFolder {
+                    id: p.id().to_owned(),
+                    expected_revision: p.revision()?,
+                    parent_id: contract::destination(
+                        parent,
+                        p.has("top"),
+                        ("--parent ID", "--top"),
+                    )?,
+                    after_id,
+                })?
+            }
         }
         "remove" | "restore" => {
             let p = parse(words, &flags(&["revision"], 1))?;

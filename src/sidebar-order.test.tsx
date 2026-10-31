@@ -34,6 +34,11 @@ beforeEach(() => {
       case "list_lists": return { items: lists.map((item) => ({ ...item })), nextCursor: null };
       case "list_tasks": return { items: [], nextCursor: null };
       case "quit_ready": return null;
+      case "create_list": {
+        const made = list(body.input.name);
+        lists = [...lists, made];
+        return { ...made };
+      }
       case "reorder_list": {
         if (refuseReorder) throw refuseReorder;
         const moving = lists.find((item) => item.id === body.input.id)!;
@@ -86,12 +91,11 @@ describe("reordering Lists", () => {
     dragTo(charlie, ROW_HEIGHT * 1 + 2); // the top edge of Bravo
     expect(charlie.closest("[data-drag-row]")).toHaveAttribute("data-dragging");
     expect(listRow("Bravo").closest("[data-drag-row]")).toHaveAttribute("data-drop-edge", "before");
-    expect(document.querySelector(".row-drag-ghost")).toHaveTextContent("Charlie");
     drop(charlie);
 
     expect(listOrder()).toEqual(["Alpha", "Charlie", "Bravo"]);
     await eventually(() => expect(reorders()).toEqual([{ id: "list-Charlie", expectedRevision: 1, afterId: "list-Alpha" }]));
-    expect(document.querySelector(".row-drag-ghost")).toBeNull();
+    expect(document.body).not.toHaveClass("row-dragging");
     expect(listRow("Charlie")).not.toHaveAttribute("aria-current");
     expect(listRow("Alpha").closest("[data-drag-row]")).not.toHaveAttribute("data-drop-edge");
 
@@ -134,9 +138,11 @@ describe("reordering Lists", () => {
 
     dragTo(bravo, 2);
     fireEvent.keyDown(window, { key: "Escape" });
-    expect(document.querySelector(".row-drag-ghost")).toBeNull();
+    expect(document.body).not.toHaveClass("row-dragging");
     fireEvent.mouseMove(window, { clientX: 20, clientY: 40 });
-    fireEvent.mouseUp(window);
+    // Releasing on the pressed row after Escape does not open it either.
+    drop(bravo);
+    expect(bravo).not.toHaveAttribute("aria-current");
 
     dragTo(bravo, 2, 900);
     expect(listsNav().querySelector("[data-drop-edge]")).toBeNull();
@@ -171,6 +177,68 @@ describe("reordering Lists", () => {
     await eventually(() => expect(listOrder()).toEqual(["Alpha", "Bravo", "Charlie"]));
     expect(listRow("Alpha")).toHaveFocus();
     expect(screen.getByText("Alpha moved to the top")).toBeInTheDocument();
+  });
+
+  it("takes one move at a time, so a quick second press never conflicts with the first", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("button", { name: "Alpha" });
+    let release = () => {};
+    const handle = invokeMock.getMockImplementation()!;
+    invokeMock.mockImplementation(async (command, args) => {
+      if (command === "reorder_list") await new Promise<void>((resolve) => { release = resolve; });
+      return handle(command, args);
+    });
+    listRow("Alpha").focus();
+
+    await user.keyboard("{Alt>}{ArrowDown}{/Alt}");
+    await user.keyboard("{Alt>}{ArrowDown}{/Alt}");
+    expect(reorders()).toHaveLength(1);
+    release();
+    await eventually(() => expect(screen.getByText("Alpha moved after Bravo")).toBeInTheDocument());
+
+    // Once saved, the next press carries the new revision.
+    await user.keyboard("{Alt>}{ArrowDown}{/Alt}");
+    await eventually(() => expect(reorders()).toHaveLength(2));
+    expect(reorders()[1]).toEqual({ id: "list-Alpha", expectedRevision: 2, afterId: "list-Charlie" });
+    release();
+    await eventually(() => expect(screen.getByText("Alpha moved after Charlie")).toBeInTheDocument());
+    expect(screen.queryByText(/changed elsewhere/)).not.toBeInTheDocument();
+  });
+
+  it("does not announce a move the core refused, and leaves focus alone while busy", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("button", { name: "Alpha" });
+    refuseReorder = "This List changed elsewhere; reload before saving";
+    listRow("Alpha").focus();
+    await user.keyboard("{Alt>}{ArrowDown}{/Alt}");
+    await eventually(() => expect(screen.getByText(refuseReorder!)).toBeInTheDocument());
+    expect(screen.queryByText(/moved after/)).not.toBeInTheDocument();
+    await eventually(() => expect(listOrder()).toEqual(["Alpha", "Bravo", "Charlie"]));
+
+    // Refused keeps nothing pending: a later change of the Lists does not pull focus back.
+    const field = screen.getByRole("textbox", { name: "New list name" });
+    field.focus();
+    await user.type(field, "E{Enter}");
+    await eventually(() => expect(within(listsNav()).getByRole("button", { name: "E" })).toBeInTheDocument());
+    expect(listRow("Alpha")).not.toHaveFocus();
+  });
+
+  it("keeps a new List in view when it lands past the first page", async () => {
+    const user = userEvent.setup();
+    const handle = invokeMock.getMockImplementation()!;
+    invokeMock.mockImplementation(async (command, args) => {
+      // The core has more pages: its first page holds only what is already there.
+      if (command === "list_lists") return { items: ["Alpha", "Bravo"].map(list), nextCursor: "more" };
+      if (command === "create_list") return { ...list("Far below"), name: (args as any).input.name };
+      return handle(command, args);
+    });
+    render(<App />);
+    await screen.findByRole("button", { name: "Bravo" });
+    await user.type(screen.getByRole("textbox", { name: "New list name" }), "Far below{Enter}");
+    await eventually(() => expect(listOrder()).toEqual(["Alpha", "Bravo", "Far below"]));
+    expect(screen.getByRole("heading", { name: "Far below" })).toBeInTheDocument();
   });
 
   it("shows the core's refusal and what is true now when someone else changed the List", async () => {
@@ -304,6 +372,28 @@ describe("reordering Note Folders", () => {
     await user.keyboard("{Alt>}{ArrowLeft}{/Alt}");
     await eventually(() => expect(placed().slice(-1)[0]).toMatchObject({ id: folders[1].id, parentId: null, afterId: folders[0].id }));
     await eventually(() => expect(folderRow("Home")).toHaveFocus());
+  });
+
+  it("keeps loaded pages after a move, and a folder that lands past them in view", async () => {
+    const names = Array.from({ length: 55 }, (_, n) => `Folder ${n}`);
+    const { user } = await openWith(names);
+    expect(shown()).not.toContain("Folder 54");
+    await user.click(within(screen.getByRole("navigation", { name: "Note folders" })).getByRole("button", { name: "Load more folders" }));
+    await eventually(() => expect(shown()).toContain("Folder 54"));
+
+    const last = folderRow("Folder 54");
+    dragTo(last, 2);
+    drop(last);
+    await eventually(() => expect(shown()[0]).toBe("Folder 54"));
+    expect(shown()).toHaveLength(55);
+
+    cleanup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "All notes" }));
+    await screen.findByRole("button", { name: "Folder 54" });
+    expect(shown()).not.toContain("Folder 53");
+    await user.type(screen.getByRole("textbox", { name: "New folder name" }), "Newest{Enter}");
+    await eventually(() => expect(shown()[shown().length - 1]).toBe("Newest"));
   });
 
   it("shows the core's refusal, then the tree as it now is, so the next try can work", async () => {

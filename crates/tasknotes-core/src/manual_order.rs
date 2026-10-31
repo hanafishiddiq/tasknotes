@@ -17,6 +17,14 @@ pub(crate) enum Siblings<'a> {
     },
 }
 
+/// One sibling as stored.
+struct Sibling {
+    id: String,
+    position: i64,
+    /// Not in Removed: what a person sees.
+    active: bool,
+}
+
 impl Siblings<'_> {
     const fn table(self) -> &'static str {
         match self {
@@ -25,26 +33,30 @@ impl Siblings<'_> {
         }
     }
 
-    /// `(id, position, active)` of every sibling, in order.
-    fn rows(self, conn: &Connection) -> Result<Vec<(String, i64, bool)>, TaskError> {
-        let filter = match self {
-            Self::Lists => "?1 IS NULL",
-            Self::Folders { .. } => "coalesce(parent_id, '') = coalesce(?1, '')",
+    /// Every sibling, in order, Removed ones in their places.
+    fn rows(self, conn: &Connection) -> Result<Vec<Sibling>, TaskError> {
+        let read = |row: &rusqlite::Row<'_>| {
+            Ok(Sibling {
+                id: row.get(0)?,
+                position: row.get(1)?,
+                active: row.get(2)?,
+            })
         };
-        let parent_id = match self {
-            Self::Lists => None,
-            Self::Folders { parent_id } => parent_id,
+        let rows = match self {
+            Self::Lists => conn
+                .prepare(
+                    "SELECT id, position, removed_at IS NULL FROM lists ORDER BY position, id",
+                )?
+                .query_map([], read)?
+                .collect::<rusqlite::Result<_>>()?,
+            Self::Folders { parent_id } => conn
+                .prepare(
+                    "SELECT id, position, removed_at IS NULL FROM note_folders
+                     WHERE coalesce(parent_id, '') = coalesce(?1, '') ORDER BY position, id",
+                )?
+                .query_map(params![parent_id], read)?
+                .collect::<rusqlite::Result<_>>()?,
         };
-        let mut statement = conn.prepare(&format!(
-            "SELECT id, position, removed_at IS NULL FROM {} WHERE {filter}
-             ORDER BY position, id",
-            self.table()
-        ))?;
-        let rows = statement
-            .query_map(params![parent_id], |row| {
-                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-            })?
-            .collect::<rusqlite::Result<_>>()?;
         Ok(rows)
     }
 }
@@ -54,17 +66,17 @@ impl Siblings<'_> {
 pub(crate) fn migrate_v16(migration: &Transaction) -> Result<(), TaskError> {
     migration.execute_batch(
         "ALTER TABLE lists ADD COLUMN position INTEGER NOT NULL DEFAULT 0;
-         UPDATE lists SET position = ranked.place FROM (
+         UPDATE lists SET position = ordered.place FROM (
              SELECT id, row_number() OVER (ORDER BY created_at DESC, id DESC) AS place FROM lists
-         ) AS ranked WHERE lists.id = ranked.id;
+         ) AS ordered WHERE lists.id = ordered.id;
          DROP INDEX IF EXISTS lists_created_order;
          CREATE INDEX lists_manual_order ON lists(position, id);
          ALTER TABLE note_folders ADD COLUMN position INTEGER NOT NULL DEFAULT 0;
-         UPDATE note_folders SET position = ranked.place FROM (
+         UPDATE note_folders SET position = ordered.place FROM (
              SELECT id, row_number() OVER (
                  PARTITION BY coalesce(parent_id, '') ORDER BY name_fold, id
              ) AS place FROM note_folders
-         ) AS ranked WHERE note_folders.id = ranked.id;
+         ) AS ordered WHERE note_folders.id = ordered.id;
          CREATE INDEX note_folders_manual_order
            ON note_folders(coalesce(parent_id, ''), position, id);
          PRAGMA user_version = 16;",
@@ -74,7 +86,7 @@ pub(crate) fn migrate_v16(migration: &Transaction) -> Result<(), TaskError> {
 
 /// The position that puts a new sibling at the bottom.
 pub(crate) fn bottom(conn: &Connection, siblings: Siblings) -> Result<i64, TaskError> {
-    let last = siblings.rows(conn)?.last().map_or(0, |row| row.1);
+    let last = siblings.rows(conn)?.last().map_or(0, |row| row.position);
     Ok(last + 1)
 }
 
@@ -91,43 +103,35 @@ pub(crate) fn place(
 ) -> Result<bool, TaskError> {
     let rows = siblings.rows(tx)?;
     if after_id == Some(id) {
-        return if rows.iter().any(|row| row.0 == id) {
+        return if rows.iter().any(|row| row.id == id) {
             Ok(false)
         } else {
             Err(TaskError::OrderAnchorChanged)
         };
     }
-    let active_before: Vec<&str> = rows
-        .iter()
-        .filter(|row| row.2)
-        .map(|row| row.0.as_str())
-        .collect();
-    let order: Vec<&(String, i64, bool)> = rows.iter().filter(|row| row.0 != id).collect();
+    let order: Vec<&Sibling> = rows.iter().filter(|row| row.id != id).collect();
     let at = match after_id {
         None => 0,
         Some(anchor) => {
             order
                 .iter()
-                .position(|row| row.2 && row.0 == anchor)
+                .position(|row| row.active && row.id == anchor)
                 .ok_or(TaskError::OrderAnchorChanged)?
                 + 1
         }
     };
-    let mut active_after: Vec<&str> = order
+    let shown = |row: &&&Sibling| row.active;
+    let active_before = rows
         .iter()
-        .take(at)
-        .filter(|row| row.2)
-        .map(|row| row.0.as_str())
-        .collect();
-    active_after.push(id);
-    active_after.extend(
-        order
-            .iter()
-            .skip(at)
-            .filter(|row| row.2)
-            .map(|row| row.0.as_str()),
-    );
-    if active_before == active_after {
+        .filter(|row| row.active)
+        .map(|row| row.id.as_str());
+    let active_after = order[..at]
+        .iter()
+        .filter(shown)
+        .map(|row| row.id.as_str())
+        .chain([id])
+        .chain(order[at..].iter().filter(shown).map(|row| row.id.as_str()));
+    if active_before.eq(active_after) {
         return Ok(false);
     }
     let mut update = tx.prepare(&format!(
@@ -138,8 +142,8 @@ pub(crate) fn place(
     update.execute(params![moved_to, id])?;
     for (index, row) in order.iter().enumerate() {
         let wanted = i64::try_from(index).unwrap_or(i64::MAX) + if index < at { 1 } else { 2 };
-        if row.1 != wanted {
-            update.execute(params![wanted, row.0])?;
+        if row.position != wanted {
+            update.execute(params![wanted, row.id])?;
         }
     }
     Ok(true)

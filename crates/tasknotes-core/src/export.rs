@@ -298,7 +298,7 @@ impl TaskStore {
         let note_folders = collect(
             conn,
             "SELECT id, parent_id, name, revision, created_at, updated_at, removed_at, position
-             FROM note_folders ORDER BY position, id",
+             FROM note_folders ORDER BY coalesce(parent_id, ''), position, id",
             |row| {
                 Ok(FolderRecord {
                     id: row.get(0)?,

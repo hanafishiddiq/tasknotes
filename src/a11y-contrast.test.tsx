@@ -45,7 +45,6 @@ const TEXT: Record<string, Placement> = {
   ".folder-form input": { on: ["sidebar", "hover"] },
   ".folder-form input::placeholder": { on: ["sidebar", "hover"] },
   ".sidebar-error": { on: ["sidebar"] },
-  ".row-drag-ghost": { on: ["side-selected"] },
   ".sidebar-link": { on: ["sidebar"] },
   ".sidebar-link:hover:not(:disabled)": { on: ["sidebar"] },
   ".folder-form select": { on: ["field"] },
@@ -246,7 +245,7 @@ const NO_PAIR_NEEDED: Record<string, string> = {
 const DECORATIVE_LINES = [
   ".undo-bar", ".sidebar", ".toolbar", ".settings-shortcut", ".settings-backup", ".palette", ".palette-field",
   ".removed-item", ".approval", ".task-slot + .task-slot .task-card::before", ".history-entry", ".linked-item",
-  ".note-list-pane", ".next-step-input", ".note-quote", ".row-drag-ghost",
+  ".note-list-pane", ".next-step-input", ".note-quote",
 ];
 
 /** These repeat the ring on a wrapper, so they are the same colour on the same surfaces. */

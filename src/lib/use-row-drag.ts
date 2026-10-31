@@ -58,7 +58,7 @@ export function useRowDrag(options: RowDragOptions) {
 
   useEffect(() => () => stop.current?.(), []);
 
-  const start = useCallback((event: MouseEvent, id: string, label: string) => {
+  const start = useCallback((event: MouseEvent, id: string) => {
     if (event.button !== 0) return;
     const startX = event.clientX;
     const startY = event.clientY;
@@ -66,7 +66,6 @@ export function useRowDrag(options: RowDragOptions) {
     let lastY = startY;
     let active = false;
     let current: RowDrop | null = null;
-    let ghost: HTMLElement | null = null;
     let scroller: number | undefined;
 
     const aim = () => {
@@ -83,11 +82,6 @@ export function useRowDrag(options: RowDragOptions) {
       active = true;
       setDragging(id);
       document.body.classList.add("row-dragging");
-      ghost = document.createElement("div");
-      ghost.className = "row-drag-ghost";
-      ghost.setAttribute("aria-hidden", "true");
-      ghost.textContent = label;
-      document.body.append(ghost);
       // Holding near the sidebar's edge keeps scrolling it.
       scroller = window.setInterval(() => {
         const sidebar = latest.current.container.current?.closest<HTMLElement>(".sidebar");
@@ -107,7 +101,6 @@ export function useRowDrag(options: RowDragOptions) {
         if (Math.hypot(move.clientX - startX, move.clientY - startY) < DRAG_DISTANCE) return;
         begin();
       }
-      if (ghost) ghost.style.transform = `translate(${move.clientX + 10}px, ${move.clientY + 6}px)`;
       aim();
     };
 
@@ -116,21 +109,22 @@ export function useRowDrag(options: RowDragOptions) {
       window.removeEventListener("mouseup", onUp, true);
       window.removeEventListener("keydown", onKey, true);
       window.clearInterval(scroller);
-      ghost?.remove();
       document.body.classList.remove("row-dragging");
       setDragging(null);
       setDrop(null);
       stop.current = null;
     };
 
+    // The release after a drag would also click the row that was pressed.
+    const swallowClick = () => {
+      const swallow = (click: Event) => click.stopPropagation();
+      window.addEventListener("click", swallow, { capture: true, once: true });
+      window.setTimeout(() => window.removeEventListener("click", swallow, true));
+    };
+
     function onUp() {
       const dropped = active ? current : null;
-      if (active) {
-        // The release would also click the row that was pressed.
-        const swallow = (click: Event) => click.stopPropagation();
-        window.addEventListener("click", swallow, { capture: true, once: true });
-        window.setTimeout(() => window.removeEventListener("click", swallow, true));
-      }
+      if (active) swallowClick();
       finish();
       if (dropped) latest.current.onDrop(id, dropped);
     }
@@ -140,6 +134,7 @@ export function useRowDrag(options: RowDragOptions) {
       key.preventDefault();
       key.stopPropagation();
       finish();
+      window.addEventListener("mouseup", swallowClick, { capture: true, once: true });
     }
 
     stop.current = finish;
