@@ -624,7 +624,7 @@ button.folder-disclosure:hover:not(:disabled) {
   text-align: center;
   color: var(--text-3);
 }
-.empty-state h3 {
+.empty-state h2 {
   margin: 12px 0 4px;
   font-size: 15px;
   font-weight: 600;
@@ -1426,7 +1426,7 @@ kbd {
   gap: 6px;
   color: var(--text-2);
 }
-.progress-history-heading h4 {
+.progress-history-heading h3 {
   margin: 0;
   font-size: 12px;
   font-weight: 700;

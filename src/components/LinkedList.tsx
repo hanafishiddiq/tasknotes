@@ -20,10 +20,12 @@ export default function LinkedList<T extends { linkId: string; title: string }>(
   // The unlink notice promises the other side stays as it was.
   const kept = noun === "Notes" ? "Note" : "Task";
   const owner = noun === "Notes" ? "Task" : "Note";
+  // On a Task page this sits under the status group's heading; beside a Note, under the page's own.
+  const Heading = noun === "Notes" ? "h3" : "h2";
   return (
     <section className="linked-section"
       aria-label={`${noun} linked to this ${owner}`}>
-      <h4 className="linked-heading">{noun}</h4>
+      <Heading className="linked-heading">{noun}</Heading>
       {links.error && <p role="alert" className="inline-error">{links.error}</p>}
       <ul className="linked-items" aria-label={`Linked ${noun}`}>
         {links.items.map((item) => (

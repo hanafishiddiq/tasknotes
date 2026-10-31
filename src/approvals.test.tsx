@@ -124,6 +124,21 @@ describe("Waiting for approval", () => {
     expect(within(item).getByRole("button", { name: /^Decline/ })).toBeEnabled();
   });
 
+  it("keeps saying why an approval was refused after the list asks again", async () => {
+    pending = [request("req-6")];
+    const user = userEvent.setup();
+    render(<App />);
+    const view = await openApprovals(user);
+    const item = await within(view).findByRole("listitem", { name: "Move 2 Tasks to Removed" });
+    // The core finds it stale only once it is asked to apply it.
+    pending[0].stale = true;
+    await user.click(within(item).getByRole("button", { name: /^Approve/ }));
+    await waitFor(() => expect(call).toHaveBeenCalledWith("approve_bulk_request", expect.anything()));
+    expect(await within(view).findByRole("alert")).toHaveTextContent("Something in this request changed");
+    await waitFor(() => expect(call.mock.calls.filter(([command]) => command === "list_pending_bulk_requests").length).toBeGreaterThan(1));
+    expect(within(view).getByRole("alert")).toHaveTextContent("Something in this request changed");
+  });
+
   it("shows the person everything a folder removal would hide, private Notes marked", async () => {
     pending = [request("req-4", {
       request: { ...request("req-4").request, action: { action: "remove_folder" }, count: null },

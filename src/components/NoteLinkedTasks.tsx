@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link2, SquareCheck } from "lucide-react";
 import { errorMessage } from "../lib/error-message";
 import { linkApi } from "../lib/link-api";
@@ -27,6 +27,14 @@ export default function NoteLinkedTasks({ noteId, shown, onOpenTask }: NoteLinke
   const [picking, setPicking] = useState(false);
   const [query, setQuery] = useState("");
   const [found, setFound] = useState<Task[]>([]);
+  const opener = useRef<HTMLButtonElement>(null);
+  const wasPicking = useRef(picking);
+
+  // The button that opened the picker comes back when it closes: focus follows. (The search field takes it on opening.)
+  useEffect(() => {
+    if (!picking && wasPicking.current) opener.current?.focus();
+    wasPicking.current = picking;
+  }, [picking]);
 
   useEffect(() => { setPicking(false); }, [noteId]);
 
@@ -61,7 +69,7 @@ export default function NoteLinkedTasks({ noteId, shown, onOpenTask }: NoteLinke
       detail={(item) => <span className="linked-status">{STATUS_VIEW[item.status].label}</span>}
       onOpen={(item) => onOpenTask(item.taskId)}>
       {!picking ? (
-        <button type="button" className="text-link linked-add" onClick={() => setPicking(true)}>
+        <button ref={opener} type="button" className="text-link linked-add" onClick={() => setPicking(true)}>
           <Link2 size={13} aria-hidden="true" /> Link a Task
         </button>
       ) : (

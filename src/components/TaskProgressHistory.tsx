@@ -79,7 +79,7 @@ export default function TaskProgressHistory({
     <section className="progress-history" aria-label="Progress history">
       <div className="progress-history-heading">
         <History size={15} aria-hidden="true" />
-        <h4>Recent progress</h4>
+        <h3>Recent progress</h3>
       </div>
       {loading ? (
         <p role="status" className="history-hint">
