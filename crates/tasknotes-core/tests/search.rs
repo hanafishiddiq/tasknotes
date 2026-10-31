@@ -282,6 +282,8 @@ fn a_failed_v5_migration_rolls_back_and_keeps_the_v4_database_usable() {
              ALTER TABLE tasks DROP COLUMN removed_at;
              CREATE TABLE progress_fts(collision INTEGER);
              DROP TABLE IF EXISTS audit_entries; DROP TABLE IF EXISTS bulk_requests; DROP TABLE IF EXISTS retired_revisions;
+             DROP INDEX lists_manual_order; ALTER TABLE lists DROP COLUMN position;
+             CREATE INDEX lists_created_order ON lists(created_at DESC, id DESC);
              PRAGMA user_version=4;",
         )
         .unwrap();

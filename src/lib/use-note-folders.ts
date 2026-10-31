@@ -49,12 +49,21 @@ export function useNoteFolders(enabled: boolean) {
   const [busy, setBusy] = useState(false);
   const expandedRef = useRef(expanded);
   expandedRef.current = expanded;
+  const levelsRef = useRef(levels);
+  levelsRef.current = levels;
 
   /** A level and every open folder below it, first page each. */
   const loadTree = useCallback(async (parentId: string | null): Promise<Record<string, Level>> => {
-    const page = await noteApi.folders(parentId);
-    let loaded: Record<string, Level> = { [key(parentId)]: { items: page.items, cursor: page.nextCursor } };
-    for (const folder of page.items) {
+    let page = await noteApi.folders(parentId);
+    let items = page.items;
+    // As many pages as are showing, so a reload does not drop rows the person loaded.
+    const showing = levelsRef.current[key(parentId)]?.items.length ?? 0;
+    while (page.nextCursor && items.length < showing) {
+      page = await noteApi.folders(parentId, page.nextCursor);
+      items = [...items, ...page.items];
+    }
+    let loaded: Record<string, Level> = { [key(parentId)]: { items, cursor: page.nextCursor } };
+    for (const folder of items) {
       if (folder.hasChildren && expandedRef.current.has(folder.id)) {
         loaded = { ...loaded, ...(await loadTree(folder.id)) };
       }
@@ -116,15 +125,23 @@ export function useNoteFolders(enabled: boolean) {
   }
 
   /** Runs one folder write, then reloads the tree; resolves false when the core refused it. */
-  async function write(change: () => Promise<unknown>, open?: string | null): Promise<boolean> {
+  async function write(change: () => Promise<NoteFolder | void>, open?: string | null): Promise<boolean> {
     if (busy) return false;
     setBusy(true);
     setError(null);
     try {
-      await change();
+      const saved = await change();
       if (open) remember(new Set(expandedRef.current).add(open));
       try {
         await reload();
+        // At the bottom it may be past the loaded pages; what was just written stays in view.
+        if (saved) {
+          setLevels((current) => {
+            const level = current[key(saved.parentId)];
+            if (!level || level.items.some((item) => item.id === saved.id)) return current;
+            return { ...current, [key(saved.parentId)]: { ...level, items: [...level.items, saved] } };
+          });
+        }
       } catch (reason) {
         setError("Saved, but the folders could not refresh: " + errorMessage(reason));
       }
@@ -142,6 +159,8 @@ export function useNoteFolders(enabled: boolean) {
   const rename = (folder: NoteFolder, name: string) => write(() => noteApi.renameFolder(folder, name));
   const move = (folder: NoteFolder, parentId: string | null) =>
     write(() => noteApi.moveFolder(folder, parentId), parentId);
+  const place = (folder: NoteFolder, parentId: string | null, afterId: string | null) =>
+    write(() => noteApi.placeFolder(folder, parentId, afterId), parentId);
 
   /** Every loaded folder in tree order, with its path, for pickers. */
   const options = useMemo(() => {
@@ -178,7 +197,7 @@ export function useNoteFolders(enabled: boolean) {
     remove,
     level: (parentId: string | null): Level | undefined => levels[key(parentId)],
     isExpanded: (id: string) => expanded.has(id),
-    byId, options, error, busy, toggle, loadMore, create, rename, move,
+    byId, options, error, busy, toggle, loadMore, create, rename, move, place,
     dismissError: () => setError(null),
   };
 }

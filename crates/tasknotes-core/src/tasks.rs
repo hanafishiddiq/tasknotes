@@ -11,8 +11,8 @@ use uuid::Uuid;
 
 use crate::audit::{AuditAction, Interface};
 pub use crate::organization::{
-    CreateList, List, ListPage, MoveTask, PatchTaskDetails, RenameList, SetListRemoved, TaskView,
-    UpdateTaskDetails,
+    CreateList, List, ListPage, MoveTask, PatchTaskDetails, RenameList, ReorderList,
+    SetListRemoved, TaskView, UpdateTaskDetails,
 };
 pub use crate::search::{TaskQuery, TaskScope};
 
@@ -147,6 +147,8 @@ pub enum TaskError {
         "Removing this needs the person's approval in Tasknotes; request it with a bulk preview"
     )]
     NeedsApproval,
+    #[error("The sidebar changed while this was moving; reload and try again")]
+    OrderAnchorChanged,
     #[error("Bulk Change request not found")]
     BulkRequestNotFound,
     #[error("This request has already been decided")]
@@ -234,9 +236,10 @@ impl TaskError {
             | InvalidListCursor => "invalid_cursor",
             NotFound | ListNotFound | NoteNotFound | NoteFolderNotFound | LinkNotFound
             | BulkRequestNotFound => "not_found",
-            RevisionConflict | NoteRevisionConflict | NoteFolderRevisionConflict => {
-                "revision_conflict"
-            }
+            RevisionConflict
+            | NoteRevisionConflict
+            | NoteFolderRevisionConflict
+            | OrderAnchorChanged => "revision_conflict",
             TaskRemoved | TaskListRemoved | ListRemoved | NoteRemoved | NoteFolderRemoved => {
                 "removed"
             }
@@ -577,7 +580,7 @@ pub(crate) fn read_task(row: &Row<'_>) -> rusqlite::Result<Task> {
 pub(crate) const COLUMNS: &str = "id, title, description, status, priority, progress, revision, created_at, updated_at, next_step, list_id, due_date, removed_at";
 
 /// The database schema this core reads and writes.
-pub const SCHEMA_VERSION: i64 = 15;
+pub const SCHEMA_VERSION: i64 = 16;
 
 /// How long a write waits for another process (the CLI, MCP) holding the database lock.
 pub const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -781,6 +784,11 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), TaskError> {
     if version < 15 {
         let migration = connection.transaction()?;
         crate::backup::migrate_v15(&migration)?;
+        migration.commit()?;
+    }
+    if version < 16 {
+        let migration = connection.transaction()?;
+        crate::manual_order::migrate_v16(&migration)?;
         migration.commit()?;
     }
     Ok(())

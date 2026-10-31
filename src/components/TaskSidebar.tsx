@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import {
   Check, ClipboardCheck, Folder, Inbox, ListChecks, Moon, NotebookText, Pencil,
   Plus, Settings, Sun, Trash2, X,
 } from "lucide-react";
 import type { TaskList, TaskView } from "../lib/task-api";
+import { alreadyThere, anchorFor, useRowDrag, type RowDrop } from "../lib/use-row-drag";
 import type { Theme } from "../lib/use-theme";
 
 interface TaskSidebarProps {
@@ -36,13 +37,15 @@ interface TaskSidebarProps {
   onOpenNotes: () => void;
   onCreateList: (name: string) => Promise<boolean>;
   onRenameList: (list: TaskList, name: string) => Promise<boolean>;
+  /** Puts the List directly after another, or first when `afterId` is null; false when refused. */
+  onReorderList: (list: TaskList, afterId: string | null) => Promise<boolean>;
   onRemoveList: (list: TaskList) => Promise<void>;
   onLoadMoreLists: () => Promise<void>;
 }
 
 export default function TaskSidebar({
   view, notesActive, removedActive, onOpenRemoved, pendingApprovals, approvalsActive, onOpenApprovals, settingsActive, onOpenSettings, allNotesCurrent, noteFolders, lists, listError, shownCount, hasMoreTasks, hasMoreLists, busy,
-  theme, onToggleTheme, onNavigate, onOpenNotes, onCreateList, onRenameList, onRemoveList,
+  theme, onToggleTheme, onNavigate, onOpenNotes, onCreateList, onRenameList, onReorderList, onRemoveList,
   onLoadMoreLists,
 }: TaskSidebarProps) {
   const [name, setName] = useState("");
@@ -62,6 +65,57 @@ export default function TaskSidebar({
     renamed.current = renaming;
     setRenaming(null);
   }
+
+  const activeLists = lists.filter((list) => !list.removed);
+  const listIds = activeLists.map((list) => list.id);
+  const [moved, setMoved] = useState("");
+  // The List a keyboard move carries: moving its row in the page would drop focus.
+  const refocus = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!refocus.current) return;
+    listsNav.current?.querySelector<HTMLElement>(`[data-list-id="${CSS.escape(refocus.current)}"]`)?.focus();
+    refocus.current = null;
+  }, [lists]);
+
+  // One move at a time: a second would name the revision the first is replacing.
+  const moving = useRef(false);
+
+  async function placeList(list: TaskList, afterId: string | null) {
+    if (busy || moving.current || alreadyThere(listIds, list.id, afterId)) return;
+    moving.current = true;
+    const after = afterId && activeLists.find((item) => item.id === afterId)?.name;
+    const placed = await onReorderList(list, afterId);
+    moving.current = false;
+    if (placed) setMoved(after ? `${list.name} moved after ${after}` : `${list.name} moved to the top`);
+    else refocus.current = null;
+  }
+
+  const drag = useRowDrag({
+    container: listsNav,
+    canNest: false,
+    canTarget: (dragged, id) => dragged !== id,
+    onDrop(dragged: string, drop: RowDrop) {
+      const list = activeLists.find((item) => item.id === dragged);
+      if (!list || drop.edge === "into") return;
+      const others = listIds.filter((id) => id !== dragged);
+      void placeList(list, drop.id === null ? others[others.length - 1] ?? null : anchorFor(listIds, dragged, drop.id, drop.edge));
+    },
+  });
+
+  function moveWithKeys(event: KeyboardEvent, list: TaskList) {
+    if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
+    event.preventDefault();
+    const at = listIds.indexOf(list.id);
+    if (busy || moving.current || (event.key === "ArrowUp" ? at === 0 : at === listIds.length - 1)) return;
+    refocus.current = list.id;
+    void placeList(list, event.key === "ArrowUp" ? listIds[at - 2] ?? null : listIds[at + 1]);
+  }
+
+  const dropEdge = (id: string) => {
+    if (drag.drop?.id === id) return drag.drop.edge;
+    return drag.drop?.edge === "end" && id === listIds[listIds.length - 1] ? "after" : undefined;
+  };
 
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -125,10 +179,12 @@ export default function TaskSidebar({
       </nav>
 
       <div className="sidebar-heading">Lists</div>
+      <span className="sr-only" aria-live="polite">{moved}</span>
       {listError && <p className="sidebar-error" role="status">{listError}</p>}
       <nav ref={listsNav} aria-label="Lists" className="sidebar-nav">
-        {lists.filter((list) => !list.removed).map((list) => (
-          <div className="folder-row" key={list.id}>
+        {activeLists.map((list) => (
+          <div className="folder-row" key={list.id} data-drag-row={list.id}
+            data-dragging={drag.dragging === list.id || undefined} data-drop-edge={dropEdge(list.id)}>
             {renaming === list.id ? (
               <form className="folder-form" onSubmit={(event) => void rename(event, list)}>
                 <Folder size={17} aria-hidden="true" />
@@ -148,7 +204,10 @@ export default function TaskSidebar({
                   aria-label={list.name}
                   data-list-id={list.id}
                   aria-current={isCurrent({ kind: "list", listId: list.id }) ? "page" : undefined}
+                  aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
                   className="folder"
+                  onMouseDown={(event) => drag.start(event, list.id)}
+                  onKeyDown={(event) => moveWithKeys(event, list)}
                   onClick={() => onNavigate({ kind: "list", listId: list.id })}>
                   <Folder size={17} aria-hidden="true" /><span className="folder-name">{list.name}</span>
                   {count({ kind: "list", listId: list.id })}

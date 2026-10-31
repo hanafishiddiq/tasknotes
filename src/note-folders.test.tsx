@@ -160,7 +160,7 @@ describe("nested Note Folders", () => {
     }));
     await eventually(() => expect(within(folderTree())
       .getAllByRole("button", { name: /^(Home|Office|Projects)$/ }).map((button) => button.textContent))
-      .toEqual(["Home", "Office", "Projects"]));
+      .toEqual(["Office", "Home", "Projects"]));
     // Office has nothing left to expand.
     expect(within(folderTree()).queryByRole("button", { name: /Office$/, expanded: true })).not.toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();

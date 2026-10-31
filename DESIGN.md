@@ -271,6 +271,7 @@ Quiet until needed; only the primary button carries color.
 - **Style:** 28px rows, 8px inset, Lucide icon (17px) in the accent, name truncating, tabular count in tertiary gray pushed right.
 - **States:** hover is hover gray; current page is folder-selected gray. Rename and remove actions (22px icon buttons) appear only on row hover or keyboard focus. Quiet folders (removed-lists toggle, appearance toggle) use secondary gray for both icon and text.
 - **New List:** an inline field styled as a folder row with a plus icon; its confirm action appears on focus.
+- **Manual order:** Lists and Note Folders move by dragging the row. Nothing lifts: the dragged row stays in place dimmed to 45% and the pointer shows a grabbing hand. A 2px accent line shows where it lands, indented to the level it would join, and the folder-selected gray on a folder means inside it. Escape cancels. Alt with the arrow keys does the same from the keyboard.
 
 ### Task Row (signature)
 A Notes list cell.

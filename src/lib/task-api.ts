@@ -171,6 +171,11 @@ export const taskApi = {
     return invoke("rename_list", { input });
   },
 
+  /** Puts the List directly after `afterId`, or first when it is null. */
+  reorderList(input: ListMutation & { afterId: string | null }): Promise<TaskList> {
+    return invoke("reorder_list", { input });
+  },
+
   setListRemoved(input: ListMutation & { removed: boolean }): Promise<TaskList> {
     return invoke("set_list_removed", { input });
   },

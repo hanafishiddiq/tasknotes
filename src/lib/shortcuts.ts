@@ -27,6 +27,8 @@ export const SHORTCUTS: Shortcut[] = [
   { keys: "↑ ↓", label: "Move between tasks" },
   { keys: "Return", label: "Open or close the task" },
   { keys: "Esc", label: "Close the open task" },
+  { keys: "⌥↑ ⌥↓", label: "Move the focused List or Folder up or down" },
+  { keys: "⌥← ⌥→", label: "Move the focused Folder out of its parent, or into the Folder above" },
 ];
 
 /** How Settings and notices name the New task shortcut. */

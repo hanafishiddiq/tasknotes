@@ -310,3 +310,84 @@ fn a_stale_revision_is_refused_and_the_desktop_edit_survives() {
     assert_eq!(audit["items"][0]["outcome"], "rejected");
     assert_eq!(audit["items"][0]["error_code"], "revision_conflict");
 }
+
+#[test]
+fn lists_and_folders_reorder_with_the_same_rules_as_the_window() {
+    let data = Data::trusted();
+    let mut s = data.server();
+    let a = s.ok("list_create", json!({"name": "Synthetic A"}));
+    let b = s.ok("list_create", json!({"name": "Synthetic B"}));
+    let c = s.ok("list_create", json!({"name": "Synthetic C"}));
+    let names = |page: Value| -> Vec<String> {
+        page["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| item["name"].as_str().unwrap().to_owned())
+            .collect()
+    };
+
+    let moved = s.ok(
+        "list_reorder",
+        json!({"id": id(&c), "revision": rev(&c), "after_id": id(&a)}),
+    );
+    assert_eq!(rev(&moved), rev(&c) + 1);
+    assert_eq!(
+        names(s.ok("list_list", json!({}))),
+        ["Synthetic A", "Synthetic C", "Synthetic B"]
+    );
+    s.ok(
+        "list_reorder",
+        json!({"id": id(&b), "revision": rev(&b), "first": true}),
+    );
+    assert_eq!(
+        names(s.ok("list_list", json!({}))),
+        ["Synthetic B", "Synthetic A", "Synthetic C"]
+    );
+    // The revision it last read is out of date now.
+    s.refused(
+        "list_reorder",
+        json!({"id": id(&c), "revision": rev(&c), "first": true}),
+        "revision_conflict",
+    );
+    s.refused(
+        "list_reorder",
+        json!({"id": id(&a), "revision": rev(&a), "first": true, "after_id": id(&b)}),
+        "invalid_input",
+    );
+
+    let work = s.ok("folder_create", json!({"name": "Synthetic Work"}));
+    let home = s.ok("folder_create", json!({"name": "Synthetic Home"}));
+    let inner = s.ok(
+        "folder_create",
+        json!({"name": "Synthetic Inner", "parent_id": id(&work)}),
+    );
+    let placed = s.ok(
+        "folder_reorder",
+        json!({"id": id(&home), "revision": rev(&home), "first": true}),
+    );
+    assert_eq!(
+        names(s.ok("folder_list", json!({}))),
+        ["Synthetic Home", "Synthetic Work"]
+    );
+    let nested = s.ok(
+        "folder_reorder",
+        json!({
+            "id": id(&placed), "revision": rev(&placed),
+            "parent_id": id(&work), "after_id": id(&inner),
+        }),
+    );
+    assert_eq!(nested["item"]["parent_id"], id(&work));
+    assert_eq!(
+        names(s.ok("folder_list", json!({"parent_id": id(&work)}))),
+        ["Synthetic Inner", "Synthetic Home"]
+    );
+    s.ok(
+        "folder_reorder",
+        json!({"id": id(&nested), "revision": rev(&nested), "top": true, "first": true}),
+    );
+    assert_eq!(
+        names(s.ok("folder_list", json!({}))),
+        ["Synthetic Home", "Synthetic Work"]
+    );
+}

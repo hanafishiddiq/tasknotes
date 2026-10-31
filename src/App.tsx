@@ -17,6 +17,7 @@ import { useTheme } from "./lib/use-theme";
 import { useSound } from "./lib/sound/use-sound";
 import { useShortcuts } from "./lib/use-shortcuts";
 import { useTaskDrafts } from "./lib/use-task-drafts";
+import { flushSync } from "react-dom";
 import { useUndo } from "./lib/use-undo";
 import { errorMessage } from "./lib/error-message";
 import { listenForQuit } from "./lib/quit";
@@ -354,7 +355,7 @@ export default function App() {
     setError(null);
     try {
       const created = await taskApi.createList(name);
-      setLists((before) => [created, ...before]);
+      setLists((before) => [...before, created]);
       // This is a successful mutation, not a user navigation. busyList is still true.
       setTasks([]);
       setNextCursor(null);
@@ -368,6 +369,8 @@ export default function App() {
       try { await refreshLists(); } catch (reason) {
         setError("List created, but the sidebar could not refresh: " + errorMessage(reason));
       }
+      // At the bottom it may be past the first page; the List just made stays in view.
+      setLists((shown) => shown.some((item) => item.id === created.id) ? shown : [...shown, created]);
       return true;
     } catch (reason) {
       setError(errorMessage(reason));
@@ -392,6 +395,32 @@ export default function App() {
       return false;
     } finally {
       setBusyList(false);
+    }
+  }
+
+  /**
+   * Shows the new order at once; the sidebar stays usable, so focus stays on
+   * the moved row. Resolves false when the core refused it.
+   */
+  async function reorderList(list: TaskList, afterId: string | null): Promise<boolean> {
+    setLists((all) => {
+      const others = all.filter((item) => item.id !== list.id);
+      others.splice(afterId === null ? 0 : others.findIndex((item) => item.id === afterId) + 1, 0, list);
+      return others;
+    });
+    setError(null);
+    try {
+      const updated = await taskApi.reorderList({ id: list.id, expectedRevision: list.revision, afterId });
+      // Committed before this resolves, so the next key press reads the new revision.
+      flushSync(() => setLists((all) => all.map((item) => item.id === list.id ? updated : item)));
+      return true;
+    } catch (reason) {
+      setError(errorMessage(reason));
+      // Whatever moved it or changed it elsewhere is what the sidebar should show now.
+      try { await refreshLists(); } catch (refresh) {
+        setError("The sidebar could not refresh: " + errorMessage(refresh));
+      }
+      return false;
     }
   }
 
@@ -814,6 +843,7 @@ export default function App() {
         theme={appearance.theme} onToggleTheme={appearance.toggle}
         settingsActive={workspace === "settings"} onOpenSettings={openSettings}
         onNavigate={navigate} onCreateList={createList} onRenameList={renameList}
+        onReorderList={reorderList}
         onRemoveList={(list) => setListRemoved(list, true)}
         onLoadMoreLists={loadMoreLists}
       />

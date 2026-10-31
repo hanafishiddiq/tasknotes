@@ -72,6 +72,7 @@ pub mod bulk;
 pub mod calendar;
 pub mod export;
 pub mod links;
+mod manual_order;
 pub mod note_folders;
 pub mod notes;
 mod organization;
