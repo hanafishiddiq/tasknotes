@@ -29,9 +29,9 @@ Tujuan akhir: Tasknotes terpasang di Mac Han dan dipakai dengan data asli, setel
   - [x] Audit privasi repo dan daftar kesiapan rilis terbit
   - [x] CI hijau untuk hasil gabungan tiket 18
 - [ ] Han mengecek aplikasi dengan data sintetis, lalu menyetujui merge ke main
-  - [x] AI menjalankan langkah yang bisa diotomatiskan: 21 dari 24 langkah, 3 sisanya menunggu access grant
+  - [x] AI menjalankan 24 langkah yang bisa diotomatiskan, hasilnya di `docs/qa/owner-check-results-2026-10-31.md`
   - [x] Ekspor tidak lagi membekukan jendela saat dialog izin macOS terbuka
-  - [ ] Langkah 27–29: privasi AI, persetujuan massal, restore
+  - [x] Langkah 27–29: privasi AI, persetujuan massal, restore
   - [ ] Han mengerjakan langkah 4, 14, 17, 18, 23, 30–32 dan membuka menu dari ikon menu bar
 - [ ] Backup data asli, lalu pasang di Mac Han
 
@@ -41,12 +41,16 @@ Tujuan akhir: Tasknotes terpasang di Mac Han dan dipakai dengan data asli, setel
   - Cara: sudah dijalankan Han, hasilnya sah (`frame_timings_valid: true`).
   - Menahan: Kerjakan tiket 17: ukur performa dengan 50.000 Task dan 10.000 Note sintetis
 
-- [ ] Beri CLI akses ke data sintetis QA
-  - Cara: di Terminal masuk ke `.worktrees/integration` di dalam proyek, jalankan `crates/tasknotes-cli/target/release/tasknotes --data-dir "$HOME/Library/Application Support/store.adamaja.tasknotes.ownercheck" access grant`.
+- [x] Beri CLI akses ke data sintetis QA
+  - Cara: sudah dijalankan Han.
+  - Menahan: Han mengecek aplikasi dengan data sintetis, lalu menyetujui merge ke main
+
+- [ ] Pilih tampilan Task tanpa deadline
+  - Cara: pilih A (tulisan "No deadline" saat kosong) atau B (biarkan tampak tanggal hari ini).
   - Menahan: Han mengecek aplikasi dengan data sintetis, lalu menyetujui merge ke main
 
 - [ ] Cek klik aplikasi dengan data sintetis
-  - Cara: AI sudah menjalankan sebagian; Han hanya mengerjakan langkah 4, 14, 17, 18, 23, 30–32 di `docs/qa/owner-check-2026-10-30.md` dan membuka menu dari ikon menu bar, sekitar 15 menit.
+  - Cara: ikuti bagian "Sisa untuk pemilik" di `docs/qa/owner-check-results-2026-10-31.md`, sekitar 15 menit di luar pembuatan data besar.
   - Menahan: Han mengecek aplikasi dengan data sintetis, lalu menyetujui merge ke main
 - [ ] Persetujuan merge dan pemasangan ke data asli
   - Cara: bilang "merge" setelah cek klik beres; persetujuan pasang ke data asli diminta terpisah.
