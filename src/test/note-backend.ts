@@ -130,9 +130,9 @@ export class NoteBackend {
     }
     if (command === "list_note_folders") {
       const parentId = (args.parentId as string | null | undefined) ?? null;
+      // Map order is the manual order: a new folder lands at the bottom.
       const items = [...this.folders.values()]
         .filter((folder) => folder.parentId === parentId && !this.removedAt.has(folder.id))
-        .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()))
         .map((folder) => this.withChildren(folder));
       return page(items, args);
     }
@@ -152,7 +152,19 @@ export class NoteBackend {
         parentId: command === "move_note_folder" ? input.parentId ?? null : current.parentId,
         revision: current.revision + 1, updatedAt: ++this.clock,
       };
+      if (command === "move_note_folder") this.folders.delete(next.id);
       this.folders.set(next.id, next);
+      return this.withChildren(next);
+    }
+    if (command === "place_note_folder") {
+      const input = args.input as { id: string; expectedRevision: number; parentId: string | null; afterId: string | null };
+      const current = this.folders.get(input.id);
+      if (!current) throw "Folder not found";
+      if (current.revision !== input.expectedRevision) throw "This folder changed elsewhere; reload before saving";
+      const next: NoteFolder = { ...current, parentId: input.parentId, revision: current.revision + 1, updatedAt: ++this.clock };
+      const others = [...this.folders.values()].filter((folder) => folder.id !== input.id);
+      others.splice(input.afterId === null ? 0 : others.findIndex((folder) => folder.id === input.afterId) + 1, 0, next);
+      this.folders = new Map(others.map((folder) => [folder.id, folder]));
       return this.withChildren(next);
     }
     if (command === "set_note_removed" || command === "set_note_folder_removed") {

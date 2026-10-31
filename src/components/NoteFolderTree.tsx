@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from "react";
 import {
   Check, ChevronDown, ChevronRight, Folder, FolderInput, FolderPlus, Pencil, Plus, Trash2, X,
 } from "lucide-react";
 import type { NoteFolder } from "../lib/note-api";
 import type { NoteFolders } from "../lib/use-note-folders";
+import { alreadyThere, anchorFor, useRowDrag, type RowDrop } from "../lib/use-row-drag";
 
 /** Which inline control is open on a folder row, if any. */
 type Editing = { kind: "create" | "rename" | "move"; id: string } | null;
@@ -35,6 +36,91 @@ export default function NoteFolderTree({ folders, currentId, disabled, onOpen, o
     tree.current?.querySelector<HTMLElement>(`[data-folder-id="${CSS.escape(closedOn.current)}"]`)?.focus();
     closedOn.current = null;
   }, [editing]);
+
+  const [moved, setMoved] = useState("");
+  // The folder a keyboard move carries: its row is rebuilt, which would drop focus.
+  const refocus = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!refocus.current) return;
+    tree.current?.querySelector<HTMLElement>(`[data-folder-id="${CSS.escape(refocus.current)}"]`)?.focus();
+    refocus.current = null;
+  }, [folders.byId]);
+
+  const siblingIds = (parentId: string | null) => folders.level(parentId)?.items.map((item) => item.id) ?? [];
+
+  /** Puts the folder there, and if the core refuses, shows what is true now. */
+  async function placeFolder(folder: NoteFolder, parentId: string | null, afterId: string | null) {
+    if (busy) return;
+    if (parentId === folder.parentId && alreadyThere(siblingIds(parentId), folder.id, afterId)) return;
+    const after = afterId && folders.byId.get(afterId)?.name;
+    const parent = parentId && folders.byId.get(parentId)?.name;
+    const where = after ? `after ${after}` : parent ? `to the top of ${parent}` : "to the top";
+    if (await folders.place(folder, parentId, afterId)) setMoved(`${folder.name} moved ${where}`);
+    else {
+      refocus.current = null;
+      void folders.refresh();
+    }
+  }
+
+  async function moveInto(folder: NoteFolder, parent: NoteFolder) {
+    if (busy) return;
+    if (folder.parentId === parent.id) {
+      const others = siblingIds(parent.id).filter((id) => id !== folder.id);
+      return placeFolder(folder, parent.id, others[others.length - 1] ?? null);
+    }
+    if (await folders.move(folder, parent.id)) setMoved(`${folder.name} moved into ${parent.name}`);
+    else {
+      refocus.current = null;
+      void folders.refresh();
+    }
+  }
+
+  /** Whether `id` is the dragged folder or sits below it: nothing can land inside itself. */
+  function insideDragged(dragged: string, id: string) {
+    for (let at: string | null | undefined = id; at; at = folders.byId.get(at)?.parentId) {
+      if (at === dragged) return true;
+    }
+    return false;
+  }
+
+  const drag = useRowDrag({
+    container: tree,
+    canNest: true,
+    canTarget: (dragged, id) => !insideDragged(dragged, id),
+    onDrop(dragged: string, drop: RowDrop) {
+      const folder = folders.byId.get(dragged);
+      if (!folder) return;
+      if (drop.id === null) {
+        const top = siblingIds(null).filter((id) => id !== dragged);
+        void placeFolder(folder, null, top[top.length - 1] ?? null);
+        return;
+      }
+      const target = folders.byId.get(drop.id);
+      if (!target) return;
+      if (drop.edge === "into") void moveInto(folder, target);
+      // Just below an open folder's row is its first subfolder's place.
+      else if (drop.edge === "after" && target.hasChildren && folders.isExpanded(target.id)) void placeFolder(folder, target.id, null);
+      else void placeFolder(folder, target.parentId, anchorFor(siblingIds(target.parentId), dragged, target.id, drop.edge));
+    },
+  });
+
+  /**
+   * Alt with the arrows moves the folder itself: Up and Down among its
+   * siblings, Right into the folder above it, Left out to just after its parent.
+   */
+  function moveWithKeys(event: KeyboardEvent, folder: NoteFolder) {
+    event.preventDefault();
+    const ids = siblingIds(folder.parentId);
+    const at = ids.indexOf(folder.id);
+    refocus.current = folder.id;
+    if (event.key === "ArrowUp" && at > 0) void placeFolder(folder, folder.parentId, ids[at - 2] ?? null);
+    else if (event.key === "ArrowDown" && at < ids.length - 1) void placeFolder(folder, folder.parentId, ids[at + 1]);
+    else if (event.key === "ArrowRight" && at > 0) void moveInto(folder, folders.byId.get(ids[at - 1])!);
+    else if (event.key === "ArrowLeft" && folder.parentId) {
+      void placeFolder(folder, folders.byId.get(folder.parentId)?.parentId ?? null, folder.parentId);
+    } else refocus.current = null;
+  }
 
   function closeForm() {
     closedOn.current = editing?.id ?? null;
@@ -75,6 +161,10 @@ export default function NoteFolderTree({ folders, currentId, disabled, onOpen, o
     const id = target.dataset.folderId;
     const folder = id ? folders.byId.get(id) : undefined;
     if (!folder || !["ArrowDown", "ArrowUp", "ArrowRight", "ArrowLeft"].includes(event.key)) return;
+    if (event.altKey) {
+      moveWithKeys(event, folder);
+      return;
+    }
     event.preventDefault();
     const shown = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("button[data-folder-id]")];
     const at = shown.indexOf(target as HTMLButtonElement);
@@ -97,9 +187,14 @@ export default function NoteFolderTree({ folders, currentId, disabled, onOpen, o
         {level.items.map((folder) => {
           const open = folders.isExpanded(folder.id) && folder.hasChildren;
           const edit = editing?.id === folder.id ? editing.kind : null;
+          const dropEdge = drag.drop?.id === folder.id ? drag.drop.edge : undefined;
+          // A line just below an open folder's row belongs to its subfolders.
+          const dropDepth = dropEdge === "after" && open ? depth + 1 : depth;
           return (
             <li key={folder.id}>
-              <div className="folder-row" style={{ paddingLeft: depth * 14 }}>
+              <div className="folder-row" data-drag-row={folder.id}
+                data-dragging={drag.dragging === folder.id || undefined} data-drop-edge={dropEdge}
+                style={{ paddingLeft: depth * 14, "--drop-indent": `${dropDepth * 14}px` } as CSSProperties}>
                 {folder.hasChildren ? (
                   <button type="button" className="folder-disclosure" disabled={disabled}
                     aria-label={`${open ? "Collapse" : "Expand"} ${folder.name}`} aria-expanded={open}
@@ -121,6 +216,8 @@ export default function NoteFolderTree({ folders, currentId, disabled, onOpen, o
                     <button type="button" className="folder" disabled={disabled} aria-label={folder.name}
                       data-folder-id={folder.id}
                       aria-current={currentId === folder.id ? "page" : undefined}
+                      aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown Alt+ArrowLeft Alt+ArrowRight"
+                      onMouseDown={(event) => drag.start(event, folder.id, folder.name)}
                       onClick={() => onOpen(folder)}>
                       <Folder size={17} aria-hidden="true" /><span className="folder-name">{folder.name}</span>
                     </button>
@@ -195,7 +292,9 @@ export default function NoteFolderTree({ folders, currentId, disabled, onOpen, o
             onClick={folders.dismissError}><X size={13} /></button>
         </div>
       )}
-      <ul ref={tree} className="folder-tree" aria-label="Folders" onKeyDown={onKeyDown}>{rows(null, 0)}</ul>
+      <span className="sr-only" aria-live="polite">{moved}</span>
+      <ul ref={tree} className="folder-tree" aria-label="Folders" onKeyDown={onKeyDown}
+        data-drop-end={drag.drop?.edge === "end" || undefined}>{rows(null, 0)}</ul>
       <form className="folder-form folder-form--new" onSubmit={(event) => void createTopLevel(event)}>
         <Plus size={16} aria-hidden="true" />
         <input aria-label="New folder name" placeholder="New Folder" maxLength={100}

@@ -142,6 +142,8 @@ export function useNoteFolders(enabled: boolean) {
   const rename = (folder: NoteFolder, name: string) => write(() => noteApi.renameFolder(folder, name));
   const move = (folder: NoteFolder, parentId: string | null) =>
     write(() => noteApi.moveFolder(folder, parentId), parentId);
+  const place = (folder: NoteFolder, parentId: string | null, afterId: string | null) =>
+    write(() => noteApi.placeFolder(folder, parentId, afterId), parentId);
 
   /** Every loaded folder in tree order, with its path, for pickers. */
   const options = useMemo(() => {
@@ -178,7 +180,7 @@ export function useNoteFolders(enabled: boolean) {
     remove,
     level: (parentId: string | null): Level | undefined => levels[key(parentId)],
     isExpanded: (id: string) => expanded.has(id),
-    byId, options, error, busy, toggle, loadMore, create, rename, move,
+    byId, options, error, busy, toggle, loadMore, create, rename, move, place,
     dismissError: () => setError(null),
   };
 }

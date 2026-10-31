@@ -110,4 +110,11 @@ export const noteApi = {
       input: { id: folder.id, expectedRevision: folder.revision, parentId },
     });
   },
+
+  /** Puts the folder under `parentId`, directly after `afterId` or first when it is null. */
+  placeFolder(folder: NoteFolder, parentId: string | null, afterId: string | null): Promise<NoteFolder> {
+    return invoke("place_note_folder", {
+      input: { id: folder.id, expectedRevision: folder.revision, parentId, afterId },
+    });
+  },
 };

@@ -354,7 +354,7 @@ export default function App() {
     setError(null);
     try {
       const created = await taskApi.createList(name);
-      setLists((before) => [created, ...before]);
+      setLists((before) => [...before, created]);
       // This is a successful mutation, not a user navigation. busyList is still true.
       setTasks([]);
       setNextCursor(null);
@@ -392,6 +392,26 @@ export default function App() {
       return false;
     } finally {
       setBusyList(false);
+    }
+  }
+
+  /** Shows the new order at once; the sidebar stays usable, so focus stays on the moved row. */
+  async function reorderList(list: TaskList, afterId: string | null) {
+    setLists((all) => {
+      const others = all.filter((item) => item.id !== list.id);
+      others.splice(afterId === null ? 0 : others.findIndex((item) => item.id === afterId) + 1, 0, list);
+      return others;
+    });
+    setError(null);
+    try {
+      const updated = await taskApi.reorderList({ id: list.id, expectedRevision: list.revision, afterId });
+      setLists((all) => all.map((item) => item.id === list.id ? updated : item));
+    } catch (reason) {
+      setError(errorMessage(reason));
+      // Whatever moved it or changed it elsewhere is what the sidebar should show now.
+      try { await refreshLists(); } catch (refresh) {
+        setError("The sidebar could not refresh: " + errorMessage(refresh));
+      }
     }
   }
 
@@ -814,6 +834,7 @@ export default function App() {
         theme={appearance.theme} onToggleTheme={appearance.toggle}
         settingsActive={workspace === "settings"} onOpenSettings={openSettings}
         onNavigate={navigate} onCreateList={createList} onRenameList={renameList}
+        onReorderList={reorderList}
         onRemoveList={(list) => setListRemoved(list, true)}
         onLoadMoreLists={loadMoreLists}
       />
