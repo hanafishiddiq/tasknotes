@@ -35,7 +35,8 @@ Tujuan akhir: Tasknotes terpasang di Mac Han dan dipakai dengan data asli, setel
   - [x] Han mencoba sisa langkah, menilai data besar sudah mulus, dan menyetujui merge
   - [x] Selidiki laporan Han: scroll area tengah terukur 53 FPS, kini 58–59 FPS setelah perbaikan
 - [x] Perbaiki kedip saat menutup Task yang terbuka
-- [ ] Backup data asli, lalu pasang di Mac Han
+- [x] Backup data asli, lalu pasang di Mac Han
+- [x] Ganti logo bawaan Tauri dengan logo pilihan Han
 
 ## Perlu Han lakukan
 
@@ -54,8 +55,8 @@ Tujuan akhir: Tasknotes terpasang di Mac Han dan dipakai dengan data asli, setel
 - [x] Cek klik aplikasi dengan data sintetis
   - Cara: ikuti bagian "Sisa untuk pemilik" di `docs/qa/owner-check-results-2026-10-31.md`, sekitar 15 menit di luar pembuatan data besar.
   - Menahan: Han mengecek aplikasi dengan data sintetis, lalu menyetujui merge ke main
-- [ ] Persetujuan pemasangan ke data asli
-  - Cara: PR #20 dan #21 sudah masuk main; bilang "pasang". Database asli di Mac ini tercatat kosong (0 Task, schema 3), tetap di-backup dulu.
+- [x] Persetujuan pemasangan ke data asli
+  - Cara: Han sudah menyetujui ("Ya, pasang"). Database asli kosong (0 Task, schema 3), di-backup dulu, kini schema 15.
   - Menahan: Backup data asli, lalu pasang di Mac Han
 
 ## Riwayat sesi

@@ -1,7 +1,7 @@
 # Tasknotes v1 — Local Issue Tracker
 
 **Planning:** COMPLETE (2026-10-11). All Q1–Q49 decisions accepted.
-**Implementation (2026-10-31):** Tickets **01–18 completed and merged to `main`** after independent AI code reviews, an AI and owner click check, and owner approval. Installing over the owner's real data still needs a verified backup and separate approval. Requests for the next version: [tasknotes-next](../tasknotes-next/issues/).
+**Implementation (2026-10-31):** Tickets **01–18 completed and merged to `main`** after independent AI code reviews, an AI and owner click check, and owner approval. Installed on the owner's Mac the same day, after a verified backup and the owner's approval; the CLI and MCP are not set up for the real data yet. Requests for the next version: [tasknotes-next](../tasknotes-next/issues/).
 **Canonical specification:** [spec.md](spec.md).
 **Source of truth for terminology:** [GLOSSARY.md](../../GLOSSARY.md).
 **Architecture decisions:** [docs/adr](../../docs/adr).
