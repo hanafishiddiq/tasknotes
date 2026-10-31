@@ -182,7 +182,7 @@ describe("Changes made outside the window", () => {
     expect(screen.queryByText("Loading your tasks...")).not.toBeInTheDocument();
   });
 
-  it("keeps what is typed in New task and the search field", async () => {
+  it("keeps what is typed in New task", async () => {
     tasks = [task(1)];
     const user = userEvent.setup();
     render(<App />);
@@ -215,11 +215,34 @@ describe("Changes made outside the window", () => {
     await screen.findByRole("article", { name: "Added through MCP" });
     expect(screen.getByRole("textbox", { name: "Edit description" })).toHaveValue("Half a thought");
 
-    // Discarding the text lets it go: the list is what the core says again.
-    const saved = screen.getByRole("button", { name: "Close Synthetic task 1" });
-    await user.click(saved);
+    // Closing is not discarding: the text is still reachable from its row.
+    await user.click(screen.getByRole("button", { name: "Close Synthetic task 1" }));
+    const kept = await screen.findByRole("article", { name: "Synthetic task 1" });
+    expect(within(kept).getByText("Unsaved edits")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Open Synthetic task 1" }));
+    const field = screen.getByRole("textbox", { name: "Edit description" });
+    expect(field).toHaveValue("Half a thought");
+
+    // With nothing left unsaved, the list is what the core says again.
+    await user.clear(field);
     await waitFor(() =>
       expect(screen.queryByRole("article", { name: "Synthetic task 1" })).not.toBeInTheDocument());
+  });
+
+  it("keeps a closed row's unsaved text when the change takes it out of the view", async () => {
+    tasks = [task(1), task(2)];
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open Synthetic task 1" }));
+    await user.type(screen.getByRole("textbox", { name: "Edit description" }), "Half a thought");
+    await user.click(screen.getByRole("button", { name: "Close Synthetic task 1" }));
+
+    tasks.shift();
+    outside();
+    await focusWindow();
+
+    const kept = await screen.findByRole("article", { name: "Synthetic task 1" });
+    expect(within(kept).getByText("Unsaved edits")).toBeVisible();
   });
 
   it("shows the latest version of an open Task that only left this view", async () => {
@@ -288,7 +311,7 @@ describe("Changes made outside the window", () => {
     await screen.findByRole("article", { name: "Synthetic task 1" });
     const real = call.getMockImplementation()!;
     call.mockImplementationOnce(real); // the check itself
-    call.mockImplementationOnce(async () => { throw "database is locked"; }); // list_tasks
+    call.mockImplementationOnce(async () => { throw "database is locked"; }); // the read after it
 
     tasks.unshift(task(2, { title: "Added through MCP" }));
     outside();
@@ -331,9 +354,10 @@ describe("Changes made outside the window", () => {
     outside();
     await focusWindow();
 
-    expect(screen.getByRole("textbox", { name: "Edit description" })).toHaveValue("Half a thought");
+    const field = screen.getByRole("textbox", { name: "Edit description" });
+    expect(field).toHaveValue("Half a thought");
 
-    await user.click(screen.getByRole("button", { name: "Close In Work" }));
+    await user.clear(field);
     expect(await screen.findByRole("heading", { name: "All tasks" })).toBeVisible();
   });
 });
@@ -440,7 +464,7 @@ describe("Notes changed outside the window", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("does not take the text from under the cursor: it says so and lets the person choose", async () => {
+  it("leaves the text alone while the cursor is in it, and follows once the cursor leaves", async () => {
     const open = notes.seed("Old text", "Old text");
     await openNotes();
     await screen.findByText("Old text", { selector: ".note-content *" });
@@ -451,9 +475,45 @@ describe("Notes changed outside the window", () => {
     outside();
     await focusWindow();
 
-    expect(await screen.findByRole("button", { name: "Load latest" })).toBeVisible();
     expect(document.querySelector(".note-content")).toBe(editor);
     expect(editor).toHaveTextContent("Old text");
+    // Nothing was typed, so there is nothing to choose between.
+    expect(screen.queryByRole("button", { name: "Load latest" })).not.toBeInTheDocument();
+
+    act(() => editor.blur());
+    expect(await screen.findByText("Newer text", { selector: ".note-content *" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Load latest" })).not.toBeInTheDocument();
+  });
+
+  it("follows when the window is elsewhere, even with the cursor still in the editor", async () => {
+    const open = notes.seed("Old text", "Old text");
+    await openNotes();
+    await screen.findByText("Old text", { selector: ".note-content *" });
+    act(() => document.querySelector<HTMLElement>(".note-content")!.focus());
+    const hasFocus = vi.spyOn(document, "hasFocus").mockReturnValue(false);
+
+    notes.notes.set(open.id, { ...open, markdown: "Newer text", title: "Newer text", revision: 2 });
+    outside();
+    await focusWindow();
+
+    expect(await screen.findByText("Newer text", { selector: ".note-content *" })).toBeVisible();
+    hasFocus.mockRestore();
+  });
+
+  it("asks only once typing meets the newer version", async () => {
+    const open = notes.seed("Old text", "Old text");
+    const user = await openNotes();
+    await screen.findByText("Old text", { selector: ".note-content *" });
+    await user.click(document.querySelector<HTMLElement>(".note-content")!);
+
+    notes.notes.set(open.id, { ...open, markdown: "Newer text", title: "Newer text", revision: 2 });
+    outside();
+    await focusWindow();
+    expect(screen.queryByRole("button", { name: "Load latest" })).not.toBeInTheDocument();
+
+    await user.keyboard(" and mine");
+    expect(await screen.findByRole("button", { name: "Load latest" }, { timeout: 3000 })).toBeVisible();
+    expect(document.querySelector(".note-content")).toHaveTextContent("and mine");
     expect(notes.notes.get(open.id)?.markdown).toBe("Newer text");
   });
 

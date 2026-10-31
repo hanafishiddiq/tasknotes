@@ -136,8 +136,8 @@ export default function App() {
   currentPage.current = currentPageCursor;
   // Where the rows sat before an outside change replaced them.
   const scrollAnchor = useRef<ScrollAnchor | null>(null);
-  // An open Task kept on screen for its unsaved text, though the view no longer holds it.
-  const keptOpenTask = useRef<string | null>(null);
+  // Tasks kept on screen for their unsaved text, though the view no longer holds them.
+  const keptForEdits = useRef<ReadonlySet<string>>(new Set());
 
   useOutsideChanges(showOutsideChanges);
 
@@ -147,12 +147,12 @@ export default function App() {
     scrollAnchor.current = null;
   }, [tasks]);
 
+  // Once the text is saved or given up, the list is what the core says again.
+  const keptWithoutEdits = [...keptForEdits.current].some((id) => !drafts.get(id));
   useEffect(() => {
-    if (!keptOpenTask.current || keptOpenTask.current === expandedId || busy) return;
-    keptOpenTask.current = null;
-    void showOutsideChanges();
-    // showOutsideChanges only has to see the Task closed and the view at rest.
-  }, [expandedId, busy]);
+    if (keptWithoutEdits && !busy && !loading) void showOutsideChanges();
+    // showOutsideChanges only has to see the edits gone and the view at rest.
+  }, [keptWithoutEdits, busy, loading]);
 
   useEffect(() => {
     currentQuery.current = { sort, view, filters };
@@ -402,41 +402,42 @@ export default function App() {
    * resolving false has the next check offer the change again.
    */
   async function showOutsideChanges(): Promise<boolean> {
-    if (busy || loading || loadError) return false;
-    const query = currentQuery.current;
-    const cursor = currentPage.current;
-    const generation = requestGeneration.current;
-    const openTask = tasks.find((task) => task.id === expandedId) ?? null;
-    const editedTask = openTask && drafts.get(openTask.id) ? openTask : null;
+    if (busy || loading || loadError || !(await readTaskViewAgain())) return false;
     setRemovedKey((key) => key + 1);
     setNotesRefresh((key) => key + 1);
     if (notesOpened) void noteFolders.refresh();
+    return true;
+  }
+
+  /** Lists and the Task page showing, read again. A Task with unsaved text stays on screen. */
+  async function readTaskViewAgain(): Promise<boolean> {
+    const query = currentQuery.current;
+    const cursor = currentPage.current;
+    const generation = requestGeneration.current;
+    const edited = tasks.filter((task) => drafts.get(task.id));
     try {
       const listPage = await refreshLists();
       const viewed = query.view.kind === "list" ? query.view.listId : null;
       if (listPage.items.some((list) => list.id === viewed && list.removed)) {
         if (generation !== requestGeneration.current) return false;
-        // Its open Task's text stays until the person is done with it.
-        if (editedTask) {
-          keptOpenTask.current = editedTask.id;
-        } else {
+        keptForEdits.current = new Set(edited.map((task) => task.id));
+        if (edited.length === 0) {
           setExpandedId(null);
           showAllTasks();
         }
         return true;
       }
       const { page, stayOnPage } = await readPageAgain(cursor, query);
-      let items = page.items;
-      if (editedTask && !items.some((task) => task.id === editedTask.id)) {
-        // Where it is now, if anywhere: a newer revision lets the row offer to keep the edits.
-        const latest = await taskApi.list(null, query.sort, { kind: "all" }, { ...NO_FILTERS, taskId: editedTask.id })
-          .then((found) => found.items[0], () => undefined);
-        items = [latest ?? editedTask, ...items];
-        keptOpenTask.current = editedTask.id;
-      }
+      const gone = edited.filter((task) => !page.items.some((item) => item.id === task.id));
+      // Where each is now, if anywhere: a newer revision lets the row offer to keep the edits.
+      const kept = await Promise.all(gone.map((task) =>
+        taskApi.list(null, query.sort, { kind: "all" }, { ...NO_FILTERS, taskId: task.id })
+          .then((found) => found.items[0] ?? task, () => task)));
       // The person did something meanwhile: its own read decides what shows.
       if (generation !== requestGeneration.current || cursor !== currentPage.current) return false;
-      if (openTask && !items.some((task) => task.id === openTask.id)) setExpandedId(null);
+      const items = [...kept, ...page.items];
+      keptForEdits.current = new Set(kept.map((task) => task.id));
+      setExpandedId((open) => items.some((task) => task.id === open) ? open : null);
       scrollAnchor.current = captureScrollAnchor(taskScroll.current, expandedId);
       setTasks(items);
       setNextCursor(page.nextCursor);

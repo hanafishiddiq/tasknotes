@@ -138,6 +138,8 @@ export default function NotesWorkspace({
   const inFlight = useRef<Promise<boolean> | null>(null);
   // Set once the person opens a Note or a draft, so the first load does not replace it.
   const pickedByPerson = useRef(false);
+  // The open Note changed elsewhere while the cursor was in it.
+  const followOnLeave = useRef(false);
 
   /** A search looks in every folder; otherwise the list is the scope's Notes. */
   function listPage(cursor: string | null) {
@@ -388,9 +390,10 @@ export default function NotesWorkspace({
   /**
    * After a change made elsewhere: the open Note follows what is stored, as long
    * as nothing is typed there. Unsaved text stays, and its autosave finds the
-   * conflict. With the cursor in the editor the person is asked, not interrupted.
+   * conflict. With the cursor in the editor it waits for the cursor to leave.
    */
   async function followOpenNote() {
+    followOnLeave.current = false;
     const { id } = saved.current;
     const untouched = () =>
       saved.current.id === id && !dirty.current && !conflicted.current && !inFlight.current;
@@ -407,9 +410,8 @@ export default function NotesWorkspace({
     if (latest.markdown === saved.current.markdown) {
       saved.current = savedFrom(latest);
       setPlacement({ folderId: latest.folderId, pinned: latest.pinned, excludeFromAi: latest.excludeFromAi });
-    } else if (document.activeElement?.closest(".note-content")) {
-      conflicted.current = true;
-      setConflict(true);
+    } else if (editorRef.current?.holdsCursor()) {
+      followOnLeave.current = true;
     } else {
       show(savedFrom(latest));
     }
@@ -498,7 +500,10 @@ export default function NotesWorkspace({
           </button>
         )}
       </section>
-      <section className="note-editor-pane" aria-label="Note editor">
+      <section className="note-editor-pane" aria-label="Note editor"
+        onBlur={() => {
+          if (followOnLeave.current) followOpenNote().catch((reason) => setError(errorMessage(reason)));
+        }}>
         <div className="note-toolbar">
           <label className="note-folder-picker">
             <FolderIcon size={14} aria-hidden="true" />
