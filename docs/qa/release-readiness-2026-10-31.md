@@ -1,6 +1,6 @@
 # Tasknotes v1 release readiness, 2026-10-31
 
-**Verdict: approved for `main` on 2026-10-31.** The owner checked the app and approved the merge; see [the click check results](owner-check-results-2026-10-31.md). Still ahead: a verified backup, then installing over real data with separate approval. Keyboard navigation, VoiceOver, Reduce motion and going offline were not all confirmed one by one.
+**Verdict: approved for `main` on 2026-10-31.** The owner checked the app and approved the merge; see [the click check results](owner-check-results-2026-10-31.md). It was installed the same day; see [Installing over the real database](#installing-over-the-real-database). Keyboard navigation, VoiceOver, Reduce motion and going offline were not all confirmed one by one.
 
 ## Gates
 
@@ -13,7 +13,7 @@
 | Crash and restart consistency | Pass | `crash.rs`: 24 rounds of `kill -9` on writers, plus kills during backup, restore and first run. Power loss is not covered |
 | Corrupted backups refused; restore round trip | Pass | `recovery.rs`: seven kinds of bad backup, exact round trip through the real CLI |
 | Restore never opens a private Note, reuses a revision or undoes a decision | Pass | `restore_twice.rs`, `scenario.rs`, and an independent model test: 2,000 random operation sequences, 21,921 restores, no violation. The same test broke the earlier design |
-| Upgrade of databases really made by old code | Pass | [migration.json](ticket-18-results/migration.json): commits at schema 1, 2, 3, 5 and 6, upgraded to schema 15, all records unchanged, schema identical to a new database. The owner's database is at schema 3 |
+| Upgrade of databases really made by old code | Pass | [migration.json](ticket-18-results/migration.json): commits at schema 1, 2, 3, 5 and 6, upgraded to schema 15, all records unchanged, schema identical to a new database. The owner's database was at schema 3 |
 | Processes opening one database at once | Pass | `stores_opening_at_the_same_moment_all_succeed` |
 | Accessibility, automated | Pass | axe over every view in both themes; contrast from the stylesheet at AA; keyboard reach and focus return |
 | Accessibility, by a person | **Open** | VoiceOver, visible focus rings, Reduce Motion, on-screen contrast: click check |
@@ -29,10 +29,10 @@
 | Ticket | Merged to `main` | Review | Native check by the owner |
 | --- | --- | --- | --- |
 | 01–05 | Yes | Done | Done |
-| 06 Notes | Draft PR #19 | Done | AI's native QA done; in the click check |
-| 07–16 | Draft PR #20 | Done, 07, 11 and 14 re-reviewed | Open: click check |
-| 17 Performance | Draft PR #20 | Done | Trackpad feel: click check |
-| 18 Release quality | Draft PR #20 | Done | Open: click check |
+| 06 Notes | Yes | Done | Click check |
+| 07–16 | Yes | Done, 07, 11 and 14 re-reviewed | Click check |
+| 17 Performance | Yes | Done | Owner judged scrolling smooth after the fix |
+| 18 Release quality | Yes | Done | Click check |
 | 19 Historic lag | Closed `wontfix` | | Root cause never proven; the trackpad step at full size settles it |
 
 ## Known exceptions
@@ -45,11 +45,15 @@
 6. **Windows and Linux** builds are not verified; the first milestone is macOS only.
 7. **Restoring the same content twice moves its revision.** A client then gets a false `revision_conflict` and reads again, and a request waiting on that row goes stale, so the AI asks again. This fails safe.
 
-## Before the real database is upgraded
+## Installing over the real database
 
-The upgrade is one-way. In this order, each with the owner's approval:
+The upgrade is one-way, so it ran in this order on 2026-10-31, with the owner's approval:
 
-1. Finish the click check and merge.
-2. Copy `~/Library/Application Support/store.adamaja.tasknotes/` somewhere safe, and verify the copy opens.
-3. Install the normal build.
-4. Check the owner's Tasks are all there. If not, put the copy back and report.
+1. The click check finished and the merge landed.
+2. `~/Library/Application Support/store.adamaja.tasknotes/` was copied somewhere safe. The copy matched by checksum and passed `integrity_check`: schema 3, 0 Tasks, 0 Progress Entries.
+3. The normal build was installed. Its code matches `main` at `f3a0227`; the signature is ad hoc, so `spctl` rejects it (exception 3).
+4. The app opened with its empty list and no network sockets. A copy of the database read schema 15, `integrity_check` ok, 0 Tasks, 0 Notes, and a daily backup exists.
+
+The app was reinstalled that day with its own icon and menu bar image, ahead of `main`. The database file's checksum did not change across the swap. macOS kept showing the old icon in the Dock until the Dock's icon cache was set aside and the Dock restarted.
+
+The database held nothing to lose, so this did not exercise a real upgrade with data; the [migration rehearsal](ticket-18-results/migration.json) covers that.

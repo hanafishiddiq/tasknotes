@@ -131,12 +131,7 @@ fn sync_tray<R: Runtime>(app: &AppHandle<R>, state: &mut ShellState, wanted: boo
     }
 }
 
-/// Fails without an icon: an item with no icon would be invisible.
 fn build_tray<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
-    let icon = app
-        .default_window_icon()
-        .cloned()
-        .ok_or("the app has no icon")?;
     let item = |id: &str, text: &str| MenuItem::with_id(app, id, text, true, None::<&str>);
     let build = || -> tauri::Result<()> {
         let menu = Menu::with_items(
@@ -149,7 +144,8 @@ fn build_tray<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
             ],
         )?;
         TrayIconBuilder::with_id(TRAY_ID)
-            .icon(icon)
+            .icon(tauri::include_image!("icons/tray.png"))
+            .icon_as_template(true)
             .tooltip("Tasknotes")
             .menu(&menu)
             .show_menu_on_left_click(true)

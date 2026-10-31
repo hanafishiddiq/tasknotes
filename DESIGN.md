@@ -257,6 +257,8 @@ Flat. Depth comes only from tonal steps: canvas, then sidebar, then hover, then 
 
 Gently rounded rectangles at small radii, sized to their control: 5px for tiny icon actions and the progress number, 6px for buttons, folders and the focus outline, 7px for task rows, 8px for the capture row and banners, 13px capsules for editor properties, and true circles for status rings. Borders are rare; the only structural lines are the 1px sidebar edge, toolbar underline, inset row separators and the Next Step underline. Icons are Lucide outlines at 13-18px, inheriting text color except folder icons, which take the accent.
 
+The app icon is a Notes-yellow status ring and check on graphite, with a slight gloss. `src-tauri/icons/icon-source.svg` is an opaque square on purpose: macOS 27 cuts such an icon to its own shape, but sets one with transparent margins small on a gray plate. Regenerate with `pnpm tauri icon src-tauri/icons/icon-source.svg`, then delete the `android` and `ios` folders and `64x64.png` it adds. The menu bar uses `tray.png`, a black template image from `tray-source.svg` (`-p 44`), so macOS can color it for the bar.
+
 ## Components
 
 ### Buttons
