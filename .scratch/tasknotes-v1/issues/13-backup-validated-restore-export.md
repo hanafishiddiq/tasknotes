@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** implemented and merged into `integration/tasknotes-v1-07-18` with Ticket 12 on 2026-10-30; `/code-review` done; the owner's 2026-10-30 restore decisions are recorded in the Ticket 12 file's last comment. Native GUI check of the Settings section is open. Plan: `docs/plans/ticket-13-backup-restore-export-2026-10-26.md`.
+**Implementation:** completed — owner approved merging PR #20 on 2026-10-31 after the [AI and owner click check](../../../docs/qa/owner-check-results-2026-10-31.md). Boxes still open below were not run, not passed; schema is forward-only.
 
 ## Acceptance criteria
 

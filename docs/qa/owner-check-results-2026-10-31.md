@@ -50,3 +50,5 @@ Sekitar 15 menit (perkiraan), kecuali waktu pembuatan data besar:
 ## Hasil pemilik
 
 2026-10-31: pemilik melaporkan sudah mencoba hampir semuanya dan aman secara umum, tanpa animasi yang aneh. Reduce motion (langkah 18) belum dicoba karena pengaturannya ada di macOS, bukan di aplikasi. Permintaan fitur versi berikutnya dicatat di `.scratch/tasknotes-next/issues/`.
+
+Setelah perbaikan scroll, pemilik menilai data besar sudah mulus dan menyetujui merge. Pemilik juga melaporkan kedip sesaat saat menutup Task yang terbuka; ini dikerjakan terpisah setelah merge.

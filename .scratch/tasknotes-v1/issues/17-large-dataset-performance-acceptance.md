@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** measured and code-reviewed; on `integration/tasknotes-v1-07-18` (Draft PR #20), awaiting the owner's trackpad check and merge decision. [Report](../../../docs/qa/ticket-17-performance-2026-10-30.md).
+**Implementation:** completed — owner approved merging PR #20 on 2026-10-31 after the [AI and owner click check](../../../docs/qa/owner-check-results-2026-10-31.md). Boxes still open below were not run, not passed; schema is forward-only.
 
 ## Acceptance criteria
 

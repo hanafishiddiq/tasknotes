@@ -28,12 +28,13 @@ Tujuan akhir: Tasknotes terpasang di Mac Han dan dipakai dengan data asli, setel
   - [x] Paket aplikasi menyala dua kali di schema 15, tanpa koneksi jaringan
   - [x] Audit privasi repo dan daftar kesiapan rilis terbit
   - [x] CI hijau untuk hasil gabungan tiket 18
-- [ ] Han mengecek aplikasi dengan data sintetis, lalu menyetujui merge ke main
+- [x] Han mengecek aplikasi dengan data sintetis, lalu menyetujui merge ke main
   - [x] AI menjalankan 24 langkah yang bisa diotomatiskan, hasilnya di `docs/qa/owner-check-results-2026-10-31.md`
   - [x] Ekspor tidak lagi membekukan jendela saat dialog izin macOS terbuka
   - [x] Langkah 27–29: privasi AI, persetujuan massal, restore
-  - [ ] Han mengerjakan langkah 4, 14, 17, 18, 23, 30–32 dan membuka menu dari ikon menu bar
+  - [x] Han mencoba sisa langkah, menilai data besar sudah mulus, dan menyetujui merge
   - [x] Selidiki laporan Han: scroll area tengah terukur 53 FPS, kini 58–59 FPS setelah perbaikan
+- [ ] Perbaiki kedip saat menutup Task yang terbuka
 - [ ] Backup data asli, lalu pasang di Mac Han
 
 ## Perlu Han lakukan
@@ -50,7 +51,7 @@ Tujuan akhir: Tasknotes terpasang di Mac Han dan dipakai dengan data asli, setel
   - Cara: Han memilih tulisan "No deadline", sudah diterapkan.
   - Menahan: Han mengecek aplikasi dengan data sintetis, lalu menyetujui merge ke main
 
-- [ ] Cek klik aplikasi dengan data sintetis
+- [x] Cek klik aplikasi dengan data sintetis
   - Cara: ikuti bagian "Sisa untuk pemilik" di `docs/qa/owner-check-results-2026-10-31.md`, sekitar 15 menit di luar pembuatan data besar.
   - Menahan: Han mengecek aplikasi dengan data sintetis, lalu menyetujui merge ke main
 - [ ] Persetujuan merge dan pemasangan ke data asli

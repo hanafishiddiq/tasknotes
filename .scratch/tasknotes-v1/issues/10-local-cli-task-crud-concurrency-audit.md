@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** implemented and code-reviewed; on `integration/tasknotes-v1-07-18` (Draft PR #20), awaiting the owner's native check and merge decision. Plan: `docs/plans/ticket-10-local-cli-2026-10-26.md`.
+**Implementation:** completed — owner approved merging PR #20 on 2026-10-31 after the [AI and owner click check](../../../docs/qa/owner-check-results-2026-10-31.md). Boxes still open below were not run, not passed; schema is forward-only.
 
 ## Acceptance criteria
 

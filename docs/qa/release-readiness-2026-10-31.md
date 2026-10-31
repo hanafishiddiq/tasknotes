@@ -1,6 +1,6 @@
 # Tasknotes v1 release readiness, 2026-10-31
 
-**Verdict: not ready yet.** Everything checkable without a person is checked. What remains needs the owner: the [click check](owner-check-2026-10-30.md), then the merge decision, then a verified backup before the real database is upgraded. Scope is local use on the owner's Mac. Signed or notarized public distribution is out of scope (spec) and is not implied here.
+**Verdict: approved for `main` on 2026-10-31.** The owner checked the app and approved the merge; see [the click check results](owner-check-results-2026-10-31.md). Still ahead: a verified backup, then installing over real data with separate approval. Keyboard navigation, VoiceOver, Reduce motion and going offline were not all confirmed one by one.
 
 ## Gates
 

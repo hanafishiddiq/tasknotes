@@ -1,7 +1,7 @@
 # Tasknotes v1 — Local Issue Tracker
 
 **Planning:** COMPLETE (2026-10-11). All Q1–Q49 decisions accepted.
-**Implementation (2026-10-31):** Tickets **01–05 completed and merged to `main`** after independent AI code reviews and owner approval. Tickets **06–18 are implemented and code-reviewed but not completed**: 06 is in Draft PR #19, 07–18 in Draft PR #20 (`integration/tasknotes-v1-07-18`), all awaiting the owner's native checks and merge decision. No release/deployment or user SQLite migration occurred.
+**Implementation (2026-10-31):** Tickets **01–18 completed and merged to `main`** after independent AI code reviews, an AI and owner click check, and owner approval. Installing over the owner's real data still needs a verified backup and separate approval. Requests for the next version: [tasknotes-next](../tasknotes-next/issues/).
 **Canonical specification:** [spec.md](spec.md).
 **Source of truth for terminology:** [GLOSSARY.md](../../GLOSSARY.md).
 **Architecture decisions:** [docs/adr](../../docs/adr).

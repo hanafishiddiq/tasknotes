@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** implemented and code-reviewed; Draft PR #19, awaiting the owner's merge decision. [Plan](../../../docs/plans/ticket-06-markdown-notes-2026-10-22.md).
+**Implementation:** completed — owner approved merging PR #19 and #20 on 2026-10-31 after the [AI and owner click check](../../../docs/qa/owner-check-results-2026-10-31.md). Boxes still open below were not run, not passed; schema is forward-only.
 
 ## Acceptance criteria
 

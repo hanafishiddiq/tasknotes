@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** implemented and merged into `integration/tasknotes-v1-07-18` with Ticket 13 on 2026-10-30; independent review of the meeting done and its findings resolved (see the last comment). Plan: `docs/plans/ticket-12-mcp-stdio-2026-10-26.md`.
+**Implementation:** completed — owner approved merging PR #20 on 2026-10-31 after the [AI and owner click check](../../../docs/qa/owner-check-results-2026-10-31.md). Boxes still open below were not run, not passed; schema is forward-only.
 
 ## Acceptance criteria
 
