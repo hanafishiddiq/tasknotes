@@ -2,7 +2,7 @@
   --bg: #1e1e1e;
   --sidebar: #282828;
   --hover: #2c2c2c;
-  --side-selected: #464646;
+  --side-selected: #444444;
   --row-selected: #67551a;
   --row-selected-text: #ffffff;
   --field: #2a2a2a;
@@ -15,7 +15,7 @@
   --accent-ink: #1e1e1e;
   --red: #ff6b61;
   --orange: #ffa53d;
-  --focus: rgba(255, 214, 10, 0.55);
+  --focus: rgba(255, 214, 10, 0.7);
   --selection: rgba(255, 214, 10, 0.3);
   color-scheme: dark;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
@@ -40,11 +40,11 @@
   --text-2: #55555a;
   --text-3: #68686d;
   --accent: #b58500;
-  --accent-text: #8a6400;
+  --accent-text: #7f5b00;
   --accent-ink: #1d1d1f;
   --red: #d1281c;
-  --orange: #b85400;
-  --focus: rgba(209, 156, 0, 0.5);
+  --orange: #b45200;
+  --focus: #8a6400;
   --selection: rgba(230, 175, 0, 0.28);
   color-scheme: light;
 }
@@ -57,6 +57,7 @@ body {
   background: var(--bg);
 }
 ::selection {
+  color: var(--text);
   background: var(--selection);
 }
 button,
@@ -844,7 +845,7 @@ kbd {
 /* Like the Next Step field, focus turns the underline to the accent. */
 .palette-field:focus-within {
   color: var(--text-2);
-  border-bottom-color: var(--accent);
+  border-bottom-color: var(--accent-text);
 }
 .palette-list {
   margin: 0;
@@ -1096,7 +1097,8 @@ kbd {
 }
 .task-card--expanded .task-row .task-check--completed {
   color: var(--row-selected);
-  background: currentColor;
+  background: var(--row-selected-text);
+  border-color: var(--row-selected-text);
 }
 .task-card--expanded .task-row .task-check--completed svg {
   color: var(--row-selected);

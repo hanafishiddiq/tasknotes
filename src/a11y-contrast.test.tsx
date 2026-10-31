@@ -214,6 +214,7 @@ const INDICATORS: { selector: string; property: string; means: string; place: Pl
 
 /** Rules with a colour that deliberately need no pair here, each with why. */
 const NO_PAIR_NEEDED: Record<string, string> = {
+  "::selection": "checked on the highlight below, as what every selected text takes",
   "button": "says inherit: what comes through is checked at its source",
   "input": "says inherit: what comes through is checked at its source",
   "textarea": "says inherit: what comes through is checked at its source",
@@ -262,60 +263,10 @@ const SELECTED_TEXT: Record<string, Surface[]> = {
   ".capture-description": ["hover"],
 };
 
-/**
- * Pairs below AA in the stylesheet as it stands. A colour change is the owner's
- * call, so these are reported rather than changed: each stays as `it.fails`, which
- * goes red once the value is fixed, the cue to delete its entry. The proposal is
- * in PROPOSED below, checked against every pair.
- */
-const KNOWN_FAILURES: Record<string, string> = {
-  'dark text .folder[aria-current="page"] .folder-count on side-selected': "4.47",
-  "dark text .folder--quiet on side-selected": "4.47",
-  "dark indicator focus ring (:focus-visible outline) on row-selected": "2.72",
-  "dark indicator disc on the open row (.task-card--expanded .task-row .task-check--completed background) on row-selected": "1.00",
-  "dark selected text .note-quote on the highlight over bg": "3.51",
-  "dark selected text .note-check--done on the highlight over bg": "2.58",
-  "dark selected text .capture-description on the highlight over hover": "3.02",
-  "light text .priority-pill--high on hover": "4.43",
-  "light text .priority-pill--very_high on hover": "4.43",
-  "light text .deadline-pill--today on hover": "4.43",
-  "light text .property.filter-chip--active on filter-chip": "4.08",
-  "light text .property.filter-chip--active select on filter-chip": "4.08",
-  "light text .property.filter-chip--active input on filter-chip": "4.08",
-  "light indicator focus ring (:focus-visible outline) on bg": "1.55",
-  "light indicator focus ring (:focus-visible outline) on sidebar": "1.47",
-  "light indicator focus ring (:focus-visible outline) on hover": "1.49",
-  "light indicator focus ring (:focus-visible outline) on side-selected": "1.36",
-  "light indicator focus ring (:focus-visible outline) on field": "1.49",
-  "light indicator focus ring (:focus-visible outline) on row-selected": "1.37",
-  "light indicator focus underline (.palette-field:focus-within border-bottom-color) on sidebar": "2.91",
-  "light indicator disc on the open row (.task-card--expanded .task-row .task-check--completed background) on row-selected": "1.00",
-  "light selected text .note-link on the highlight over bg": "4.43",
-};
-
-/** Token values that would clear the reported failures. Not applied: for the owner to take or refuse. */
-const PROPOSED: Record<Theme, Record<string, string>> = {
-  dark: { "side-selected": "#444444", focus: "rgba(255, 214, 10, 0.7)" },
-  light: { focus: "#8a6400", orange: "#b45200", "accent-text": "#7f5b00" },
-};
-
-/** Failures a token cannot clear, because the rule points at the wrong token. What the rule would say instead. */
-const RULE_PROPOSALS: Record<string, string> = {
-  "dark indicator disc on the open row (.task-card--expanded .task-row .task-check--completed background) on row-selected":
-    "background and border-color: var(--row-selected-text), keeping the tick in var(--row-selected)",
-  "light indicator disc on the open row (.task-card--expanded .task-row .task-check--completed background) on row-selected":
-    "background and border-color: var(--row-selected-text), keeping the tick in var(--row-selected)",
-  "light indicator focus underline (.palette-field:focus-within border-bottom-color) on sidebar":
-    "border-bottom-color: var(--accent-text)",
-  "dark selected text .note-quote on the highlight over bg": "::selection { color: var(--text) }",
-  "dark selected text .note-check--done on the highlight over bg": "::selection { color: var(--text) }",
-  "dark selected text .capture-description on the highlight over hover": "::selection { color: var(--text) }",
-};
-
 interface Pair { id: string; foreground: Color; surface: Color; need: number }
 
-function palette(theme: Theme, changes: Record<string, string> = {}) {
-  const values = { ...tokens(theme), ...changes };
+function palette(theme: Theme) {
+  const values = tokens(theme);
   const color = (name: string): Color => parseColor(values[name]);
   const chip = /color-mix\(in srgb, var\(--([\w-]+)\) (\d+)%, var\(--([\w-]+)\)\)/.exec(
     declared(ruleDeclaring(".property.filter-chip--active", "background")!, "background")!,
@@ -340,8 +291,8 @@ function shown(foreground: Color, surface: Color, opacity: number): [Color, Colo
   return [over({ ...foreground, a: foreground.a * opacity }, surface), surface];
 }
 
-function textPairs(theme: Theme, changes?: Record<string, string>): Pair[] {
-  const { surface, resolve } = palette(theme, changes);
+function textPairs(theme: Theme): Pair[] {
+  const { surface, resolve } = palette(theme);
   return Object.entries(TEXT).flatMap(([selector, place]) => {
     const rule = ruleDeclaring(selector, "color");
     if (!rule) throw new Error(`No colour in App.css for ${selector}`);
@@ -358,8 +309,8 @@ function textPairs(theme: Theme, changes?: Record<string, string>): Pair[] {
   });
 }
 
-function indicatorPairs(theme: Theme, changes?: Record<string, string>): Pair[] {
-  const { surface, resolve } = palette(theme, changes);
+function indicatorPairs(theme: Theme): Pair[] {
+  const { surface, resolve } = palette(theme);
   return INDICATORS.flatMap(({ selector, property, means, place }) => {
     const rule = ruleDeclaring(selector, property);
     if (!rule) throw new Error(`No ${property} in App.css for ${selector}`);
@@ -370,35 +321,26 @@ function indicatorPairs(theme: Theme, changes?: Record<string, string>): Pair[] 
   });
 }
 
-function selectionPairs(theme: Theme, changes?: Record<string, string>): Pair[] {
-  const { color, surface, resolve } = palette(theme, changes);
+function selectionPairs(theme: Theme): Pair[] {
+  const { color, surface, resolve } = palette(theme);
   return Object.entries(SELECTED_TEXT).flatMap(([selector, on]) => on.map((name): Pair => {
     const highlight = over(color("selection"), surface(name));
-    const foreground = resolve(declared(ruleDeclaring(selector, "color")!, "color")!, { on }, null);
+    // Highlighted text takes the ::selection colour, whatever its own colour is.
+    const foreground = resolve(declared(ruleDeclaring("::selection", "color")!, "color")!, { on }, null);
     return { id: `${theme} selected text ${selector} on the highlight over ${name}`, foreground, surface: highlight, need: AA_TEXT };
   }));
 }
 
-const allPairs = (theme: Theme, changes?: Record<string, string>) =>
-  [...textPairs(theme, changes), ...indicatorPairs(theme, changes), ...selectionPairs(theme, changes)];
+const allPairs = (theme: Theme) =>
+  [...textPairs(theme), ...indicatorPairs(theme), ...selectionPairs(theme)];
 
 const ratio = (pair: Pair) => contrast(pair.foreground, pair.surface);
 
 describe.each(THEMES)("WCAG AA contrast from App.css, %s appearance", (theme) => {
   for (const pair of allPairs(theme)) {
-    const known = KNOWN_FAILURES[pair.id];
-    if (known === undefined) {
-      it(pair.id, () => {
-        expect(ratio(pair), pair.id).toBeGreaterThanOrEqual(pair.need);
-      });
-    } else {
-      it.fails(`${pair.id}: measured ${known}, waiting for the owner`, () => {
-        expect(ratio(pair), pair.id).toBeGreaterThanOrEqual(pair.need);
-      });
-      it(`${pair.id} measures what the report says`, () => {
-        expect(ratio(pair).toFixed(2)).toBe(known);
-      });
-    }
+    it(pair.id, () => {
+      expect(ratio(pair), pair.id).toBeGreaterThanOrEqual(pair.need);
+    });
   }
 });
 
@@ -433,23 +375,9 @@ describe("the contrast check itself", () => {
   it("uses no fill it does not check text against", () => {
     const tokensAsFills = new Set(rules.filter((rule) => rule.media === null)
       .flatMap((rule) => [...(declared(rule, "background") ?? "").matchAll(/^var\(--([\w-]+)\)$/g)].map((match) => match[1])));
-    expect([...tokensAsFills].sort()).toEqual(["accent", "bg", "field", "hover", "row-selected", "selection", "sep", "side-selected", "sidebar"]);
+    expect([...tokensAsFills].sort()).toEqual(["accent", "bg", "field", "hover", "row-selected", "row-selected-text", "selection", "sep", "side-selected", "sidebar"]);
   });
 
-  it("clears the reported failures with the proposed values, and breaks nothing else", () => {
-    const failing = THEMES.flatMap((theme) => allPairs(theme, PROPOSED[theme])).filter((pair) => ratio(pair) < pair.need);
-    expect(failing.map((pair) => pair.id).sort()).toEqual(Object.keys(RULE_PROPOSALS).sort());
-  });
-
-  it("would clear the rest with the proposed rule changes", () => {
-    for (const theme of THEMES) {
-      const { color } = palette(theme, PROPOSED[theme]);
-      expect(contrast(color("row-selected-text"), color("row-selected"))).toBeGreaterThanOrEqual(AA_NON_TEXT);
-      expect(contrast(color("accent-text"), color("sidebar"))).toBeGreaterThanOrEqual(AA_NON_TEXT);
-      expect(contrast(color("text"), over(color("selection"), color("bg")))).toBeGreaterThanOrEqual(AA_TEXT);
-      expect(contrast(color("text"), over(color("selection"), color("hover")))).toBeGreaterThanOrEqual(AA_TEXT);
-    }
-  });
 });
 
 /** The stylesheet does not decide these, so only the owner's on-screen check can. */
