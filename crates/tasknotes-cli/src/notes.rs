@@ -4,7 +4,9 @@
 //! fails as `not_found`, like an id that was never used.
 
 use serde_json::Value;
-use tasknotes_core::note_folders::{CreateNoteFolder, MoveNoteFolder, RenameNoteFolder};
+use tasknotes_core::note_folders::{
+    CreateNoteFolder, MoveNoteFolder, PlaceNoteFolder, RenameNoteFolder,
+};
 use tasknotes_core::notes::{CreateNote, MoveNote, Note, NoteQuery, NoteScope, UpdateNote};
 use tasknotes_core::removed::SetRemoved;
 use tasknotes_core::tasks::{TaskError, TaskStore};
@@ -164,6 +166,38 @@ pub fn folder_command(store: &TaskStore, verb: &str, words: &[String]) -> Result
                 id: p.id().to_owned(),
                 expected_revision: p.revision()?,
                 parent_id,
+            })?
+        }
+        "reorder" => {
+            let p = parse(
+                words,
+                &Spec {
+                    values: &["revision", "after", "parent"],
+                    repeated: &[],
+                    switches: &["first", "top"],
+                    positionals: 1,
+                },
+            )?;
+            let after_id = contract::destination(
+                p.value("after").map(str::to_owned),
+                p.has("first"),
+                ("--after ID", "--first"),
+            )?;
+            let parent = p.value("parent").map(str::to_owned);
+            let parent_id = if parent.is_none() && !p.has("top") {
+                // Without a new parent it stays among its siblings.
+                store
+                    .get_note_folder(p.id())?
+                    .ok_or(TaskError::NoteFolderNotFound)?
+                    .parent_id
+            } else {
+                contract::destination(parent, p.has("top"), ("--parent ID", "--top"))?
+            };
+            store.place_note_folder(PlaceNoteFolder {
+                id: p.id().to_owned(),
+                expected_revision: p.revision()?,
+                parent_id,
+                after_id,
             })?
         }
         "remove" | "restore" => {

@@ -293,6 +293,9 @@ fn v8_database(db: &Path) -> (String, String) {
              CREATE UNIQUE INDEX note_folders_sibling_name
                ON note_folders(coalesce(parent_id, ''), name_fold);
              DROP TABLE IF EXISTS audit_entries; DROP TABLE IF EXISTS bulk_requests; DROP TABLE IF EXISTS retired_revisions;
+             DROP INDEX lists_manual_order; ALTER TABLE lists DROP COLUMN position;
+             CREATE INDEX lists_created_order ON lists(created_at DESC, id DESC);
+             DROP INDEX note_folders_manual_order; ALTER TABLE note_folders DROP COLUMN position;
              PRAGMA user_version = 8;",
         )
         .unwrap();
@@ -614,7 +617,7 @@ fn removing_a_folder_hides_its_subtree_and_restoring_it_keeps_individually_remov
         .unwrap();
     assert_eq!(
         folder_names(&store, Some(&work)),
-        vec!["Archive", "Meetings"]
+        vec!["Meetings", "Archive"]
     );
 }
 

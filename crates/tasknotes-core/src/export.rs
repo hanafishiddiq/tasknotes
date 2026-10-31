@@ -85,6 +85,7 @@ struct ListRecord {
     created_at: i64,
     updated_at: i64,
     removed: bool,
+    position: i64,
 }
 
 #[derive(Serialize)]
@@ -126,6 +127,7 @@ struct FolderRecord {
     created_at: i64,
     updated_at: i64,
     removed: bool,
+    position: i64,
 }
 
 #[derive(Serialize)]
@@ -224,8 +226,8 @@ impl TaskStore {
         };
         let lists = collect(
             conn,
-            "SELECT id, name, revision, created_at, updated_at, removed_at FROM lists
-             ORDER BY created_at, id",
+            "SELECT id, name, revision, created_at, updated_at, removed_at, position FROM lists
+             ORDER BY position, id",
             |row| {
                 Ok(ListRecord {
                     id: row.get(0)?,
@@ -234,6 +236,7 @@ impl TaskStore {
                     created_at: row.get(3)?,
                     updated_at: row.get(4)?,
                     removed: row.get::<_, Option<i64>>(5)?.is_some(),
+                    position: row.get(6)?,
                 })
             },
         )?;
@@ -294,8 +297,8 @@ impl TaskStore {
             .collect();
         let note_folders = collect(
             conn,
-            "SELECT id, parent_id, name, revision, created_at, updated_at, removed_at
-             FROM note_folders ORDER BY created_at, id",
+            "SELECT id, parent_id, name, revision, created_at, updated_at, removed_at, position
+             FROM note_folders ORDER BY position, id",
             |row| {
                 Ok(FolderRecord {
                     id: row.get(0)?,
@@ -305,6 +308,7 @@ impl TaskStore {
                     created_at: row.get(4)?,
                     updated_at: row.get(5)?,
                     removed: row.get::<_, Option<i64>>(6)?.is_some(),
+                    position: row.get(7)?,
                 })
             },
         )?;

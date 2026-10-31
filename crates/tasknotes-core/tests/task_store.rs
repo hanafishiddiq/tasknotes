@@ -170,7 +170,10 @@ fn stores_opening_at_the_same_moment_all_succeed() {
             "DROP TABLE retired_revisions;
                  DROP TABLE bulk_requests;
                  ALTER TABLE audit_entries DROP COLUMN requested_by;
-                 PRAGMA user_version = 13;",
+                 DROP INDEX lists_manual_order; ALTER TABLE lists DROP COLUMN position;
+             CREATE INDEX lists_created_order ON lists(created_at DESC, id DESC);
+             DROP INDEX note_folders_manual_order; ALTER TABLE note_folders DROP COLUMN position;
+             PRAGMA user_version = 13;",
         ),
     ] {
         for _round in 0..10 {

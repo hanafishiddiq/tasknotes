@@ -184,3 +184,79 @@ fn links_note_removal_and_restore_work_through_the_cli() {
         .collect();
     assert_eq!(actions, ["note.restore", "note.remove", "note.create"]);
 }
+
+#[test]
+fn lists_and_folders_reorder_through_the_cli() {
+    let cli = Cli::trusted();
+    let names = |page: Value| -> Vec<String> {
+        page["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| item["name"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    let a = cli.ok(&["list", "create", "--name", "Synthetic A"])["item"].clone();
+    let b = cli.ok(&["list", "create", "--name", "Synthetic B"])["item"].clone();
+    let moved = cli.ok(&["list", "reorder", id(&b), "--revision", "1", "--first"])["item"].clone();
+    assert_eq!(moved["revision"], 2);
+    assert_eq!(
+        names(cli.ok(&["list", "list"])),
+        ["Synthetic B", "Synthetic A"]
+    );
+    let stale = cli.run(&[
+        "list",
+        "reorder",
+        id(&b),
+        "--revision",
+        "1",
+        "--after",
+        id(&a),
+    ]);
+    assert_eq!(error_code(&stale, 4), "revision_conflict");
+
+    let work = cli.ok(&["folder", "create", "--name", "Synthetic Work"])["item"].clone();
+    let home = cli.ok(&["folder", "create", "--name", "Synthetic Home"])["item"].clone();
+    let inner = cli.ok(&[
+        "folder",
+        "create",
+        "--name",
+        "Synthetic Inner",
+        "--parent",
+        id(&work),
+    ])["item"]
+        .clone();
+    cli.ok(&["folder", "reorder", id(&home), "--revision", "1", "--first"]);
+    assert_eq!(
+        names(cli.ok(&["folder", "list"])),
+        ["Synthetic Home", "Synthetic Work"]
+    );
+    let nested = cli.ok(&[
+        "folder",
+        "reorder",
+        id(&home),
+        "--revision",
+        "2",
+        "--parent",
+        id(&work),
+        "--after",
+        id(&inner),
+    ])["item"]
+        .clone();
+    assert_eq!(nested["parent_id"], work["id"]);
+    assert_eq!(
+        names(cli.ok(&["folder", "list", "--parent", id(&work)])),
+        ["Synthetic Inner", "Synthetic Home"]
+    );
+    let refused = cli.run(&[
+        "folder",
+        "reorder",
+        id(&work),
+        "--revision",
+        "1",
+        "--parent",
+        id(&inner),
+        "--first",
+    ]);
+    assert_eq!(refused.json["error"]["code"], "invalid_input");
+}

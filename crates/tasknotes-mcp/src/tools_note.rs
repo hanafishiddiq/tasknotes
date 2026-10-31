@@ -4,7 +4,9 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::Value;
 use tasknotes_cli::contract::{self, CliError};
-use tasknotes_core::note_folders::{CreateNoteFolder, MoveNoteFolder, RenameNoteFolder};
+use tasknotes_core::note_folders::{
+    CreateNoteFolder, MoveNoteFolder, PlaceNoteFolder, RenameNoteFolder,
+};
 use tasknotes_core::notes::{CreateNote, MoveNote, NoteQuery, NoteScope, UpdateNote};
 use tasknotes_core::tasks::TaskError;
 
@@ -167,6 +169,12 @@ pub fn tools() -> Vec<ToolDef> {
             Kind::Write,
             "Move a Note Folder into another folder, or to the top level.",
             folder_move,
+        ),
+        tool(
+            "folder_reorder",
+            Kind::Write,
+            "Put a Note Folder directly after a sibling in the person's manual order, or first; give parent_id or top: true to place it under another parent at the same time.",
+            folder_reorder,
         ),
         tool(
             "folder_remove",
@@ -345,6 +353,47 @@ fn folder_move(c: &Context, a: FolderMoveArgs) -> Result<Value, CliError> {
             expected_revision: revision(a.revision)?,
             id: a.id,
             parent_id,
+        })?,
+    )
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct FolderReorderArgs {
+    id: String,
+    revision: i64,
+    /// Put it directly after this sibling; give this or first.
+    #[serde(default)]
+    after_id: Option<String>,
+    /// Put it first among its siblings; give this or after_id.
+    #[serde(default)]
+    first: bool,
+    /// Place it under this folder; leave out to stay under its parent.
+    #[serde(default)]
+    parent_id: Option<String>,
+    /// Place it at the top level; leave out to stay under its parent.
+    #[serde(default)]
+    top: bool,
+}
+
+fn folder_reorder(c: &Context, a: FolderReorderArgs) -> Result<Value, CliError> {
+    let after_id = contract::destination(a.after_id, a.first, ("after_id", "first: true"))?;
+    let parent_id = if a.parent_id.is_none() && !a.top {
+        // Without a new parent it stays among its siblings.
+        c.store
+            .get_note_folder(&a.id)?
+            .ok_or(TaskError::NoteFolderNotFound)?
+            .parent_id
+    } else {
+        contract::destination(a.parent_id, a.top, ("parent_id", "top: true"))?
+    };
+    folder(
+        c,
+        c.store.place_note_folder(PlaceNoteFolder {
+            expected_revision: revision(a.revision)?,
+            id: a.id,
+            parent_id,
+            after_id,
         })?,
     )
 }
