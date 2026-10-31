@@ -24,7 +24,7 @@ A Task that has been started but is not yet Completed, including when temporaril
 A task marked finished; its progress is 100%.
 
 **Removed**:
-A reversible, non-destructive disposition of a task, note, or list, separate from a task's work status.
+A reversible, non-destructive disposition of a task, note, list or Note Folder, separate from a task's work status. Removing a list or folder hides what is inside it without changing their own disposition; Removed items are never purged automatically.
 _Avoid_: Deleted, Permanently Deleted.
 
 **Priority**:
@@ -48,8 +48,29 @@ The next intended action recorded against a Task to help a person or AI resume w
 **Note Link**:
 A reversible association between a Task and a Note; removing the association does not remove either entity.
 
-**Folder**:
-A category that organizes Notes independently from Task Lists.
+**Note Folder**:
+A category that organizes Notes independently from Task Lists. A Note Folder can contain other Note Folders, at most five levels deep, so they form a tree; sibling names are unique ignoring case.
+_Avoid_: Folder alone where a Task List could be meant.
+
+**Pinned**:
+A Note kept above the other Notes in every Note list it appears in. Pinning, like moving a Note to another Note Folder, changes where it is shown, not what it says.
 
 **Audit Entry**:
 An immutable dated record that an official Tasknotes interface made or attempted a consequential change.
+
+**Bulk Change**:
+One request that removes, restores, moves or sets the status of several Tasks, or removes or restores several Notes; through an AI interface, also removing a List or Note Folder that holds anything. An AI interface can only ask for it: the request waits, with its preview, until the person approves or declines it in the desktop app, and the AI reads its status (pending, applied, declined, stale, expired). It applies all or nothing, and only while nothing it named (nor a move's target List) has changed; a request expires after a day.
+_Avoid_: Batch, mass edit.
+
+**Backup**:
+A consistent local copy of all Tasknotes data, taken automatically once a local calendar day while Tasknotes runs (Daily), on request (Manual), and just before a restore (Pre-restore). Daily backups follow the 7 daily / 4 weekly / 3 monthly retention, the 10 newest Manual backups are kept, and Pre-restore backups are never removed automatically. Retention prunes backup copies only, never live Tasks, Notes or Lists.
+
+**Backup Manifest**:
+The record beside each Backup of when and why it was taken, its schema version, size and checksum; a restore refuses a Backup that does not match its manifest.
+
+**Restore**:
+Replacing all current data with a validated Backup, after stopping every other writer and keeping a Backup of the current data. The Audit Entries made since the Backup are kept, and the restore itself is recorded as one. A Note marked Exclude from AI now stays so, a Bulk Change in the Backup that the person decided since stays decided, and whatever changed since gets a new revision, so a client holding an old one is refused. Windows and commands that opened the data before must reload before they can change anything.
+_Avoid_: Restore alone where restoring an item from Removed is meant.
+
+**Export**:
+A copy of Tasks and Notes written as JSON or Markdown for the person to keep or move elsewhere. An export made through an AI interface never contains Notes marked Exclude from AI.

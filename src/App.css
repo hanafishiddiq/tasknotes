@@ -2,7 +2,7 @@
   --bg: #1e1e1e;
   --sidebar: #282828;
   --hover: #2c2c2c;
-  --side-selected: #464646;
+  --side-selected: #444444;
   --row-selected: #67551a;
   --row-selected-text: #ffffff;
   --field: #2a2a2a;
@@ -15,7 +15,7 @@
   --accent-ink: #1e1e1e;
   --red: #ff6b61;
   --orange: #ffa53d;
-  --focus: rgba(255, 214, 10, 0.55);
+  --focus: rgba(255, 214, 10, 0.7);
   --selection: rgba(255, 214, 10, 0.3);
   color-scheme: dark;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
@@ -40,11 +40,11 @@
   --text-2: #55555a;
   --text-3: #68686d;
   --accent: #b58500;
-  --accent-text: #8a6400;
+  --accent-text: #7f5b00;
   --accent-ink: #1d1d1f;
   --red: #d1281c;
-  --orange: #b85400;
-  --focus: rgba(209, 156, 0, 0.5);
+  --orange: #b45200;
+  --focus: #8a6400;
   --selection: rgba(230, 175, 0, 0.28);
   color-scheme: light;
 }
@@ -57,6 +57,7 @@ body {
   background: var(--bg);
 }
 ::selection {
+  color: var(--text);
   background: var(--selection);
 }
 button,
@@ -108,7 +109,32 @@ textarea:disabled {
 .app-shell {
   display: grid;
   grid-template-columns: 210px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
   height: 100vh;
+}
+.app-shell > .sidebar {
+  grid-column: 1;
+  grid-row: 1 / -1;
+}
+.app-shell > :not(.sidebar):not(.undo-bar) {
+  grid-column: 2;
+  grid-row: 1;
+}
+/* Undo sits in the window's last row, flat and in flow: nothing floats. */
+.undo-bar {
+  grid-column: 2;
+  grid-row: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 16px;
+  border-top: 1px solid var(--sep);
+  color: var(--text-2);
+  background: var(--hover);
+}
+.undo-bar--error {
+  color: var(--red);
 }
 
 /* Sidebar: Notes-style folder list */
@@ -188,7 +214,8 @@ textarea:disabled {
   display: flex;
   align-items: center;
 }
-.folder-row .folder {
+.folder-row:hover .folder,
+.folder-row:focus-within .folder {
   padding-right: 52px;
 }
 .folder-actions {
@@ -272,14 +299,61 @@ textarea:disabled {
 .sidebar-link:hover:not(:disabled) {
   color: var(--text);
 }
-.sidebar-spacer {
-  flex: 1;
-  min-height: 16px;
-}
-.removed-lists {
+/* Note Folder tree: rows indent per level; the disclosure column keeps names aligned. */
+.folder-tree {
   display: flex;
   flex-direction: column;
   gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.folder-tree .folder-row .folder {
+  padding-left: 4px;
+}
+.folder-tree .folder-row:hover .folder,
+.folder-tree .folder-row:focus-within .folder {
+  padding-right: 76px;
+}
+.folder-disclosure {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  height: 28px;
+  border-radius: 5px;
+  color: var(--text-3);
+}
+button.folder-disclosure:hover:not(:disabled) {
+  color: var(--text);
+}
+.folder-form--nested {
+  width: auto;
+}
+.folder-form--nested svg {
+  color: var(--text-2);
+}
+.folder-form select {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 5px;
+  background: var(--field);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+.sidebar-error[role="alert"] {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+}
+.sidebar-spacer {
+  flex: 1;
+  min-height: 16px;
 }
 
 /* Main column */
@@ -342,6 +416,10 @@ textarea:disabled {
   color: var(--text);
   background: var(--hover);
 }
+.toolbar-sort:focus-within {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
 .toolbar-sort select {
   padding: 0;
   border: 0;
@@ -365,6 +443,7 @@ textarea:disabled {
   background: var(--hover);
 }
 .main-scroll {
+  position: relative;
   flex: 1;
   overflow-y: auto;
   scrollbar-color: var(--side-selected) transparent;
@@ -550,7 +629,7 @@ textarea:disabled {
   text-align: center;
   color: var(--text-3);
 }
-.empty-state h3 {
+.empty-state h2 {
   margin: 12px 0 4px;
   font-size: 15px;
   font-weight: 600;
@@ -567,10 +646,330 @@ textarea:disabled {
   gap: 8px;
 }
 
-/* Status groups */
-.task-group + .task-group {
-  margin-top: 20px;
+/* Settings: per-window preferences as quiet Notes-style rows */
+.settings-heading {
+  margin: 20px 0 4px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-2);
 }
+.settings-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.settings-choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+}
+.settings-choice:hover {
+  background: var(--hover);
+}
+.settings-choice input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+.settings-choice:has(input:focus-visible) {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.settings-choice svg {
+  color: var(--text-2);
+}
+.settings-hint {
+  margin: 4px 0 0;
+  padding: 0 10px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.settings-sound {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.settings-sound-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) minmax(96px, 180px) 40px;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 10px 0 4px;
+  border-radius: 6px;
+  color: var(--text);
+}
+.settings-sound-row:hover {
+  background: var(--hover);
+}
+.settings-sound-row[data-muted] label,
+.settings-sound-row[data-muted] output {
+  color: var(--text-3);
+}
+.settings-mute {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.settings-mute:hover {
+  background: var(--hover);
+}
+.settings-mute:focus-visible,
+.settings-sound-row input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.settings-sound-row input {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.settings-sound-row output {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--text-2);
+}
+.settings-shortcuts {
+  margin: 0;
+}
+.settings-shortcut {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--sep);
+}
+.settings-shortcut dt {
+  color: var(--text);
+}
+.settings-shortcut dd {
+  margin: 0;
+}
+/* Menu bar and Quick Capture (Ticket 15): the same quiet rows, a recorder button and plain-text fallbacks. */
+.settings-shortcut-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+  padding: 2px 10px 2px 34px;
+}
+.settings-shortcut-row .settings-hint {
+  margin: 0;
+  padding: 0;
+}
+/* Backups and export: one hairline row per backup, date left, Restore right */
+.settings-backups {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.settings-backup {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--sep);
+  color: var(--text);
+}
+.settings-backup-kind {
+  font-size: 12px;
+  color: var(--text-2);
+}
+.settings-confirm {
+  margin-top: 6px;
+}
+.settings-hint--error {
+  color: var(--text-2);
+}
+.settings-hint--error p {
+  margin: 0 0 2px;
+}
+.settings-hint--error p:first-child {
+  color: var(--red);
+}
+kbd {
+  font: inherit;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}
+
+/* Command palette (⌘K): a flat sheet near the top, hairline-edged, no shadow. */
+.palette-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 72px 16px 16px;
+}
+.palette {
+  width: min(560px, 100%);
+  max-height: min(420px, 100%);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--sep);
+  border-radius: 8px;
+  background: var(--sidebar);
+}
+.palette-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--sep);
+  color: var(--text-3);
+}
+.palette-field input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: none;
+  font-size: 14px;
+  color: var(--text);
+}
+/* Like the Next Step field, focus turns the underline to the accent. */
+.palette-field:focus-within {
+  color: var(--text-2);
+  border-bottom-color: var(--accent-text);
+}
+.palette-list {
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  list-style: none;
+}
+.palette-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.palette-option[aria-selected="true"] {
+  color: var(--row-selected-text);
+  background: var(--row-selected);
+}
+.palette-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.palette-group {
+  flex: none;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.palette-option[aria-selected="true"] .palette-group {
+  color: inherit;
+}
+.palette-empty {
+  margin: 0;
+  padding: 8px;
+  color: var(--text-3);
+}
+
+/* Removed view: restorable items, never purged */
+.removed-search {
+  width: 100%;
+  max-width: 320px;
+  margin: 0 0 10px;
+}
+.removed-hint {
+  margin: 0 0 16px;
+  color: var(--text-3);
+}
+.removed-list {
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+.removed-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--sep);
+  color: var(--text-2);
+}
+.removed-item-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.removed-item-title {
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.removed-item-meta,
+.removed-item-blocked {
+  font-size: 12px;
+  color: var(--text-3);
+}
+/* Waiting for approval: one block per request, hairline-separated like Removed. */
+.approval-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.approval {
+  padding: 14px 0 16px;
+  border-bottom: 1px solid var(--sep);
+}
+.approval-title {
+  margin: 0 10px 2px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+.approval-meta {
+  margin: 0 10px 6px;
+  font-size: 12px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+.approval-stale {
+  margin: 4px 10px 8px;
+  font-size: 12px;
+  color: var(--red);
+}
+.approval-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 8px 10px 0;
+}
+.task-remove-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+/* Status groups */
 .task-group-heading {
   display: flex;
   align-items: baseline;
@@ -580,17 +979,68 @@ textarea:disabled {
   font-size: 13px;
   font-weight: 700;
 }
+.task-group-heading--later {
+  padding-top: 20px;
+}
 .task-group-heading span {
   font-weight: 400;
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
 }
 
+/* Global search: a few matching Notes above the Tasks, title over a snippet. */
+.note-hits {
+  margin: 0 0 20px;
+}
+.note-hits-list {
+  margin: 0 0 6px;
+  padding: 0;
+  list-style: none;
+}
+.note-hit {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 7px;
+  text-align: left;
+  color: var(--text);
+}
+.note-hit:hover {
+  background: var(--hover);
+}
+.note-hit svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--accent);
+}
+.note-hit-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.note-hit-title {
+  overflow: hidden;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.note-hits-empty {
+  margin: 0;
+  padding: 4px 10px;
+  color: var(--text-3);
+}
+.note-hits .button {
+  margin-left: 38px;
+}
+
 /* Rows: Notes list cells */
 .task-card {
   position: relative;
 }
-.task-card + .task-card::before {
+.task-slot + .task-slot .task-card::before {
   content: "";
   position: absolute;
   top: 0;
@@ -599,9 +1049,9 @@ textarea:disabled {
   border-top: 1px solid var(--sep);
 }
 .task-card:hover::before,
-.task-card:hover + .task-card::before,
+.task-slot:hover + .task-slot .task-card::before,
 .task-card--expanded::before,
-.task-card--expanded + .task-card::before {
+.task-slot:has(.task-card--expanded) + .task-slot .task-card::before {
   border-color: transparent;
 }
 .task-row {
@@ -651,7 +1101,8 @@ textarea:disabled {
 }
 .task-card--expanded .task-row .task-check--completed {
   color: var(--row-selected);
-  background: currentColor;
+  background: var(--row-selected-text);
+  border-color: var(--row-selected-text);
 }
 .task-card--expanded .task-row .task-check--completed svg {
   color: var(--row-selected);
@@ -736,6 +1187,12 @@ textarea:disabled {
 }
 .deadline-pill--today {
   color: var(--orange);
+}
+/* A closed row still holding typed text: plain words, no badge. */
+.unsaved-marker {
+  font-style: italic;
+  color: var(--text-2);
+  white-space: nowrap;
 }
 .tag-pill {
   overflow: hidden;
@@ -848,6 +1305,22 @@ textarea:disabled {
 .property input[type="date"] {
   width: 112px;
 }
+/* An empty date field shows today's date on macOS, which reads as a deadline. */
+.property:has(.property-date--empty) {
+  position: relative;
+}
+.property-date--empty:not(:focus-within)::-webkit-datetime-edit {
+  opacity: 0;
+}
+.property-date-empty-label {
+  position: absolute;
+  left: 29px;
+  color: var(--text-2);
+  pointer-events: none;
+}
+.property:focus-within .property-date-empty-label {
+  display: none;
+}
 .property--wide {
   flex: 1;
   min-width: 180px;
@@ -955,6 +1428,10 @@ textarea:disabled {
   background: var(--field);
   color: var(--text);
 }
+.progress-note-input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
 .metadata-hint {
   margin: 8px 0 0;
   font-size: 12px;
@@ -971,7 +1448,7 @@ textarea:disabled {
   gap: 6px;
   color: var(--text-2);
 }
-.progress-history-heading h4 {
+.progress-history-heading h3 {
   margin: 0;
   font-size: 12px;
   font-weight: 700;
@@ -1033,13 +1510,511 @@ textarea:disabled {
   margin-top: 22px;
 }
 
+/* Task–Note links: a quiet list on the Task page and above an open Note */
+.linked-section {
+  margin-top: 18px;
+}
+.linked-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 700;
+}
+.linked-items {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.linked-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-bottom: 1px solid var(--sep);
+}
+.linked-item:last-child {
+  border-bottom: 0;
+}
+.linked-open {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 28px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.linked-open svg {
+  flex: none;
+  color: var(--text-3);
+}
+.linked-open:hover:not(:disabled),
+.linked-unlink:hover:not(:disabled) {
+  background: var(--hover);
+}
+.linked-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.linked-status {
+  flex: none;
+  margin-left: auto;
+  color: var(--text-3);
+  font-size: 12px;
+}
+.linked-unlink {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+.linked-add,
+.linked-picker-actions .text-link,
+.linked-undo .text-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent-text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.linked-undo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin-top: 6px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+.linked-undo .text-link {
+  margin-top: 0;
+}
+.linked-picker {
+  margin-top: 6px;
+  padding: 4px 8px 8px;
+  border-radius: 8px;
+  background: var(--field);
+}
+.linked-picker-actions {
+  display: flex;
+  gap: 12px;
+}
+.linked-search {
+  width: 100%;
+  margin-top: 4px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+.linked-empty,
+.linked-section .inline-error {
+  margin: 6px 0 0;
+  color: var(--text-3);
+  font-size: 12px;
+}
+.linked-section .inline-error {
+  color: var(--red);
+}
+.note-editor-pane .linked-section {
+  flex: none;
+  margin: 0 32px 12px;
+}
+
+/* Notes workspace: the Note list beside the open Note */
+.main-view[hidden],
+.notes-workspace[hidden] {
+  display: none;
+}
+.notes-workspace {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  min-width: 0;
+  overflow: hidden;
+}
+.note-list-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-right: 1px solid var(--sep);
+}
+.note-list-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  height: 52px;
+  padding: 0 10px 0 18px;
+}
+.note-list-header h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.note-list-items {
+  flex: 1;
+  margin: 0;
+  padding: 0 8px 16px;
+  overflow-y: auto;
+  list-style: none;
+  scrollbar-color: var(--side-selected) transparent;
+}
+.note-list-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 7px;
+  color: var(--text);
+  background: transparent;
+  text-align: left;
+  font: inherit;
+}
+.note-list-item:hover {
+  background: var(--hover);
+}
+.note-list-item[aria-current="true"] {
+  color: var(--row-selected-text);
+  background: var(--row-selected);
+}
+.note-list-more {
+  margin: 4px 8px 12px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--accent-text);
+  text-align: left;
+}
+.note-list-title {
+  overflow: hidden;
+  font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.note-list-date {
+  color: var(--text-3);
+  font-size: 12px;
+}
+.note-list-item[aria-current="true"] .note-list-date {
+  color: inherit;
+  opacity: 0.8;
+}
+.note-editor-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+/* The open Note's toolbar: folder and pin on the left, save state on the right. */
+.note-toolbar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  height: 52px;
+  padding: 0 12px 0 16px;
+}
+.note-folder-picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 26px;
+  padding: 0 4px 0 10px;
+  border-radius: 13px;
+  background: var(--field);
+  color: var(--text-2);
+  font-size: 12px;
+}
+.note-folder-picker svg {
+  flex: none;
+  color: var(--accent);
+}
+.note-folder-picker select {
+  min-width: 0;
+  max-width: 220px;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+}
+.note-toolbar .icon-button[aria-pressed="true"] {
+  color: var(--accent-text);
+}
+.note-save-state {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  color: var(--text-3);
+  font-size: 12px;
+}
+.note-search {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  margin: 0 10px 8px;
+  padding: 0 8px;
+  border-radius: 7px;
+  background: var(--field);
+  color: var(--text-3);
+}
+.note-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+}
+.note-search:focus-within {
+  outline: 2px solid var(--focus);
+}
+.note-list-empty {
+  margin: 12px 18px;
+  color: var(--text-3);
+}
+.note-list-snippet {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--text-2);
+  font-size: 12px;
+}
+.note-list-snippet mark {
+  background: transparent;
+  color: var(--accent-text);
+  font-weight: 700;
+}
+/* On the gold selection, accent text would vanish: the snippet takes the selection text color. */
+.note-list-item[aria-current="true"] .note-list-snippet,
+.note-list-item[aria-current="true"] .note-list-snippet mark {
+  color: inherit;
+}
+.note-list-heading {
+  margin: 10px 0 4px;
+  padding: 0 10px;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 700;
+}
+.note-editor-pane .error-banner,
+.note-editor-pane .notice-banner {
+  margin: 0 32px 12px;
+}
+.notice-actions {
+  display: flex;
+  flex: none;
+  gap: 8px;
+}
+.note-editor {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-color: var(--side-selected) transparent;
+}
+.note-sheet {
+  position: relative;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 4px 32px 72px;
+}
+.note-content {
+  min-height: 60vh;
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.55;
+  caret-color: var(--accent);
+  outline: none;
+}
+.note-placeholder {
+  position: absolute;
+  top: 4px;
+  left: 32px;
+  color: var(--text-3);
+  font-size: 15px;
+  line-height: 1.55;
+  pointer-events: none;
+}
+.note-paragraph {
+  margin: 0 0 8px;
+}
+.note-h1,
+.note-h2,
+.note-h3 {
+  margin: 0 0 10px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.note-h1 {
+  font-size: 24px;
+}
+.note-h2 {
+  font-size: 19px;
+}
+.note-h3 {
+  font-size: 16px;
+}
+.note-h4 {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 700;
+}
+.note-bold {
+  font-weight: 700;
+}
+.note-italic {
+  font-style: italic;
+}
+.note-strike {
+  text-decoration: line-through;
+}
+.note-link {
+  color: var(--accent-text);
+  text-decoration: underline;
+}
+.note-code-inline,
+.note-code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  background: var(--field);
+}
+.note-code-inline {
+  padding: 1px 4px;
+  border-radius: 5px;
+  font-size: 0.9em;
+}
+.note-code {
+  display: block;
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  tab-size: 2;
+}
+.note-quote {
+  margin: 0 0 8px;
+  padding-left: 12px;
+  border-left: 3px solid var(--side-selected);
+  color: var(--text-2);
+}
+.note-ul,
+.note-ol {
+  margin: 0 0 8px;
+  padding-left: 22px;
+}
+.note-li-nested {
+  list-style: none;
+}
+/* Checklist items draw their own circle; Lexical toggles on a click inside ::before. */
+.note-check {
+  position: relative;
+  margin-left: -22px;
+  padding-left: 28px;
+  list-style: none;
+  outline: none;
+}
+.note-check::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 0;
+  width: 18px;
+  height: 18px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--text-3);
+  border-radius: 50%;
+}
+.note-check--done {
+  color: var(--text-3);
+}
+.note-check--done::before {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.note-check--done::after {
+  content: "";
+  position: absolute;
+  top: 7px;
+  left: 6px;
+  width: 4px;
+  height: 8px;
+  border: solid var(--accent-ink);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+
 @media (max-width: 720px) {
   .toolbar-search {
     width: 140px;
   }
+  .notes-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 32vh) minmax(0, 1fr);
+  }
+  .note-list-pane {
+    border-right: 0;
+    border-bottom: 1px solid var(--sep);
+  }
+  .note-sheet {
+    padding: 4px 16px 72px;
+  }
+  .note-placeholder {
+    left: 16px;
+  }
+  .note-editor-pane .linked-section,
+  .note-editor-pane .error-banner,
+  .note-editor-pane .notice-banner {
+    margin: 0 16px 12px;
+  }
   .app-shell {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+  .app-shell > .sidebar {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .app-shell > :not(.sidebar):not(.undo-bar) {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .undo-bar {
+    grid-column: 1;
+    grid-row: 3;
   }
   .sidebar {
     flex-direction: row;
@@ -1106,11 +2081,25 @@ textarea:disabled {
   .folder,
   .button,
   .icon-button,
+  .linked-open,
+  .linked-unlink,
   .toolbar-sort {
     transition: background-color 120ms ease-out;
   }
   .progress-track span {
     transition: transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  /* An opening Task page fades in; nothing slides, so the list never shifts twice. */
+  .task-editor {
+    animation: page-in 120ms ease-out;
+  }
+  .task-check {
+    transition: background-color 120ms ease-out, border-color 120ms ease-out;
+  }
+}
+@keyframes page-in {
+  from {
+    opacity: 0;
   }
 }
 @media (prefers-reduced-motion: reduce) {

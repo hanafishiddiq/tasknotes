@@ -23,14 +23,41 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      - name: The measuring probe stays out of a normal build
+        run: "! grep -rq qa_report dist"
 
-  core:
+  rust:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        crate: [tasknotes-core, tasknotes-cli, tasknotes-mcp, tasknotes-bench, tasknotes-e2e]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-      - run: cargo test --manifest-path crates/tasknotes-core/Cargo.toml
-      - run: cargo fmt --manifest-path crates/tasknotes-core/Cargo.toml --all -- --check
-      - run: cargo clippy --manifest-path crates/tasknotes-core/Cargo.toml --all-targets -- -D warnings
+      - run: cargo test --manifest-path crates/${{ matrix.crate }}/Cargo.toml
+      - run: cargo fmt --manifest-path crates/${{ matrix.crate }}/Cargo.toml --all -- --check
+      - run: cargo clippy --manifest-path crates/${{ matrix.crate }}/Cargo.toml --all-targets -- -D warnings
+
+  desktop:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.6.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
+      - run: cargo check --manifest-path src-tauri/Cargo.toml --features qa-probe
+      - run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+      - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings

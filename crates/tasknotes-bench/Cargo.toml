@@ -1,0 +1,17 @@
+[package]
+name = "tasknotes-bench"
+version = "0.1.0"
+edition = "2024"
+description = "Ticket 17: a deterministic synthetic dataset and query timing for Tasknotes"
+publish = false
+
+[[bin]]
+name = "tasknotes-bench"
+path = "src/main.rs"
+
+[dependencies]
+tasknotes-core = { path = "../tasknotes-core" }
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"

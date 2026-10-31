@@ -1,13 +1,28 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
-  Check, Folder, Inbox, ListChecks, Moon, Pencil,
-  Plus, RotateCcw, Sun, Trash2, X,
+  Check, ClipboardCheck, Folder, Inbox, ListChecks, Moon, NotebookText, Pencil,
+  Plus, Settings, Sun, Trash2, X,
 } from "lucide-react";
 import type { TaskList, TaskView } from "../lib/task-api";
 import type { Theme } from "../lib/use-theme";
 
 interface TaskSidebarProps {
   view: TaskView;
+  /** The Notes workspace is showing instead of a Task view. */
+  notesActive: boolean;
+  /** The Removed view is showing. */
+  removedActive: boolean;
+  onOpenRemoved: () => void;
+  /** Bulk Changes waiting for the person; the entry shows while any wait. */
+  pendingApprovals: number;
+  approvalsActive: boolean;
+  onOpenApprovals: () => void;
+  settingsActive: boolean;
+  onOpenSettings: () => void;
+  /** Notes are showing every Note rather than one folder. */
+  allNotesCurrent: boolean;
+  /** The Note Folder tree, once Notes have been opened. */
+  noteFolders?: ReactNode;
   lists: TaskList[];
   listError: string | null;
   /** Tasks on the current page, or null when the count is not known. */
@@ -18,22 +33,35 @@ interface TaskSidebarProps {
   theme: Theme;
   onToggleTheme: () => void;
   onNavigate: (view: TaskView) => void;
+  onOpenNotes: () => void;
   onCreateList: (name: string) => Promise<boolean>;
   onRenameList: (list: TaskList, name: string) => Promise<boolean>;
   onRemoveList: (list: TaskList) => Promise<void>;
-  onRestoreList: (list: TaskList) => Promise<void>;
   onLoadMoreLists: () => Promise<void>;
 }
 
 export default function TaskSidebar({
-  view, lists, listError, shownCount, hasMoreTasks, hasMoreLists, busy,
-  theme, onToggleTheme, onNavigate, onCreateList, onRenameList, onRemoveList,
-  onRestoreList, onLoadMoreLists,
+  view, notesActive, removedActive, onOpenRemoved, pendingApprovals, approvalsActive, onOpenApprovals, settingsActive, onOpenSettings, allNotesCurrent, noteFolders, lists, listError, shownCount, hasMoreTasks, hasMoreLists, busy,
+  theme, onToggleTheme, onNavigate, onOpenNotes, onCreateList, onRenameList, onRemoveList,
+  onLoadMoreLists,
 }: TaskSidebarProps) {
   const [name, setName] = useState("");
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
-  const [removedVisible, setRemovedVisible] = useState(false);
+  const listsNav = useRef<HTMLElement>(null);
+  // The List whose rename just closed, taking its focused field along: its row gets focus instead.
+  const renamed = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (renaming || !renamed.current) return;
+    listsNav.current?.querySelector<HTMLElement>(`[data-list-id="${CSS.escape(renamed.current)}"]`)?.focus();
+    renamed.current = null;
+  }, [renaming]);
+
+  function closeRename() {
+    renamed.current = renaming;
+    setRenaming(null);
+  }
 
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -44,11 +72,14 @@ export default function TaskSidebar({
   async function rename(event: FormEvent<HTMLFormElement>, list: TaskList) {
     event.preventDefault();
     if (busy || !renameDraft.trim()) return;
-    if (await onRenameList(list, renameDraft)) setRenaming(null);
+    if (await onRenameList(list, renameDraft)) closeRename();
   }
 
+  // While Notes are open, no Task view is the current place.
+  const isCurrent = (place: TaskView) => !notesActive && place.kind === view.kind &&
+    (place.kind !== "list" || (view.kind === "list" && view.listId === place.listId));
   // The page holds only the active view's Tasks, so only that folder gets a count.
-  const count = (active: boolean) => active && shownCount !== null && (
+  const count = (place: TaskView) => isCurrent(place) && shownCount !== null && (
     <span className="folder-count">{shownCount}{hasMoreTasks ? "+" : ""}</span>
   );
 
@@ -59,25 +90,43 @@ export default function TaskSidebar({
         <button type="button" disabled={busy}
           aria-label="All tasks"
           className="folder"
-          aria-current={view.kind === "all" ? "page" : undefined}
+          aria-current={isCurrent({ kind: "all" }) ? "page" : undefined}
           onClick={() => onNavigate({ kind: "all" })}>
           <ListChecks size={17} aria-hidden="true" />
           <span className="folder-name">All tasks</span>
-          {count(view.kind === "all")}
+          {count({ kind: "all" })}
         </button>
         <button type="button" disabled={busy}
           aria-label="Inbox"
           className="folder"
-          aria-current={view.kind === "inbox" ? "page" : undefined}
+          aria-current={isCurrent({ kind: "inbox" }) ? "page" : undefined}
           onClick={() => onNavigate({ kind: "inbox" })}>
           <Inbox size={17} aria-hidden="true" /><span className="folder-name">Inbox</span>
-          {count(view.kind === "inbox")}
+          {count({ kind: "inbox" })}
         </button>
+        <button type="button" disabled={busy}
+          aria-label="Removed"
+          className="folder"
+          aria-current={removedActive ? "page" : undefined}
+          onClick={onOpenRemoved}>
+          <Trash2 size={17} aria-hidden="true" /><span className="folder-name">Removed</span>
+        </button>
+        {(pendingApprovals > 0 || approvalsActive) && (
+          <button type="button" disabled={busy}
+            aria-label={`Waiting for approval, ${pendingApprovals}`}
+            className="folder"
+            aria-current={approvalsActive ? "page" : undefined}
+            onClick={onOpenApprovals}>
+            <ClipboardCheck size={17} aria-hidden="true" />
+            <span className="folder-name">Waiting for approval</span>
+            {pendingApprovals > 0 && <span className="folder-count">{pendingApprovals}</span>}
+          </button>
+        )}
       </nav>
 
       <div className="sidebar-heading">Lists</div>
       {listError && <p className="sidebar-error" role="status">{listError}</p>}
-      <nav aria-label="Lists" className="sidebar-nav">
+      <nav ref={listsNav} aria-label="Lists" className="sidebar-nav">
         {lists.filter((list) => !list.removed).map((list) => (
           <div className="folder-row" key={list.id}>
             {renaming === list.id ? (
@@ -91,17 +140,18 @@ export default function TaskSidebar({
                   <Check size={14} />
                 </button>
                 <button type="button" className="folder-action"
-                  aria-label="Cancel rename" onClick={() => setRenaming(null)}><X size={14} /></button>
+                  aria-label="Cancel rename" onClick={closeRename}><X size={14} /></button>
               </form>
             ) : (
               <>
                 <button type="button" disabled={busy}
                   aria-label={list.name}
-                  aria-current={view.kind === "list" && view.listId === list.id ? "page" : undefined}
+                  data-list-id={list.id}
+                  aria-current={isCurrent({ kind: "list", listId: list.id }) ? "page" : undefined}
                   className="folder"
                   onClick={() => onNavigate({ kind: "list", listId: list.id })}>
                   <Folder size={17} aria-hidden="true" /><span className="folder-name">{list.name}</span>
-                  {count(view.kind === "list" && view.listId === list.id)}
+                  {count({ kind: "list", listId: list.id })}
                 </button>
                 <span className="folder-actions">
                   <button type="button" className="folder-action" disabled={busy}
@@ -131,26 +181,23 @@ export default function TaskSidebar({
           disabled={busy || !name.trim()}><Check size={14} /></button>
       </form>
 
+      <div className="sidebar-heading">Notes</div>
+      <nav aria-label="Note folders" className="sidebar-nav">
+        <button type="button" disabled={busy}
+          aria-label="All notes"
+          className="folder"
+          aria-current={allNotesCurrent ? "page" : undefined}
+          onClick={onOpenNotes}>
+          <NotebookText size={17} aria-hidden="true" /><span className="folder-name">All notes</span>
+        </button>
+        {noteFolders}
+      </nav>
+
       <div className="sidebar-spacer" />
-      {lists.some((list) => list.removed) && (
-        <div className="removed-lists">
-          <button type="button" className="folder folder--quiet"
-            aria-expanded={removedVisible}
-            onClick={() => setRemovedVisible((current) => !current)}>
-            <Trash2 size={16} aria-hidden="true" />
-            <span className="folder-name">{removedVisible ? "Hide removed lists" : "Show removed lists"}</span>
-          </button>
-          {removedVisible && lists.filter((list) => list.removed).map((list) => (
-            <div key={list.id} className="folder-row folder-row--removed">
-              <span className="folder-name">{list.name}</span>
-              <button type="button" className="folder-action folder-action--visible" disabled={busy}
-                aria-label={`Restore ${list.name}`} onClick={() => void onRestoreList(list)}>
-                <RotateCcw size={13} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+      <button type="button" className="folder folder--quiet" disabled={busy}
+        aria-label="Settings" aria-current={settingsActive ? "page" : undefined} onClick={onOpenSettings}>
+        <Settings size={16} aria-hidden="true" /><span className="folder-name">Settings</span>
+      </button>
       <button type="button" className="folder folder--quiet" onClick={onToggleTheme}
         aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}>
         {theme === "dark" ? <Sun size={16} aria-hidden="true" /> : <Moon size={16} aria-hidden="true" />}

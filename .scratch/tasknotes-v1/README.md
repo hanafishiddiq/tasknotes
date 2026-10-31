@@ -1,7 +1,7 @@
 # Tasknotes v1 — Local Issue Tracker
 
 **Planning:** COMPLETE (2026-10-11). All Q1–Q49 decisions accepted.
-**Implementation (2026-10-22):** Tickets **01–05 completed and merged to `main`** after independent AI code reviews and owner approval (01–03 on 2026-10-13, [merge record](../../docs/qa/tickets-01-03-postmerge-2026-10-13.md); 04 with the redesign UI and 05 on 2026-10-22). Tickets 06–18 have not been completed. No release/deployment or user SQLite migration occurred.
+**Implementation (2026-10-31):** Tickets **01–05 completed and merged to `main`** after independent AI code reviews and owner approval. Tickets **06–18 are implemented and code-reviewed but not completed**: 06 is in Draft PR #19, 07–18 in Draft PR #20 (`integration/tasknotes-v1-07-18`), all awaiting the owner's native checks and merge decision. No release/deployment or user SQLite migration occurred.
 **Canonical specification:** [spec.md](spec.md).
 **Source of truth for terminology:** [GLOSSARY.md](../../GLOSSARY.md).
 **Architecture decisions:** [docs/adr](../../docs/adr).
@@ -43,7 +43,7 @@
 | 17 | Performance and synthetic benchmarks | 05, 07, 12, 14 |
 | 18 | macOS release-quality verification | 12, 13, 15, 16, 17 |
 
-**Current frontier (2026-10-22):** Ticket **06 (Markdown Notes)** is next; Ticket 05's merge also unblocks part of 10, 14 and 17. Tickets 07 onward still have uncompleted dependencies. Each additional feature requires its own implementation instruction.
+**Current frontier (2026-10-31):** every automated gate is done; see the [readiness checklist](../../docs/qa/release-readiness-2026-10-31.md). What remains is the owner's [click check](../../docs/qa/owner-check-2026-10-30.md) and merge decision, so no ticket from 06 onward is marked completed yet.
 
 ## Privacy and public repository rules
 

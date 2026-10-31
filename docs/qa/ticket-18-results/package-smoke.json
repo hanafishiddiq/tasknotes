@@ -1,0 +1,38 @@
+{
+  "identifier": "store.adamaja.tasknotes.ticket18qa",
+  "version": "0.1.0",
+  "bundle": {
+    "files": 3,
+    "size_mb": 6.5,
+    "forbidden_files": [],
+    "contains_probe": false,
+    "accepts_a_data_folder_from_the_environment": false,
+    "home_paths_in_binary": {
+      "count": 61,
+      "examples": [
+        "~/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anyhow-",
+        "~/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/base64-",
+        "~/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/block2-",
+        "~/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/brotli-",
+        "~/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bytes-1"
+      ]
+    },
+    "signature": [
+      "Signature=adhoc",
+      "TeamIdentifier=not set"
+    ]
+  },
+  "first_launch": {
+    "stayed_running": true,
+    "network_sockets": []
+  },
+  "database_created_on_first_launch": true,
+  "backup_files_after_first_launch": 1,
+  "task_created_between_launches": true,
+  "second_launch": {
+    "stayed_running": true,
+    "network_sockets": []
+  },
+  "task_survives_second_launch": true,
+  "schema_version": 15
+}

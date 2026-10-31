@@ -47,6 +47,13 @@ beforeEach(() => {
         list.revision++;
         return { ...list };
       }
+      case "list_removed": return {
+        items: lists.filter((list) => list.removed).map((list) => ({
+          kind: "list", id: list.id, title: list.name, revision: list.revision,
+          removedAt: list.updatedAt, inRemovedContainer: false,
+        })),
+        nextCursor: null,
+      };
       case "list_tasks": {
         const v = body.view?.kind ?? "all";
         const active = lists.filter((list) => !list.removed).map((x) => x.id);
@@ -130,6 +137,23 @@ describe("Inbox, Lists, and Task metadata", () => {
     expect(await within(screen.getByRole("article", { name: "Prepare launch" })).findByText("Overdue")).toBeInTheDocument();
   });
 
+  it("says No deadline while a Task has none, so an empty date never reads as today", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("article", { name: "Prepare launch" });
+    await user.click(screen.getByRole("button", { name: "Open Prepare launch" }));
+    const editor = screen.getByRole("region", { name: "Task details" });
+    const deadline = within(editor).getByLabelText("Deadline");
+    expect(within(editor).getByText("No deadline")).toBeInTheDocument();
+    expect(deadline).toHaveValue("");
+    expect(deadline).toHaveAccessibleDescription("No deadline");
+
+    await user.type(deadline, "2026-11-15");
+    expect(within(editor).queryByText("No deadline")).not.toBeInTheDocument();
+    expect(deadline).toHaveValue("2026-11-15");
+    expect(deadline).not.toHaveAccessibleDescription();
+  });
+
   it("removes a List reversibly without deleting its Task, then restores the Task", async () => {
     const user = userEvent.setup();
     lists = [{ id: "list-1", name: "Project", revision: 1, createdAt: 1, updatedAt: 1, removed: false }];
@@ -141,8 +165,9 @@ describe("Inbox, Lists, and Task metadata", () => {
       expect(screen.queryByRole("article", { name: "Prepare launch" })).not.toBeInTheDocument();
     });
     expect(records).toHaveLength(1);
-    await user.click(screen.getByRole("button", { name: "Show removed lists" }));
-    await user.click(screen.getByRole("button", { name: "Restore Project" }));
+    await user.click(screen.getByRole("button", { name: "Removed" }));
+    await user.click(await screen.findByRole("button", { name: "Restore Project" }));
+    await user.click(screen.getByRole("button", { name: "All tasks" }));
     expect(await screen.findByRole("article", { name: "Prepare launch" })).toBeInTheDocument();
     expect(records).toHaveLength(1);
   });
@@ -239,24 +264,29 @@ describe("Inbox, Lists, and Task metadata", () => {
     });
     render(<App />);
     expect(await screen.findByRole("article", { name: "Item 0" })).toBeInTheDocument();
-    expect(screen.getAllByRole("article")).toHaveLength(50);
+    // Rows are virtualized, so the group count (not the DOM) shows the page size.
+    expect(screen.getByRole("heading", { name: /^Ready/ })).toHaveTextContent("Ready50+");
 
     await user.click(screen.getByRole("button", { name: "Next page" }));
     expect(await screen.findByRole("article", { name: "Item 50" })).toBeInTheDocument();
-    expect(screen.getAllByRole("article")).toHaveLength(50);
+    // Rows are virtualized, so the group count (not the DOM) shows the page size.
+    expect(screen.getByRole("heading", { name: /^Ready/ })).toHaveTextContent("Ready50+");
     expect(screen.queryByRole("article", { name: "Item 0" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Next page" }));
     expect(await screen.findByRole("article", { name: "Item 100" })).toBeInTheDocument();
-    expect(screen.getAllByRole("article")).toHaveLength(20);
+    // Rows are virtualized, so the group count (not the DOM) shows the page size.
+    expect(screen.getByRole("heading", { name: /^Ready/ })).toHaveTextContent("Ready20");
 
     await user.click(screen.getByRole("button", { name: "Previous page" }));
     expect(await screen.findByRole("article", { name: "Item 50" })).toBeInTheDocument();
-    expect(screen.getAllByRole("article")).toHaveLength(50);
+    // Rows are virtualized, so the group count (not the DOM) shows the page size.
+    expect(screen.getByRole("heading", { name: /^Ready/ })).toHaveTextContent("Ready50+");
 
     await user.click(screen.getByRole("button", { name: "Previous page" }));
     expect(await screen.findByRole("article", { name: "Item 0" })).toBeInTheDocument();
-    expect(screen.getAllByRole("article")).toHaveLength(50);
+    // Rows are virtualized, so the group count (not the DOM) shows the page size.
+    expect(screen.getByRole("heading", { name: /^Ready/ })).toHaveTextContent("Ready50+");
   });
 
   it("shows an upcoming local date without marking it overdue", async () => {

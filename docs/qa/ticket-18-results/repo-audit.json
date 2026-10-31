@@ -1,0 +1,73 @@
+{
+  "paths_ever_committed": 440,
+  "forbidden_files_ever_committed": [],
+  "forbidden_files_now": [],
+  "largest_files_now": [
+    {
+      "bytes": 112287,
+      "path": "src-tauri/Cargo.lock"
+    },
+    {
+      "bytes": 98451,
+      "path": "src-tauri/icons/icon.icns"
+    },
+    {
+      "bytes": 67611,
+      "path": "pnpm-lock.yaml"
+    },
+    {
+      "bytes": 49462,
+      "path": "crates/tasknotes-core/src/tasks.rs"
+    },
+    {
+      "bytes": 48523,
+      "path": "src/App.tsx"
+    },
+    {
+      "bytes": 45235,
+      "path": "crates/tasknotes-e2e/tests/scenario.rs"
+    },
+    {
+      "bytes": 41344,
+      "path": "crates/tasknotes-core/tests/backup_restore.rs"
+    },
+    {
+      "bytes": 39118,
+      "path": "src/App.css"
+    }
+  ],
+  "secrets_in_any_commit": {
+    "GitHub token": [],
+    "Anthropic key": [],
+    "OpenAI-style key": [],
+    "AWS key": [],
+    "private key block": [],
+    "Slack token": []
+  },
+  "personal_data_now": {
+    "email address": {
+      "count": 0,
+      "where": []
+    },
+    "home directory": {
+      "count": 3,
+      "where": [
+        "src/data-settings.test.tsx:36",
+        "src/data-settings.test.tsx:106",
+        "src/test/a11y-world.ts:180"
+      ]
+    }
+  },
+  "personal_data_in_history_only": {
+    "email address": {
+      "commits_touching": 0
+    },
+    "home directory": {
+      "commits_touching": 5
+    }
+  },
+  "private_emails_in_commit_metadata": {
+    "distinct": 1,
+    "occurrences": 7
+  }
+}

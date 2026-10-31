@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
-  ArrowDownWideNarrow, CheckCircle2, LoaderCircle, LockKeyhole, Search, SearchX, SquarePen, Tag,
+  ArrowDownWideNarrow, CheckCircle2, LoaderCircle, LockKeyhole, NotebookText, Search, SearchX, SquarePen,
+  Tag,
 } from "lucide-react";
 import {
   taskApi, NO_FILTERS, TASK_PAGE_SIZE, type Task, type TaskList, type TaskView,
@@ -10,27 +11,73 @@ import {
 import { PRIORITY_ORDER, PRIORITY_VIEW, STATUS_ORDER, STATUS_VIEW } from "./lib/task-visuals";
 import TaskRow from "./components/TaskRow";
 import TaskSidebar from "./components/TaskSidebar";
+import VirtualTaskList from "./components/VirtualTaskList";
 import { useLocalCalendarDay } from "./lib/use-local-calendar-day";
 import { useTheme } from "./lib/use-theme";
+import { useSound } from "./lib/sound/use-sound";
+import { useShortcuts } from "./lib/use-shortcuts";
+import { useTaskDrafts } from "./lib/use-task-drafts";
+import { useUndo } from "./lib/use-undo";
+import { errorMessage } from "./lib/error-message";
+import { listenForQuit } from "./lib/quit";
+import { listenForQuickCapture, shellApi } from "./lib/shell-api";
+import { newTaskKeys } from "./lib/shortcuts";
+import {
+  ALL_NOTES, noteApi, type Note, type NoteFolder, type NotePage, type NoteScope,
+} from "./lib/note-api";
+import type { NotesRequest } from "./components/NotesWorkspace";
+import { useNoteFolders } from "./lib/use-note-folders";
+import NoteFolderTree from "./components/NoteFolderTree";
+import NoteSnippet from "./components/NoteSnippet";
+import RemovedView from "./components/RemovedView";
+import ApprovalsView from "./components/ApprovalsView";
+import { usePendingApprovals } from "./lib/use-pending-approvals";
+import SettingsView from "./components/SettingsView";
+import SoundSettings from "./components/SoundSettings";
+import CommandPalette, { type Command } from "./components/CommandPalette";
+import { buildCommands } from "./lib/app-commands";
+import { removedApi, type RemovedItem } from "./lib/removed-api";
 import "./App.css";
+
+// The rich-text editor loads only when Notes are first opened, keeping Task startup light.
+const NotesWorkspace = lazy(() => import("./components/NotesWorkspace"));
 
 // Typing settles before a search query reaches the core.
 const SEARCH_DELAY_MS = 250;
 
 function sameFilters(a: TaskFilters, b: TaskFilters): boolean {
   return a.text.trim() === b.text.trim() && a.tag.trim() === b.tag.trim() &&
-    a.status === b.status && a.priority === b.priority;
-}
-
-function errorMessage(error: unknown): string {
-  if (typeof error === "string") return error;
-  if (error instanceof Error) return error.message;
-  return "Something went wrong. Please try again.";
+    a.status === b.status && a.priority === b.priority && a.taskId === b.taskId;
 }
 
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [view, setView] = useState<TaskView>({ kind: "all" });
+  const [workspace, setWorkspace] = useState<"tasks" | "notes" | "removed" | "settings" | "approvals">("tasks");
+  // Bulk Changes an AI client asked for, waiting for the person.
+  const approvals = usePendingApprovals();
+  // Bumped after something is moved to Removed, so the Removed view asks again.
+  const [removedKey, setRemovedKey] = useState(0);
+  // Recent moves to Removed, which Undo (or ⌘Z) brings back newest first.
+  const undo = useUndo();
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const paletteReturn = useRef<HTMLElement | null>(null);
+  // A field to focus once the Task view is showing (⌘N, ⌘F, palette).
+  const [focusRequest, setFocusRequest] = useState<{ field: "capture" | "search"; seq: number } | null>(null);
+  // Bumped after a Note or folder is restored, so the Notes list asks again.
+  const [notesRefresh, setNotesRefresh] = useState(0);
+  // Once opened, Notes stay mounted so a pending autosave survives visiting Tasks.
+  const [notesOpened, setNotesOpened] = useState(false);
+  const [noteScope, setNoteScope] = useState<NoteScope>(ALL_NOTES);
+  // The folder tree loads with Notes, keeping Task startup independent of it.
+  const noteFolders = useNoteFolders(notesOpened);
+  // Global search: the first few matching Notes beside the Tasks, never their bodies.
+  // notesRequest also carries a Note opened from a Task's linked Notes.
+  const [noteHits, setNoteHits] = useState<NotePage | null>(null);
+  const [noteHitsFailed, setNoteHitsFailed] = useState(false);
+  const [notesRequest, setNotesRequest] = useState<NotesRequest | null>(null);
+  // A linked Task asked for while the Task view was busy.
+  const [pendingLinkedTask, setPendingLinkedTask] = useState<string | null>(null);
   const [lists, setLists] = useState<TaskList[]>([]);
   const [listCursor, setListCursor] = useState<string | null>(null);
   const [busyList, setBusyList] = useState(false);
@@ -53,14 +100,24 @@ export default function App() {
   const [creating, setCreating] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // Unsaved Task edits live here, not in the rows, so they outlive a row leaving the page.
+  const drafts = useTaskDrafts();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [theme, toggleTheme] = useTheme();
+  const appearance = useTheme();
+  const sound = useSound();
+  // A Task view change in flight: moving elsewhere waits until it settles.
+  const busy = busyList || creating || Boolean(savingId) || loadingMore;
   const titleInput = useRef<HTMLInputElement>(null);
+  const taskScroll = useRef<HTMLDivElement>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
   // Ignore stale results from older Task queries after a newer user action.
   const requestGeneration = useRef(0);
   const currentQuery = useRef({ sort, view, filters });
+  // The page showing now, for Undo: it runs long after the render that queued it.
+  const currentPage = useRef(currentPageCursor);
+  currentPage.current = currentPageCursor;
 
   useEffect(() => {
     currentQuery.current = { sort, view, filters };
@@ -98,6 +155,29 @@ export default function App() {
   }, [searchDraft, tagDraft]);
 
   useEffect(() => {
+    const text = filters.text.trim();
+    // Only blank text is no search; the core decides what the words are.
+    if (!text) {
+      setNoteHits(null);
+      setNoteHitsFailed(false);
+      return;
+    }
+    let active = true;
+    noteApi.search(text)
+      .then((page) => {
+        if (!active) return;
+        setNoteHits(page);
+        setNoteHitsFailed(false);
+      })
+      .catch(() => {
+        if (!active) return;
+        setNoteHits(null);
+        setNoteHitsFailed(true);
+      });
+    return () => { active = false; };
+  }, [filters.text]);
+
+  useEffect(() => {
     let active = true;
     taskApi.lists().then((page) => {
       if (!active) return;
@@ -109,14 +189,144 @@ export default function App() {
     return () => { active = false; };
   }, []);
 
+  useEffect(() => {
+    // Only Notes save on a delay, so they are what can hold a quit back.
+    // Showing Notes keeps the folder in view; only an unsaved Note can hold the quit back.
+    const stop = listenForQuit(() => { setNotesOpened(true); setWorkspace("notes"); });
+    return () => void stop.then((unlisten) => unlisten());
+  }, []);
+
+  useEffect(() => {
+    if (pendingLinkedTask && !busy) openLinkedTask(pendingLinkedTask);
+    // openLinkedTask reads the same busy flag listed here.
+  }, [pendingLinkedTask, busy]);
+
+  useEffect(() => {
+    if (!focusRequest || workspace !== "tasks") return;
+    const target = focusRequest.field === "capture" ? titleInput.current : searchInput.current;
+    // A Quick Capture asked for while the list is still loading waits for the field.
+    if (target?.disabled) return;
+    target?.focus();
+    setFocusRequest(null);
+  }, [focusRequest, workspace, loading, creating, savingId]);
+
   function resetTaskPages() {
     requestGeneration.current += 1;
     setCurrentPageCursor(null);
     setPreviousPageCursors([]);
   }
 
+  function openNotes(scope: NoteScope = ALL_NOTES) {
+    undo.hideNotice();
+    setNotesOpened(true);
+    setWorkspace("notes");
+    setNoteScope(scope);
+  }
+
+  /** Shows a global search in Notes, opening one of its Notes when given. */
+  function searchInNotes(openId: string | null) {
+    setNotesRequest((previous) => ({
+      seq: (previous?.seq ?? 0) + 1, search: filters.text.trim(), openId,
+    }));
+    openNotes(ALL_NOTES);
+  }
+
+  /** Shows one Task, expanded, as when it is opened from a Note it is linked to. */
+  function openLinkedTask(taskId: string) {
+    if (busy) {
+      // Opened once the Task view has finished its current change.
+      setPendingLinkedTask(taskId);
+      setWorkspace("tasks");
+      return;
+    }
+    setPendingLinkedTask(null);
+    navigate({ kind: "all" });
+    setSearchDraft("");
+    setTagDraft("");
+    applyFilters({ ...NO_FILTERS, taskId });
+    setExpandedId(taskId);
+  }
+
+  function openSettings() {
+    if (busy) return;
+    undo.hideNotice();
+    setWorkspace("settings");
+  }
+
+  function openRemoved() {
+    if (busy) return;
+    undo.hideNotice();
+    setWorkspace("removed");
+  }
+
+  function openApprovals() {
+    if (busy) return;
+    undo.hideNotice();
+    void approvals.refresh();
+    setWorkspace("approvals");
+  }
+
+  /** After a Bulk Change was decided here: every view and the count ask again. */
+  function bulkDecided(approved: boolean) {
+    void approvals.refresh();
+    if (!approved) return;
+    refreshLists().catch((reason) => setListError("Could not load Lists: " + errorMessage(reason)));
+    retryFirstLoad();
+    if (notesOpened) void noteFolders.refresh();
+    setNotesRefresh((key) => key + 1);
+    setRemovedKey((key) => key + 1);
+  }
+
+  /** Shows a restored item again wherever it belongs. */
+  function restored(item: RemovedItem) {
+    // What Undo would bring back may be the very item just restored.
+    undo.forget(`${item.kind}:${item.id}`);
+    if (item.kind === "list") {
+      refreshLists().catch((reason) => setListError("Could not load Lists: " + errorMessage(reason)));
+    }
+    if (item.kind === "task" || item.kind === "list") retryFirstLoad();
+    if (item.kind === "note_folder") {
+      void noteFolders.refresh();
+    }
+    if (item.kind === "note" || item.kind === "note_folder") setNotesRefresh((key) => key + 1);
+  }
+
+  /**
+   * A Removed folder hides its subtree. The Notes list refreshes; if the open
+   * folder is now hidden, the core refuses to list it and the view goes back
+   * to All notes (onScopeHidden).
+   */
+  function folderRemoved(folder: NoteFolder) {
+    setRemovedKey((key) => key + 1);
+    setNotesRefresh((key) => key + 1);
+    undo.push({
+      key: `note_folder:${folder.id}`, title: folder.name,
+      undo: () => restoreNoteItem("note_folder", folder),
+    });
+  }
+
+  function noteRemoved(note: Note) {
+    setRemovedKey((key) => key + 1);
+    undo.push({ key: `note:${note.id}`, title: note.title, undo: () => restoreNoteItem("note", note) });
+  }
+
+  /** Undo for a Note or folder: restore it, then let Notes and the folder tree ask again. */
+  async function restoreNoteItem(kind: "note" | "note_folder", item: Note | NoteFolder) {
+    await removedApi.restore(kind, item);
+    if (kind === "note_folder") await noteFolders.refresh();
+    setNotesRefresh((key) => key + 1);
+    setRemovedKey((key) => key + 1);
+  }
+
+  function openLinkedNote(noteId: string) {
+    setNotesRequest((previous) => ({ seq: (previous?.seq ?? 0) + 1, search: "", openId: noteId }));
+    openNotes(ALL_NOTES);
+  }
+
   function navigate(next: TaskView) {
-    if (busyList || creating || savingId || loadingMore) return;
+    if (busy) return;
+    setWorkspace("tasks");
+    undo.hideNotice();
     if (next.kind === view.kind &&
         (next.kind !== "list" || (view.kind === "list" && next.listId === view.listId))) return;
     setTasks([]);
@@ -185,7 +395,8 @@ export default function App() {
     }
   }
 
-  async function setListRemoved(list: TaskList, removed: boolean) {
+  /** Rejects when the core refuses, so Undo can say so in whatever view is showing. */
+  async function applyListRemoved(list: TaskList, removed: boolean) {
     setBusyList(true);
     setError(null);
     try {
@@ -193,6 +404,10 @@ export default function App() {
         id: list.id, expectedRevision: list.revision, removed,
       });
       setLists((all) => all.map((item) => item.id === list.id ? updated : item));
+      setRemovedKey((key) => key + 1);
+      if (removed) {
+        undo.push({ key: `list:${updated.id}`, title: updated.name, undo: () => applyListRemoved(updated, false) });
+      }
       if (removed && view.kind === "list" && view.listId === list.id) {
         setTasks([]);
         setNextCursor(null);
@@ -207,8 +422,17 @@ export default function App() {
       try { await refreshLists(); } catch (reason) {
         setError("List updated, but the sidebar could not refresh: " + errorMessage(reason));
       }
-    } catch (reason) { setError(errorMessage(reason)); }
-    finally { setBusyList(false); }
+    } finally {
+      setBusyList(false);
+    }
+  }
+
+  async function setListRemoved(list: TaskList, removed: boolean) {
+    try {
+      await applyListRemoved(list, removed);
+    } catch (reason) {
+      setError(errorMessage(reason));
+    }
   }
 
   async function loadMoreLists() {
@@ -237,6 +461,7 @@ export default function App() {
   async function createTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!title.trim() || creating || savingId || loading || loadError) return;
+    const form = event.currentTarget;
     setCreating(true);
     setError(null);
     try {
@@ -244,6 +469,7 @@ export default function App() {
         { title, description },
         view.kind === "list" ? view.listId : undefined,
       );
+      sound.play("create");
       const generation = ++requestGeneration.current;
       const { sort: latestSort, view: latestView, filters: latestFilters } = currentQuery.current;
       // Clear only after the actual write succeeds; retry must not create a
@@ -282,10 +508,14 @@ export default function App() {
       setError(errorMessage(reason));
     } finally {
       setCreating(false);
+      // The field was disabled while saving, which drops focus: hand it back for the next Task.
+      if (document.activeElement === document.body || form.contains(document.activeElement)) {
+        setFocusRequest((previous) => ({ field: "capture", seq: (previous?.seq ?? 0) + 1 }));
+      }
     }
   }
 
-  async function updateTask(task: Task, nextTitle: string, nextDescription: string) {
+  async function updateTask(task: Task, nextTitle: string, nextDescription: string, expectedRevision: number) {
     setSavingId(task.id);
     setError(null);
     try {
@@ -293,10 +523,11 @@ export default function App() {
         id: task.id,
         title: nextTitle,
         description: nextDescription,
-        expectedRevision: task.revision,
+        expectedRevision,
       });
       requestGeneration.current += 1;
       setTasks((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      drafts.set(task.id, undefined);
       setExpandedId(null);
     } catch (reason) {
       setError(errorMessage(reason));
@@ -305,15 +536,21 @@ export default function App() {
     }
   }
 
-  async function commitTaskMutation(task: Task, mutate: () => Promise<Task>) {
-    if (savingId) return;
+  /**
+   * Resolves true once the mutation itself succeeded. Rejects when the core
+   * refuses, so Undo can say so in whatever view is showing.
+   */
+  async function applyTaskMutation(task: Task, mutate: () => Promise<Task>): Promise<boolean> {
+    if (savingId) return false;
     setSavingId(task.id);
     setError(null);
-    // Paging is disabled while saving, so this is still the visible page.
+    // Paging is disabled while saving, so this stays the visible page.
     const queryAtStart = currentQuery.current;
-    const startCursor = currentPageCursor;
+    const startCursor = currentPage.current;
     try {
       const updated = await mutate();
+      // The core decides completion (status or 100% progress); the cue follows its answer.
+      if (task.status !== "completed" && updated.status === "completed") sound.play("complete");
       const generation = ++requestGeneration.current;
       const { sort: latestSort, view: latestView, filters: latestFilters } = currentQuery.current;
       // A cursor belongs to the query that produced it; a new query starts on page 1.
@@ -326,7 +563,7 @@ export default function App() {
         if (pageCursor !== null && !stayOnPage) {
           page = await taskApi.list(null, latestSort, latestView, latestFilters);
         }
-        if (generation !== requestGeneration.current) return;
+        if (generation !== requestGeneration.current) return true;
         setLoading(false);
         setTasks(page.items);
         if (!stayOnPage) {
@@ -336,34 +573,48 @@ export default function App() {
         setNextCursor(page.nextCursor);
         setRefreshError(false);
       } catch (reason) {
-        if (generation !== requestGeneration.current) return;
+        if (generation !== requestGeneration.current) return true;
         setLoading(false);
         setNextCursor(null);
         resetTaskPages();
         setRefreshError(true);
         setError("Change saved, but the ordered list could not refresh: " + errorMessage(reason));
       }
-    } catch (reason) {
-      setError(errorMessage(reason));
+      return true;
     } finally {
       setSavingId(null);
     }
   }
 
-  async function changeTask(task: Task, change: TaskChange) {
-    await commitTaskMutation(task, () => taskApi.change({
-      id: task.id,
-      expectedRevision: task.revision,
-      ...change,
-    }));
+  /** A change made in the Task view: a refusal shows in its banner. */
+  async function commitTaskMutation(task: Task, mutate: () => Promise<Task>): Promise<boolean> {
+    try {
+      return await applyTaskMutation(task, mutate);
+    } catch (reason) {
+      setError(errorMessage(reason));
+      return false;
+    }
   }
 
-  async function recordProgress(task: Task, update: ProgressDraft) {
-    await commitTaskMutation(task, () => taskApi.recordProgress({
-      id: task.id,
-      expectedRevision: task.revision,
-      ...update,
-    }));
+  /**
+   * A save of typed edits: once it succeeds, the edits it carried are no longer
+   * unsaved. They go with the new revision, not after the list refresh, or the
+   * row would take its own save for a change made elsewhere.
+   */
+  async function saveEdits(task: Task, mutate: () => Promise<Task>) {
+    await commitTaskMutation(task, async () => {
+      const updated = await mutate();
+      drafts.set(task.id, undefined);
+      return updated;
+    });
+  }
+
+  async function changeTask(task: Task, change: TaskChange, expectedRevision: number) {
+    await saveEdits(task, () => taskApi.change({ id: task.id, expectedRevision, ...change }));
+  }
+
+  async function recordProgress(task: Task, update: ProgressDraft, expectedRevision: number) {
+    await saveEdits(task, () => taskApi.recordProgress({ id: task.id, expectedRevision, ...update }));
   }
 
   async function moveTask(task: Task, listId: string | null) {
@@ -372,10 +623,26 @@ export default function App() {
     }));
   }
 
-  async function updateDetails(task: Task, tags: string[], dueDate: string | null) {
-    await commitTaskMutation(task, () => taskApi.details({
-      id: task.id, expectedRevision: task.revision, tags, dueDate,
-    }));
+  async function updateDetails(task: Task, tags: string[], dueDate: string | null, expectedRevision: number) {
+    await saveEdits(task, () => taskApi.details({ id: task.id, expectedRevision, tags, dueDate }));
+  }
+
+  async function removeTask(task: Task) {
+    const done: { task?: Task } = {};
+    const saved = await commitTaskMutation(task, async () => (done.task = await removedApi.remove<Task>("task", task)));
+    if (saved && done.task) {
+      setExpandedId(null);
+      const removed = done.task;
+      undo.push({
+        key: `task:${removed.id}`, title: removed.title,
+        undo: async () => {
+          if (await applyTaskMutation(removed, () => removedApi.restore<Task>("task", removed))) {
+            setRemovedKey((key) => key + 1);
+          }
+        },
+      });
+      setRemovedKey((key) => key + 1);
+    }
   }
 
   function changeSort(nextSort: SortMode) {
@@ -453,10 +720,66 @@ export default function App() {
     }
   }
 
-  const groups = STATUS_ORDER.map((status) => ({
-    status,
-    items: tasks.filter((task) => task.status === status),
-  })).filter((group) => group.items.length > 0);
+  /** Shows the Task view (keeping its place) and then focuses one of its fields. */
+  function focusInTasks(field: "capture" | "search") {
+    if (workspace !== "tasks") navigate(view);
+    setFocusRequest((previous) => ({ field, seq: (previous?.seq ?? 0) + 1 }));
+  }
+
+  function closePalette() {
+    setPaletteOpen(false);
+    // Hand focus back unless the command moved it somewhere on purpose.
+    const previous = paletteReturn.current;
+    paletteReturn.current = null;
+    window.setTimeout(() => {
+      if (previous?.isConnected && document.activeElement === document.body) previous.focus();
+    });
+  }
+
+  function openPalette() {
+    if (paletteOpen) return;
+    paletteReturn.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setPaletteOpen(true);
+  }
+
+  // While the palette is open the window behind it is inert: its shortcuts are swallowed.
+  const behindPalette = (handler: () => boolean | void) => () => paletteOpen || handler();
+  useShortcuts({
+    palette: openPalette,
+    newTask: behindPalette(() => focusInTasks("capture")),
+    search: behindPalette(() => focusInTasks("search")),
+    settings: behindPalette(openSettings),
+    undo: behindPalette(undo.run),
+  });
+
+  // The global Quick Capture shortcut lands in the ordinary New task field, like ⌘N.
+  const quickCapture = useRef(() => {});
+  quickCapture.current = () => {
+    setPaletteOpen(false);
+    focusInTasks("capture");
+  };
+  useEffect(() => {
+    const stop = listenForQuickCapture(() => quickCapture.current());
+    return () => void stop.then((unlisten) => unlisten());
+  }, []);
+
+  // A saved Quick Capture shortcut another app took since the last launch: said once, never blocking.
+  const [launchNotice, setLaunchNotice] = useState<string | null>(null);
+  useEffect(() => {
+    shellApi.takeLaunchNotice().then(setLaunchNotice).catch(() => {});
+  }, []);
+
+  const commands = buildCommands({
+    lists, undoTitle: undo.next?.title ?? null, appearance: appearance.preference,
+    navigate, openNotes: () => openNotes(), openRemoved, openSettings, focusInTasks,
+    undo: undo.run, setAppearance: appearance.setPreference,
+  });
+  const searchCommand = (text: string): Command => ({
+    id: "search-text", label: `Search for “${text}”`, group: "Actions",
+    run: () => { focusInTasks("search"); setSearchDraft(text); },
+  });
+
+  const keepMounted = useMemo(() => new Set(expandedId ? [expandedId] : []), [expandedId]);
 
   const pageTitle = view.kind === "all" ? "All tasks"
     : view.kind === "inbox" ? "Inbox"
@@ -471,27 +794,40 @@ export default function App() {
   const countKnown = !(loadError && filtering);
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" inert={paletteOpen}>
       <TaskSidebar
-        view={view} lists={lists} shownCount={countKnown ? tasks.length : null} hasMoreTasks={Boolean(nextCursor)}
+        view={view} notesActive={workspace !== "tasks"} onOpenNotes={() => openNotes()}
+        removedActive={workspace === "removed"} onOpenRemoved={openRemoved}
+        pendingApprovals={approvals.count} approvalsActive={workspace === "approvals"}
+        onOpenApprovals={openApprovals}
+        allNotesCurrent={workspace === "notes" && noteScope.kind === "all"}
+        noteFolders={notesOpened && (
+          <NoteFolderTree folders={noteFolders}
+            currentId={workspace === "notes" && noteScope.kind === "folder" ? noteScope.folderId : null}
+            disabled={busy}
+            onOpen={(folder) => openNotes({ kind: "folder", folderId: folder.id })}
+            onRemoved={folderRemoved} />
+        )}
+        lists={lists} shownCount={countKnown ? tasks.length : null} hasMoreTasks={Boolean(nextCursor)}
         listError={listError}
-        hasMoreLists={Boolean(listCursor)} busy={busyList || creating || Boolean(savingId) || loadingMore}
-        theme={theme} onToggleTheme={toggleTheme}
+        hasMoreLists={Boolean(listCursor)} busy={busy}
+        theme={appearance.theme} onToggleTheme={appearance.toggle}
+        settingsActive={workspace === "settings"} onOpenSettings={openSettings}
         onNavigate={navigate} onCreateList={createList} onRenameList={renameList}
         onRemoveList={(list) => setListRemoved(list, true)}
-        onRestoreList={(list) => setListRemoved(list, false)}
         onLoadMoreLists={loadMoreLists}
       />
 
-      <main className="main-view">
+      <main className="main-view" hidden={workspace !== "tasks"}>
         <header className="toolbar">
           <span className="toolbar-grow" />
           <label className="toolbar-search" htmlFor="task-search">
             <Search size={15} aria-hidden="true" />
             <input
+              ref={searchInput}
               id="task-search"
               type="search"
-              aria-label="Search tasks"
+              aria-label="Search tasks and notes"
               placeholder="Search"
               maxLength={200}
               value={searchDraft}
@@ -517,7 +853,7 @@ export default function App() {
           </button>
         </header>
 
-        <div className="main-scroll">
+        <div className="main-scroll" ref={taskScroll}>
           <div className="content-wrap">
             <div className="page-title">
               <h1>{pageTitle}</h1>
@@ -599,6 +935,37 @@ export default function App() {
               )}
             </form>
 
+            {launchNotice && (
+              <div role="status" aria-label="Quick Capture shortcut" className="notice-banner">
+                <span>{launchNotice} {newTaskKeys} still creates a task.</span>
+                <div className="notice-actions">
+                  <button className="button button-small" type="button"
+                    onClick={() => { setLaunchNotice(null); openSettings(); }}>
+                    Open Settings
+                  </button>
+                  <button className="button button-small" type="button" onClick={() => setLaunchNotice(null)}>
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {pendingLinkedTask && (
+              <div role="status" aria-label="Opening linked Task" className="notice-banner">
+                <LoaderCircle className="spin" size={14} aria-hidden="true" />
+                <span>Opening the linked Task once the current change is saved…</span>
+              </div>
+            )}
+
+            {filters.taskId && (
+              <div role="status" aria-label="Linked Task" className="notice-banner">
+                <span>Showing one Task linked to a Note</span>
+                <button className="button button-small" type="button" onClick={clearFilters}>
+                  Show all tasks
+                </button>
+              </div>
+            )}
+
             {createdHidden && (
               <div role="status" aria-label="Task hidden by filters" className="notice-banner">
                 <span>Task added, but hidden by the current search or filters</span>
@@ -613,13 +980,45 @@ export default function App() {
               {refreshError && <button className="button button-small" type="button" onClick={retryFirstLoad}>Refresh list</button>}
             </div>}
 
+            {(noteHits || noteHitsFailed) && (
+              <section className="note-hits" aria-label="Matching notes">
+                <h2 className="task-group-heading">Notes</h2>
+                {noteHitsFailed ? (
+                  <p className="note-hits-empty">Notes couldn't be searched.</p>
+                ) : noteHits && noteHits.items.length === 0 ? (
+                  <p className="note-hits-empty">No matching notes</p>
+                ) : noteHits && (
+                  <>
+                    <ul className="note-hits-list">
+                      {noteHits.items.map((hit) => (
+                        <li key={hit.id}>
+                          <button type="button" className="note-hit" onClick={() => searchInNotes(hit.id)}>
+                            <NotebookText size={15} aria-hidden="true" />
+                            <span className="note-hit-text">
+                              <span className="note-hit-title">{hit.title}</span>
+                              {hit.snippet && <NoteSnippet text={hit.snippet} />}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                    {noteHits.nextCursor && (
+                      <button className="button button-small" type="button" onClick={() => searchInNotes(null)}>
+                        Show all matching notes
+                      </button>
+                    )}
+                  </>
+                )}
+              </section>
+            )}
+
             <section className="task-section" aria-label="Your tasks">
               {loading ? (
                 <div className="loading-state" role="status"><LoaderCircle className="spin" size={16} /> Loading your tasks...</div>
               ) : loadError && filtering ? (
-                <div className="empty-state" aria-label="Search unavailable">
+                <div className="empty-state" role="group" aria-label="Search unavailable">
                   <SearchX size={26} strokeWidth={1.5} aria-hidden="true" />
-                  <h3>Search couldn't run</h3>
+                  <h2>Search couldn't run</h2>
                   <p>Check the message above, or clear the search and filters to see your tasks.</p>
                   <div className="empty-state-actions">
                     <button className="button button-small" type="button" onClick={clearFilters}>
@@ -629,16 +1028,16 @@ export default function App() {
                   </div>
                 </div>
               ) : loadError && tasks.length === 0 ? (
-                <div className="empty-state" aria-label="Tasks unavailable">
+                <div className="empty-state" role="group" aria-label="Tasks unavailable">
                   <LockKeyhole size={26} strokeWidth={1.5} aria-hidden="true" />
-                  <h3>Couldn't load your tasks</h3>
+                  <h2>Couldn't load your tasks</h2>
                   <p>The local database couldn't be opened. Nothing has been changed; check the message above and try again.</p>
                   <button className="button button-small" type="button" onClick={retryFirstLoad}>Try again</button>
                 </div>
               ) : tasks.length === 0 && previousPageCursors.length === 0 && filtering ? (
                 <div className="empty-state">
                   <SearchX size={26} strokeWidth={1.5} aria-hidden="true" />
-                  <h3>No matching tasks</h3>
+                  <h2>No matching tasks</h2>
                   <p>Nothing in this view matches the search and filters.</p>
                   <button className="button button-small" type="button" onClick={clearFilters}>
                     Clear search and filters
@@ -647,37 +1046,41 @@ export default function App() {
               ) : tasks.length === 0 && previousPageCursors.length === 0 ? (
                 <div className="empty-state">
                   <CheckCircle2 size={26} strokeWidth={1.5} aria-hidden="true" />
-                  <h3>Your list is clear</h3>
+                  <h2>Your list is clear</h2>
                   <p>Type a title in New task above to add your first one.</p>
                 </div>
               ) : (
-                <div className="task-list">
-                  {groups.map(({ status, items }) => (
-                    <section className="task-group" key={status} aria-label={`${STATUS_VIEW[status].label} tasks`}>
-                      <h3 className="task-group-heading">
-                        {STATUS_VIEW[status].label}
-                        <span>{items.length}{nextCursor ? "+" : ""}</span>
-                      </h3>
-                      {items.map((task) => (
-                        <TaskRow
-                          key={task.id}
-                          task={task}
-                          expanded={expandedId === task.id}
-                          saving={savingId === task.id}
-                          onToggle={() => setExpandedId((current) => current === task.id ? null : task.id)}
-                          onSave={(nextTitle, nextDescription) => updateTask(task, nextTitle, nextDescription)}
-                          onChange={(change) => changeTask(task, change)}
-                          onRecordProgress={(update) => recordProgress(task, update)}
-                          lists={lists.filter((list) => !list.removed)}
-                          today={today}
-                          onMove={(listId) => moveTask(task, listId)}
-                          onUpdateDetails={(tags, dueDate) => updateDetails(task, tags, dueDate)}
-                        />
-                      ))}
-                    </section>
-                  ))}
+                <>
+                  <VirtualTaskList
+                    tasks={tasks}
+                    hasMore={Boolean(nextCursor)}
+                    scrollRef={taskScroll}
+                    keepMounted={keepMounted}
+                    expandedId={expandedId}
+                    onCollapse={() => setExpandedId(null)}
+                    renderTask={(task) => (
+                      <TaskRow
+                        task={task}
+                        expanded={expandedId === task.id}
+                        saving={savingId === task.id}
+                        onToggle={() => setExpandedId((current) => current === task.id ? null : task.id)}
+                        onSave={(nextTitle, nextDescription, base) => updateTask(task, nextTitle, nextDescription, base)}
+                        onChange={(change, base) => changeTask(task, change, base)}
+                        onRecordProgress={(update, base) => recordProgress(task, update, base)}
+                        lists={lists.filter((list) => !list.removed)}
+                        today={today}
+                        onMove={(listId) => moveTask(task, listId)}
+                        onUpdateDetails={(tags, dueDate, base) => updateDetails(task, tags, dueDate, base)}
+                        onOpenNote={openLinkedNote}
+                        onRemove={() => removeTask(task)}
+                        shown={workspace === "tasks"}
+                        edits={drafts.get(task.id)}
+                        onEdits={(edits) => drafts.set(task.id, edits)}
+                      />
+                    )}
+                  />
                   {(previousPageCursors.length > 0 || nextCursor) && (
-                    <div className="task-page-navigation" aria-label="Task pages">
+                    <nav className="task-page-navigation" aria-label="Task pages">
                       {previousPageCursors.length > 0 && (
                         <button className="button button-small" type="button"
                           disabled={loadingMore || Boolean(savingId) || creating}
@@ -693,14 +1096,52 @@ export default function App() {
                           {loadingMore && <LoaderCircle className="spin" size={14} />}
                         </button>
                       )}
-                    </div>
+                    </nav>
                   )}
-                </div>
+                </>
               )}
             </section>
           </div>
         </div>
       </main>
+      <SettingsView hidden={workspace !== "settings"} preference={appearance.preference}
+        onPreference={appearance.setPreference}>
+        <SoundSettings sound={sound} />
+      </SettingsView>
+      <RemovedView hidden={workspace !== "removed"} refreshKey={removedKey} onRestored={restored} />
+      <ApprovalsView hidden={workspace !== "approvals"} refreshKey={approvals.count}
+        onDecided={bulkDecided} />
+      {notesOpened && (
+        <Suspense fallback={workspace === "notes" &&
+          <div className="loading-state" role="status"><LoaderCircle className="spin" size={16} /> Loading notes...</div>}>
+          <NotesWorkspace hidden={workspace !== "notes"} scope={noteScope}
+            scopeName={noteScope.kind === "folder"
+              ? noteFolders.byId.get(noteScope.folderId)?.name ?? "Folder" : "Notes"}
+            folders={noteFolders.options} request={notesRequest} onOpenTask={openLinkedTask}
+            refreshKey={notesRefresh} onRemoved={noteRemoved}
+            onScopeHidden={() => setNoteScope(ALL_NOTES)} />
+        </Suspense>
+      )}
+      {paletteOpen && (
+        <CommandPalette commands={commands} textCommand={searchCommand} onClose={closePalette} />
+      )}
+      {undo.error && (
+        <div role="alert" className="undo-bar undo-bar--error">
+          <span>{undo.error}</span>
+          <button className="button button-small" type="button" onClick={undo.dismissError}>
+            Dismiss
+          </button>
+        </div>
+      )}
+      {undo.noticeShown && undo.next && (
+        <div role="status" aria-label="Moved to Removed" className="undo-bar">
+          <span>“{undo.next.title}” moved to Removed</span>
+          <button className="button button-small" type="button" disabled={undo.undoing || Boolean(savingId)}
+            onClick={undo.run}>
+            Undo
+          </button>
+        </div>
+      )}
     </div>
   );
 }
