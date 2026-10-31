@@ -108,13 +108,13 @@ describe("reordering Lists", () => {
     const bravo = listRow("Bravo");
     dragTo(bravo, 2);
     drop(bravo);
-    await eventually(() => expect(reorders().at(-1)).toMatchObject({ id: "list-Bravo", afterId: null }));
+    await eventually(() => expect(reorders().slice(-1)[0]).toMatchObject({ id: "list-Bravo", afterId: null }));
     expect(listOrder()).toEqual(["Bravo", "Alpha", "Charlie"]);
 
     const again = listRow("Bravo");
     dragTo(again, ROW_HEIGHT * 3 + 40);
     drop(again);
-    await eventually(() => expect(reorders().at(-1)).toMatchObject({ id: "list-Bravo", afterId: "list-Charlie" }));
+    await eventually(() => expect(reorders().slice(-1)[0]).toMatchObject({ id: "list-Bravo", afterId: "list-Charlie" }));
     expect(listOrder()).toEqual(["Alpha", "Charlie", "Bravo"]);
   });
 
@@ -167,7 +167,7 @@ describe("reordering Lists", () => {
     expect(screen.getByText("Alpha moved after Bravo")).toBeInTheDocument();
 
     await user.keyboard("{Alt>}{ArrowUp}{/Alt}");
-    await eventually(() => expect(reorders().at(-1)).toEqual({ id: "list-Alpha", expectedRevision: 2, afterId: null }));
+    await eventually(() => expect(reorders().slice(-1)[0]).toEqual({ id: "list-Alpha", expectedRevision: 2, afterId: null }));
     await eventually(() => expect(listOrder()).toEqual(["Alpha", "Bravo", "Charlie"]));
     expect(listRow("Alpha")).toHaveFocus();
     expect(screen.getByText("Alpha moved to the top")).toBeInTheDocument();
@@ -245,7 +245,7 @@ describe("reordering Note Folders", () => {
     const second = folderRow("Second");
     dragTo(second, ROW_HEIGHT * 3 + 2);
     drop(second);
-    await eventually(() => expect(placed().at(-1)).toMatchObject({ parentId: null, afterId: folders[0].id }));
+    await eventually(() => expect(placed().slice(-1)[0]).toMatchObject({ parentId: null, afterId: folders[0].id }));
     // Work stays open above it; Second is on the top level now.
     await eventually(() => expect(shown()).toEqual(["Work", "Inner", "Second", "Home"]));
 
@@ -253,7 +253,7 @@ describe("reordering Note Folders", () => {
     dragTo(innerRow, ROW_HEIGHT * 10);
     expect(tree()).toHaveAttribute("data-drop-end");
     drop(innerRow);
-    await eventually(() => expect(placed().at(-1)).toMatchObject({ id: inner.id, parentId: null, afterId: folders[1].id }));
+    await eventually(() => expect(placed().slice(-1)[0]).toMatchObject({ id: inner.id, parentId: null, afterId: folders[1].id }));
   });
 
   it("lands first among an open folder's subfolders from just below its row", async () => {
@@ -265,7 +265,7 @@ describe("reordering Note Folders", () => {
     const home = folderRow("Home");
     dragTo(home, ROW_HEIGHT - 2);
     drop(home);
-    await eventually(() => expect(placed().at(-1)).toMatchObject({ id: folders[1].id, parentId: folders[0].id, afterId: null }));
+    await eventually(() => expect(placed().slice(-1)[0]).toMatchObject({ id: folders[1].id, parentId: folders[0].id, afterId: null }));
   });
 
   it("never offers a folder's own subfolders as a place to land", async () => {
@@ -302,7 +302,7 @@ describe("reordering Note Folders", () => {
     expect(screen.getByText("Home moved into Work")).toBeInTheDocument();
 
     await user.keyboard("{Alt>}{ArrowLeft}{/Alt}");
-    await eventually(() => expect(placed().at(-1)).toMatchObject({ id: folders[1].id, parentId: null, afterId: folders[0].id }));
+    await eventually(() => expect(placed().slice(-1)[0]).toMatchObject({ id: folders[1].id, parentId: null, afterId: folders[0].id }));
     await eventually(() => expect(folderRow("Home")).toHaveFocus());
   });
 
