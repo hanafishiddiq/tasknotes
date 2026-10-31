@@ -217,6 +217,29 @@ describe("Virtualized Task rows", () => {
     expect(rowRenders.count).toBe(0);
   });
 
+  it("does not move the list when a click closes the open Task", async () => {
+    render(<App />);
+    const opener = await screen.findByRole("button", { name: "Open Synthetic task 9" });
+    fireEvent.click(opener);
+    await screen.findByRole("region", { name: "Task details" });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    const area = document.querySelector<HTMLElement>("main:not([hidden]) .main-scroll")!;
+    const scrollTo = vi.fn();
+    area.scrollTo = scrollTo;
+    // WebKit gives a clicked button no focus, so focus stays on the page.
+    (document.activeElement as HTMLElement | null)?.blur();
+    expect(document.activeElement).toBe(document.body);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Close Synthetic task 9" }));
+    });
+
+    expect(screen.queryByRole("region", { name: "Task details" })).not.toBeInTheDocument();
+    // Its old, open height would have pushed the list up for a frame.
+    expect(scrollTo).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Open Synthetic task 9" })).toHaveFocus();
+  });
+
   it("renders only the rows near the visible part of a sizeable page", async () => {
     render(<App />);
     expect(await screen.findByRole("article", { name: "Synthetic task 1" })).toBeInTheDocument();

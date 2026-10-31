@@ -150,7 +150,7 @@ export default function VirtualTaskList({
     if (event.key === "Escape" && id === expandedId) {
       event.preventDefault();
       onCollapse();
-      focusTask(id);
+      setFocusTarget(id);
       return;
     }
     if (!target.classList.contains("task-open")) return;
@@ -166,12 +166,14 @@ export default function VirtualTaskList({
     focusTask(next);
   }
 
-  // An open Task that closed itself (a save) took the focused field along: its row gets focus instead.
+  // An open Task that closed itself (a save, or a click, which gives a button no focus
+  // in WebKit) leaves focus on the page: its row gets focus instead. Focus only, no
+  // scrollToIndex: the row is on the page, and its old height would throw the list up for a frame.
   const wasExpanded = useRef(expandedId);
   useLayoutEffect(() => {
     const closed = wasExpanded.current;
     wasExpanded.current = expandedId;
-    if (closed && !expandedId && document.activeElement === document.body) focusTask(closed);
+    if (closed && !expandedId && document.activeElement === document.body) setFocusTarget(closed);
   }, [expandedId]);
 
   const virtualItems = virtualizer.getVirtualItems();

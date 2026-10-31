@@ -54,8 +54,8 @@ Tujuan akhir: Tasknotes terpasang di Mac Han dan dipakai dengan data asli, setel
 - [x] Cek klik aplikasi dengan data sintetis
   - Cara: ikuti bagian "Sisa untuk pemilik" di `docs/qa/owner-check-results-2026-10-31.md`, sekitar 15 menit di luar pembuatan data besar.
   - Menahan: Han mengecek aplikasi dengan data sintetis, lalu menyetujui merge ke main
-- [ ] Persetujuan merge dan pemasangan ke data asli
-  - Cara: bilang "merge" setelah cek klik beres; persetujuan pasang ke data asli diminta terpisah.
+- [ ] Persetujuan pemasangan ke data asli
+  - Cara: merge sudah disetujui dan selesai (PR #20); bilang "pasang" setelah perbaikan kedip beres.
   - Menahan: Backup data asli, lalu pasang di Mac Han
 
 ## Riwayat sesi
