@@ -399,7 +399,7 @@ export default function TaskRow({
             </label>
           </div>
 
-          <div className="task-properties" aria-label="Task organization">
+          <div className="task-properties" role="group" aria-label="Task organization">
             <label className="property" htmlFor={`due-${task.id}`}>
               <span className="sr-only">Deadline</span>
               <CalendarDays size={13} aria-hidden="true" />
@@ -428,7 +428,7 @@ export default function TaskRow({
             )}
           </div>
 
-          <div className="progress-editor" aria-label="Progress update">
+          <div className="progress-editor" role="group" aria-label="Progress update">
             <div className="progress-line">
               <label className="field-label" htmlFor={`progress-${task.id}`}>Progress</label>
               <span className="progress-track" aria-hidden="true">

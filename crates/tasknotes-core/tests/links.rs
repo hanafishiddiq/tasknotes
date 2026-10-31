@@ -322,7 +322,7 @@ fn v6_database(db: &Path) -> (Task, Note) {
              DROP TABLE notes; ALTER TABLE notes_v6 RENAME TO notes;
              CREATE INDEX notes_updated_order ON notes(updated_at DESC, id DESC);
              DROP TABLE note_folders;
-             DROP TABLE IF EXISTS audit_entries; DROP TABLE IF EXISTS bulk_requests;
+             DROP TABLE IF EXISTS audit_entries; DROP TABLE IF EXISTS bulk_requests; DROP TABLE IF EXISTS retired_revisions;
              PRAGMA user_version = 6;",
         )
         .unwrap();

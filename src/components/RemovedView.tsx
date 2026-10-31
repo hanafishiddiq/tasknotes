@@ -113,7 +113,7 @@ export default function RemovedView({ hidden, refreshKey, onRestored }: RemovedV
           ) : items.length === 0 ? (
             <div className="empty-state">
               <Trash2 size={26} strokeWidth={1.5} aria-hidden="true" />
-              <h3>{searchText.trim() === "" ? "Nothing in Removed" : "No matching removed items"}</h3>
+              <h2>{searchText.trim() === "" ? "Nothing in Removed" : "No matching removed items"}</h2>
             </div>
           ) : (
             <ul className="removed-list">

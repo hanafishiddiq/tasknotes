@@ -981,7 +981,8 @@ fn a_backup_from_an_older_schema_is_upgraded_on_restore() {
         rusqlite::Connection::open(snapshot_path(&fx, &backup))
             .unwrap()
             .execute_batch(&format!(
-                "DROP TABLE bulk_requests;
+                "DROP TABLE retired_revisions;
+                 DROP TABLE bulk_requests;
                  ALTER TABLE audit_entries DROP COLUMN requested_by;
                  {older}
                  PRAGMA user_version = {version};"

@@ -1,6 +1,6 @@
 # Engineering instructions
 
-Tasknotes **completed planning** on 2026-10-11. The approved specification and 18 implementation tickets are under `.scratch/tasknotes-v1/`. Tickets 01–05 are merged to `main`. Tickets 06–16 are implemented and code-reviewed in Draft PRs #19 and #20, awaiting the owner's native checks and merge decision; no app deployment or data migration has happened. Current position: `.scratch/tasknotes-v1/README.md`. Never merge to `main` or touch the owner's real database without the owner's approval, and never merge the unrelated Issue 19 experimental QA branches.
+Tasknotes **completed planning** on 2026-10-11. The approved specification and 18 implementation tickets are under `.scratch/tasknotes-v1/`. Tickets 01–05 are merged to `main`. Tickets 06–18 are implemented and code-reviewed in Draft PRs #19 and #20, awaiting the owner's native checks and merge decision; no app deployment or data migration has happened. Current position: `.scratch/tasknotes-v1/README.md`. Never merge to `main` or touch the owner's real database without the owner's approval, and never merge the unrelated Issue 19 experimental QA branches.
 
 ## Agent skills
 

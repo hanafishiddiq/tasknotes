@@ -153,6 +153,14 @@ export default function VirtualTaskList({
     focusTask(next);
   }
 
+  // An open Task that closed itself (a save) took the focused field along: its row gets focus instead.
+  const wasExpanded = useRef(expandedId);
+  useLayoutEffect(() => {
+    const closed = wasExpanded.current;
+    wasExpanded.current = expandedId;
+    if (closed && !expandedId && document.activeElement === document.body) focusTask(closed);
+  }, [expandedId]);
+
   const virtualItems = virtualizer.getVirtualItems();
   const total = virtualizer.getTotalSize();
 
@@ -185,13 +193,13 @@ export default function VirtualTaskList({
     }
     previousEnd = virtual.end;
     section.children.push(item.kind === "heading" ? (
-      <h3 key={virtual.key} data-index={virtual.index} data-heading=""
+      <h2 key={virtual.key} data-index={virtual.index} data-heading=""
         // Space above a later group is part of its heading, so it is measured.
         className={`task-group-heading ${virtual.index > 0 ? "task-group-heading--later" : ""}`}
         ref={virtualizer.measureElement}>
         {STATUS_VIEW[item.status].label}
         <span>{item.count}{hasMore ? "+" : ""}</span>
-      </h3>
+      </h2>
     ) : (
       <div key={virtual.key} className="task-slot" data-index={virtual.index}
         data-task-id={item.task.id} ref={virtualizer.measureElement}>

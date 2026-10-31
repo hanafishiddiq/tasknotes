@@ -60,7 +60,7 @@ fn v6_database(db: &Path) {
              CREATE INDEX notes_updated_order ON notes(updated_at DESC, id DESC);
              INSERT INTO notes VALUES ('00000000-0000-4000-8000-0000000000aa',
                '# Packing list\n\nPassport and tickets', 'Packing list', 3, 10, 20);
-             DROP TABLE IF EXISTS audit_entries; DROP TABLE IF EXISTS bulk_requests;
+             DROP TABLE IF EXISTS audit_entries; DROP TABLE IF EXISTS bulk_requests; DROP TABLE IF EXISTS retired_revisions;
              PRAGMA user_version = 6;",
         )
         .unwrap();
