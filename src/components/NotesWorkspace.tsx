@@ -234,7 +234,7 @@ export default function NotesWorkspace({
   useEffect(() => {
     if (refreshKey === seenRefresh.current) return;
     seenRefresh.current = refreshKey;
-    refreshList().catch((reason) => {
+    refreshList(notes.length).then(followOpenNote).catch((reason) => {
       // The open folder, or one above it, went to Removed: the core decides that.
       if (scopeRef.current.kind === "folder" && isFolderRemoved(reason)) onScopeHidden();
       else setError("Couldn't refresh the Notes list: " + errorMessage(reason));
@@ -368,13 +368,51 @@ export default function NotesWorkspace({
     }
   }
 
-  /** The first page again, in the core's order, after the open Note was placed elsewhere. */
-  async function refreshList() {
+  /**
+   * The first page again, in the core's order, after the open Note was placed
+   * elsewhere; with `keep`, at least that many, so Notes already loaded stay.
+   */
+  async function refreshList(keep = 0) {
     const generation = ++listGeneration.current;
-    const page = await listPage(null);
+    let page = await listPage(null);
+    let items = page.items;
+    while (items.length < keep && page.nextCursor !== null) {
+      page = await listPage(page.nextCursor);
+      items = [...items, ...page.items];
+    }
     if (generation !== listGeneration.current) return;
-    setNotes(page.items);
+    setNotes(items);
     setMoreCursor(page.nextCursor);
+  }
+
+  /**
+   * After a change made elsewhere: the open Note follows what is stored, as long
+   * as nothing is typed there. Unsaved text stays, and its autosave finds the
+   * conflict. With the cursor in the editor the person is asked, not interrupted.
+   */
+  async function followOpenNote() {
+    const { id } = saved.current;
+    const untouched = () =>
+      saved.current.id === id && !dirty.current && !conflicted.current && !inFlight.current;
+    if (id === null || !untouched()) return;
+    const latest = await noteApi.get(id);
+    if (!untouched()) return;
+    if (!latest || latest.removed) {
+      // Removed elsewhere: as when it is removed here, the next Note opens.
+      const { items } = await listPage(null);
+      const next = items[0] ? await noteApi.get(items[0].id) : null;
+      if (untouched()) show(next ? savedFrom(next) : draftIn(scopeRef.current));
+      return;
+    }
+    if (latest.markdown === saved.current.markdown) {
+      saved.current = savedFrom(latest);
+      setPlacement({ folderId: latest.folderId, pinned: latest.pinned, excludeFromAi: latest.excludeFromAi });
+    } else if (document.activeElement?.closest(".note-content")) {
+      conflicted.current = true;
+      setConflict(true);
+    } else {
+      show(savedFrom(latest));
+    }
   }
 
   /** Pins, moves or excludes the open Note from AI. None of these changes its text or revision. */

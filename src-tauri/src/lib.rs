@@ -1,3 +1,4 @@
+use tasknotes_core::audit::OutsideChanges;
 use tasknotes_core::bulk::{BulkRequest, PendingBulkRequest};
 use tasknotes_core::links::{LinkPage, LinkedNote, LinkedTask, NoteLink};
 use tasknotes_core::note_folders::{
@@ -345,6 +346,16 @@ fn count_pending_bulk_requests(store: State<'_, TaskStore>) -> Result<i64, Strin
 }
 
 #[tauri::command]
+fn outside_changes(
+    store: State<'_, TaskStore>,
+    seen: Option<i64>,
+) -> Result<OutsideChanges, String> {
+    store
+        .outside_changes(seen)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn approve_bulk_request(store: State<'_, TaskStore>, id: String) -> Result<BulkRequest, String> {
     store
         .approve_bulk_request(&id)
@@ -428,6 +439,7 @@ pub fn run() {
             list_removed,
             list_pending_bulk_requests,
             count_pending_bulk_requests,
+            outside_changes,
             approve_bulk_request,
             decline_bulk_request,
             data::list_backups,
