@@ -1,5 +1,5 @@
 import {
-  useCallback, useLayoutEffect, type KeyboardEvent, useMemo, useRef, useState, type ReactNode, type RefObject,
+  memo, useCallback, useLayoutEffect, type KeyboardEvent, useMemo, useRef, useState, type ReactNode, type RefObject,
 } from "react";
 import {
   defaultRangeExtractor, measureElement, observeElementRect, useVirtualizer, type Range, type Virtualizer,
@@ -56,6 +56,17 @@ function measureShown(
   if (size > 0) return size;
   return (element as HTMLElement).dataset.heading !== undefined ? HEADING_ESTIMATE : ROW_ESTIMATE;
 }
+/**
+ * Scrolling re-renders the list each time a row enters or leaves the range. A row
+ * only moved, so it keeps its render until its Task or `renderTask` changes.
+ */
+const TaskSlotContent = memo(function TaskSlotContent({ task, renderTask }: {
+  task: Task;
+  renderTask: (task: Task) => ReactNode;
+}) {
+  return renderTask(task);
+});
+
 /**
  * The Task rows of the current page, rendered only near what is on screen.
  * Rows stay in normal flow (spacers stand in for the rest), so each grouped
@@ -203,7 +214,7 @@ export default function VirtualTaskList({
     ) : (
       <div key={virtual.key} className="task-slot" data-index={virtual.index}
         data-task-id={item.task.id} ref={virtualizer.measureElement}>
-        {renderTask(item.task)}
+        <TaskSlotContent task={item.task} renderTask={renderTask} />
       </div>
     ));
   }

@@ -7,6 +7,17 @@ import CommandPalette from "./components/CommandPalette";
 import type { Task, TaskList } from "./lib/task-api";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+const rowRenders = vi.hoisted(() => ({ count: 0 }));
+vi.mock("./components/TaskRow", async (original) => {
+  const actual = await original<typeof import("./components/TaskRow")>();
+  return {
+    ...actual,
+    default: (props: Parameters<typeof actual.default>[0]) => {
+      rowRenders.count += 1;
+      return actual.default(props);
+    },
+  };
+});
 const call = vi.mocked(invoke);
 
 /**
@@ -195,6 +206,16 @@ describe("Virtualized Task rows", () => {
     tasks = Array.from({ length: 300 }, (_, i) => task(i + 1));
   });
   afterEach(() => restoreLayout());
+
+  it("does not render rows again while they only scroll", async () => {
+    render(<App />);
+    await screen.findByRole("article", { name: "Synthetic task 1" });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    rowRenders.count = 0;
+    // Small wheel ticks that bring no new row onto the page.
+    for (let top = 1; top <= 5; top += 1) act(() => { scrollTasksTo(top); });
+    expect(rowRenders.count).toBe(0);
+  });
 
   it("renders only the rows near the visible part of a sizeable page", async () => {
     render(<App />);
