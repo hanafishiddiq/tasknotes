@@ -7,7 +7,7 @@
 | Gate | State | Evidence |
 | --- | --- | --- |
 | Search p95 under 250 ms at 50,000 Tasks and 10,000 Notes | Pass | 91 ms slowest through the app; [report](ticket-17-performance-2026-10-30.md) |
-| Scrolling near 60 FPS at that size | Pass after a fix | A real scroll measured about 53 FPS against 58 for a plain page, and the owner felt it. With all rows kept mounted, dropped frames fell by about three quarters; see [the report](ticket-17-performance-2026-10-30.md) |
+| Scrolling near 60 FPS at that size | Pass after a fix | A real scroll measured about 53 FPS against 58 for a plain page, and the owner felt it. With all rows kept mounted it measures 58 to 59 FPS in the same view; see [the report](ticket-17-performance-2026-10-30.md) |
 | Paging keeps memory bounded | Pass | Largest answer 100 records; CLI 12 MB, MCP 17 MB |
 | UI, CLI and MCP share invariants, audit, privacy, Removed and conflict rules | Pass, below the window | `crates/tasknotes-e2e/tests/scenario.rs`: real CLI and MCP binaries with the core's desktop store; UI behind a mocked seam in `src/*.test.tsx` |
 | Crash and restart consistency | Pass | `crash.rs`: 24 rounds of `kill -9` on writers, plus kills during backup, restore and first run. Power loss is not covered |

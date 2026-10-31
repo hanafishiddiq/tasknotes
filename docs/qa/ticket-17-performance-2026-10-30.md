@@ -113,14 +113,15 @@ The lag reported on 2026-10-12 ([Issue 19](../../.scratch/tasknotes-v1/issues/19
 
 ## Real scrolling, 2026-10-31
 
-The owner felt the main pane lag with this data, at "40 to 50-something FPS". The scripted 60 FPS above did not show it, because a script setting `scrollTop` does not behave like a real scroll. [`ticket17_visual_fps.py`](../../scripts/qa/ticket17_visual_fps.py) sends trusted wheel events at 1,200 px/s for 8 s, records the screen at 60 FPS and counts frames that changed. It repeats 50 ms pauses at each turn, so about 58 FPS is its ceiling.
+The owner felt the main pane lag with this data, at "40 to 50-something FPS". The scripted 60 FPS above did not show it, because a script setting `scrollTop` does not behave like a real scroll. [`ticket17_visual_fps.py`](../../scripts/qa/ticket17_visual_fps.py) sends trusted wheel events at 1,200 px/s for 8 s, records the screen at 60 FPS and counts frames that changed. It pauses 50 ms at each turn, and the plain page reached 58 FPS.
 
 | Scene | Runs | FPS | Frames seen per second | Gaps over 20 ms |
 | --- | --- | --- | --- | --- |
 | 50 rows, rows mounted while scrolling (a List view) | 3 | 52.6, 54.4, 53.1 | 46–61 | 58, 42, 54 |
 | 50 rows, every row kept mounted (All tasks) | 3 | 56.6, 55.6, 54.7 | mostly 55–60 | 20, 13, 9 |
+| Final build, the same List view as the first row, 6.6 s runs | 3 | 57.9, 59.2, 59.2 | 56–60 | 10, 4, 4 |
 | Plain page in Safari, 200 rows, control | 1 | 58.1 | 55–59 | 8 |
 
-Machine load was 3 to 4 in these runs; earlier it reached 45 from unrelated work, when nothing could be measured. The second and third kept-mounted runs each hit the end of the list, which lowers their average, so read their gaps rather than their FPS. The first two rows differ in view as well as in the change, and were not re-measured in the same view. The input imitates a trackpad at a fixed speed; it is not a hand.
+Machine load was 3 to 4 in these runs; earlier it reached 45 from unrelated work, when nothing could be measured. The second and third kept-mounted runs each hit the end of the list, which lowers their average, so read their gaps rather than their FPS. The first and third rows compare the same view; the final runs are shorter (6.6 s against 8 s) and do not reach the end of the list. The input imitates a trackpad at a fixed speed; it is not a hand.
 
 Result: the page keeps all its rows mounted. The list stays virtualized for anything larger.

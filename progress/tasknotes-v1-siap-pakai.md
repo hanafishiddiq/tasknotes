@@ -33,7 +33,7 @@ Tujuan akhir: Tasknotes terpasang di Mac Han dan dipakai dengan data asli, setel
   - [x] Ekspor tidak lagi membekukan jendela saat dialog izin macOS terbuka
   - [x] Langkah 27–29: privasi AI, persetujuan massal, restore
   - [ ] Han mengerjakan langkah 4, 14, 17, 18, 23, 30–32 dan membuka menu dari ikon menu bar
-  - [ ] Selidiki laporan Han: data besar terasa kurang mulus dibanding Task sedikit
+  - [x] Selidiki laporan Han: scroll area tengah terukur 53 FPS, kini 58–59 FPS setelah perbaikan
 - [ ] Backup data asli, lalu pasang di Mac Han
 
 ## Perlu Han lakukan
