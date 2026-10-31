@@ -30,9 +30,9 @@ Cara uji: klik dan ketik sungguhan lewat accessibility (Cua Driver), screenshot,
 | Nama file ekspor memakai UTC, sehingga berbeda dari jam Mac. | Diperbaiki dan dicek di aplikasi. |
 | Nama folder terpotong di sidebar walaupun ruangnya ada. | Diperbaiki dan dicek di aplikasi. |
 | ⌃⌥Space tidak terekam: macOS memakainya untuk ganti sumber input di Mac pemilik. | Panduan diganti ke ⌃⌥T. Kekurangan yang tersisa: aplikasi tidak bisa memberi tahu, karena tombolnya tidak pernah sampai ke aplikasi. |
-| Task tanpa deadline tampak bertanggal hari ini, padahal kosong. | Menunggu pilihan pemilik. |
+| Task tanpa deadline tampak bertanggal hari ini, padahal kosong. | Diperbaiki atas pilihan pemilik: kolomnya menulis "No deadline" dan menampilkan tanggal saat difokus. Dicek di aplikasi pada kedua tema. |
 | "Save changes" menutup panel Task, sedangkan "Save tags and deadline" tidak. | Belum ditemukan keputusan tertulis; menunggu penilaian pemilik. |
-| Sorotan sidebar tampak tertinggal di All tasks saat jendela tidak aktif, padahal halaman yang terbuka benar. | Belum pasti. Pemilik perlu melihatnya saat jendela aktif. |
+| Sorotan sidebar tampak tertinggal di All tasks pada screenshot. | Bukan bug aplikasi: jendela yang tertutup jendela lain berhenti digambar ulang. Saat jendelanya terlihat, sorotannya pindah dengan benar. |
 | Dua backup dalam menit yang sama punya nama aksesibilitas yang sama ("Restore the backup from … 12:46"). | Belum diperbaiki; kecil. |
 
 ## Sisa untuk pemilik
@@ -45,5 +45,4 @@ Sekitar 15 menit (perkiraan), kecuali waktu pembuatan data besar:
 4. Langkah 18: nyalakan Reduce motion.
 5. Langkah 20: buka menu dari ikon menu bar, lalu pilih Open Tasknotes.
 6. Langkah 23: dengarkan suara hujan dan suara klik. Saat hujan berbunyi, sekalian lihat CPU di Activity Monitor (langkah 24).
-7. Klik beberapa item sidebar saat jendela aktif: sorotannya harus ikut pindah.
-8. Langkah 30–32: rasa scroll, pencarian, dan mengetik di data besar (`scripts/qa/run-owner-check.sh --large`, sekitar 7 menit).
+7. Langkah 30–32: rasa scroll, pencarian, dan mengetik di data besar (`scripts/qa/run-owner-check.sh --large`, sekitar 7 menit).

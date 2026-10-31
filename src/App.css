@@ -1305,6 +1305,22 @@ kbd {
 .property input[type="date"] {
   width: 112px;
 }
+/* An empty date field shows today's date on macOS, which reads as a deadline. */
+.property:has(.property-date--empty) {
+  position: relative;
+}
+.property-date--empty:not(:focus-within)::-webkit-datetime-edit {
+  opacity: 0;
+}
+.property-date-empty-label {
+  position: absolute;
+  left: 29px;
+  color: var(--text-2);
+  pointer-events: none;
+}
+.property:focus-within .property-date-empty-label {
+  display: none;
+}
 .property--wide {
   flex: 1;
   min-width: 180px;

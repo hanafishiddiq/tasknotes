@@ -45,8 +45,8 @@ Tujuan akhir: Tasknotes terpasang di Mac Han dan dipakai dengan data asli, setel
   - Cara: sudah dijalankan Han.
   - Menahan: Han mengecek aplikasi dengan data sintetis, lalu menyetujui merge ke main
 
-- [ ] Pilih tampilan Task tanpa deadline
-  - Cara: pilih A (tulisan "No deadline" saat kosong) atau B (biarkan tampak tanggal hari ini).
+- [x] Pilih tampilan Task tanpa deadline
+  - Cara: Han memilih tulisan "No deadline", sudah diterapkan.
   - Menahan: Han mengecek aplikasi dengan data sintetis, lalu menyetujui merge ke main
 
 - [ ] Cek klik aplikasi dengan data sintetis

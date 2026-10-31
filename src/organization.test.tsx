@@ -137,6 +137,23 @@ describe("Inbox, Lists, and Task metadata", () => {
     expect(await within(screen.getByRole("article", { name: "Prepare launch" })).findByText("Overdue")).toBeInTheDocument();
   });
 
+  it("says No deadline while a Task has none, so an empty date never reads as today", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("article", { name: "Prepare launch" });
+    await user.click(screen.getByRole("button", { name: "Open Prepare launch" }));
+    const editor = screen.getByRole("region", { name: "Task details" });
+    const deadline = within(editor).getByLabelText("Deadline");
+    expect(within(editor).getByText("No deadline")).toBeInTheDocument();
+    expect(deadline).toHaveValue("");
+    expect(deadline).toHaveAccessibleDescription("No deadline");
+
+    await user.type(deadline, "2026-11-15");
+    expect(within(editor).queryByText("No deadline")).not.toBeInTheDocument();
+    expect(deadline).toHaveValue("2026-11-15");
+    expect(deadline).not.toHaveAccessibleDescription();
+  });
+
   it("removes a List reversibly without deleting its Task, then restores the Task", async () => {
     const user = userEvent.setup();
     lists = [{ id: "list-1", name: "Project", revision: 1, createdAt: 1, updatedAt: 1, removed: false }];

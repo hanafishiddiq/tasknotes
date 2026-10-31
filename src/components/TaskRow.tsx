@@ -404,8 +404,13 @@ export default function TaskRow({
               <span className="sr-only">Deadline</span>
               <CalendarDays size={13} aria-hidden="true" />
               <input id={`due-${task.id}`} aria-label="Deadline" type="date"
+                className={draftDueDate ? undefined : "property-date--empty"}
+                aria-describedby={draftDueDate ? undefined : `no-due-${task.id}`}
                 value={draftDueDate} disabled={!canChangeDetails}
                 onChange={(event) => edit("dueDate", event.target.value)} />
+              {!draftDueDate && (
+                <span id={`no-due-${task.id}`} className="property-date-empty-label">No deadline</span>
+              )}
             </label>
             <label className="property property--wide" htmlFor={`tags-${task.id}`}>
               <span className="sr-only">Tags (comma-separated)</span>

@@ -131,6 +131,7 @@ const TEXT: Record<string, Placement> = {
   ".progress-note-input::placeholder": { on: ["field"] },
   ".property input::placeholder": { on: ["field"] },
   ".property": { on: ["field"] },
+  ".property-date-empty-label": { on: ["field"] },
   ".property select": { on: ["field"] },
   ".property input": { on: ["field"] },
   ".field-label": { on: ["bg"] },
