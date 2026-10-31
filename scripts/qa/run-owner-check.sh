@@ -2,7 +2,7 @@
 # Build and open "Tasknotes QA" for the owner's check. It has its own identifier,
 # so it keeps its data in its own folder and can never open the real database.
 # Pass --fresh to start again from an empty first launch, or --large to start
-# with 50,000 synthetic Tasks and 10,000 synthetic Notes (takes about 5 minutes).
+# with 50,000 synthetic Tasks and 10,000 synthetic Notes (takes about 7 minutes).
 set -eu
 root=$(cd "$(dirname "$0")/../.." && pwd)
 identifier="store.adamaja.tasknotes.ownercheck"

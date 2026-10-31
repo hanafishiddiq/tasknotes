@@ -19,7 +19,7 @@ Tujuan akhir: Tasknotes terpasang di Mac Han dan dipakai dengan data asli, setel
   - [x] Pencarian dan paging lewat core, CLI, dan MCP memenuhi target
   - [x] Pencarian Note satu huruf diperbaiki, dari p95 3 detik ke 90 ms
   - [x] Ukur scroll dan pencarian di aplikasi dengan layar menyala
-- [ ] Kerjakan tiket 18: paket aplikasi, uji alur UI/CLI/MCP, latihan restore, aksesibilitas, audit privasi repo
+- [x] Kerjakan bagian otomatis tiket 18: paket aplikasi, uji alur UI/CLI/MCP, latihan restore, aksesibilitas, audit privasi repo
   - [x] Bereskan kegagalan langka saat dua proses membuka database bersamaan
   - [x] Uji alur UI, CLI, dan MCP serta uji mati mendadak lulus
   - [x] Latihan upgrade dari schema lama ke 15 tanpa data berubah
@@ -27,7 +27,7 @@ Tujuan akhir: Tasknotes terpasang di Mac Han dan dipakai dengan data asli, setel
   - [x] Restore berulang lolos pemeriksa acak 2.000 urutan
   - [x] Paket aplikasi menyala dua kali di schema 15, tanpa koneksi jaringan
   - [x] Audit privasi repo dan daftar kesiapan rilis terbit
-  - [ ] CI hijau untuk hasil gabungan tiket 18
+  - [x] CI hijau untuk hasil gabungan tiket 18
 - [ ] Han mengecek aplikasi dengan data sintetis, lalu menyetujui merge ke main
 - [ ] Backup data asli, lalu pasang di Mac Han
 

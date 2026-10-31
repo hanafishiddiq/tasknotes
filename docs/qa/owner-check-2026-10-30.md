@@ -59,7 +59,7 @@ Catat yang terasa salah atau aneh, cukup nomornya dan apa yang terjadi. Jangan p
 
 ## G. Rasa di data besar
 
-Jalankan `scripts/qa/run-owner-check.sh --large`. Skrip menutup Tasknotes QA yang masih berjalan, lalu membuat 50.000 Task dan 10.000 Note sintetis (sekitar 5 menit).
+Jalankan `scripts/qa/run-owner-check.sh --large`. Skrip menutup Tasknotes QA yang masih berjalan, lalu membuat 50.000 Task dan 10.000 Note sintetis (sekitar 7 menit).
 
 30. Gulir daftar Task dengan trackpad, cepat dan pelan, dengan baris tertutup lalu satu baris terbuka: terasa mulus, tanpa patah atau baris kosong. Ini satu-satunya hal yang tidak bisa diukur otomatis, sekaligus pemeriksaan keluhan lag lama (Issue 19).
 31. Ketik di kolom pencarian: hasil muncul tanpa jeda mengganggu, termasuk saat baru satu huruf. Ulangi di Notes.
