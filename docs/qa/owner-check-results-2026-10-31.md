@@ -46,3 +46,7 @@ Sekitar 15 menit (perkiraan), kecuali waktu pembuatan data besar:
 5. Langkah 20: buka menu dari ikon menu bar, lalu pilih Open Tasknotes.
 6. Langkah 23: dengarkan suara hujan dan suara klik. Saat hujan berbunyi, sekalian lihat CPU di Activity Monitor (langkah 24).
 7. Langkah 30–32: rasa scroll, pencarian, dan mengetik di data besar (`scripts/qa/run-owner-check.sh --large`, sekitar 7 menit).
+
+## Hasil pemilik
+
+2026-10-31: pemilik melaporkan sudah mencoba hampir semuanya dan aman secara umum, tanpa animasi yang aneh. Reduce motion (langkah 18) belum dicoba karena pengaturannya ada di macOS, bukan di aplikasi. Permintaan fitur versi berikutnya dicatat di `.scratch/tasknotes-next/issues/`.
