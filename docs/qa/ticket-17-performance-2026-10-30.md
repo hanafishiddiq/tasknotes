@@ -1,6 +1,6 @@
 # Ticket 17: large-dataset performance, 2026-10-30
 
-**Status: measured; targets met.** Search under 250 ms and scrolling at 60 FPS, with 50,000 Tasks and 10,000 Notes, on the screen of the target Mac. Still unmeasured: how a real trackpad feels, which is in the [owner check](owner-check-2026-10-30.md), and a truly cold disk.
+**Status: search targets met; the scrolling result below was overstated, see "Real scrolling, 2026-10-31".** Search under 250 ms and scrolling at 60 FPS, with 50,000 Tasks and 10,000 Notes, on the screen of the target Mac. Still unmeasured: how a real trackpad feels, which is in the [owner check](owner-check-2026-10-30.md), and a truly cold disk.
 
 ## Setup
 
@@ -110,3 +110,17 @@ Typing takes five samples each, so its p95 is close to one slow run. Opening a r
 2. **A truly cold disk:** not measured, because emptying the OS file cache needs administrator rights.
 
 The lag reported on 2026-10-12 ([Issue 19](../../.scratch/tasknotes-v1/issues/19-native-interaction-lag.md)) did not appear in these scripted runs. Its root cause was never proven, so this does not prove it cannot return with a trackpad.
+
+## Real scrolling, 2026-10-31
+
+The owner felt the main pane lag with this data, at "40 to 50-something FPS". The scripted 60 FPS above did not show it, because a script setting `scrollTop` does not behave like a real scroll. [`ticket17_visual_fps.py`](../../scripts/qa/ticket17_visual_fps.py) sends trusted wheel events at 1,200 px/s for 8 s, records the screen at 60 FPS and counts frames that changed. It repeats 50 ms pauses at each turn, so about 58 FPS is its ceiling.
+
+| Scene | Runs | FPS | Frames seen per second | Gaps over 20 ms |
+| --- | --- | --- | --- | --- |
+| 50 rows, rows mounted while scrolling (a List view) | 3 | 52.6, 54.4, 53.1 | 46–61 | 58, 42, 54 |
+| 50 rows, every row kept mounted (All tasks) | 3 | 56.6, 55.6, 54.7 | mostly 55–60 | 20, 13, 9 |
+| Plain page in Safari, 200 rows, control | 1 | 58.1 | 55–59 | 8 |
+
+Machine load was 3 to 4 in these runs; earlier it reached 45 from unrelated work, when nothing could be measured. The second and third kept-mounted runs each hit the end of the list, which lowers their average, so read their gaps rather than their FPS. The first two rows differ in view as well as in the change, and were not re-measured in the same view. The input imitates a trackpad at a fixed speed; it is not a hand.
+
+Result: the page keeps all its rows mounted. The list stays virtualized for anything larger.

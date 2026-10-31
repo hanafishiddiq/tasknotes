@@ -4,7 +4,7 @@ import {
 import {
   defaultRangeExtractor, measureElement, observeElementRect, useVirtualizer, type Range, type Virtualizer,
 } from "@tanstack/react-virtual";
-import type { Task, WorkStatus } from "../lib/task-api";
+import { TASK_PAGE_SIZE, type Task, type WorkStatus } from "../lib/task-api";
 import { STATUS_ORDER, STATUS_VIEW } from "../lib/task-visuals";
 
 type Item =
@@ -109,7 +109,9 @@ export default function VirtualTaskList({
       const item = items[index];
       return item.kind === "heading" ? `heading:${item.status}` : item.task.id;
     },
-    overscan: 6,
+    // A page holds at most this many Tasks. Keeping them all mounted took dropped
+    // frames in a real scroll from about 50 to about 15: mounting rows costs more than they weigh.
+    overscan: TASK_PAGE_SIZE,
     scrollMargin,
     rangeExtractor,
     observeElementRect: observeVisibleRect,

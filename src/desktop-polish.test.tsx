@@ -220,14 +220,14 @@ describe("Virtualized Task rows", () => {
   it("renders only the rows near the visible part of a sizeable page", async () => {
     render(<App />);
     expect(await screen.findByRole("article", { name: "Synthetic task 1" })).toBeInTheDocument();
-    expect(screen.getAllByRole("article").length).toBeLessThan(40);
+    expect(screen.getAllByRole("article").length).toBeLessThan(120);
     expect(screen.queryByRole("article", { name: "Synthetic task 300" })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Ready tasks" })).toBeInTheDocument();
 
     await act(async () => { scrollTasksTo(30 + 50 * 199); });
     expect(await screen.findByRole("article", { name: "Synthetic task 200" })).toBeInTheDocument();
     expect(screen.queryByRole("article", { name: "Synthetic task 1" })).not.toBeInTheDocument();
-    expect(screen.getAllByRole("article").length).toBeLessThan(40);
+    expect(screen.getAllByRole("article").length).toBeLessThan(120);
   });
 
   it("keeps the scroll position when a Task opens and closes", async () => {
