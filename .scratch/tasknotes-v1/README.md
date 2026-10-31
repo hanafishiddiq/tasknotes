@@ -1,7 +1,7 @@
 # Tasknotes v1 — Local Issue Tracker
 
 **Planning:** COMPLETE (2026-10-11). All Q1–Q49 decisions accepted.
-**Implementation (2026-10-30):** Tickets **01–05 completed and merged to `main`** after independent AI code reviews and owner approval. Tickets **06–16 are implemented and code-reviewed but not completed**: 06 is in Draft PR #19, 07–16 in Draft PR #20 (`integration/tasknotes-v1-07-18`), all awaiting the owner's native checks and merge decision. Tickets 17–18 remain. No release/deployment or user SQLite migration occurred.
+**Implementation (2026-10-31):** Tickets **01–05 completed and merged to `main`** after independent AI code reviews and owner approval. Tickets **06–18 are implemented and code-reviewed but not completed**: 06 is in Draft PR #19, 07–18 in Draft PR #20 (`integration/tasknotes-v1-07-18`), all awaiting the owner's native checks and merge decision. No release/deployment or user SQLite migration occurred.
 **Canonical specification:** [spec.md](spec.md).
 **Source of truth for terminology:** [GLOSSARY.md](../../GLOSSARY.md).
 **Architecture decisions:** [docs/adr](../../docs/adr).
@@ -43,7 +43,7 @@
 | 17 | Performance and synthetic benchmarks | 05, 07, 12, 14 |
 | 18 | macOS release-quality verification | 12, 13, 15, 16, 17 |
 
-**Current frontier (2026-10-30):** Ticket **17 (performance)**, whose on-screen run needs the Mac unlocked, then **18 (release quality)**. Their blockers are implemented on the integration branch but not yet merged, so neither can be marked completed before the owner approves 06–16.
+**Current frontier (2026-10-31):** every automated gate is done; see the [readiness checklist](../../docs/qa/release-readiness-2026-10-31.md). What remains is the owner's [click check](../../docs/qa/owner-check-2026-10-30.md) and merge decision, so no ticket from 06 onward is marked completed yet.
 
 ## Privacy and public repository rules
 

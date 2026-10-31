@@ -6,16 +6,16 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** not started — requires an explicit phase-transition instruction.
+**Implementation:** automated gates done and code-reviewed on `feat/ticket-18-release-quality`; awaiting the owner's click check. [Readiness checklist](../../../docs/qa/release-readiness-2026-10-31.md), [click check](../../../docs/qa/owner-check-2026-10-30.md).
 
 ## Acceptance criteria
 
-- [ ] Run macOS packaged-app smoke tests for first launch, persistence, offline use, keyboard capture, menu bar, audio and Notes.
-- [ ] Run end-to-end UI/CLI/MCP scenarios that verify shared invariants, audit, privacy, Removed/restore and conflict rejection.
-- [ ] Verify backup corruption/restore, database migration, crash-restart consistency and non-destructive recovery drills.
-- [ ] Review accessibility and tested performance targets using real evidence, documenting unresolved issues without overstating readiness.
-- [ ] Audit the public repository and release bundle to exclude real Notes/Tasks, local databases, backups, secrets and unlicensed sounds.
-- [ ] Each earlier ticket has completion evidence and a code review; publish an honest release-readiness checklist with any exceptions.
+- [ ] Run macOS packaged-app smoke tests for first launch, persistence, offline use, keyboard capture, menu bar, audio and Notes. *(first launch, persistence and no network sockets pass on a QA bundle; the rest is in the click check, so this stays open)*
+- [x] Run end-to-end UI/CLI/MCP scenarios that verify shared invariants, audit, privacy, Removed/restore and conflict rejection.
+- [x] Verify backup corruption/restore, database migration, crash-restart consistency and non-destructive recovery drills.
+- [ ] Review accessibility and tested performance targets using real evidence, documenting unresolved issues without overstating readiness. *(automated checks pass; VoiceOver and on-screen checks are in the click check, so this stays open)*
+- [x] Audit the public repository and release bundle to exclude real Notes/Tasks, local databases, backups, secrets and unlicensed sounds.
+- [x] Each earlier ticket has completion evidence and a code review; publish an honest release-readiness checklist with any exceptions.
 
 ## Incoming performance defect gate
 
@@ -23,9 +23,9 @@
 
 ## Verification
 
-- [ ] Use a reproducible end-to-end release checklist and independent diff review; packaging is not equivalent to notarized public distribution.
-- [ ] Relevant tests pass and evidence is recorded here.
-- [ ] Run `/code-review` and address findings before marking complete.
+- [x] Use a reproducible end-to-end release checklist and independent diff review; packaging is not equivalent to notarized public distribution.
+- [x] Relevant tests pass and evidence is recorded here.
+- [x] Run `/code-review` and address findings before marking complete.
 
 ## Delivery guardrails
 
