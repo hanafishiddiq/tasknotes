@@ -29,6 +29,10 @@ Tujuan akhir: Tasknotes terpasang di Mac Han dan dipakai dengan data asli, setel
   - [x] Audit privasi repo dan daftar kesiapan rilis terbit
   - [x] CI hijau untuk hasil gabungan tiket 18
 - [ ] Han mengecek aplikasi dengan data sintetis, lalu menyetujui merge ke main
+  - [x] AI menjalankan langkah yang bisa diotomatiskan: 21 dari 24 langkah, 3 sisanya menunggu access grant
+  - [x] Ekspor tidak lagi membekukan jendela saat dialog izin macOS terbuka
+  - [ ] Langkah 27–29: privasi AI, persetujuan massal, restore
+  - [ ] Han mengerjakan langkah 4, 14, 17, 18, 23, 30–32 dan membuka menu dari ikon menu bar
 - [ ] Backup data asli, lalu pasang di Mac Han
 
 ## Perlu Han lakukan
@@ -37,8 +41,12 @@ Tujuan akhir: Tasknotes terpasang di Mac Han dan dipakai dengan data asli, setel
   - Cara: sudah dijalankan Han, hasilnya sah (`frame_timings_valid: true`).
   - Menahan: Kerjakan tiket 17: ukur performa dengan 50.000 Task dan 10.000 Note sintetis
 
+- [ ] Beri CLI akses ke data sintetis QA
+  - Cara: di Terminal masuk ke `.worktrees/integration` di dalam proyek, jalankan `crates/tasknotes-cli/target/release/tasknotes --data-dir "$HOME/Library/Application Support/store.adamaja.tasknotes.ownercheck" access grant`.
+  - Menahan: Han mengecek aplikasi dengan data sintetis, lalu menyetujui merge ke main
+
 - [ ] Cek klik aplikasi dengan data sintetis
-  - Cara: di Terminal masuk ke `.worktrees/integration` di dalam proyek, jalankan `scripts/qa/run-owner-check.sh --fresh`, lalu ikuti `docs/qa/owner-check-2026-10-30.md`, sekitar 45 menit.
+  - Cara: AI sudah menjalankan sebagian; Han hanya mengerjakan langkah 4, 14, 17, 18, 23, 30–32 di `docs/qa/owner-check-2026-10-30.md` dan membuka menu dari ikon menu bar, sekitar 15 menit.
   - Menahan: Han mengecek aplikasi dengan data sintetis, lalu menyetujui merge ke main
 - [ ] Persetujuan merge dan pemasangan ke data asli
   - Cara: bilang "merge" setelah cek klik beres; persetujuan pasang ke data asli diminta terpisah.

@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use tasknotes_core::backup::{Backup, RestoreOutcome};
+use tasknotes_core::calendar::TimeZone;
 use tasknotes_core::export::{ExportFormat, ExportRequest, ExportSummary, suggested_name};
 use tasknotes_core::tasks::TaskStore;
 use tauri::{AppHandle, Manager, State};
@@ -65,8 +66,10 @@ pub fn adopt_restored_data(store: State<'_, TaskStore>) -> Result<(), String> {
 }
 
 /// A human export into Downloads under a new dated name; the person chooses
-/// whether Notes marked Exclude from AI are included.
-#[tauri::command]
+/// whether Notes marked Exclude from AI are included. Off the main thread:
+/// the first write to Downloads waits for the macOS permission dialog, and
+/// the window must not freeze meanwhile.
+#[tauri::command(async)]
 pub fn export_data(
     app: AppHandle,
     store: State<'_, TaskStore>,
@@ -84,7 +87,7 @@ pub fn export_data(
     store
         .export_data(ExportRequest {
             format,
-            destination: unused_path(folder, &suggested_name(format, now)),
+            destination: unused_path(folder, &suggested_name(format, now, TimeZone::Local)),
             include_private_notes,
         })
         .map_err(|error| error.to_string())

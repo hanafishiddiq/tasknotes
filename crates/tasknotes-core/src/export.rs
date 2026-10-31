@@ -24,6 +24,7 @@ use rusqlite::{Connection, params_from_iter};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::calendar::TimeZone;
 use crate::tasks::{Priority, Task, TaskError, TaskStore, WorkStatus, current_millis};
 
 /// The version of the export document's shape, sent as `format_version`.
@@ -559,9 +560,10 @@ fn priority_label(priority: Priority) -> &'static str {
 }
 
 /// A file or directory name for an export made at `now_ms`, such as
-/// `Tasknotes export 2026-10-26 09.15.json` (UTC; no `:` for Finder).
-pub fn suggested_name(format: ExportFormat, now_ms: i64) -> String {
-    let stamp = iso_time(now_ms).replace(':', ".");
+/// `Tasknotes export 2026-10-26 09.15.json` on the clock in `zone`, so the
+/// name matches the time the person sees (no `:` for Finder).
+pub fn suggested_name(format: ExportFormat, now_ms: i64, zone: TimeZone) -> String {
+    let stamp = iso_time(now_ms + zone.offset_ms(now_ms)).replace(':', ".");
     match format {
         ExportFormat::Json => format!("Tasknotes export {stamp}.json"),
         ExportFormat::Markdown => format!("Tasknotes export {stamp}"),
@@ -683,12 +685,25 @@ mod tests {
     fn exports_get_a_dated_name() {
         let now = 1_793_006_795_568;
         assert_eq!(
-            suggested_name(ExportFormat::Json, now),
+            suggested_name(ExportFormat::Json, now, TimeZone::UTC),
             "Tasknotes export 2026-10-26 09.26.json"
         );
         assert_eq!(
-            suggested_name(ExportFormat::Markdown, now),
+            suggested_name(ExportFormat::Markdown, now, TimeZone::UTC),
             "Tasknotes export 2026-10-26 09.26"
+        );
+    }
+
+    #[test]
+    fn an_export_name_shows_the_time_on_the_persons_clock() {
+        let late_evening = 1_793_006_795_568 + 10 * 3_600_000;
+        assert_eq!(
+            suggested_name(
+                ExportFormat::Json,
+                late_evening,
+                TimeZone::Fixed { minutes: 7 * 60 }
+            ),
+            "Tasknotes export 2026-10-27 02.26.json"
         );
     }
 

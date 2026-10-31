@@ -44,7 +44,7 @@ Catat yang terasa salah atau aneh, cukup nomornya dan apa yang terjadi. Jangan p
 ## E. Menu bar, Quick Capture, dan suara
 
 20. Settings → Menu bar and Quick Capture: nyalakan menu bar. Tutup jendela: aplikasi tetap jalan dan ikon ada di menu bar. Buka lagi dari ikon itu.
-21. Nyalakan "Open Quick Capture with a global shortcut", lalu saat diminta tekan ⌃⌥Space untuk merekamnya. Pindah ke aplikasi lain, tekan ⌃⌥Space: Tasknotes muncul dengan kolom New task terfokus. Isi dan Return.
+21. Nyalakan "Open Quick Capture with a global shortcut", lalu saat diminta tekan ⌃⌥T untuk merekamnya (⌃⌥Space sudah dipakai macOS untuk ganti sumber input). Pindah ke aplikasi lain, tekan ⌃⌥T: Tasknotes muncul dengan kolom New task terfokus. Isi dan Return.
 22. Coba pasang ⌘N sebagai shortcut: ditolak dengan penjelasan.
 23. Settings → Sound: hujan terdengar pelan, tidak mengganggu, dan berulang tanpa jeda atau klik. Atur volumenya, lalu mute. Suara klik juga pelan.
 24. Di Activity Monitor, CPU Tasknotes QA saat hujan menyala dan aplikasi diam tetap rendah. Catat angkanya.

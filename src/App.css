@@ -214,7 +214,8 @@ textarea:disabled {
   display: flex;
   align-items: center;
 }
-.folder-row .folder {
+.folder-row:hover .folder,
+.folder-row:focus-within .folder {
   padding-right: 52px;
 }
 .folder-actions {
@@ -309,6 +310,9 @@ textarea:disabled {
 }
 .folder-tree .folder-row .folder {
   padding-left: 4px;
+}
+.folder-tree .folder-row:hover .folder,
+.folder-tree .folder-row:focus-within .folder {
   padding-right: 76px;
 }
 .folder-disclosure {
