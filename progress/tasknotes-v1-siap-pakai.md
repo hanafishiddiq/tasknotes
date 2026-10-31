@@ -34,7 +34,7 @@ Tujuan akhir: Tasknotes terpasang di Mac Han dan dipakai dengan data asli, setel
   - [x] Langkah 27–29: privasi AI, persetujuan massal, restore
   - [x] Han mencoba sisa langkah, menilai data besar sudah mulus, dan menyetujui merge
   - [x] Selidiki laporan Han: scroll area tengah terukur 53 FPS, kini 58–59 FPS setelah perbaikan
-- [ ] Perbaiki kedip saat menutup Task yang terbuka
+- [x] Perbaiki kedip saat menutup Task yang terbuka
 - [ ] Backup data asli, lalu pasang di Mac Han
 
 ## Perlu Han lakukan
@@ -55,7 +55,7 @@ Tujuan akhir: Tasknotes terpasang di Mac Han dan dipakai dengan data asli, setel
   - Cara: ikuti bagian "Sisa untuk pemilik" di `docs/qa/owner-check-results-2026-10-31.md`, sekitar 15 menit di luar pembuatan data besar.
   - Menahan: Han mengecek aplikasi dengan data sintetis, lalu menyetujui merge ke main
 - [ ] Persetujuan pemasangan ke data asli
-  - Cara: merge sudah disetujui dan selesai (PR #20); bilang "pasang" setelah perbaikan kedip beres.
+  - Cara: PR #20 dan #21 sudah masuk main; bilang "pasang". Database asli di Mac ini tercatat kosong (0 Task, schema 3), tetap di-backup dulu.
   - Menahan: Backup data asli, lalu pasang di Mac Han
 
 ## Riwayat sesi
