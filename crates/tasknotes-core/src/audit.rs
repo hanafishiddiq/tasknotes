@@ -175,6 +175,17 @@ pub struct AuditPage {
     pub next_cursor: Option<String>,
 }
 
+/// What the window asks every few seconds: whether another process changed
+/// anything since it last looked. Every change the CLI or an MCP client makes
+/// leaves an Audit Entry, and an entry names no user text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct OutsideChanges {
+    /// Where the log ends now; the window hands it back as `seen`.
+    pub latest: i64,
+    /// An entry after `seen` came from another interface. Always false without `seen`.
+    pub changed: bool,
+}
+
 /// Schema v10: the audit table. Triggers refuse UPDATE and DELETE, so no
 /// writer of this SQLite file can rewrite history.
 pub(crate) fn migrate_v10(migration: &Transaction) -> Result<(), TaskError> {
@@ -326,6 +337,29 @@ impl Revisioned for crate::notes::MoveNote {
 impl TaskStore {
     fn recorder(&self) -> Recorder {
         (self.interface(), self.requested_by())
+    }
+
+    /// Whether the CLI or an MCP client wrote after `seen`. Desktop only: an
+    /// append number would tell an AI interface how much it may not see. It
+    /// walks only the entries since `seen`, so its cost does not grow with the log.
+    pub fn outside_changes(&self, seen: Option<i64>) -> Result<OutsideChanges, TaskError> {
+        self.require_desktop()?;
+        let conn = self.connect()?;
+        let latest = conn.query_row(
+            "SELECT coalesce(max(sequence), 0) FROM audit_entries",
+            [],
+            |row| row.get(0),
+        )?;
+        let changed = match seen {
+            Some(seen) => conn.query_row(
+                "SELECT EXISTS(SELECT 1 FROM audit_entries
+                               WHERE sequence > ?1 AND interface <> 'desktop')",
+                params![seen],
+                |row| row.get(0),
+            )?,
+            None => false,
+        };
+        Ok(OutsideChanges { latest, changed })
     }
 
     /// Record a refusal about an entity in `conn`, outside any change: a

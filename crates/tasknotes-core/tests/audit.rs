@@ -525,3 +525,72 @@ fn a_refusal_that_cannot_be_audited_says_so_and_keeps_its_code() {
     assert!(matches!(recorded, TaskError::RevisionConflict));
     assert!(!recorded.audit_unrecorded());
 }
+
+#[test]
+fn the_window_learns_of_changes_only_from_other_interfaces() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("t.db");
+    let desktop = store_at(&db);
+    let cli = TaskStore::open_as(&db, Interface::Cli).unwrap();
+    let mcp = TaskStore::open_as(&db, Interface::Mcp).unwrap();
+    let draft = || CreateTask {
+        title: "Draft the quarterly summary".into(),
+        description: String::new(),
+    };
+
+    let start = desktop.outside_changes(None).unwrap();
+    assert!(
+        !start.changed,
+        "the first look only learns where the log ends"
+    );
+
+    desktop.create_task(draft()).unwrap();
+    let own = desktop.outside_changes(Some(start.latest)).unwrap();
+    assert!(
+        !own.changed,
+        "the window's own change is not an outside one"
+    );
+    assert!(own.latest > start.latest);
+
+    let task = cli.create_task(draft()).unwrap();
+    let after_cli = desktop.outside_changes(Some(own.latest)).unwrap();
+    assert!(after_cli.changed);
+
+    let nothing_new = desktop.outside_changes(Some(after_cli.latest)).unwrap();
+    assert!(!nothing_new.changed);
+    assert_eq!(nothing_new.latest, after_cli.latest);
+
+    mcp.create_list(CreateList {
+        name: "Synthetic list".into(),
+    })
+    .unwrap();
+    let after_mcp = desktop.outside_changes(Some(after_cli.latest)).unwrap();
+    assert!(after_mcp.changed);
+
+    cli.update_task(UpdateTask {
+        id: task.id,
+        title: "Draft the yearly summary".into(),
+        description: String::new(),
+        expected_revision: task.revision,
+    })
+    .unwrap();
+    // An outside change is still found under a later change of the window's own.
+    desktop.create_task(draft()).unwrap();
+    assert!(
+        desktop
+            .outside_changes(Some(after_mcp.latest))
+            .unwrap()
+            .changed
+    );
+}
+
+#[test]
+fn only_the_window_may_ask_about_outside_changes() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("t.db");
+    store_at(&db);
+    for interface in [Interface::Cli, Interface::Mcp] {
+        let store = TaskStore::open_as(&db, interface).unwrap();
+        assert!(store.outside_changes(None).is_err());
+    }
+}

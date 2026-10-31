@@ -409,7 +409,7 @@ impl TaskStore {
         Ok(declined)
     }
 
-    fn require_desktop(&self) -> Result<(), TaskError> {
+    pub(crate) fn require_desktop(&self) -> Result<(), TaskError> {
         if self.interface() == Interface::Desktop {
             Ok(())
         } else {
