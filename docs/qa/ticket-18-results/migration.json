@@ -3,7 +3,7 @@
     "commit": "b799cce",
     "label": "Ticket 01",
     "version_before": 1,
-    "version_after": 14,
+    "version_after": 15,
     "tasks": 3,
     "records_unchanged": true,
     "search_hits": {
@@ -21,7 +21,7 @@
     "commit": "bc8ac50",
     "label": "Ticket 02",
     "version_before": 2,
-    "version_after": 14,
+    "version_after": 15,
     "tasks": 3,
     "records_unchanged": true,
     "search_hits": {
@@ -39,7 +39,7 @@
     "commit": "2937c9a",
     "label": "Ticket 03",
     "version_before": 3,
-    "version_after": 14,
+    "version_after": 15,
     "tasks": 3,
     "records_unchanged": true,
     "search_hits": {
@@ -59,7 +59,7 @@
     "commit": "80de645",
     "label": "Ticket 05, today's main",
     "version_before": 5,
-    "version_after": 14,
+    "version_after": 15,
     "tasks": 3,
     "records_unchanged": true,
     "search_hits": {
@@ -79,7 +79,7 @@
     "commit": "a98dc16",
     "label": "Ticket 06",
     "version_before": 6,
-    "version_after": 14,
+    "version_after": 15,
     "tasks": 3,
     "records_unchanged": true,
     "search_hits": {

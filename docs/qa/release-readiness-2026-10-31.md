@@ -12,8 +12,8 @@
 | UI, CLI and MCP share invariants, audit, privacy, Removed and conflict rules | Pass, below the window | `crates/tasknotes-e2e/tests/scenario.rs`: real CLI and MCP binaries with the core's desktop store; UI behind a mocked seam in `src/*.test.tsx` |
 | Crash and restart consistency | Pass | `crash.rs`: 24 rounds of `kill -9` on writers, plus kills during backup, restore and first run. Power loss is not covered |
 | Corrupted backups refused; restore round trip | Pass | `recovery.rs`: seven kinds of bad backup, exact round trip through the real CLI |
-| Restore never opens a private Note or undoes a decision | Pass | `restore_twice.rs`, `scenario.rs` |
-| Upgrade of databases really made by old code | Pass | [migration.json](ticket-18-results/migration.json): commits at schema 1, 2, 3, 5 and 6, all records unchanged, schema identical to a new database. The owner's database is at schema 3 |
+| Restore never opens a private Note, reuses a revision or undoes a decision | Pass | `restore_twice.rs`, `scenario.rs`, and an independent model test: 2,000 random operation sequences, 21,921 restores, no violation. The same test broke the earlier design |
+| Upgrade of databases really made by old code | Pass | [migration.json](ticket-18-results/migration.json): commits at schema 1, 2, 3, 5 and 6, upgraded to schema 15, all records unchanged, schema identical to a new database. The owner's database is at schema 3 |
 | Processes opening one database at once | Pass | `stores_opening_at_the_same_moment_all_succeed` |
 | Accessibility, automated | Pass | axe over every view in both themes; contrast from the stylesheet at AA; keyboard reach and focus return |
 | Accessibility, by a person | **Open** | VoiceOver, visible focus rings, Reduce Motion, on-screen contrast: click check |
@@ -43,6 +43,7 @@
 4. **A cold disk is not measured.** Emptying the OS file cache needs administrator rights; "fresh process" timings have a warm cache.
 5. **A killed upgrade from an older schema** is not tested, only a killed first run. Each migration step is transactional, and the owner's upgrade happens after a verified backup.
 6. **Windows and Linux** builds are not verified; the first milestone is macOS only.
+7. **Restoring the same content twice moves its revision.** A client then gets a false `revision_conflict` and reads again, and a request waiting on that row goes stale, so the AI asks again. This fails safe.
 
 ## Before the real database is upgraded
 

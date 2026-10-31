@@ -15,7 +15,7 @@ import subprocess
 import sys
 import tempfile
 
-CURRENT_SCHEMA = 14
+CURRENT_SCHEMA = 15
 
 # (commit, schema the commit writes, label)
 OLD = [

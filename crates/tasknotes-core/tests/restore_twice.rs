@@ -196,3 +196,93 @@ fn a_request_nobody_decided_still_waits_after_it_left_and_returned() {
     w.restore(&with);
     assert_eq!(w.desktop.count_pending_bulk_requests().unwrap(), 1);
 }
+
+/// What a client claims is not a revision anyone issued. Reading after a
+/// restore must still work, and nothing it named may move a row's number.
+#[test]
+fn a_refused_write_naming_any_revision_changes_nothing_through_a_restore() {
+    for claimed in [i64::MAX, i64::MAX - 1, 1000] {
+        let w = world();
+        let id = w.task();
+        let waiting =
+            w.ai.request_bulk(BulkAction::RemoveTasks, vec![id.clone()])
+                .unwrap()
+                .request
+                .id;
+        let backup = w.backup();
+        let refused = w.ai.patch_task(PatchTask {
+            id: id.clone(),
+            expected_revision: claimed,
+            title: Some("Synthetic".into()),
+            description: None,
+        });
+        assert_eq!(refused.unwrap_err().code(), "revision_conflict");
+
+        w.restore(&backup);
+
+        assert_eq!(w.desktop.get_task(&id).unwrap().unwrap().revision, 1);
+        assert_eq!(w.desktop.list_tasks(10, None).unwrap().items.len(), 1);
+        w.desktop.approve_bulk_request(&waiting).unwrap();
+    }
+}
+
+/// A bump is written to the row only. When the row leaves, the number must not
+/// be forgotten: `Sa` restored gives a new number, which a client reads; the row
+/// leaves; `Sb` brings it back with an older number; an edit must not reach the
+/// number the client holds.
+#[test]
+fn a_number_given_by_a_restore_is_not_used_again_for_other_content() {
+    let w = world();
+    let empty = w.backup();
+    let id = w.task();
+    let patch = |store: &TaskStore, revision, title: &str| {
+        store.patch_task(PatchTask {
+            id: id.clone(),
+            expected_revision: revision,
+            title: Some(title.into()),
+            description: None,
+        })
+    };
+    let a = patch(&w.desktop, 1, "Synthetic A").unwrap();
+    let sa = w.backup();
+    patch(&w.desktop, a.revision, "Synthetic B").unwrap();
+    let sb = w.backup();
+
+    w.restore(&sa);
+    let client_holds = w.desktop.get_task(&id).unwrap().unwrap().revision;
+    w.restore(&empty);
+    w.restore(&sb);
+    let back = w.desktop.get_task(&id).unwrap().unwrap();
+    assert!(back.revision > client_holds, "{}", back.revision);
+    patch(&w.desktop, back.revision, "Synthetic the persons edit").unwrap();
+
+    assert_eq!(
+        patch(&w.ai, client_holds, "Synthetic stale overwrite")
+            .unwrap_err()
+            .code(),
+        "revision_conflict"
+    );
+}
+
+/// An AI cannot decide a request, so nothing it tries may count as a decision.
+#[test]
+fn an_ai_trying_to_approve_does_not_count_as_a_decision() {
+    let w = world();
+    let without = w.backup();
+    let target = w.task();
+    let id =
+        w.ai.request_bulk(BulkAction::RemoveTasks, vec![target])
+            .unwrap()
+            .request
+            .id;
+    let with = w.backup();
+    assert_eq!(
+        w.ai.approve_bulk_request(&id).unwrap_err().code(),
+        "desktop_only"
+    );
+
+    w.restore(&without);
+    w.restore(&with);
+
+    assert_eq!(w.desktop.count_pending_bulk_requests().unwrap(), 1);
+}

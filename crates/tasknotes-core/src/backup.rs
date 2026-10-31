@@ -147,6 +147,19 @@ struct Manifest {
     backup: Backup,
 }
 
+/// Schema v15: the highest revision each row had when a restore replaced it, so
+/// a number is never used for another version, even after the row left the data.
+pub(crate) fn migrate_v15(migration: &Transaction) -> Result<(), TaskError> {
+    migration.execute_batch(
+        "CREATE TABLE retired_revisions (
+            entity_id TEXT PRIMARY KEY NOT NULL,
+            revision INTEGER NOT NULL
+         ) WITHOUT ROWID;
+         PRAGMA user_version = 15;",
+    )?;
+    Ok(())
+}
+
 /// Schema v13: the Restore Epoch.
 pub(crate) fn migrate_v13(migration: &Transaction) -> Result<(), TaskError> {
     migration.execute_batch(
@@ -574,22 +587,40 @@ impl Staging {
 
     /// What a restore must not undo, in the copy with live data attached and
     /// every Audit Entry already carried over. A row can have left at one
-    /// restore and come back at this one, so nothing live remembers it: the
-    /// Audit Entries, which every restore keeps, stand in for the rows.
+    /// restore and come back at this one, so nothing live remembers it.
     fn keep_what_must_survive(tx: &Transaction) -> Result<(), TaskError> {
         // A client still holding a revision must not overwrite what the person
-        // writes next. A row older than its newest number ever gets one no
-        // version of it has had; the newest version keeps its own, so a request
-        // waiting on it stays valid.
+        // writes next, so a number never names two versions of a row. Whatever
+        // this restore replaces retires its number, in a table that outlives
+        // restores and holds only numbers really issued: never Audit Entries,
+        // where a refused write records whatever the client claimed. A row
+        // older than its retired number gets a new one; the newest version keeps
+        // its own, so a request waiting on it stays valid.
+        tx.execute(
+            "INSERT INTO main.retired_revisions (entity_id, revision)
+             SELECT entity_id, revision FROM live.retired_revisions WHERE true
+             ON CONFLICT (entity_id) DO UPDATE
+               SET revision = max(revision, excluded.revision)",
+            [],
+        )?;
         for table in ["tasks", "notes", "lists", "note_folders"] {
-            let newest = format!(
-                "max(COALESCE((SELECT l.revision FROM live.{table} AS l WHERE l.id = {table}.id), 0),
-                     COALESCE((SELECT max(a.revision) FROM main.audit_entries AS a
-                               WHERE a.entity_id = {table}.id), 0))"
+            tx.execute(
+                &format!(
+                    "INSERT INTO main.retired_revisions (entity_id, revision)
+                     SELECT l.id, l.revision FROM live.{table} AS l
+                     LEFT JOIN main.{table} AS m ON m.id = l.id
+                     WHERE m.id IS NULL OR m.revision <> l.revision
+                     ON CONFLICT (entity_id) DO UPDATE
+                       SET revision = max(revision, excluded.revision)"
+                ),
+                [],
+            )?;
+            let retired = format!(
+                "(SELECT r.revision FROM main.retired_revisions AS r WHERE r.entity_id = {table}.id)"
             );
             tx.execute(
                 &format!(
-                    "UPDATE main.{table} SET revision = 1 + {newest} WHERE revision < {newest}"
+                    "UPDATE main.{table} SET revision = 1 + {retired} WHERE revision < {retired}"
                 ),
                 [],
             )?;
@@ -627,10 +658,12 @@ impl Staging {
                       a.created_at
                FROM main.audit_entries AS a
                WHERE a.entity_id = bulk_requests.id AND a.action IN (?1, ?2)
+                 AND a.interface = 'desktop'
                ORDER BY a.sequence DESC LIMIT 1)
              WHERE status = 'pending'
                AND EXISTS (SELECT 1 FROM main.audit_entries AS a
-                           WHERE a.entity_id = bulk_requests.id AND a.action IN (?1, ?2))",
+                           WHERE a.entity_id = bulk_requests.id AND a.action IN (?1, ?2)
+                             AND a.interface = 'desktop')",
             params![
                 AuditAction::BulkDecline.as_str(),
                 AuditAction::BulkApprove.as_str()

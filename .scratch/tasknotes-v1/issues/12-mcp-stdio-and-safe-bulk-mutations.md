@@ -83,5 +83,5 @@ Fixed at the merge, each with a test written first:
 
 - ~~Two processes opening a database at the same moment can make one open fail.~~ Fixed the same day: they take turns upgrading (`stores_opening_at_the_same_moment_all_succeed`).
 - A database created by a build of this branch alone (v14 with no `database_epoch` table) does not open. Throw such QA directories away; no real data was ever opened by that build.
-- ~~The Restore Epoch guards one running MCP server only.~~ Fixed the same day: a restore gives whatever changed since the snapshot a revision no version of it has had, so a client holding an old one is refused, across restarts and CLI commands too (`a_cli_write_from_before_a_restore_does_not_overwrite_the_persons_edit`).
+- ~~The Restore Epoch guards one running MCP server only.~~ Fixed: a restore retires the number of whatever it replaces in `retired_revisions` (schema v15), which outlives restores, and gives an older row a new number, so a client holding an old one is refused, across restarts and CLI commands too (`crates/tasknotes-core/tests/restore_twice.rs`, `a_cli_write_from_before_a_restore_does_not_overwrite_the_persons_edit`). Restoring the same content twice in a row also moves the number: a false `revision_conflict`, which fails safe and only asks the client to read again.
 
