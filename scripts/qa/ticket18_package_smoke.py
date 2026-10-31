@@ -44,7 +44,8 @@ def inspect(bundle, binary):
         "accepts_a_data_folder_from_the_environment": b"TASKNOTES_DEV_DATA_DIR" in content,
         "home_paths_in_binary": {
             "count": len(home_paths),
-            "examples": [p.decode(errors="replace") for p in home_paths[:5]],
+            # The folder names are from building here; the account name stays out of the report.
+            "examples": [re.sub(r"^/Users/[^/]+", "~", p.decode(errors="replace")) for p in home_paths[:5]],
         },
         "signature": [line for line in signature.splitlines() if line.startswith(("Signature", "TeamIdentifier"))],
     }

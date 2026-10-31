@@ -92,8 +92,8 @@ fn a_backup_follows_soon_after_the_person_grants_access() {
     assert_eq!(wait_for_backups(&data).len(), 1);
 }
 
-/// Restoring rewinds revisions, so a revision a client read before can match
-/// again: the Restore Epoch has to stop it, across calls of one server.
+/// A running server tells its client about a restore once, whatever the call,
+/// so the client reads again before it changes anything.
 #[test]
 fn a_write_from_before_a_restore_is_refused_once_and_the_persons_edit_survives() {
     let data = Data::trusted();
@@ -107,11 +107,12 @@ fn a_write_from_before_a_restore_is_refused_once_and_the_persons_edit_survives()
         json!({"id": id, "revision": 1, "title": "Synthetic AI saw this"}),
     );
     desktop.restore_backup(&backup.id).unwrap();
-    // The person carries on in the restored data: revision 2 again.
+    // The person carries on in the restored data.
+    let restored = desktop.get_task(&id).unwrap().unwrap();
     desktop
         .patch_task(tasknotes_core::tasks::PatchTask {
             id: id.clone(),
-            expected_revision: 1,
+            expected_revision: restored.revision,
             title: Some("Synthetic persons edit".into()),
             description: None,
         })

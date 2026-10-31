@@ -1,5 +1,5 @@
 {
-  "paths_ever_committed": 417,
+  "paths_ever_committed": 440,
   "forbidden_files_ever_committed": [],
   "forbidden_files_now": [],
   "largest_files_now": [
@@ -12,7 +12,7 @@
       "path": "src-tauri/icons/icon.icns"
     },
     {
-      "bytes": 67350,
+      "bytes": 67611,
       "path": "pnpm-lock.yaml"
     },
     {
@@ -20,8 +20,12 @@
       "path": "crates/tasknotes-core/src/tasks.rs"
     },
     {
-      "bytes": 48165,
+      "bytes": 48523,
       "path": "src/App.tsx"
+    },
+    {
+      "bytes": 45235,
+      "path": "crates/tasknotes-e2e/tests/scenario.rs"
     },
     {
       "bytes": 41344,
@@ -30,10 +34,6 @@
     {
       "bytes": 39053,
       "path": "src/App.css"
-    },
-    {
-      "bytes": 37710,
-      "path": "src-tauri/icons/icon.ico"
     }
   ],
   "secrets_in_any_commit": {
@@ -50,11 +50,16 @@
       "where": []
     },
     "home directory": {
-      "count": 3,
+      "count": 8,
       "where": [
-        "progress/tasknotes-v1-siap-pakai.md:30",
+        "docs/qa/ticket-18-results/package-smoke.json:13",
+        "docs/qa/ticket-18-results/package-smoke.json:14",
+        "docs/qa/ticket-18-results/package-smoke.json:15",
+        "docs/qa/ticket-18-results/package-smoke.json:16",
+        "docs/qa/ticket-18-results/package-smoke.json:17",
         "src/data-settings.test.tsx:36",
-        "src/data-settings.test.tsx:106"
+        "src/data-settings.test.tsx:106",
+        "src/test/a11y-world.ts:180"
       ]
     }
   },
@@ -63,7 +68,7 @@
       "commits_touching": 0
     },
     "home directory": {
-      "commits_touching": 2
+      "commits_touching": 4
     }
   }
 }
