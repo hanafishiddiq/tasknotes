@@ -5,10 +5,18 @@ edition = "2024"
 description = "Shared local-first Tasknotes domain and SQLite persistence"
 
 [dependencies]
-rusqlite = { version = "0.37", features = ["bundled"] }
+rusqlite = { version = "0.37", features = ["bundled", "backup"] }
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 uuid = { version = "1", features = ["v4"] }
 thiserror = "2"
+caseless = "0.2.2"
+unicode-normalization = "0.1.26"
+sha2 = "0.10.9"
+libc = "0.2"
 
 [dev-dependencies]
+serde_json = "1"
+sha2 = "0.10.9"
+rusqlite = { version = "0.37", features = ["bundled"] }
 tempfile = "3"

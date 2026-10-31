@@ -5,7 +5,7 @@ colors:
   ink-gray-canvas: "#1e1e1e"
   graphite-sidebar: "#282828"
   hover-gray: "#2c2c2c"
-  folder-selected-gray: "#464646"
+  folder-selected-gray: "#444444"
   muted-gold-selection: "#67551a"
   selection-text: "#ffffff"
   field-gray: "#2a2a2a"
@@ -18,7 +18,7 @@ colors:
   accent-ink: "#1e1e1e"
   alert-red: "#ff6b61"
   caution-orange: "#ffa53d"
-  focus-ring: "rgba(255, 214, 10, 0.55)"
+  focus-ring: "rgba(255, 214, 10, 0.7)"
   light-paper-canvas: "#ffffff"
   light-sidebar: "#f0f0ef"
   light-hover: "#f4f4f3"
@@ -31,11 +31,11 @@ colors:
   light-text-secondary: "#55555a"
   light-text-tertiary: "#68686d"
   light-ochre-accent: "#b58500"
-  light-ochre-text: "#8a6400"
+  light-ochre-text: "#7f5b00"
   light-accent-ink: "#1d1d1f"
   light-alert-red: "#d1281c"
-  light-caution-orange: "#b85400"
-  light-focus-ring: "rgba(209, 156, 0, 0.5)"
+  light-caution-orange: "#b45200"
+  light-focus-ring: "#8a6400"
 typography:
   headline:
     fontFamily: "-apple-system, BlinkMacSystemFont, \"SF Pro Text\", \"Segoe UI\", Roboto, \"Helvetica Neue\", sans-serif"
@@ -177,7 +177,7 @@ components:
 
 Tasknotes wears Apple Notes' design language without irony or reinterpretation: a flat graphite folder sidebar, one quiet content column, bold one-line titles over gray second lines, inset hairline separators, and Notes yellow as the only voice of color. It is built to sit beside an editor and terminal for a whole working day, so the surface is calm, dense and small-typed (13px base), and nothing on it competes for attention without carrying state.
 
-Dark is the default appearance (`data-theme="dark"` on `<html>`), with a light appearance that mirrors it on white paper and a pale warm-gray sidebar. The user switches from the bottom of the sidebar; the choice persists per window in `localStorage` under `tasknotes.theme`, and the app falls back to dark when storage is unavailable. Both themes share every rule in this file; only token values change.
+Dark is the default appearance (`data-theme="dark"` on `<html>`), with a light appearance that mirrors it on white paper and a pale warm-gray sidebar. The user switches from the bottom of the sidebar or picks Dark, Light or Match system in Settings; the choice persists per window in `localStorage` under `tasknotes.theme` (`dark`, `light` or `system`), Match system follows `prefers-color-scheme` live, and the app falls back to dark when storage is unavailable. Both themes share every rule in this file; only token values change.
 
 The world borrows Notes' palette, type and density but not its window chrome: there are no traffic lights, title-bar blur or vibrancy, because the product is meant to travel to other platforms. It refuses the SaaS dashboard vocabulary outright: no hero, no cards, no gradients, no colored badges.
 
@@ -296,6 +296,31 @@ The selected row opens a page underneath it, indented to the 38px content edge: 
 ### Progress History
 A compact 12px timeline: tertiary date, then status and "from% -> to%" in primary text with tabular numerals, then note and "Next:" lines in secondary gray, each entry separated by a hairline.
 
+### Notes Workspace
+Apple Notes columns: the folder sidebar, a Note list, then the editor.
+- **Note list:** a Headline "Notes" with the compose icon, then 7px-radius cells of a bold single-line title over a 12px tertiary date; the open Note takes the selected row color. Older Notes load from a small accent-text "Load more Notes" action under the list.
+- **Editor:** a borderless sheet centered at 720px with 32px side padding (16px at 720px and below). Note text is a reading size above Body Page: 15px/1.55, headings 24, 19, 16 and 15px at 700. Checklist items draw an 18px circle that fills with the accent and an ink tick when done; quotes take a 3px folder-selected bar and secondary text; code is monospace on field gray (6px radius for blocks, 5px inline).
+- **Banners:** save errors use the error banner; "changed somewhere else" uses the notice banner with its two choices as small buttons.
+
+### Settings
+A page like Removed: the Headline "Settings", then Label Strong section names ("Appearance", "Keyboard") in secondary gray. Appearance is a radio group of 28px folder-style rows (Lucide icon, label) with the accent as the radio color; keyboard focus outlines the whole row. Keyboard lists each shortcut as a hairline-separated row, label left and the keys right in secondary gray. Settings is a quiet folder at the bottom of the sidebar, above the appearance toggle.
+
+"Menu bar and Quick Capture" (after Sound, before Keyboard; the heading and first checkbox name the tray as the system does: "menu bar" on a Mac, "notification area" on Windows, "system tray" elsewhere) uses the same 28px rows with checkboxes: "Keep Tasknotes in the menu bar" and "Open Quick Capture with a global shortcut", each followed by a tertiary hint saying what happens now. The hints and refusal reasons are the shell's words for this system; the New task keys come from the shared shortcut table. An unreadable settings file shows one tertiary line that the defaults are in use. Recording a shortcut is a small "Press the new shortcut" button indented under its row; the chosen combination shows as `kbd` beside "Change shortcut". A refused or taken combination is plain text: the reason in red, then secondary gray lines naming what still works ("⌘N still creates a task inside Tasknotes."). No dialogs. The one banner is in the Task view at launch, when the saved shortcut could not be registered: the ordinary notice banner with Open Settings and Dismiss, shown once.
+
+"Backups and export" (after Menu bar and Quick Capture, before Keyboard): one tertiary line naming the policy ("the last 7 days, 4 weeks and 3 months"), then the backups as hairline-separated 32px rows — date and time left, the kind (Daily, Manual, Before a restore) in 12px secondary gray, a small "Restore…" button right — and a small "Back up now" button. Restore asks inline, no dialog: a tertiary question naming the backup's date and that a backup of the current data is kept first, with "Replace and restore" (primary, small) and "Cancel"; success reloads the window. Export is a 28px checkbox row "Include Notes marked Exclude from AI" (off by default), then "Export as JSON" and "Export as Markdown" small buttons and a tertiary line that exports go to Downloads with Removed items included and labeled; the result is a status line "Saved to …", a refusal the red error hint.
+
+### Command Palette (⌘K)
+A 560px sheet on the sidebar gray, 72px from the top of the window, with a 1px hairline edge and 8px radius; no shadow and no dimmed backdrop. A search field (accent underline when focused) over 28px command rows: label left, its group ("Go to", "Actions") right in tertiary gray. The highlighted row takes the selected-row color. Free text adds a last row, "Search for "text"".
+
+### Undo Notice
+After anything moves to Removed, a flat bar in the window's last row (under the main column, beside the sidebar): hover-gray fill, hairline top, secondary text ""Title" moved to Removed" and a small Undo button. It stays in flow (never floats) and the bar leaves on the next navigation, but the last 10 moves to Removed stay undoable, newest first: ⌘Z outside a text field, or Undo in the ⌘K palette, takes back the newest even after moving between views.
+
+### Virtualized Task Rows
+Only rows near the visible part of the list are in the page; spacers stand in for the rest, so scrolling, row heights and group headings look exactly as if every row were there. The space above a later status group belongs to its heading (`task-group-heading--later`) so it is measured. A closed row still holding typed text says "Unsaved edits" in italic secondary gray in its metadata.
+
+### Task–Note Links
+A quiet list, styled like the progress history: a Label Strong heading ("Notes" on the Task page, "Tasks" above an open Note), then 28px rows of a tertiary icon and a single-line title (a Task also shows its work status in tertiary text), separated by hairlines. Each row has a 22px unlink "x" in tertiary gray; hover is hover gray. "Link a Note" / "Link a Task" is an accent-text link that opens a field-gray picker (8px radius): recent Notes, or a search field over Tasks. Unlinking leaves a one-line notice, "Unlinked "Title". The Note itself is unchanged." with an accent-text Undo. Opening a linked Task shows it alone, expanded, under a notice banner with "Show all tasks".
+
 ## Do's and Don'ts
 
 ### Do:
@@ -305,7 +330,7 @@ A compact 12px timeline: tertiary date, then status and "from% -> to%" in primar
 - **Do** show priority as icon plus label, deadlines as words ("Overdue", "Due today", "Due Oct 22"), tags as `#name`.
 - **Do** build list hierarchy with bold titles and the three text grays at 13px, with tabular numerals for counts and percentages.
 - **Do** design every new surface in both appearances, starting from dark.
-- **Do** keep motion to 120ms background fades and a 240ms progress fill, and drop them under Reduce Motion.
+- **Do** keep motion to 120ms background fades, a 120ms fade-in of an opening Task page and a 240ms progress fill, and drop them under Reduce Motion.
 
 ### Don't:
 - **Don't** add hero sections, cards, gradients or filled badges; this is the SaaS-dashboard look the owner rejected.

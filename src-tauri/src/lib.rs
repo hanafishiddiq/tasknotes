@@ -1,9 +1,34 @@
+use tasknotes_core::bulk::{BulkRequest, PendingBulkRequest};
+use tasknotes_core::links::{LinkPage, LinkedNote, LinkedTask, NoteLink};
+use tasknotes_core::note_folders::{
+    CreateNoteFolder, MoveNoteFolder, NoteFolder, NoteFolderPage, RenameNoteFolder,
+};
+use tasknotes_core::notes::{
+    CreateNote, MoveNote, Note, NotePage, NoteQuery, NoteScope, SetNotePinned, UpdateNote,
+};
+use tasknotes_core::privacy::SetNoteExcludeFromAi;
+use tasknotes_core::removed::{RemovedPage, SetRemoved};
 use tasknotes_core::tasks::{
-    ChangeTask, CreateList, CreateTask, List, ListPage, MoveTask, Priority, ProgressHistoryPage,
+    ChangeTask, CreateList, CreateTask, List, ListPage, MoveTask, Priority, ProgressSequencePage,
     RecordProgress, RenameList, SetListRemoved, SortMode, Task, TaskPage, TaskQuery, TaskStore,
     TaskView, UpdateTask, UpdateTaskDetails, WorkStatus,
 };
 use tauri::{Manager, State};
+
+mod data;
+#[cfg(desktop)]
+mod platform;
+#[cfg(feature = "qa-probe")]
+mod qa_probe;
+#[cfg(desktop)]
+mod quick_capture;
+mod quit;
+#[cfg(desktop)]
+mod shell;
+#[cfg(desktop)]
+mod shell_settings;
+#[cfg(desktop)]
+mod shell_state;
 
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
@@ -68,9 +93,9 @@ fn list_progress_entries(
     task_id: String,
     limit: u32,
     before: Option<i64>,
-) -> Result<ProgressHistoryPage, String> {
+) -> Result<ProgressSequencePage, String> {
     store
-        .list_progress_entries(&task_id, limit, before)
+        .list_progress_entries_before(&task_id, limit, before)
         .map_err(|error| error.to_string())
 }
 
@@ -118,9 +143,238 @@ fn update_task_details(
         .map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+fn list_notes(
+    store: State<'_, TaskStore>,
+    limit: u32,
+    cursor: Option<String>,
+    folder: Option<NoteScope>,
+    text: Option<String>,
+) -> Result<NotePage, String> {
+    let query = NoteQuery {
+        text: text.unwrap_or_default(),
+        folder: folder.unwrap_or_default(),
+    };
+    store
+        .query_notes(&query, limit, cursor.as_deref())
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn get_note(store: State<'_, TaskStore>, id: String) -> Result<Option<Note>, String> {
+    store.get_note(&id).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn create_note(store: State<'_, TaskStore>, input: CreateNote) -> Result<Note, String> {
+    store.create_note(input).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn move_note(store: State<'_, TaskStore>, input: MoveNote) -> Result<Note, String> {
+    store.move_note(input).map_err(|error| error.to_string())
+}
+
+/// Exclude from AI: only this window, the person themself, can change it.
+#[tauri::command]
+fn set_note_exclude_from_ai(
+    store: State<'_, TaskStore>,
+    input: SetNoteExcludeFromAi,
+) -> Result<Note, String> {
+    store
+        .set_note_exclude_from_ai(input)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn set_note_pinned(store: State<'_, TaskStore>, input: SetNotePinned) -> Result<Note, String> {
+    store
+        .set_note_pinned(input)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn list_note_folders(
+    store: State<'_, TaskStore>,
+    parent_id: Option<String>,
+    limit: u32,
+    cursor: Option<String>,
+) -> Result<NoteFolderPage, String> {
+    store
+        .list_note_folders(parent_id.as_deref(), limit, cursor.as_deref())
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn create_note_folder(
+    store: State<'_, TaskStore>,
+    input: CreateNoteFolder,
+) -> Result<NoteFolder, String> {
+    store
+        .create_note_folder(input)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn rename_note_folder(
+    store: State<'_, TaskStore>,
+    input: RenameNoteFolder,
+) -> Result<NoteFolder, String> {
+    store
+        .rename_note_folder(input)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn move_note_folder(
+    store: State<'_, TaskStore>,
+    input: MoveNoteFolder,
+) -> Result<NoteFolder, String> {
+    store
+        .move_note_folder(input)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn update_note(store: State<'_, TaskStore>, input: UpdateNote) -> Result<Note, String> {
+    store.update_note(input).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn link_note(
+    store: State<'_, TaskStore>,
+    task_id: String,
+    note_id: String,
+) -> Result<NoteLink, String> {
+    store
+        .link_note(&task_id, &note_id)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn unlink_note(store: State<'_, TaskStore>, link_id: String) -> Result<NoteLink, String> {
+    store
+        .unlink_note(&link_id)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn restore_link(store: State<'_, TaskStore>, link_id: String) -> Result<NoteLink, String> {
+    store
+        .restore_link(&link_id)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn list_task_notes(
+    store: State<'_, TaskStore>,
+    task_id: String,
+    limit: u32,
+    cursor: Option<String>,
+) -> Result<LinkPage<LinkedNote>, String> {
+    store
+        .list_task_notes(&task_id, limit, cursor.as_deref())
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn list_note_tasks(
+    store: State<'_, TaskStore>,
+    note_id: String,
+    limit: u32,
+    cursor: Option<String>,
+) -> Result<LinkPage<LinkedTask>, String> {
+    store
+        .list_note_tasks(&note_id, limit, cursor.as_deref())
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn set_task_removed(store: State<'_, TaskStore>, input: SetRemoved) -> Result<Task, String> {
+    store
+        .set_task_removed(input)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn set_note_removed(store: State<'_, TaskStore>, input: SetRemoved) -> Result<Note, String> {
+    store
+        .set_note_removed(input)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn set_note_folder_removed(
+    store: State<'_, TaskStore>,
+    input: SetRemoved,
+) -> Result<NoteFolder, String> {
+    store
+        .set_note_folder_removed(input)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn list_removed(
+    store: State<'_, TaskStore>,
+    text: String,
+    limit: u32,
+    cursor: Option<String>,
+) -> Result<RemovedPage, String> {
+    store
+        .list_removed(&text, limit, cursor.as_deref())
+        .map_err(|error| error.to_string())
+}
+
+/// Bulk Changes an AI interface asked for, waiting for the person (owner
+/// decision A). Only this window approves or declines; the rules are the
+/// core's.
+#[tauri::command]
+fn list_pending_bulk_requests(
+    store: State<'_, TaskStore>,
+) -> Result<Vec<PendingBulkRequest>, String> {
+    store
+        .pending_bulk_requests()
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn count_pending_bulk_requests(store: State<'_, TaskStore>) -> Result<i64, String> {
+    store
+        .count_pending_bulk_requests()
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn approve_bulk_request(store: State<'_, TaskStore>, id: String) -> Result<BulkRequest, String> {
+    store
+        .approve_bulk_request(&id)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn decline_bulk_request(store: State<'_, TaskStore>, id: String) -> Result<BulkRequest, String> {
+    store
+        .decline_bulk_request(&id)
+        .map_err(|error| error.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(desktop)]
+    let builder = builder.plugin(shell::shortcut_plugin());
+    builder
+        .manage(quit::QuitState::default())
+        .menu(quit::menu)
+        .on_menu_event(quit::on_menu_event)
+        .on_window_event(|window, event| {
+            // With menu-bar mode on, closing hides the window instead of quitting.
+            #[cfg(desktop)]
+            if shell::on_window_event(window, event) {
+                return;
+            }
+            quit::on_window_event(window, event);
+        })
         .setup(|app| {
             // Data is private to this macOS user, never kept in the public source repository.
             let app_data_dir = app.path().app_data_dir()?;
@@ -130,8 +384,13 @@ pub fn run() {
             let app_data_dir = std::env::var_os("TASKNOTES_DEV_DATA_DIR")
                 .map(std::path::PathBuf::from)
                 .unwrap_or(app_data_dir);
+            #[cfg(feature = "qa-probe")]
+            let app_data_dir = qa_probe::prepare(app.handle(), app_data_dir)?;
             let store = TaskStore::open(&app_data_dir.join("tasknotes.db"))?;
+            data::start_daily_backups(store.clone());
             app.manage(store);
+            #[cfg(desktop)]
+            shell::start(app.handle(), app_data_dir);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -146,8 +405,67 @@ pub fn run() {
             rename_list,
             set_list_removed,
             move_task,
-            update_task_details
+            update_task_details,
+            list_notes,
+            get_note,
+            create_note,
+            update_note,
+            move_note,
+            set_note_pinned,
+            set_note_exclude_from_ai,
+            list_note_folders,
+            create_note_folder,
+            rename_note_folder,
+            move_note_folder,
+            link_note,
+            unlink_note,
+            restore_link,
+            list_task_notes,
+            list_note_tasks,
+            set_task_removed,
+            set_note_removed,
+            set_note_folder_removed,
+            list_removed,
+            list_pending_bulk_requests,
+            count_pending_bulk_requests,
+            approve_bulk_request,
+            decline_bulk_request,
+            data::list_backups,
+            data::create_backup,
+            data::restore_backup,
+            data::adopt_restored_data,
+            data::export_data,
+            quit::quit_ready,
+            #[cfg(feature = "qa-probe")]
+            qa_probe::qa_report,
+            #[cfg(feature = "qa-probe")]
+            qa_probe::qa_probe_active,
+            #[cfg(desktop)]
+            shell::get_shell_settings,
+            #[cfg(desktop)]
+            shell::set_keep_in_menu_bar,
+            #[cfg(desktop)]
+            shell::set_quick_capture,
+            #[cfg(desktop)]
+            shell::take_quick_capture,
+            #[cfg(desktop)]
+            shell::take_launch_notice
         ])
-        .run(tauri::generate_context!())
-        .expect("Unable to launch Tasknotes");
+        .build(tauri::generate_context!())
+        .expect("Unable to launch Tasknotes")
+        .run(on_run_event);
+}
+
+/// Clicking the Dock icon brings back a window hidden to the menu bar. Other
+/// systems reopen from the tray item, so there is nothing to do there.
+#[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
+fn on_run_event(app: &tauri::AppHandle, event: tauri::RunEvent) {
+    #[cfg(target_os = "macos")]
+    if let tauri::RunEvent::Reopen {
+        has_visible_windows: false,
+        ..
+    } = event
+    {
+        shell::show_main_window(app);
+    }
 }

@@ -242,6 +242,7 @@ fn a_v4_database_upgrades_to_v5_and_indexes_existing_history() {
                     previous_progress,progress,note,next_step,created_at)
              VALUES('bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb','{id}','ready','in_progress',
                     0,42,'Historic landlord note','Finish audit',123);
+             DROP TABLE IF EXISTS audit_entries; DROP TABLE IF EXISTS bulk_requests; DROP TABLE IF EXISTS retired_revisions;
              PRAGMA user_version=4;"
         ))
         .unwrap();
@@ -257,7 +258,7 @@ fn a_v4_database_upgrades_to_v5_and_indexes_existing_history() {
             .unwrap()
             .pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
             .unwrap(),
-        5
+        tasknotes_core::tasks::SCHEMA_VERSION
     );
 }
 
@@ -273,11 +274,14 @@ fn a_failed_v5_migration_rolls_back_and_keeps_the_v4_database_usable() {
         // Simulate a pre-v5 database whose migration cannot complete.
         let c = Connection::open(&db).unwrap();
         c.execute_batch(
-            "DROP TRIGGER tasks_fts_insert; DROP TRIGGER tasks_fts_update;
+            "DROP INDEX tasks_removed_order; DROP INDEX lists_removed_order;
+             DROP TABLE task_note_links; DROP TABLE notes_fts; DROP TABLE notes; DROP TABLE note_folders;
+             DROP TRIGGER tasks_fts_insert; DROP TRIGGER tasks_fts_update;
              DROP TRIGGER tasks_fts_delete; DROP TRIGGER progress_fts_insert;
              DROP TABLE task_fields_fts; DROP TABLE progress_fts;
              ALTER TABLE tasks DROP COLUMN removed_at;
              CREATE TABLE progress_fts(collision INTEGER);
+             DROP TABLE IF EXISTS audit_entries; DROP TABLE IF EXISTS bulk_requests; DROP TABLE IF EXISTS retired_revisions;
              PRAGMA user_version=4;",
         )
         .unwrap();

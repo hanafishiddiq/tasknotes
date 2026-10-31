@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./invoke";
 
 export type WorkStatus = "ready" | "in_progress" | "completed";
 export type Priority = "very_low" | "low" | "medium" | "high" | "very_high";
@@ -103,6 +103,8 @@ export interface TaskFilters {
   status: WorkStatus | "";
   priority: Priority | "";
   tag: string;
+  /** Show only this Task, as when it is opened from a Note it is linked to. */
+  taskId?: string;
 }
 
 export const NO_FILTERS: TaskFilters = { text: "", status: "", priority: "", tag: "" };
@@ -119,6 +121,7 @@ function queryArgs(view: TaskView, filters: TaskFilters) {
     ...(filters.status ? { status: filters.status } : {}),
     ...(filters.priority ? { priority: filters.priority } : {}),
     ...(tag ? { tag } : {}),
+    ...(filters.taskId ? { taskId: filters.taskId } : {}),
   };
 }
 
@@ -142,11 +145,12 @@ export const taskApi = {
 
   /** Whether one Task passes the view, search and filters, as the core decides. */
   async matches(taskId: string, view: TaskView, filters: TaskFilters): Promise<boolean> {
+    if (filters.taskId && filters.taskId !== taskId) return false;
     const page = await invoke<TaskPage>("list_tasks", {
       limit: 1,
       cursor: null,
-      taskId,
       ...queryArgs(view, filters),
+      taskId,
     });
     return page.items.length > 0;
   },

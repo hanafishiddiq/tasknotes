@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
+use crate::audit::AuditAction;
 use crate::tasks::{COLUMNS, Task, TaskError, TaskStore, current_millis, read_task};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -81,6 +82,17 @@ pub struct UpdateTaskDetails {
     pub due_date: Option<String>,
 }
 
+/// A partial Tags/Deadline edit: `None` keeps the current value,
+/// `tags: Some(vec![])` clears the Tags and `due_date: Some(None)` clears the
+/// Deadline.
+#[derive(Debug, Clone)]
+pub struct PatchTaskDetails {
+    pub id: String,
+    pub expected_revision: i64,
+    pub tags: Option<Vec<String>>,
+    pub due_date: Option<Option<String>>,
+}
+
 fn clean_tags(raw: &[String]) -> Result<Vec<String>, TaskError> {
     if raw.len() > 16 {
         return Err(TaskError::InvalidTags);
@@ -100,9 +112,51 @@ fn clean_tags(raw: &[String]) -> Result<Vec<String>, TaskError> {
     Ok(clean)
 }
 
-/// Unicode case-folded Tag identity; SQLite NOCASE only folds ASCII.
-fn tag_fold(name: &str) -> String {
-    name.to_lowercase()
+/// A Tag's identity (see `text_fold`).
+pub(crate) fn tag_fold(name: &str) -> String {
+    crate::text_fold::fold(name)
+}
+
+/// Schema v8, Tag part: stored folds become full Unicode folds. Tags that now
+/// fold alike become one: the first stored spelling stays, and every Task
+/// that had either keeps the Tag once. Only the duplicate Tag name goes; no
+/// Task loses a Tag.
+pub(crate) fn refold_tags(tx: &rusqlite::Transaction) -> Result<(), TaskError> {
+    let names: Vec<String> = tx
+        .prepare("SELECT name FROM tags ORDER BY rowid")?
+        .query_map([], |row| row.get(0))?
+        .collect::<rusqlite::Result<_>>()?;
+    let mut kept: HashMap<String, String> = HashMap::new();
+    let mut merged = Vec::new();
+    for name in names {
+        match kept.get(&tag_fold(&name)) {
+            Some(canonical) => merged.push((name, canonical.clone())),
+            None => {
+                kept.insert(tag_fold(&name), name);
+            }
+        }
+    }
+    for (duplicate, canonical) in &merged {
+        tx.execute(
+            "INSERT OR IGNORE INTO task_tags(task_id, tag_name)
+             SELECT task_id, ?2 FROM task_tags WHERE tag_name = ?1",
+            params![duplicate, canonical],
+        )?;
+        tx.execute(
+            "DELETE FROM task_tags WHERE tag_name = ?1",
+            params![duplicate],
+        )?;
+        tx.execute("DELETE FROM tags WHERE name = ?1", params![duplicate])?;
+    }
+    // Unique placeholders first, so no new fold collides with an old one.
+    tx.execute("UPDATE tags SET fold = char(1) || name", [])?;
+    for (fold, name) in &kept {
+        tx.execute(
+            "UPDATE tags SET fold = ?1 WHERE name = ?2",
+            params![fold, name],
+        )?;
+    }
+    Ok(())
 }
 
 /// Validate an ISO date-only value, avoiding midnight UTC/time-zone conversions.
@@ -181,6 +235,26 @@ pub(crate) fn hydrate_tags(
     Ok(())
 }
 
+/// Whether any Task, in Removed or not, belongs to the List.
+pub(crate) fn list_holds_tasks(conn: &rusqlite::Connection, id: &str) -> Result<bool, TaskError> {
+    Ok(conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM tasks WHERE list_id = ?1)",
+        params![id],
+        |row| row.get(0),
+    )?)
+}
+
+/// The List as stored, or `ListNotFound`.
+pub(crate) fn get_list(conn: &rusqlite::Connection, id: &str) -> Result<List, TaskError> {
+    conn.query_row(
+        "SELECT id,name,revision,created_at,updated_at,removed_at FROM lists WHERE id=?1",
+        params![id],
+        read_list,
+    )
+    .optional()?
+    .ok_or(TaskError::ListNotFound)
+}
+
 /// Verify ownership inside the same transaction as the Task mutation.
 pub(crate) fn require_active_list(conn: &rusqlite::Connection, id: &str) -> Result<(), TaskError> {
     if Uuid::parse_str(id).is_err() {
@@ -220,11 +294,31 @@ fn read_list(row: &rusqlite::Row<'_>) -> rusqlite::Result<List> {
 }
 
 impl TaskStore {
+    /// Edit only the named details; the caller's revision is still checked.
+    pub fn patch_task_details(&self, patch: PatchTaskDetails) -> Result<Task, TaskError> {
+        if patch.tags.is_none() && patch.due_date.is_none() {
+            return Err(TaskError::EmptyPatch);
+        }
+        let current = self.get_task(&patch.id)?.ok_or(TaskError::NotFound)?;
+        self.update_task_details(UpdateTaskDetails {
+            id: patch.id,
+            expected_revision: patch.expected_revision,
+            tags: patch.tags.unwrap_or(current.tags),
+            due_date: patch.due_date.unwrap_or(current.due_date),
+        })
+    }
+
     pub fn update_task_details(&self, input: UpdateTaskDetails) -> Result<Task, TaskError> {
+        self.audited(AuditAction::TaskDetails, input, |input| {
+            self.update_task_details_inner(input)
+        })
+    }
+
+    fn update_task_details_inner(&self, input: UpdateTaskDetails) -> Result<Task, TaskError> {
         let tags = clean_tags(&input.tags)?;
         let due_date = calendar_date(input.due_date.as_deref())?;
         let mut conn = self.connect()?;
-        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let tx = self.begin_write(&mut conn)?;
         let mut before = tx
             .query_row(
                 &format!("SELECT {COLUMNS} FROM tasks WHERE id=?1"),
@@ -233,6 +327,7 @@ impl TaskStore {
             )
             .optional()?
             .ok_or(TaskError::NotFound)?;
+        crate::removed::require_writable_task(&tx, &before.id)?;
         hydrate_tags(&tx, std::slice::from_mut(&mut before))?;
         if before.revision != input.expected_revision {
             return Err(TaskError::RevisionConflict);
@@ -273,14 +368,33 @@ impl TaskStore {
             )?;
             canonical.push(name);
         }
+        self.audit_applied(&tx, AuditAction::TaskDetails, &updated.id, updated.revision)?;
         tx.commit()?;
         updated.tags = canonical;
         Ok(updated)
     }
 
     pub fn move_task(&self, input: MoveTask) -> Result<Task, TaskError> {
+        self.audited(AuditAction::TaskMove, input, |input| {
+            self.move_task_inner(input)
+        })
+    }
+
+    fn move_task_inner(&self, input: MoveTask) -> Result<Task, TaskError> {
         let mut conn = self.connect()?;
-        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let tx = self.begin_write(&mut conn)?;
+        let updated = self.move_task_in(&tx, input)?;
+        tx.commit()?;
+        Ok(updated)
+    }
+
+    /// The move inside the caller's write transaction (also used by bulk
+    /// changes); the caller commits.
+    pub(crate) fn move_task_in(
+        &self,
+        tx: &rusqlite::Transaction,
+        input: MoveTask,
+    ) -> Result<Task, TaskError> {
         let old = tx
             .query_row(
                 &format!("SELECT {COLUMNS} FROM tasks WHERE id=?1"),
@@ -289,6 +403,7 @@ impl TaskStore {
             )
             .optional()?
             .ok_or(TaskError::NotFound)?;
+        crate::removed::require_writable_task(tx, &old.id)?;
         if old.revision != input.expected_revision {
             return Err(TaskError::RevisionConflict);
         }
@@ -296,7 +411,7 @@ impl TaskStore {
             return Err(TaskError::TaskUnchanged);
         }
         if let Some(ref id) = input.list_id {
-            require_active_list(&tx, id)?;
+            require_active_list(tx, id)?;
         }
         let now = current_millis()?;
         let updated = tx.query_row(
@@ -308,16 +423,16 @@ impl TaskStore {
             params![input.list_id, now, input.id, input.expected_revision],
             read_task,
         )?;
-        tx.commit()?;
+        self.audit_applied(tx, AuditAction::TaskMove, &updated.id, updated.revision)?;
         let mut updated = updated;
-        hydrate_tags(&conn, std::slice::from_mut(&mut updated))?;
+        hydrate_tags(tx, std::slice::from_mut(&mut updated))?;
         Ok(updated)
     }
 
     pub fn create_list(&self, input: CreateList) -> Result<List, TaskError> {
         let name = list_name(&input.name)?;
         let mut conn = self.connect()?;
-        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let tx = self.begin_write(&mut conn)?;
         if tx.query_row(
             "SELECT EXISTS(SELECT 1 FROM lists WHERE name = ?1 COLLATE NOCASE AND removed_at IS NULL)",
             params![name], |r| r.get::<_, bool>(0)
@@ -338,14 +453,21 @@ impl TaskStore {
              VALUES (?1, ?2, 1, ?3, ?3, NULL)",
             params![list.id, list.name, list.created_at],
         )?;
+        self.audit_applied(&tx, AuditAction::ListCreate, &list.id, list.revision)?;
         tx.commit()?;
         Ok(list)
     }
 
     pub fn rename_list(&self, input: RenameList) -> Result<List, TaskError> {
+        self.audited(AuditAction::ListRename, input, |input| {
+            self.rename_list_inner(input)
+        })
+    }
+
+    fn rename_list_inner(&self, input: RenameList) -> Result<List, TaskError> {
         let name = list_name(&input.name)?;
         let mut conn = self.connect()?;
-        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let tx = self.begin_write(&mut conn)?;
         let old = tx
             .query_row(
                 "SELECT id,name,revision,created_at,updated_at,removed_at FROM lists WHERE id=?1",
@@ -375,13 +497,49 @@ impl TaskStore {
             params![name, now, input.id, input.expected_revision],
             read_list,
         )?;
+        self.audit_applied(&tx, AuditAction::ListRename, &updated.id, updated.revision)?;
         tx.commit()?;
         Ok(updated)
     }
 
     pub fn set_list_removed(&self, input: SetListRemoved) -> Result<List, TaskError> {
+        let action = if input.removed {
+            AuditAction::ListRemove
+        } else {
+            AuditAction::ListRestore
+        };
+        self.audited(action, input, |input| {
+            self.set_list_removed_inner(input, action)
+        })
+    }
+
+    fn set_list_removed_inner(
+        &self,
+        input: SetListRemoved,
+        action: AuditAction,
+    ) -> Result<List, TaskError> {
         let mut conn = self.connect()?;
-        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let tx = self.begin_write(&mut conn)?;
+        let removing = input.removed;
+        let changed = self.set_list_removed_in(&tx, input, action)?;
+        // Owner decision B: through an AI interface, a List that holds any
+        // Task waits for the person's approval (`bulk`). Checked after the
+        // ordinary refusals; dropping `tx` rolls the change back.
+        if removing && self.needs_approval_to_empty() && list_holds_tasks(&tx, &changed.id)? {
+            return Err(TaskError::NeedsApproval);
+        }
+        tx.commit()?;
+        Ok(changed)
+    }
+
+    /// The change inside the caller's write transaction (also used by an
+    /// approved Bulk Change); the caller commits.
+    pub(crate) fn set_list_removed_in(
+        &self,
+        tx: &rusqlite::Transaction,
+        input: SetListRemoved,
+        action: AuditAction,
+    ) -> Result<List, TaskError> {
         let old = tx
             .query_row(
                 "SELECT id,name,revision,created_at,updated_at,removed_at FROM lists WHERE id=?1",
@@ -409,8 +567,15 @@ impl TaskStore {
             params![removed_at, now, input.id, input.expected_revision],
             read_list,
         )?;
-        tx.commit()?;
+        self.audit_applied(tx, action, &changed.id, changed.revision)?;
         Ok(changed)
+    }
+
+    /// Through an AI interface, removing a List or Note Folder that holds
+    /// anything needs the person's approval. The desktop (also when it
+    /// applies an approved request) removes directly.
+    pub(crate) fn needs_approval_to_empty(&self) -> bool {
+        self.interface() != crate::audit::Interface::Desktop
     }
 
     pub fn list_lists(
@@ -431,13 +596,13 @@ impl TaskStore {
                     || bits[3] != if include_removed { "all" } else { "active" }
                     || Uuid::parse_str(bits[2]).is_err()
                 {
-                    return Err(TaskError::InvalidListPage);
+                    return Err(TaskError::InvalidListCursor);
                 }
                 let timestamp = bits[1]
                     .parse::<i64>()
-                    .map_err(|_| TaskError::InvalidListPage)?;
+                    .map_err(|_| TaskError::InvalidListCursor)?;
                 if timestamp < 0 {
-                    return Err(TaskError::InvalidListPage);
+                    return Err(TaskError::InvalidListCursor);
                 }
                 (Some(timestamp), Some(bits[2].to_owned()))
             }

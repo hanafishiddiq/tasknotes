@@ -278,7 +278,7 @@ describe("Next Step and Progress Entries", () => {
     invokeMock.mockImplementation(async (command) => {
       if (command === "list_lists") return { items: [], nextCursor: null };
     if (command === "list_tasks") return { items: [task], nextCursor: null };
-      if (command === "list_progress_entries")
+      if (command === "list_progress_entries" || command === "list_task_notes")
         return { items: [], nextCursor: null };
       if (command === "record_progress") throw Error("Revision conflict");
       throw Error("Unexpected command " + command);
