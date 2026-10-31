@@ -12,6 +12,7 @@ import plistlib
 import re
 import shutil
 import signal
+import sqlite3
 import subprocess
 import sys
 import time
@@ -100,6 +101,8 @@ def main():
         report["second_launch"] = launch(binary)
         titles = [item["title"] for item in task_list().get("items", [])]
         report["task_survives_second_launch"] = titles == ["Synthetic smoke task"]
+        with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as db:
+            report["schema_version"] = db.execute("PRAGMA user_version").fetchone()[0]
     finally:
         shutil.rmtree(data, ignore_errors=True)
         for leftover in (f"~/Library/WebKit/{identifier}", f"~/Library/Caches/{identifier}",

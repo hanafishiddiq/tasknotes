@@ -33,5 +33,6 @@
     "stayed_running": true,
     "network_sockets": []
   },
-  "task_survives_second_launch": true
+  "task_survives_second_launch": true,
+  "schema_version": 15
 }

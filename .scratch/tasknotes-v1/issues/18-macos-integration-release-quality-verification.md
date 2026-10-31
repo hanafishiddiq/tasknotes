@@ -36,3 +36,5 @@
 - This is an implementation ticket, not proof that implementation has begun.
 
 ## Comments
+
+**2026-10-31 — merged to the integration branch.** Status unchanged. A model test broke the audit-based restore design, so schema v15 keeps replaced revisions in `retired_revisions`. Evidence: core 216, CLI 45, MCP 34, e2e 8, bench 3, src-tauri 42, vitest 945 + 4 todo; a QA bundle at schema 15 launches twice with no sockets ([package-smoke.json](../../../docs/qa/ticket-18-results/package-smoke.json)). The two open criteria wait for the owner's click check.
