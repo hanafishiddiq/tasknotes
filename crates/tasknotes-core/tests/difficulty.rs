@@ -32,10 +32,8 @@ fn change(
     store.change_task(ChangeTask {
         id: task.id.clone(),
         expected_revision: task.revision,
-        status: None,
-        priority: None,
-        progress: None,
         difficulty: Some(difficulty),
+        ..Default::default()
     })
 }
 
@@ -125,10 +123,9 @@ fn difficulty_and_priority_change_together_in_one_revision() {
         .change_task(ChangeTask {
             id: created.id.clone(),
             expected_revision: created.revision,
-            status: None,
             priority: Some(tasknotes_core::tasks::Priority::High),
-            progress: None,
             difficulty: Some(Some(Difficulty::VeryHard)),
+            ..Default::default()
         })
         .unwrap();
     assert_eq!(changed.revision, created.revision + 1);
@@ -172,10 +169,8 @@ fn sorted_world(store: &TaskStore) {
         .change_task(ChangeTask {
             id: started.id,
             expected_revision: started.revision,
-            status: None,
-            priority: None,
             progress: Some(10),
-            difficulty: None,
+            ..Default::default()
         })
         .unwrap();
 }
@@ -305,6 +300,8 @@ fn back_to_v16(db: &Path) {
     conn.execute_batch(
         "DROP INDEX tasks_status_difficulty_order;
          ALTER TABLE tasks DROP COLUMN difficulty;
+             ALTER TABLE tasks DROP COLUMN wont_do_from; ALTER TABLE tasks DROP COLUMN wont_do; ALTER TABLE progress_entries DROP COLUMN previous_wont_do;
+             ALTER TABLE progress_entries DROP COLUMN wont_do;
          PRAGMA user_version = 16;",
     )
     .unwrap();
@@ -332,7 +329,7 @@ fn upgrading_from_v16_gives_every_task_no_difficulty_and_changes_nothing_else() 
     };
 
     let store = store_at(&db);
-    assert_eq!(SCHEMA_VERSION, 17);
+    const { assert!(SCHEMA_VERSION >= 17) };
     for id in [&a.id, &b.id] {
         assert_eq!(store.get_task(id).unwrap().unwrap().difficulty, None);
     }

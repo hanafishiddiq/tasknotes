@@ -62,6 +62,8 @@ fn v6_database(db: &Path) {
                '# Packing list\n\nPassport and tickets', 'Packing list', 3, 10, 20);
              DROP TABLE IF EXISTS audit_entries; DROP TABLE IF EXISTS bulk_requests; DROP TABLE IF EXISTS retired_revisions;
              DROP INDEX tasks_status_difficulty_order; ALTER TABLE tasks DROP COLUMN difficulty;
+             ALTER TABLE tasks DROP COLUMN wont_do_from; ALTER TABLE tasks DROP COLUMN wont_do; ALTER TABLE progress_entries DROP COLUMN previous_wont_do;
+             ALTER TABLE progress_entries DROP COLUMN wont_do;
              DROP INDEX lists_manual_order; ALTER TABLE lists DROP COLUMN position;
              CREATE INDEX lists_created_order ON lists(created_at DESC, id DESC);
              PRAGMA user_version = 6;",

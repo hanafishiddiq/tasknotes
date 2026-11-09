@@ -7,7 +7,7 @@
 use schemars::{JsonSchema, Schema, SchemaGenerator};
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
-use tasknotes_core::bulk::{BulkAction, BulkItem, BulkRequest, BulkRequestStatus};
+use tasknotes_core::bulk::{BulkAction, BulkItem, BulkRequest, BulkRequestStatus, StatusTarget};
 use tasknotes_core::notes::Note;
 use tasknotes_core::tasks::{TaskStore, WorkStatus};
 
@@ -40,6 +40,10 @@ pub enum BulkArgs {
         /// set_task_status: the status to set.
         #[schemars(schema_with = "status_schema")]
         status: WorkStatus,
+        /// set_task_status: with status completed, mark the Tasks Won't Do
+        /// (Completed, keeping their progress) instead of finishing them.
+        #[serde(default)]
+        wont_do: bool,
     },
     RemoveNotes {
         ids: Vec<String>,
@@ -79,7 +83,14 @@ impl BulkArgs {
                 },
                 ids,
             ),
-            Self::SetTaskStatus { ids, status } => (BulkAction::SetTaskStatus { status }, ids),
+            Self::SetTaskStatus {
+                ids,
+                status,
+                wont_do,
+            } => (
+                BulkAction::SetTaskStatus(StatusTarget::new(status, wont_do)?),
+                ids,
+            ),
             Self::RemoveNotes { ids } => (BulkAction::RemoveNotes, ids),
             Self::RestoreNotes { ids } => (BulkAction::RestoreNotes, ids),
             Self::RemoveList { ids } => (BulkAction::RemoveList, ids),
@@ -173,7 +184,7 @@ fn brief(store: &TaskStore, note: &Note) -> Result<Value, CliError> {
 }
 
 /// `tasknotes bulk preview --action A --id ID [--id ID ...] [--list ID |
-/// --inbox] [--status S]` and `tasknotes bulk status REQUEST_ID`.
+/// --inbox] [--status S [--wont-do]]` and `tasknotes bulk status REQUEST_ID`.
 pub(crate) fn bulk_command(
     store: &TaskStore,
     verb: &str,
@@ -190,7 +201,7 @@ pub(crate) fn bulk_command(
                 &Spec {
                     values: &["action", "list", "status"],
                     repeated: &["id"],
-                    switches: &["inbox"],
+                    switches: &["inbox", "wont-do"],
                     positionals: 0,
                 },
             )?;
@@ -207,6 +218,9 @@ pub(crate) fn bulk_command(
             }
             if let Some(status) = p.value("status") {
                 fields.insert("status".into(), status.into());
+            }
+            if p.has("wont-do") {
+                fields.insert("wont_do".into(), true.into());
             }
             let args: BulkArgs = serde_json::from_value(Value::Object(fields))
                 .map_err(|e| CliError::invalid(format!("Invalid bulk preview: {e}")))?;

@@ -5,11 +5,12 @@ import {
 } from "lucide-react";
 import {
   taskApi, NO_FILTERS, TASK_PAGE_SIZE, type Task, type TaskList, type TaskView,
-  type SortMode, type TaskChange, type ProgressDraft, type TaskFilters, type WorkStatus,
+  type SortMode, type TaskChange, type ProgressDraft, type TaskFilters,
   type Priority, type TaskListPage,
 } from "./lib/task-api";
 import {
-  DIFFICULTY_ORDER, DIFFICULTY_VIEW, PRIORITY_ORDER, PRIORITY_VIEW, STATUS_ORDER, STATUS_VIEW,
+  DIFFICULTY_ORDER, DIFFICULTY_VIEW, PRIORITY_ORDER, PRIORITY_VIEW, STATUS_CHOICES,
+  statusChoiceLabel,
 } from "./lib/task-visuals";
 import TaskRow from "./components/TaskRow";
 import TaskSidebar from "./components/TaskSidebar";
@@ -760,7 +761,10 @@ export default function App() {
     try {
       const updated = await mutate();
       // The core decides completion (status or 100% progress); the cue follows its answer.
-      if (task.status !== "completed" && updated.status === "completed") sound.play("complete");
+      // Won't Do is not finishing: setting a Task aside plays nothing, and
+      // completing a Won't Do Task for real does play the cue.
+      const finished = (item: Task) => item.status === "completed" && !item.wontDo;
+      if (!finished(task) && finished(updated)) sound.play("complete");
       const generation = ++requestGeneration.current;
       const { sort: latestSort, view: latestView, filters: latestFilters } = currentQuery.current;
       // A cursor belongs to the query that produced it; a new query starts on page 1.
@@ -1080,11 +1084,11 @@ export default function App() {
               <label className={`property filter-chip ${filters.status ? "filter-chip--active" : ""}`}>
                 <select aria-label="Filter by status" value={filters.status}
                   onChange={(event) => applyFilters({
-                    ...currentQuery.current.filters, status: event.target.value as WorkStatus | "",
+                    ...currentQuery.current.filters, status: event.target.value as TaskFilters["status"],
                   })}>
                   <option value="">Any status</option>
-                  {STATUS_ORDER.map((status) => (
-                    <option key={status} value={status}>{STATUS_VIEW[status].label}</option>
+                  {STATUS_CHOICES.map((choice) => (
+                    <option key={choice} value={choice}>{statusChoiceLabel(choice)}</option>
                   ))}
                 </select>
               </label>

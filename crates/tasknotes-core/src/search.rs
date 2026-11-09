@@ -26,6 +26,9 @@ pub struct TaskQuery {
     pub priority: Option<Priority>,
     /// `None` is Any Difficulty: no filter.
     pub difficulty: Option<DifficultyFilter>,
+    /// `Some(true)` keeps only Won't Do Tasks, `Some(false)` only the others;
+    /// `None` keeps both.
+    pub wont_do: Option<bool>,
     pub tag: Option<String>,
     pub view: TaskView,
     pub scope: TaskScope,
@@ -187,6 +190,11 @@ impl TaskStore {
             query.status.map_or("", WorkStatus::as_sql),
             query.priority.map_or("", Priority::as_sql),
             query.difficulty.map_or("", DifficultyFilter::as_name),
+            match query.wont_do {
+                None => "",
+                Some(true) => "wont_do",
+                Some(false) => "not_wont_do",
+            },
             tag_fold.as_deref().unwrap_or(""),
             &terms.join(" "),
             query.task_id.as_deref().unwrap_or(""),
@@ -281,6 +289,9 @@ fn page_sql(
             "difficulty = {}",
             bind(Value::Text(difficulty.as_sql().into()))
         )),
+    }
+    if let Some(wont_do) = query.wont_do {
+        filters.push(format!("wont_do = {}", i64::from(wont_do)));
     }
     if let Some(fold) = tag_fold {
         filters.push(format!(

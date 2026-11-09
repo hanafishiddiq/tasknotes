@@ -19,7 +19,7 @@ let pending: PendingBulkRequest[];
 
 const base: Task = {
   id: "task-1", title: "Synthetic draft", description: "",
-  status: "ready", priority: "medium", difficulty: null, progress: 0, nextStep: "", revision: 1,
+  status: "ready", priority: "medium", difficulty: null, wontDo: false, progress: 0, nextStep: "", revision: 1,
   createdAt: 100, updatedAt: 100, listId: null, dueDate: null, tags: [],
 };
 
@@ -99,6 +99,14 @@ describe("Waiting for approval", () => {
     await user.click(screen.getByRole("button", { name: "All tasks" }));
     await waitFor(() => expect(screen.queryByRole("article", { name: "Synthetic draft" })).not.toBeInTheDocument());
     await waitFor(() => expect(screen.queryByRole("button", { name: /Waiting for approval/ })).not.toBeInTheDocument());
+  });
+
+  it("names a status request that marks Tasks Won't do", async () => {
+    pending = [request("req-3", { request: { ...request("req-3").request, action: { action: "set_task_status", status: "completed", wont_do: true } } })];
+    const user = userEvent.setup();
+    render(<App />);
+    const view = await openApprovals(user);
+    expect(await within(view).findByRole("listitem", { name: "Mark 2 Tasks Won't do" })).toBeInTheDocument();
   });
 
   it("declines without changing anything", async () => {

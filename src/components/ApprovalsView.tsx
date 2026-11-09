@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Check, ClipboardCheck, Folder, LoaderCircle, NotebookText, SquareCheck, X } from "lucide-react";
 import { errorMessage } from "../lib/error-message";
 import { approvalApi, type ApprovalLine, type PendingBulkRequest } from "../lib/approval-api";
-import { STATUS_VIEW } from "../lib/task-visuals";
+import { STATUS_VIEW, WONT_DO_LABEL } from "../lib/task-visuals";
 
 const ICON: Record<ApprovalLine["kind"], typeof Folder> = {
   task: SquareCheck,
@@ -33,7 +33,8 @@ export function describeRequest({ request, target, total }: PendingBulkRequest):
     case "remove_tasks": return `Move ${tasks} to Removed`;
     case "restore_tasks": return `Restore ${tasks} from Removed`;
     case "move_tasks": return `Move ${tasks} to ${target ? `“${target}”` : "Inbox"}`;
-    case "set_task_status": return `Mark ${tasks} ${STATUS_VIEW[request.action.status].label}`;
+    case "set_task_status":
+      return `Mark ${tasks} ${request.action.wont_do ? WONT_DO_LABEL : STATUS_VIEW[request.action.status].label}`;
     case "remove_notes": return `Move ${notes} to Removed`;
     case "restore_notes": return `Restore ${notes} from Removed`;
     case "remove_list":

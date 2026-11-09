@@ -266,3 +266,35 @@ fn excluded_notes_cannot_be_named_and_a_private_folder_reveals_nothing() {
     );
     assert!(s.stderr().is_empty());
 }
+
+/// Ticket 10: a status request can mark Tasks Won't Do; still approval-gated.
+#[test]
+fn a_bulk_status_request_can_mark_tasks_wont_do() {
+    let data = Data::trusted();
+    let mut s = data.server();
+    let schema = s
+        .tools()
+        .into_iter()
+        .find(|tool| tool["name"] == "bulk_preview")
+        .unwrap()["inputSchema"]["properties"]["wont_do"]
+        .clone();
+    assert_eq!(schema["type"], "boolean", "{schema}");
+    let ids = task_ids(&mut s, 2);
+    let asked = s.ok(
+        "bulk_preview",
+        json!({"action": "set_task_status", "ids": ids, "status": "completed", "wont_do": true}),
+    );
+    assert_eq!(asked["item"]["wont_do"], true);
+    assert_eq!(asked["item"]["items"][0]["after"]["wont_do"], true);
+    assert_eq!(
+        s.ok("task_get", json!({"id": ids[0]}))["item"]["wont_do"],
+        false
+    );
+    data.desktop()
+        .approve_bulk_request(&request_id(&asked))
+        .unwrap();
+    let done = s.ok("task_get", json!({"id": ids[0]}))["item"].clone();
+    assert_eq!(done["status"], "completed");
+    assert_eq!(done["wont_do"], true);
+    assert_eq!(done["progress"], 0);
+}

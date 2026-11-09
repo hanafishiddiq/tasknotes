@@ -15,7 +15,7 @@ function task(overrides: Partial<Task>): Task {
     title: "Untitled",
     description: "",
     status: "ready",
-    priority: "medium", difficulty: null,
+    priority: "medium", difficulty: null, wontDo: false,
     progress: 0,
     nextStep: "",
     listId: null,

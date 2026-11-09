@@ -990,6 +990,8 @@ fn a_backup_from_an_older_schema_is_upgraded_on_restore() {
                  DROP TABLE bulk_requests;
                  ALTER TABLE audit_entries DROP COLUMN requested_by;
                  DROP INDEX tasks_status_difficulty_order; ALTER TABLE tasks DROP COLUMN difficulty;
+             ALTER TABLE tasks DROP COLUMN wont_do_from; ALTER TABLE tasks DROP COLUMN wont_do; ALTER TABLE progress_entries DROP COLUMN previous_wont_do;
+             ALTER TABLE progress_entries DROP COLUMN wont_do;
                  DROP INDEX lists_manual_order; ALTER TABLE lists DROP COLUMN position;
                  CREATE INDEX lists_created_order ON lists(created_at DESC, id DESC);
                  DROP INDEX note_folders_manual_order; ALTER TABLE note_folders DROP COLUMN position;

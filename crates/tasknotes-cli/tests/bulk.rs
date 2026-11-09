@@ -175,3 +175,50 @@ fn removing_a_list_that_holds_tasks_needs_approval_but_an_empty_one_does_not() {
     );
     assert!(asked.get("items").is_none(), "{asked}");
 }
+
+/// Ticket 10: a Bulk Change status request can mark Tasks Won't Do; it
+/// still waits for the person's approval in the desktop.
+#[test]
+fn a_bulk_status_request_can_mark_tasks_wont_do() {
+    let cli = Cli::trusted();
+    let a = create(&cli, "Synthetic bulk aside");
+    let id = a["id"].as_str().unwrap();
+    let asked = cli.ok(&[
+        "bulk",
+        "preview",
+        "--action",
+        "set_task_status",
+        "--id",
+        id,
+        "--status",
+        "completed",
+        "--wont-do",
+    ])["item"]
+        .clone();
+    assert_eq!(asked["action"], "set_task_status");
+    assert_eq!(asked["wont_do"], true);
+    assert_eq!(asked["items"][0]["after"]["wont_do"], true);
+    assert_eq!(asked["items"][0]["after"]["progress"], 0);
+    assert_eq!(cli.ok(&["task", "get", id])["item"]["wont_do"], false);
+
+    desktop(&cli)
+        .approve_bulk_request(asked["request_id"].as_str().unwrap())
+        .unwrap();
+    let after = cli.ok(&["task", "get", id])["item"].clone();
+    assert_eq!(after["status"], "completed");
+    assert_eq!(after["wont_do"], true);
+
+    // A plain status request does not name it.
+    let plain = cli.ok(&[
+        "bulk",
+        "preview",
+        "--action",
+        "set_task_status",
+        "--id",
+        id,
+        "--status",
+        "in_progress",
+    ])["item"]
+        .clone();
+    assert!(plain.get("wont_do").is_none(), "{plain}");
+}

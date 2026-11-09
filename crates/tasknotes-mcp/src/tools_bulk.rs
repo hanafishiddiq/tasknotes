@@ -94,7 +94,8 @@ pub fn tools() -> Vec<ToolDef> {
             "bulk_preview",
             true,
             "Ask to change several Tasks or Notes at once (remove, restore, move, set status), \
-             or to remove a List or Note Folder that holds anything. Nothing changes yet: \
+             or to remove a List or Note Folder that holds anything; set_task_status with \
+             status completed and wont_do true marks Tasks Won't Do. Nothing changes yet: \
              returns a pending request (and, except for a List or folder, each item before \
              and after). The person approves or declines it in the Tasknotes app; you cannot. \
              Check the outcome with bulk_status. Single items have their own tools.",

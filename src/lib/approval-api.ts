@@ -5,7 +5,8 @@ import type { WorkStatus } from "./task-api";
 export type BulkAction =
   | { action: "remove_tasks" | "restore_tasks" | "remove_notes" | "restore_notes" | "remove_list" | "remove_folder" }
   | { action: "move_tasks"; list_id: string | null }
-  | { action: "set_task_status"; status: WorkStatus };
+  /** `wont_do` (with Completed) marks the Tasks Won't Do; absent means false. */
+  | { action: "set_task_status"; status: WorkStatus; wont_do?: boolean };
 
 export type BulkRequestStatus = "pending" | "applied" | "declined" | "stale" | "expired";
 
