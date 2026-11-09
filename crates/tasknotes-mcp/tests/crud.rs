@@ -554,3 +554,88 @@ fn icons_and_colours_are_read_set_and_cleared_through_mcp() {
             .any(|icon| icon == "chef-hat")
     );
 }
+
+/// Ticket 10: an AI client sets, clears and filters Won't Do; the history
+/// records the transition.
+#[test]
+fn wont_do_is_set_cleared_and_filtered_through_mcp() {
+    let data = Data::trusted();
+    let mut s = data.server();
+    let change = s
+        .tools()
+        .into_iter()
+        .find(|tool| tool["name"] == "task_change")
+        .unwrap();
+    assert_eq!(
+        change["inputSchema"]["properties"]["wont_do"]["type"],
+        json!(["boolean", "null"]),
+        "{change}"
+    );
+    assert!(
+        change["description"].as_str().unwrap().contains("Won't Do"),
+        "{change}"
+    );
+    let list = s
+        .tools()
+        .into_iter()
+        .find(|tool| tool["name"] == "task_list")
+        .unwrap();
+    assert_eq!(
+        list["inputSchema"]["properties"]["wont_do"]["type"],
+        json!(["boolean", "null"]),
+        "{list}"
+    );
+
+    let open = s.ok("task_create", json!({"title": "Synthetic open"}));
+    assert_eq!(open["item"]["wont_do"], false);
+    let aside = s.ok("task_create", json!({"title": "Synthetic set aside"}));
+    let aside = s.ok(
+        "task_change",
+        json!({"id": id(&aside), "revision": rev(&aside), "progress": 30}),
+    );
+    let aside = s.ok(
+        "task_change",
+        json!({"id": id(&aside), "revision": rev(&aside), "wont_do": true}),
+    );
+    assert_eq!(aside["item"]["status"], "completed");
+    assert_eq!(aside["item"]["wont_do"], true);
+    assert_eq!(aside["item"]["progress"], 30);
+    let history = s.ok("task_history", json!({"id": id(&aside)}))["items"][0].clone();
+    assert_eq!(
+        (
+            history["previous_wont_do"].clone(),
+            history["wont_do"].clone()
+        ),
+        (json!(false), json!(true))
+    );
+
+    let titles = |s: &mut common::Server, args: Value| -> Vec<String> {
+        s.ok("task_list", args)["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t["title"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    assert_eq!(
+        titles(&mut s, json!({"wont_do": true})),
+        ["Synthetic set aside"]
+    );
+    assert_eq!(
+        titles(&mut s, json!({"wont_do": false})),
+        ["Synthetic open"]
+    );
+
+    s.refused(
+        "task_change",
+        json!({"id": id(&aside), "revision": rev(&aside), "wont_do": true, "progress": 50}),
+        "invalid_transition",
+    );
+    let reopened = s.ok(
+        "task_change",
+        json!({"id": id(&aside), "revision": rev(&aside), "wont_do": false}),
+    );
+    assert_eq!(reopened["item"]["wont_do"], false);
+    assert_eq!(reopened["item"]["status"], "in_progress");
+    assert_eq!(reopened["item"]["progress"], 30);
+}

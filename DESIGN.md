@@ -237,7 +237,7 @@ Twelve named colours a person may give a List's or Note Folder's sidebar icon (`
 - **Title** (700, 20px, 1.3, -0.01em): the editable task title at the top of the expanded Notes page.
 - **Title Small** (600, 15px): empty-state headings only.
 - **Body Page** (400, 14px, 1.5): the task description and the Next Step field inside the expanded page.
-- **Body** (400, 13px, 1.4): the base for everything: rows, folders, buttons. Row titles and group headings use **Body Strong** (700); completed row titles drop to 600 in secondary gray. The in-progress percentage in a row's second line is 500 in primary text.
+- **Body** (400, 13px, 1.4): the base for everything: rows, folders, buttons. Row titles and group headings use **Body Strong** (700); completed row titles drop to 600 in secondary gray, and Won't Do titles are also struck through. The in-progress percentage in a row's second line is 500 in primary text.
 - **Label** (400, 12px): metadata, folder counts, timestamps, history entries, small buttons. **Label Strong** (700, 12px) names editor fields ("Progress", "Next step") and the progress history heading.
 - **Section Label** (700, 11px, sentence case, tertiary gray): sidebar group names, as Notes labels its account sections.
 
@@ -287,7 +287,8 @@ Quiet until needed; only the primary button carries color.
 ### Task Row (signature)
 A Notes list cell.
 - **Structure:** 18px status ring, then a bold single-line title over a gray second line ("60%" in primary text, then the Next Step or description preview), metadata right-aligned at 12px capped at 45% width.
-- **Status ring:** Ready is a tertiary-gray outline; In Progress is an accent outline with a 6px accent dot; Completed is a filled accent disc with an ink check.
+- **Status ring:** Ready is a tertiary-gray outline; In Progress is an accent outline with a 6px accent dot; Completed is a filled accent disc with an ink check. Won't Do (a Completed Task set aside, ADR 0008) keeps the tertiary-gray outline with a cross inside, never the accent disc or the check.
+- **Won't Do:** in the Completed group, its title is struck through in the completed secondary gray and the metadata starts with a plain-text "Won't do · 40%" label carrying the progress it kept (no fill, no color of its own). The status capsule offers "Won't do" after Completed; it is disabled on a finished Task with the reason "Reopen it first: a finished Task can't be set aside" (title and aria-description), and Ready stays available only to a Won't Do Task that was set aside before it started. The progress history names the entry "Won't do".
 - **Separators:** 1px hairline inset from 38px to 10px from the right, hidden next to a hovered or expanded row.
 - **Selected:** the row fills with the selection color and every child, including the ring, switches to the selection text color.
 

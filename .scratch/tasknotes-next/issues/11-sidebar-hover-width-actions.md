@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** in progress — Draft PR (branch `feat/ticket-11-sidebar`)
+**Implementation:** in progress — PR #28 merged 2026-11-09; the native check waits for the single batch-2 build (Ticket 15)
 
 ## Acceptance criteria
 

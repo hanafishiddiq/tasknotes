@@ -14,7 +14,7 @@ const call = vi.mocked(invoke);
 /** Spec story 3: ⌘↵ saves whichever Task edit group is open. Synthetic fixtures only. */
 const synthetic: Task = {
   id: "task-1", title: "Synthetic task", description: "Plain words", status: "in_progress",
-  priority: "medium", difficulty: null, progress: 10, nextStep: "", revision: 3, createdAt: 100,
+  priority: "medium", difficulty: null, wontDo: false, progress: 10, nextStep: "", revision: 3, createdAt: 100,
   updatedAt: 100, listId: null, dueDate: null, tags: [],
 };
 

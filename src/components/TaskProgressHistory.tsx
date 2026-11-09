@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { History, LoaderCircle } from "lucide-react";
 import { taskApi, type ProgressEntry } from "../lib/task-api";
-import { STATUS_VIEW } from "../lib/task-visuals";
+import { STATUS_VIEW, WONT_DO_LABEL } from "../lib/task-visuals";
 
 const formatDate = new Intl.DateTimeFormat("en", {
   dateStyle: "medium",
@@ -105,7 +105,7 @@ export default function TaskProgressHistory({
                 <span className="history-entry-date">
                   {formatDate.format(new Date(entry.createdAt))}
                 </span>
-                <span>{STATUS_VIEW[entry.status].label}</span>
+                <span>{entry.wontDo ? WONT_DO_LABEL : STATUS_VIEW[entry.status].label}</span>
                 <span>
                   {entry.previousProgress === entry.progress
                     ? `${entry.progress}%`

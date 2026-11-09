@@ -17,7 +17,7 @@ pub fn tools() -> Vec<ToolDef> {
         tool(
             "task_list",
             Kind::Read,
-            "List or search active Tasks (or Removed ones), In Progress → Ready → Completed, in pages with an opaque next_cursor. Filter by difficulty with a level, or difficulty \"none\" for only Tasks with No Difficulty; leave it out for any. Sort by priority (default), newest or difficulty (Very Hard first, No Difficulty last).",
+            "List or search active Tasks (or Removed ones), In Progress → Ready → Completed, in pages with an opaque next_cursor. Filter by difficulty with a level, or difficulty \"none\" for only Tasks with No Difficulty; leave it out for any. Sort by priority (default), newest or difficulty (Very Hard first, No Difficulty last). wont_do true keeps only Won't Do Tasks (in the Completed group), false only the others.",
             task_list,
         ),
         tool(
@@ -41,7 +41,7 @@ pub fn tools() -> Vec<ToolDef> {
         tool(
             "task_change",
             Kind::Write,
-            "Change a Task's work status, priority, Difficulty and/or progress percentage under the core's transition rules; difficulty null clears it to No Difficulty.",
+            "Change a Task's work status, priority, Difficulty and/or progress percentage under the core's transition rules; difficulty null clears it to No Difficulty. wont_do true marks it Won't Do (Completed, keeping its progress; give no other status or progress); wont_do false, or any other status or progress, reopens it.",
             task_change,
         ),
         tool(
@@ -211,6 +211,9 @@ struct TaskListArgs {
     #[serde(default)]
     #[schemars(schema_with = "difficulty_filter_schema")]
     difficulty: Option<DifficultyFilter>,
+    /// true: only Won't Do Tasks; false: only the others; leave out for both.
+    #[serde(default)]
+    wont_do: Option<bool>,
     #[serde(default)]
     tag: Option<String>,
     /// Only Tasks in this List.
@@ -242,6 +245,7 @@ fn task_list(c: &Context, a: TaskListArgs) -> Result<Value, CliError> {
         status: a.status,
         priority: a.priority,
         difficulty: a.difficulty,
+        wont_do: a.wont_do,
         tag: a.tag,
         view: match (a.list_id, a.inbox) {
             (Some(id), _) => TaskView::List(id),
@@ -323,10 +327,15 @@ struct TaskChangeArgs {
     #[serde(default, deserialize_with = "present")]
     #[schemars(schema_with = "nullable_difficulty_schema")]
     difficulty: Option<Option<Difficulty>>,
+    /// true marks the Task Won't Do (Completed, keeping its progress);
+    /// false clears it and reopens the Task by its progress.
+    #[serde(default)]
+    wont_do: Option<bool>,
 }
 
 fn task_change(c: &Context, a: TaskChangeArgs) -> Result<Value, CliError> {
     item(task(c.store.change_task(ChangeTask {
+        wont_do: a.wont_do,
         expected_revision: revision(a.revision)?,
         id: a.id,
         status: a.status,

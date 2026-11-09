@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** in progress — Draft PR
+**Implementation:** in progress — PR #27 merged 2026-11-09; the native check waits for the single batch-2 build (Ticket 15)
 
 ## Acceptance criteria
 

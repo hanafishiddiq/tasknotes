@@ -495,3 +495,99 @@ fn difficulty_is_set_cleared_filtered_and_sorted_through_the_cli() {
         "{usage}"
     );
 }
+
+/// Ticket 10: Won't Do is set, cleared and filtered through the CLI; the
+/// envelope carries `wont_do`, and the history records the transition.
+#[test]
+fn wont_do_is_set_cleared_and_filtered_through_the_cli() {
+    let cli = Cli::trusted();
+    let open = create(&cli, "Synthetic open");
+    assert_eq!(open["wont_do"], false);
+    let aside = create(&cli, "Synthetic set aside");
+    let started = cli.ok(&[
+        "task",
+        "change",
+        &id(&aside),
+        "--revision",
+        "1",
+        "--progress",
+        "40",
+    ])["item"]
+        .clone();
+    assert_eq!(started["status"], "in_progress");
+
+    let marked = cli.ok(&[
+        "task",
+        "change",
+        &id(&aside),
+        "--revision",
+        "2",
+        "--wont-do",
+        "true",
+    ])["item"]
+        .clone();
+    assert_eq!(marked["status"], "completed");
+    assert_eq!(marked["wont_do"], true);
+    assert_eq!(marked["progress"], 40);
+    assert_eq!(marked["revision"], 3);
+
+    let history = cli.ok(&["task", "history", &id(&aside)])["items"][0].clone();
+    assert_eq!(history["previous_wont_do"], false);
+    assert_eq!(history["wont_do"], true);
+    assert_eq!(history["previous_status"], "in_progress");
+    assert_eq!(history["status"], "completed");
+
+    let titles = |args: &[&str]| -> Vec<String> {
+        let mut full = vec!["task", "list"];
+        full.extend_from_slice(args);
+        cli.ok(&full)["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t["title"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    assert_eq!(titles(&["--wont-do", "true"]), ["Synthetic set aside"]);
+    assert_eq!(titles(&["--wont-do", "false"]), ["Synthetic open"]);
+
+    let cleared = cli.ok(&[
+        "task",
+        "change",
+        &id(&aside),
+        "--revision",
+        "3",
+        "--wont-do",
+        "false",
+    ])["item"]
+        .clone();
+    assert_eq!(cleared["wont_do"], false);
+    assert_eq!(cleared["status"], "in_progress");
+    assert_eq!(cleared["progress"], 40);
+
+    // Won't Do with another status is the core's refusal.
+    let refused = cli.run(&[
+        "task",
+        "change",
+        &id(&aside),
+        "--revision",
+        "4",
+        "--wont-do",
+        "true",
+        "--status",
+        "in_progress",
+    ]);
+    assert_eq!(error_code(&refused, 5), "invalid_transition");
+    let wrong = cli.run(&["task", "list", "--wont-do", "maybe"]);
+    assert_eq!(error_code(&wrong, 2), "invalid_input");
+    assert!(
+        wrong.json["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("--wont-do must be true or false"),
+        "{}",
+        wrong.json
+    );
+    let usage = cli.run(&["task", "bogus"]);
+    let usage = usage.json["error"]["message"].as_str().unwrap().to_owned();
+    assert!(usage.contains("[--wont-do true|false]"), "{usage}");
+}

@@ -45,6 +45,8 @@ fn list_tasks(
     priority: Option<Priority>,
     // A level's name, or "none" for only the Tasks with No Difficulty.
     difficulty: Option<DifficultyFilter>,
+    // true: only Won't Do Tasks; false: only the others.
+    wont_do: Option<bool>,
     tag: Option<String>,
     task_id: Option<String>,
 ) -> Result<TaskPage, String> {
@@ -53,6 +55,7 @@ fn list_tasks(
         status,
         priority,
         difficulty,
+        wont_do,
         tag,
         view: view.unwrap_or_default(),
         sort: sort.unwrap_or_default(),

@@ -432,15 +432,15 @@ fn emoji_names_stay_as_typed_and_a_rename_keeps_the_look() {
     assert_eq!(renamed.style.icon.as_deref(), Some("book-open"));
 }
 
-/// Puts a database back exactly as schema v17 left it.
-fn back_to_v17(db: &Path) {
+/// Puts a database back exactly as schema v18 left it.
+fn back_to_v18(db: &Path) {
     let conn = Connection::open(db).unwrap();
     conn.execute_batch(
         "ALTER TABLE lists DROP COLUMN icon;
          ALTER TABLE lists DROP COLUMN color;
          ALTER TABLE note_folders DROP COLUMN icon;
          ALTER TABLE note_folders DROP COLUMN color;
-         PRAGMA user_version = 17;",
+         PRAGMA user_version = 18;",
     )
     .unwrap();
 }
@@ -460,13 +460,13 @@ fn stamps(db: &Path, table: &str) -> Vec<(String, i64, i64)> {
 }
 
 #[test]
-fn upgrading_from_v17_gives_everything_the_default_look_and_changes_nothing_else() {
+fn upgrading_from_v18_gives_everything_the_default_look_and_changes_nothing_else() {
     let dir = tempfile::tempdir().unwrap();
     let db = dir.path().join("upgrade.db");
     let store = store_at(&db);
     let a = list(&store, "Synthetic list");
     let f = folder(&store, "Synthetic folder");
-    // Styled, then rolled back to v17, which has nowhere to keep a Style.
+    // Styled, then rolled back to v18, which has nowhere to keep a Style.
     store
         .set_list_style(both(&a.id, a.revision, Some("star"), Some("red")))
         .unwrap();
@@ -475,7 +475,7 @@ fn upgrading_from_v17_gives_everything_the_default_look_and_changes_nothing_else
         .unwrap();
     list(&store, "Synthetic plain list");
     drop(store);
-    back_to_v17(&db);
+    back_to_v18(&db);
     let (lists_before, folders_before) = (stamps(&db, "lists"), stamps(&db, "note_folders"));
 
     let store = store_at(&db);

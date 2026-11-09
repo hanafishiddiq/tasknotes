@@ -102,6 +102,8 @@ struct TaskRecord {
     /// `null` for No Difficulty.
     difficulty: Option<Difficulty>,
     progress: i64,
+    /// A Completed Task set aside rather than finished (ADR 0008).
+    wont_do: bool,
     next_step: String,
     list_id: Option<String>,
     deadline: Option<String>,
@@ -120,6 +122,8 @@ struct ProgressRecord {
     status: String,
     previous_progress: i64,
     progress: i64,
+    previous_wont_do: bool,
+    wont_do: bool,
     note: String,
     next_step: String,
 }
@@ -266,7 +270,7 @@ impl TaskStore {
         for (task_id, entry) in collect(
             conn,
             "SELECT task_id, created_at, previous_status, status, previous_progress, progress,
-                    note, next_step
+                    note, next_step, previous_wont_do, wont_do
              FROM progress_entries ORDER BY sequence",
             |row| {
                 Ok((
@@ -279,6 +283,8 @@ impl TaskStore {
                         progress: row.get(5)?,
                         note: row.get(6)?,
                         next_step: row.get(7)?,
+                        previous_wont_do: row.get(8)?,
+                        wont_do: row.get(9)?,
                     },
                 ))
             },
@@ -296,6 +302,7 @@ impl TaskStore {
                 priority: task.priority,
                 difficulty: task.difficulty,
                 progress: i64::from(task.progress),
+                wont_do: task.wont_do,
                 next_step: task.next_step,
                 list_id: task.list_id,
                 deadline: task.due_date,
@@ -489,8 +496,9 @@ fn readme(doc: &Document) -> String {
 fn task_markdown(task: &TaskRecord) -> String {
     let mut text = format!("\n## {}\n\n", labeled(&task.title, task.removed));
     text.push_str(&format!(
-        "- Status: {} · Priority: {} · Progress: {}%\n",
+        "- Status: {}{} · Priority: {} · Progress: {}%\n",
         status_label(task.status),
+        if task.wont_do { " (Won't Do)" } else { "" },
         priority_label(task.priority),
         task.progress
     ));
@@ -521,7 +529,11 @@ fn task_markdown(task: &TaskRecord) -> String {
             text.push_str(&format!(
                 "- {}: {} at {}%",
                 iso_time(entry.created_at),
-                entry.status.replace('_', " "),
+                if entry.wont_do {
+                    "won't do".to_owned()
+                } else {
+                    entry.status.replace('_', " ")
+                },
                 entry.progress
             ));
             if !entry.note.is_empty() {

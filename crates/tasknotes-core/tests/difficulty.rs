@@ -32,10 +32,8 @@ fn change(
     store.change_task(ChangeTask {
         id: task.id.clone(),
         expected_revision: task.revision,
-        status: None,
-        priority: None,
-        progress: None,
         difficulty: Some(difficulty),
+        ..Default::default()
     })
 }
 
@@ -125,10 +123,9 @@ fn difficulty_and_priority_change_together_in_one_revision() {
         .change_task(ChangeTask {
             id: created.id.clone(),
             expected_revision: created.revision,
-            status: None,
             priority: Some(tasknotes_core::tasks::Priority::High),
-            progress: None,
             difficulty: Some(Some(Difficulty::VeryHard)),
+            ..Default::default()
         })
         .unwrap();
     assert_eq!(changed.revision, created.revision + 1);
@@ -172,10 +169,8 @@ fn sorted_world(store: &TaskStore) {
         .change_task(ChangeTask {
             id: started.id,
             expected_revision: started.revision,
-            status: None,
-            priority: None,
             progress: Some(10),
-            difficulty: None,
+            ..Default::default()
         })
         .unwrap();
 }
@@ -307,6 +302,8 @@ fn back_to_v16(db: &Path) {
          ALTER TABLE tasks DROP COLUMN difficulty;
          ALTER TABLE lists DROP COLUMN icon; ALTER TABLE lists DROP COLUMN color;
          ALTER TABLE note_folders DROP COLUMN icon; ALTER TABLE note_folders DROP COLUMN color;
+         ALTER TABLE tasks DROP COLUMN wont_do_from; ALTER TABLE tasks DROP COLUMN wont_do; ALTER TABLE progress_entries DROP COLUMN previous_wont_do;
+         ALTER TABLE progress_entries DROP COLUMN wont_do;
          PRAGMA user_version = 16;",
     )
     .unwrap();

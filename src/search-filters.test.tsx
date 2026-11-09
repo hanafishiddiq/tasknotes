@@ -11,7 +11,7 @@ const invokeMock = vi.mocked(invoke);
 function task(overrides: Partial<Task>): Task {
   return {
     id: "task-1", title: "Untitled", description: "", status: "ready",
-    priority: "medium", difficulty: null, progress: 0, nextStep: "", listId: null, dueDate: null,
+    priority: "medium", difficulty: null, wontDo: false, progress: 0, nextStep: "", listId: null, dueDate: null,
     tags: [], revision: 1, createdAt: 100, updatedAt: 100, ...overrides,
   };
 }

@@ -158,12 +158,12 @@ fn dispatch(
 
 pub(crate) const USAGE: &str = "Usage: tasknotes [--data-dir DIR] \
     <task|list|note|folder|link|removed|audit|bulk|style|backup|export|access> <command> [id] [--options]; \
-    task change ID --revision N [--status S] [--priority P] [--difficulty D|none] [--progress N]; \
-    task list [--status S] [--priority P] [--difficulty D|none] [--tag T] [--sort priority|newest|difficulty]; \
+    task change ID --revision N [--status S] [--priority P] [--difficulty D|none] [--progress N] [--wont-do true|false]; \
+    task list [--status S] [--priority P] [--difficulty D|none] [--wont-do true|false] [--tag T] [--sort priority|newest|difficulty]; \
     list reorder ID --revision N (--after ID | --first); \
     list|folder style ID --revision N [--icon NAME|none] [--color NAME|none]; style options; \
     folder reorder ID --revision N (--after ID | --first) [--parent ID | --top]; \
-    bulk preview --action A --id ID... | bulk status REQUEST_ID (approved only in the app); \
+    bulk preview --action A --id ID... [--status S [--wont-do]] | bulk status REQUEST_ID (approved only in the app); \
     access grant|revoke [--mcp]";
 
 pub(crate) const NO_FLAGS: Spec = flags(&[], 0);
@@ -230,11 +230,19 @@ fn task_change(store: &TaskStore, words: &[String]) -> Result<Task, CliError> {
     let p = parse(
         words,
         &flags(
-            &["revision", "status", "priority", "difficulty", "progress"],
+            &[
+                "revision",
+                "status",
+                "priority",
+                "difficulty",
+                "progress",
+                "wont-do",
+            ],
             1,
         ),
     )?;
     Ok(store.change_task(ChangeTask {
+        wont_do: wont_do(&p)?,
         id: p.id().to_owned(),
         expected_revision: p.revision()?,
         status: p.choice("status", &WorkStatus::ALL)?,
@@ -242,6 +250,18 @@ fn task_change(store: &TaskStore, words: &[String]) -> Result<Task, CliError> {
         progress: p.number("progress")?,
         difficulty: difficulty_change(&p)?,
     })?)
+}
+
+/// `--wont-do true` marks a Task Won't Do and `--wont-do false` clears it
+/// (reopening it); as a `task list` filter it keeps only those Tasks, or only
+/// the others.
+fn wont_do(p: &Parsed) -> Result<Option<bool>, CliError> {
+    match p.value("wont-do") {
+        None => Ok(None),
+        Some("true") => Ok(Some(true)),
+        Some("false") => Ok(Some(false)),
+        Some(_) => Err(CliError::invalid("--wont-do must be true or false")),
+    }
 }
 
 /// `--difficulty NAME` sets the Difficulty and `--difficulty none` clears it
@@ -460,6 +480,7 @@ fn task_page(store: &TaskStore, words: &[String]) -> Result<Value, CliError> {
                 "status",
                 "priority",
                 "difficulty",
+                "wont-do",
                 "tag",
                 "list",
                 "sort",
@@ -479,6 +500,7 @@ fn task_page(store: &TaskStore, words: &[String]) -> Result<Value, CliError> {
         status: p.choice("status", &WorkStatus::ALL)?,
         priority: p.choice("priority", &Priority::ALL)?,
         difficulty: p.choice("difficulty", &DifficultyFilter::ALL)?,
+        wont_do: wont_do(&p)?,
         tag: p.value("tag").map(str::to_owned),
         view: match (p.value("list"), p.has("inbox")) {
             (Some(id), _) => TaskView::List(id.to_owned()),
