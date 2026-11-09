@@ -845,6 +845,13 @@ kbd {
   font-variant-numeric: tabular-nums;
   color: var(--text-2);
 }
+/* The ⌘↵ on a Save button: the button's own ink, lighter and smaller than its label. */
+.save-shortcut {
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 400;
+  color: inherit;
+}
 
 /* Command palette (⌘K): a flat sheet near the top, hairline-edged, no shadow. */
 .palette-layer {

@@ -221,6 +221,7 @@ const NO_PAIR_NEEDED: Record<string, string> = {
   "textarea": "says inherit: what comes through is checked at its source",
   "select": "says inherit: what comes through is checked at its source",
   ".toolbar-sort select": "says inherit: checked as .toolbar-sort",
+  ".save-shortcut": "says inherit: checked as the Save button it sits in",
   ".button-primary:disabled": "disabled controls are exempt from WCAG contrast",
   ".folder-row--removed": "no component uses this class any more",
   // Decorative icons beside a text label that says the same thing.

@@ -1,4 +1,6 @@
-import { useLayoutEffect, useRef, type FormEvent } from "react";
+import {
+  useLayoutEffect, useRef, type ButtonHTMLAttributes, type FormEvent, type KeyboardEvent,
+} from "react";
 import { CalendarDays, Check, Folder, LoaderCircle, Tag, Trash2 } from "lucide-react";
 import type {
   Task,
@@ -56,6 +58,42 @@ interface TaskRowProps {
   /** What was typed and not saved, kept above the row so it outlives it. */
   edits: UnsavedTaskEdits | undefined;
   onEdits: (edits: UnsavedTaskEdits | undefined) => void;
+}
+
+/** ⌘↵, with Ctrl+Return as a quiet alias (as in use-shortcuts.ts): save the edit group the key was pressed in. */
+function isSaveShortcut(event: KeyboardEvent): boolean {
+  return event.key === "Enter" && (event.metaKey || event.ctrlKey) && !event.altKey &&
+    !event.shiftKey && !event.nativeEvent.isComposing;
+}
+
+/** A group's key handler: ⌘↵ runs that group's own save, which decides whether there is anything to save. */
+function saveOnShortcut<Group extends HTMLElement>(save: (event: KeyboardEvent<Group>) => void) {
+  return (event: KeyboardEvent<Group>) => {
+    if (!isSaveShortcut(event)) return;
+    event.preventDefault();
+    save(event);
+  };
+}
+
+interface SaveButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  /** The id of the hidden "Command Return" description. */
+  shortcutDescription: string;
+  /** While it reads "Saving...", the button drops its ⌘↵ hint. */
+  busy?: boolean;
+}
+
+/**
+ * A Task edit group's Save button: its label, then a quiet ⌘↵. Assistive tech
+ * hears "Command Return" through the description, not as part of the name.
+ */
+function SaveButton({ shortcutDescription, busy = false, children, ...button }: SaveButtonProps) {
+  return (
+    <button className="button button-primary button-small" {...button}
+      aria-keyshortcuts="Meta+Enter" aria-describedby={shortcutDescription}>
+      {children}
+      {!busy && <kbd className="save-shortcut" aria-hidden="true">⌘↵</kbd>}
+    </button>
+  );
 }
 
 /** What the fields show for a Task with nothing typed into it. */
@@ -133,6 +171,7 @@ export default function TaskRow({
     Number.isInteger(numericProgress) &&
     numericProgress >= 0 &&
     numericProgress <= 100;
+  const shortcutDescription = `save-shortcut-${task.id}`;
   const progressButtonLabel =
     hasUnsavedNextStep || hasUnsavedNote
       ? "Save progress update"
@@ -266,6 +305,7 @@ export default function TaskRow({
           aria-label="Task details"
           className="task-editor"
         >
+          <span id={shortcutDescription} hidden>Command Return</span>
           <p className="task-stamp">
             Updated {stampFormatter.format(new Date(task.updatedAt))} · {listName}
           </p>
@@ -288,7 +328,10 @@ export default function TaskRow({
               </span>
             </div>
           )}
-          <form className="task-page" onSubmit={save}>
+          <form className="task-page" onSubmit={save}
+            onKeyDown={saveOnShortcut<HTMLFormElement>((event) => {
+              if (hasUnsavedText) event.currentTarget.requestSubmit();
+            })}>
             <label className="sr-only" htmlFor={`title-${task.id}`}>Title</label>
             <textarea
               ref={titleField}
@@ -299,7 +342,8 @@ export default function TaskRow({
               value={draftTitle}
               onChange={(event) => edit("title", event.target.value.replace(/\n/g, " "))}
               onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                // ⌘↵ is left to the form, which saves only when something changed.
+                if (event.key === "Enter" && !isSaveShortcut(event) && !event.nativeEvent.isComposing) {
                   event.preventDefault();
                   event.currentTarget.form?.requestSubmit();
                 }
@@ -322,9 +366,10 @@ export default function TaskRow({
             />
             {(hasUnsavedText || saving) && (
               <div className="editor-actions">
-                <button
-                  className="button button-primary button-small"
+                <SaveButton
                   type="submit"
+                  shortcutDescription={shortcutDescription}
+                  busy={saving}
                   disabled={
                     !draftTitle.trim() || saving || hasUnsavedProgressUpdate || hasUnsavedDetails
                   }
@@ -333,7 +378,7 @@ export default function TaskRow({
                     <LoaderCircle className="spin" size={13} aria-hidden="true" />
                   )}
                   {saving ? "Saving..." : "Save changes"}
-                </button>
+                </SaveButton>
               </div>
             )}
           </form>
@@ -399,7 +444,8 @@ export default function TaskRow({
             </label>
           </div>
 
-          <div className="task-properties" role="group" aria-label="Task organization">
+          <div className="task-properties" role="group" aria-label="Task organization"
+            onKeyDown={saveOnShortcut(() => void saveDetails())}>
             <label className="property" htmlFor={`due-${task.id}`}>
               <span className="sr-only">Deadline</span>
               <CalendarDays size={13} aria-hidden="true" />
@@ -426,14 +472,16 @@ export default function TaskRow({
                   disabled={saving} onClick={discardDetailsDraft}>
                   Discard tag and deadline changes
                 </button>
-                <button type="button" className="button button-primary button-small"
-                  disabled={!canChangeDetails}
-                  onClick={() => void saveDetails()}>Save tags and deadline</button>
+                <SaveButton type="button" shortcutDescription={shortcutDescription}
+                  disabled={!canChangeDetails} onClick={() => void saveDetails()}>
+                  Save tags and deadline
+                </SaveButton>
               </div>
             )}
           </div>
 
-          <div className="progress-editor" role="group" aria-label="Progress update">
+          <div className="progress-editor" role="group" aria-label="Progress update"
+            onKeyDown={saveOnShortcut(() => void saveProgressUpdate())}>
             <div className="progress-line">
               <label className="field-label" htmlFor={`progress-${task.id}`}>Progress</label>
               <span className="progress-track" aria-hidden="true">
@@ -490,9 +538,9 @@ export default function TaskRow({
                     : "Discard progress edit"}
                 </button>
               )}
-              <button
-                className="button button-primary button-small"
+              <SaveButton
                 type="button"
+                shortcutDescription={shortcutDescription}
                 disabled={
                   !canChangeMetadata ||
                   !validProgress ||
@@ -501,7 +549,7 @@ export default function TaskRow({
                 onClick={() => void saveProgressUpdate()}
               >
                 {progressButtonLabel}
-              </button>
+              </SaveButton>
             </div>
           </div>
 
