@@ -307,10 +307,10 @@ fn a_failed_v5_migration_rolls_back_and_keeps_the_v4_database_usable() {
     }
     let store = store_at(&db);
     assert_eq!(search(&store, "preserved"), vec!["Preserved Task"]);
-    assert_eq!(
-        store.get_task(&created.id).unwrap().unwrap().revision,
-        created.revision
-    );
+    let upgraded = store.get_task(&created.id).unwrap().unwrap();
+    assert_eq!(upgraded.revision, created.revision);
+    // The v17 step gives the upgraded Task No Difficulty.
+    assert_eq!(upgraded.difficulty, None);
 }
 
 #[test]

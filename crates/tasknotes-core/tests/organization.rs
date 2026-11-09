@@ -911,4 +911,14 @@ fn opening_a_v7_database_merges_tags_that_now_fold_alike() {
         ..Default::default()
     };
     assert_eq!(store.query_tasks(&query, 10, None).unwrap().items.len(), 3);
+    // The upgrade through v17 leaves every Task with No Difficulty (NULL).
+    let with_difficulty: i64 = rusqlite::Connection::open(&db)
+        .unwrap()
+        .query_row(
+            "SELECT count(*) FROM tasks WHERE difficulty IS NOT NULL",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(with_difficulty, 0);
 }
