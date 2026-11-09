@@ -412,8 +412,9 @@ impl Difficulty {
 }
 
 /// Tells a field that is absent (`None`, keep) from one that is `null`
-/// (`Some(None)`, clear) when the desktop sends a change.
-fn present<'de, D, T>(d: D) -> Result<Option<Option<T>>, D::Error>
+/// (`Some(None)`, clear) in a change. Use it as
+/// `#[serde(default, deserialize_with = "present")]`.
+pub fn present<'de, D, T>(d: D) -> Result<Option<Option<T>>, D::Error>
 where
     D: serde::Deserializer<'de>,
     T: Deserialize<'de>,

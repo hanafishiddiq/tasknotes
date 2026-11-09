@@ -8,7 +8,7 @@ use std::sync::Arc;
 use rmcp::model::{JsonObject, Tool, ToolAnnotations};
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tasknotes_cli::contract::{self, CliError};
 use tasknotes_core::removed::SetRemoved;
@@ -159,11 +159,7 @@ pub(crate) fn nullable_date_schema(_: &mut SchemaGenerator) -> Schema {
 }
 
 /// Tells a field that is absent (`None`) from one that is `null` (`Some(None)`).
-pub(crate) fn present<'de, D: Deserializer<'de>, T: Deserialize<'de>>(
-    d: D,
-) -> Result<Option<Option<T>>, D::Error> {
-    Option::<T>::deserialize(d).map(Some)
-}
+pub(crate) use tasknotes_core::tasks::present;
 
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
