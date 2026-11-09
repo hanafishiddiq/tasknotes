@@ -25,3 +25,7 @@
 ## Comments
 
 **2026-11-09 — owner decision (Han), Q3/Q14/Q25:** toast instead of a "Recently added" section or a lasting yellow mark.
+
+**2026-11-09 — review fixes on PR #27:** the toast's scroll request now gets one try, hit or miss, and any change of view drops it, so the list never moves by itself (PR #21); moving the toast's Task to Removed takes the toast away; a Task opened alone shows one banner; `showTaskAlone(taskId, reason)` replaces the borrowed `openLinkedTask` path. Tests in `src/new-task-toast.test.tsx`.
+
+**2026-11-09 — accepted limit (not fixed):** a new Task that belongs in the current view but is not on a loaded page (past the first page) is shown alone ("Showing the Task you just added") instead of scrolled to in place, because the toast only checks the Tasks already loaded. Also accepted: while Notes or Settings is open the toast is hidden but its 6 s timer keeps running. Only an in-app move to Removed clears the toast; a Task removed with its List, by a Bulk Change, or from the CLI or MCP still opens alone and shows an empty view.
