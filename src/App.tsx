@@ -61,6 +61,21 @@ interface TaskQueryNow {
   filters: TaskFilters;
 }
 
+/** Why one Task shows on its own: opened from a Note it is linked to, or from the new Task toast. */
+type AloneReason = "linked" | "added";
+
+/** What the Task view says while, and once, a Task shows on its own, by reason. */
+const ALONE_BANNER: Record<AloneReason, { opening: string; openingText: string; shown: string; shownText: string }> = {
+  linked: {
+    opening: "Opening linked Task", openingText: "Opening the linked Task once the current change is saved…",
+    shown: "Linked Task", shownText: "Showing one Task linked to a Note",
+  },
+  added: {
+    opening: "Opening added Task", openingText: "Opening the Task you just added once the current change is saved…",
+    shown: "Added Task", shownText: "Showing the Task you just added",
+  },
+};
+
 /** The first page of Lists again, and more until at least `keep`, so Lists already loaded stay. */
 async function readListsAgain(keep: number): Promise<TaskListPage> {
   let page = await taskApi.lists();
@@ -109,10 +124,9 @@ export default function App() {
   const [noteHitsFailed, setNoteHitsFailed] = useState(false);
   const [notesRequest, setNotesRequest] = useState<NotesRequest | null>(null);
   // A Task asked to show alone while the Task view was busy, and why.
-  const [pendingLinkedTask, setPendingLinkedTask] =
-    useState<{ taskId: string; reason: "linked" | "added" } | null>(null);
+  const [pendingAlone, setPendingAlone] = useState<{ taskId: string; reason: AloneReason } | null>(null);
   // Why one Task shows alone: opened from a Note, or from the new Task toast.
-  const [shownAlone, setShownAlone] = useState<"linked" | "added">("linked");
+  const [shownAlone, setShownAlone] = useState<AloneReason>("linked");
   const [lists, setLists] = useState<TaskList[]>([]);
   const [listCursor, setListCursor] = useState<string | null>(null);
   const [busyList, setBusyList] = useState(false);
@@ -257,9 +271,9 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (pendingLinkedTask && !busy) openLinkedTask(pendingLinkedTask.taskId, pendingLinkedTask.reason);
-    // openLinkedTask reads the same busy flag listed here.
-  }, [pendingLinkedTask, busy]);
+    if (pendingAlone && !busy) showTaskAlone(pendingAlone.taskId, pendingAlone.reason);
+    // showTaskAlone reads the same busy flag listed here.
+  }, [pendingAlone, busy]);
 
   // A scroll the toast asked for gets one try. A view that finished loading without
   // its Task (moved to Removed, say) has no list to try it, so drop it here, or a
@@ -300,15 +314,15 @@ export default function App() {
     openNotes(ALL_NOTES);
   }
 
-  /** Shows one Task, expanded, as when it is opened from a Note it is linked to. */
-  function openLinkedTask(taskId: string, reason: "linked" | "added") {
+  /** Shows one Task on its own and expanded, under the banner for `reason`. */
+  function showTaskAlone(taskId: string, reason: AloneReason) {
     if (busy) {
-      // Opened once the Task view has finished its current change.
-      setPendingLinkedTask({ taskId, reason });
+      // Opened once the Task view has finished its current change, for the same reason.
+      setPendingAlone({ taskId, reason });
       setWorkspace("tasks");
       return;
     }
-    setPendingLinkedTask(null);
+    setPendingAlone(null);
     setShownAlone(reason);
     // Its banner is the only one: applyFilters clears the filter notice only when a
     // filter changes, and this view must never show both.
@@ -327,7 +341,7 @@ export default function App() {
     if (workspace === "tasks" && tasks.some((task) => task.id === taskId)) {
       setExpandedId(taskId);
       newTaskToast.revealTask(taskId);
-    } else openLinkedTask(taskId, "added");
+    } else showTaskAlone(taskId, "added");
   }
 
   function openSettings() {
@@ -1142,17 +1156,16 @@ export default function App() {
               </div>
             )}
 
-            {pendingLinkedTask && (
-              <div role="status" aria-label="Opening linked Task" className="notice-banner">
+            {pendingAlone && (
+              <div role="status" aria-label={ALONE_BANNER[pendingAlone.reason].opening} className="notice-banner">
                 <LoaderCircle className="spin" size={14} aria-hidden="true" />
-                <span>Opening the linked Task once the current change is saved…</span>
+                <span>{ALONE_BANNER[pendingAlone.reason].openingText}</span>
               </div>
             )}
 
             {filters.taskId && (
-              <div role="status" aria-label={shownAlone === "added" ? "Added Task" : "Linked Task"}
-                className="notice-banner">
-                <span>{shownAlone === "added" ? "Showing the Task you just added" : "Showing one Task linked to a Note"}</span>
+              <div role="status" aria-label={ALONE_BANNER[shownAlone].shown} className="notice-banner">
+                <span>{ALONE_BANNER[shownAlone].shownText}</span>
                 <button className="button button-small" type="button" onClick={clearFilters}>
                   Show all tasks
                 </button>
@@ -1315,7 +1328,7 @@ export default function App() {
             scopeName={noteScope.kind === "folder"
               ? noteFolders.byId.get(noteScope.folderId)?.name ?? "Folder" : "Notes"}
             folders={noteFolders.options} request={notesRequest}
-            onOpenTask={(taskId) => openLinkedTask(taskId, "linked")}
+            onOpenTask={(taskId) => showTaskAlone(taskId, "linked")}
             refreshKey={notesRefresh} onRemoved={noteRemoved}
             onScopeHidden={() => setNoteScope(ALL_NOTES)} />
         </Suspense>
