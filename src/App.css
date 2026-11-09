@@ -2381,3 +2381,29 @@ kbd {
     animation: none;
   }
 }
+
+/* Custom Order (ADR 0010): a Task row being dragged within its group, and where it would land. */
+.task-slot[data-drag-row] {
+  position: relative;
+}
+.task-slot[data-dragging] {
+  opacity: 0.45;
+}
+.task-slot[data-drop-edge="before"]::after,
+.task-slot[data-drop-edge="after"]::after {
+  content: "";
+  position: absolute;
+  right: 10px;
+  left: 10px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  pointer-events: none;
+  z-index: 1;
+}
+.task-slot[data-drop-edge="before"]::after {
+  top: -1px;
+}
+.task-slot[data-drop-edge="after"]::after {
+  bottom: -1px;
+}

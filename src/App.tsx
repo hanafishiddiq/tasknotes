@@ -4,9 +4,9 @@ import {
   Tag,
 } from "lucide-react";
 import {
-  taskApi, NO_FILTERS, TASK_PAGE_SIZE, type Task, type TaskList, type TaskView,
-  type SortMode, type TaskChange, type ProgressDraft, type TaskFilters,
-  type Priority, type TaskListPage,
+  taskApi, NO_FILTERS, TASK_PAGE_SIZE, placeLocally, sortOf, viewKey, type Task, type TaskList,
+  type TaskView, type SortMode, type TaskChange, type ProgressDraft, type TaskFilters,
+  type Priority, type TaskListPage, type TaskPlace,
 } from "./lib/task-api";
 import {
   DIFFICULTY_ORDER, DIFFICULTY_VIEW, PRIORITY_ORDER, PRIORITY_VIEW, STATUS_CHOICES,
@@ -139,7 +139,9 @@ export default function App() {
   const [busyList, setBusyList] = useState(false);
   const [loadingLists, setLoadingLists] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
-  const [sort, setSort] = useState<SortMode>("priority");
+  // The sort each view remembers, kept by the core; a view not in it opens by Priority.
+  const [viewSorts, setViewSorts] = useState<Readonly<Record<string, SortMode>>>({});
+  const sort = sortOf(viewSorts, view);
   const [filters, setFilters] = useState<TaskFilters>(NO_FILTERS);
   const [searchDraft, setSearchDraft] = useState("");
   const [tagDraft, setTagDraft] = useState("");
@@ -258,6 +260,16 @@ export default function App() {
     return () => { active = false; };
     // Asked again when Notes change, so what another process added is found too.
   }, [filters.text, notesRefresh]);
+
+  useEffect(() => {
+    let active = true;
+    // Until these arrive every view opens by Priority; a view that remembers
+    // another sort then asks again, before the person can have done anything.
+    taskApi.viewSorts().then((sorts) => {
+      if (active) setViewSorts((chosen) => ({ ...sorts, ...chosen }));
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -446,7 +458,7 @@ export default function App() {
     setLoading(true);
     setLoadError(false);
     setError(null);
-    currentQuery.current = { ...currentQuery.current, view: next };
+    currentQuery.current = { ...currentQuery.current, view: next, sort: sortOf(viewSorts, next) };
     setView(next);
   }
 
@@ -466,7 +478,7 @@ export default function App() {
     resetTaskPages();
     setLoading(true);
     const newView: TaskView = { kind: "all" };
-    currentQuery.current = { ...currentQuery.current, view: newView };
+    currentQuery.current = { ...currentQuery.current, view: newView, sort: sortOf(viewSorts, newView) };
     setView(newView);
   }
 
@@ -552,7 +564,7 @@ export default function App() {
       setLoading(true);
       setLoadError(false);
       const newView: TaskView = { kind: "list", listId: created.id };
-      currentQuery.current = { ...currentQuery.current, view: newView };
+      currentQuery.current = { ...currentQuery.current, view: newView, sort: sortOf(viewSorts, newView) };
       setView(newView);
       try { await refreshLists(); } catch (reason) {
         setError("List created, but the sidebar could not refresh: " + errorMessage(reason));
@@ -874,6 +886,7 @@ export default function App() {
     }
   }
 
+  /** Shows the view in `nextSort` and remembers it for this view. */
   function changeSort(nextSort: SortMode) {
     if (sort === nextSort) return;
     newTaskToast.clearReveal();
@@ -884,7 +897,63 @@ export default function App() {
     setLoading(true);
     setNextCursor(null);
     resetTaskPages();
-    setSort(nextSort);
+    setViewSorts((sorts) => ({ ...sorts, [viewKey(view)]: nextSort }));
+    taskApi.setViewSort(view, nextSort).catch((reason) => {
+      setError("Sorted, but Tasknotes could not remember it for next time: " + errorMessage(reason));
+    });
+  }
+
+  // One move at a time: a second would name the revision the first is replacing.
+  const placing = useRef(false);
+
+  /**
+   * Moves a Task within its group, showing the new order at once. Sorted by
+   * anything but Custom, the core starts the List's Custom Order from the
+   * order on screen and the view switches to Custom. Resolves false when
+   * nothing moved or the core refused it.
+   */
+  async function placeTask(task: Task, place: TaskPlace): Promise<boolean> {
+    if (placing.current || savingId || creating || loadingMore || loading) return false;
+    const placed = placeLocally(tasks, task.id, place);
+    const order = (items: Task[]) => items.map((item) => item.id).join(" ");
+    if (order(placed) === order(tasks)) return false;
+    const shownSort = sort;
+    const shownView = view;
+    placing.current = true;
+    // What an outside re-read brought back in the meantime must not undo this.
+    requestGeneration.current += 1;
+    setError(null);
+    setTasks(placed);
+    try {
+      const updated = await taskApi.reorder({ id: task.id, expectedRevision: task.revision, ...place, shownSort });
+      // Committed before this resolves, so the next key press reads the new revision.
+      flushSync(() => setTasks((current) => current.map((item) => item.id === updated.id ? updated : item)));
+      if (shownSort !== "custom") {
+        // The core switched the List to Custom; showing it reads the first page again in that order.
+        currentQuery.current = { ...currentQuery.current, sort: "custom" };
+        setViewSorts((sorts) => ({ ...sorts, [viewKey(shownView)]: "custom" }));
+      }
+      return true;
+    } catch (reason) {
+      setError(errorMessage(reason));
+      // Whatever moved or changed it elsewhere is what the list should show now.
+      const generation = ++requestGeneration.current;
+      try {
+        const { page, stayOnPage } = await readPageAgain(currentPage.current, currentQuery.current);
+        if (generation !== requestGeneration.current) return false;
+        setTasks(page.items);
+        setNextCursor(page.nextCursor);
+        if (!stayOnPage) {
+          setCurrentPageCursor(null);
+          setPreviousPageCursors([]);
+        }
+      } catch {
+        if (generation === requestGeneration.current) setTasks(tasks);
+      }
+      return false;
+    } finally {
+      placing.current = false;
+    }
   }
 
   /** Start a fresh first page for new search text or filters. */
@@ -1018,6 +1087,9 @@ export default function App() {
   const today = useLocalCalendarDay();
 
   const filtering = !sameFilters(filters, NO_FILTERS);
+  // Tasks move only in one List or Inbox with nothing filtered: there the
+  // whole group is what the person sees (ADR 0010).
+  const canPlace = view.kind !== "all" && !filtering;
   const filterControlsActive = filtering || searchDraft.trim() !== "" || tagDraft.trim() !== "";
   const captureOpen = title.length > 0 || description.length > 0;
   const captureDisabled = creating || Boolean(savingId) || loading || loadError;
@@ -1081,6 +1153,7 @@ export default function App() {
               <option value="priority">Highest priority</option>
               <option value="difficulty">Hardest first</option>
               <option value="newest">Newest first</option>
+              {view.kind !== "all" && <option value="custom">Custom order</option>}
             </select>
           </label>
           <button className="icon-button" type="button" aria-label="New task"
@@ -1310,6 +1383,7 @@ export default function App() {
                     flashId={newTaskToast.flashId}
                     reveal={newTaskToast.reveal}
                     onRevealed={newTaskToast.clearReveal}
+                    onPlace={canPlace ? placeTask : undefined}
                     renderTask={(task) => (
                       <TaskRow
                         task={task}
@@ -1328,6 +1402,7 @@ export default function App() {
                         shown={workspace === "tasks"}
                         edits={drafts.get(task.id)}
                         onEdits={(edits) => drafts.set(task.id, edits)}
+                        reorderable={canPlace}
                       />
                     )}
                   />
