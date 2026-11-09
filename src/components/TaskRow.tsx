@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type FormEvent } from "react";
+import { useLayoutEffect, useRef, type FormEvent, type KeyboardEvent } from "react";
 import { CalendarDays, Check, Folder, LoaderCircle, Tag, Trash2 } from "lucide-react";
 import type {
   Task,
@@ -56,6 +56,26 @@ interface TaskRowProps {
   /** What was typed and not saved, kept above the row so it outlives it. */
   edits: UnsavedTaskEdits | undefined;
   onEdits: (edits: UnsavedTaskEdits | undefined) => void;
+}
+
+/** ⌘↵ (Ctrl+Return elsewhere): save the edit group the key was pressed in. */
+function isSaveShortcut(event: KeyboardEvent): boolean {
+  return event.key === "Enter" && (event.metaKey || event.ctrlKey) && !event.altKey &&
+    !event.shiftKey && !event.nativeEvent.isComposing;
+}
+
+/** A group's key handler: ⌘↵ runs that group's own save, which decides whether there is anything to save. */
+function onSaveShortcut(save: (event: KeyboardEvent<HTMLElement>) => void) {
+  return (event: KeyboardEvent<HTMLElement>) => {
+    if (!isSaveShortcut(event)) return;
+    event.preventDefault();
+    save(event);
+  };
+}
+
+/** The quiet ⌘↵ on a Save button; assistive tech hears "Command Return" through the description. */
+function SaveShortcutHint() {
+  return <kbd className="save-shortcut" aria-hidden="true">⌘↵</kbd>;
 }
 
 /** What the fields show for a Task with nothing typed into it. */
@@ -133,6 +153,10 @@ export default function TaskRow({
     Number.isInteger(numericProgress) &&
     numericProgress >= 0 &&
     numericProgress <= 100;
+  const saveShortcut = {
+    "aria-keyshortcuts": "Meta+Enter",
+    "aria-describedby": `save-shortcut-${task.id}`,
+  };
   const progressButtonLabel =
     hasUnsavedNextStep || hasUnsavedNote
       ? "Save progress update"
@@ -266,6 +290,7 @@ export default function TaskRow({
           aria-label="Task details"
           className="task-editor"
         >
+          <span id={`save-shortcut-${task.id}`} className="sr-only">Command Return</span>
           <p className="task-stamp">
             Updated {stampFormatter.format(new Date(task.updatedAt))} · {listName}
           </p>
@@ -288,7 +313,10 @@ export default function TaskRow({
               </span>
             </div>
           )}
-          <form className="task-page" onSubmit={save}>
+          <form className="task-page" onSubmit={save}
+            onKeyDown={onSaveShortcut((event) => {
+              if (hasUnsavedText) (event.currentTarget as HTMLFormElement).requestSubmit();
+            })}>
             <label className="sr-only" htmlFor={`title-${task.id}`}>Title</label>
             <textarea
               ref={titleField}
@@ -299,7 +327,8 @@ export default function TaskRow({
               value={draftTitle}
               onChange={(event) => edit("title", event.target.value.replace(/\n/g, " "))}
               onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                // ⌘↵ is left to the form, which saves only when something changed.
+                if (event.key === "Enter" && !isSaveShortcut(event) && !event.nativeEvent.isComposing) {
                   event.preventDefault();
                   event.currentTarget.form?.requestSubmit();
                 }
@@ -325,6 +354,7 @@ export default function TaskRow({
                 <button
                   className="button button-primary button-small"
                   type="submit"
+                  {...saveShortcut}
                   disabled={
                     !draftTitle.trim() || saving || hasUnsavedProgressUpdate || hasUnsavedDetails
                   }
@@ -333,6 +363,7 @@ export default function TaskRow({
                     <LoaderCircle className="spin" size={13} aria-hidden="true" />
                   )}
                   {saving ? "Saving..." : "Save changes"}
+                  <SaveShortcutHint />
                 </button>
               </div>
             )}
@@ -399,7 +430,8 @@ export default function TaskRow({
             </label>
           </div>
 
-          <div className="task-properties" role="group" aria-label="Task organization">
+          <div className="task-properties" role="group" aria-label="Task organization"
+            onKeyDown={onSaveShortcut(() => void saveDetails())}>
             <label className="property" htmlFor={`due-${task.id}`}>
               <span className="sr-only">Deadline</span>
               <CalendarDays size={13} aria-hidden="true" />
@@ -427,13 +459,16 @@ export default function TaskRow({
                   Discard tag and deadline changes
                 </button>
                 <button type="button" className="button button-primary button-small"
-                  disabled={!canChangeDetails}
-                  onClick={() => void saveDetails()}>Save tags and deadline</button>
+                  {...saveShortcut} disabled={!canChangeDetails}
+                  onClick={() => void saveDetails()}>
+                  Save tags and deadline<SaveShortcutHint />
+                </button>
               </div>
             )}
           </div>
 
-          <div className="progress-editor" role="group" aria-label="Progress update">
+          <div className="progress-editor" role="group" aria-label="Progress update"
+            onKeyDown={onSaveShortcut(() => void saveProgressUpdate())}>
             <div className="progress-line">
               <label className="field-label" htmlFor={`progress-${task.id}`}>Progress</label>
               <span className="progress-track" aria-hidden="true">
@@ -493,6 +528,7 @@ export default function TaskRow({
               <button
                 className="button button-primary button-small"
                 type="button"
+                {...saveShortcut}
                 disabled={
                   !canChangeMetadata ||
                   !validProgress ||
@@ -501,6 +537,7 @@ export default function TaskRow({
                 onClick={() => void saveProgressUpdate()}
               >
                 {progressButtonLabel}
+                <SaveShortcutHint />
               </button>
             </div>
           </div>

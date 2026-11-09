@@ -266,6 +266,7 @@ Quiet until needed; only the primary button carries color.
 - **Shape:** gently rounded (6px), 28px tall (26px small).
 - **Default:** transparent with secondary-gray text; hover steps to hover gray and primary text.
 - **Primary:** Notes yellow fill with accent ink, weight 600. Hover keeps the fill and brightens it slightly (`brightness(1.05)`). Disabled primary becomes a field-gray box with tertiary text at weight 500 rather than a faded yellow.
+- **Shortcut hint:** a Task Save button (Save changes, Save tags and deadline, Apply progress / Save progress update) ends with `⌘↵` in its own ink at 11px, weight 400, 6px after the label; screen readers hear it as "Command Return" (`aria-keyshortcuts="Meta+Enter"` plus a description), not as part of the name.
 - **Icon button:** 32x28, secondary-gray icon, same hover as default.
 - **Text link:** small accent-text label with no box (history "Load more", retry).
 
