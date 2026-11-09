@@ -10,6 +10,10 @@ export type TaskView = { kind: "all" } | { kind: "inbox" } | { kind: "list"; lis
 
 export interface TaskList {
   id: string;
+  /** The List it sits inside; null (or absent) at the top level. */
+  parentId?: string | null;
+  /** Whether a List not in Removed sits inside it. */
+  hasChildren?: boolean;
   name: string;
   revision: number;
   createdAt: number;
@@ -212,9 +216,19 @@ export const taskApi = {
     return invoke("rename_list", { input });
   },
 
-  /** Puts the List directly after `afterId`, or first when it is null. */
+  /** Puts the List directly after `afterId`, or first when it is null, among the Lists sharing its parent. */
   reorderList(input: ListMutation & { afterId: string | null }): Promise<TaskList> {
     return invoke("reorder_list", { input });
+  },
+
+  /** Puts the List under `parentId` (null: the top level), directly after `afterId` or first. */
+  placeList(input: ListMutation & { parentId: string | null; afterId: string | null }): Promise<TaskList> {
+    return invoke("place_list", { input });
+  },
+
+  /** Moves the List into `parentId`, at the bottom there. */
+  moveList(input: ListMutation & { parentId: string | null }): Promise<TaskList> {
+    return invoke("move_list", { input });
   },
 
   /** Sets both the icon and the colour; null clears one to the default look. */

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, ClipboardCheck, Folder, LoaderCircle, NotebookText, SquareCheck, X } from "lucide-react";
+import { Check, ClipboardCheck, Folder, ListChecks, LoaderCircle, NotebookText, SquareCheck, X } from "lucide-react";
 import { errorMessage } from "../lib/error-message";
 import { approvalApi, type ApprovalLine, type PendingBulkRequest } from "../lib/approval-api";
 import { STATUS_VIEW, WONT_DO_LABEL } from "../lib/task-visuals";
@@ -8,6 +8,7 @@ const ICON: Record<ApprovalLine["kind"], typeof Folder> = {
   task: SquareCheck,
   note: NotebookText,
   folder: Folder,
+  list: ListChecks,
 };
 
 const ASKED_AT = new Intl.DateTimeFormat(undefined, {

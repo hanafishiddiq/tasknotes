@@ -11,9 +11,10 @@ use tasknotes_core::privacy::SetNoteExcludeFromAi;
 use tasknotes_core::removed::{RemovedPage, SetRemoved};
 use tasknotes_core::style::SetStyle;
 use tasknotes_core::tasks::{
-    ChangeTask, CreateList, CreateTask, DifficultyFilter, List, ListPage, MoveTask, Priority,
-    ProgressSequencePage, RecordProgress, RenameList, ReorderList, SetListRemoved, SortMode, Task,
-    TaskPage, TaskQuery, TaskStore, TaskView, UpdateTask, UpdateTaskDetails, WorkStatus,
+    ChangeTask, CreateList, CreateTask, DifficultyFilter, List, ListPage, MoveList, MoveTask,
+    PlaceList, Priority, ProgressSequencePage, RecordProgress, RenameList, ReorderList,
+    SetListRemoved, SortMode, Task, TaskPage, TaskQuery, TaskStore, TaskView, UpdateTask,
+    UpdateTaskDetails, WorkStatus,
 };
 use tauri::{Manager, State};
 
@@ -132,6 +133,19 @@ fn rename_list(store: State<'_, TaskStore>, input: RenameList) -> Result<List, S
 #[tauri::command]
 fn reorder_list(store: State<'_, TaskStore>, input: ReorderList) -> Result<List, String> {
     store.reorder_list(input).map_err(|error| error.to_string())
+}
+
+/// Puts a List, with the Lists inside it, under a parent and after a sibling
+/// there, in one step: a sidebar drop (ADR 0009).
+#[tauri::command]
+fn place_list(store: State<'_, TaskStore>, input: PlaceList) -> Result<List, String> {
+    store.place_list(input).map_err(|error| error.to_string())
+}
+
+/// Moves a List into another (at the bottom there) or to the top level.
+#[tauri::command]
+fn move_list(store: State<'_, TaskStore>, input: MoveList) -> Result<List, String> {
+    store.move_list(input).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -454,6 +468,8 @@ pub fn run() {
             create_list,
             rename_list,
             reorder_list,
+            place_list,
+            move_list,
             set_list_style,
             set_list_removed,
             move_task,

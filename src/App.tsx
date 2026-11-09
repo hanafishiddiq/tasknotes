@@ -8,6 +8,7 @@ import {
   type SortMode, type TaskChange, type ProgressDraft, type TaskFilters,
   type Priority, type TaskListPage,
 } from "./lib/task-api";
+import { listTree, moveSubtree, parentOf } from "./lib/list-tree";
 import {
   DIFFICULTY_ORDER, DIFFICULTY_VIEW, PRIORITY_ORDER, PRIORITY_VIEW, STATUS_CHOICES,
   statusChoiceLabel,
@@ -605,15 +606,33 @@ export default function App() {
    * Shows the new order at once; the sidebar stays usable, so focus stays on
    * the moved row. Resolves false when the core refused it.
    */
-  async function reorderList(list: TaskList, afterId: string | null): Promise<boolean> {
-    setLists((all) => {
-      const others = all.filter((item) => item.id !== list.id);
-      others.splice(afterId === null ? 0 : others.findIndex((item) => item.id === afterId) + 1, 0, list);
-      return others;
-    });
+  function reorderList(list: TaskList, afterId: string | null): Promise<boolean> {
+    return moveListTo(list, parentOf(list), afterId,
+      () => taskApi.reorderList({ id: list.id, expectedRevision: list.revision, afterId }));
+  }
+
+  /** A drop or Alt+arrow that also changes the List's parent (ADR 0009). */
+  function placeList(list: TaskList, parentId: string | null, afterId: string | null): Promise<boolean> {
+    return moveListTo(list, parentId, afterId,
+      () => taskApi.placeList({ id: list.id, expectedRevision: list.revision, parentId, afterId }));
+  }
+
+  /** Into another List, at the bottom there. */
+  function moveList(list: TaskList, parentId: string): Promise<boolean> {
+    const siblings = listTree(lists).children(parentId).filter((id) => id !== list.id);
+    const last = siblings[siblings.length - 1] ?? null;
+    return moveListTo(list, parentId, last,
+      () => taskApi.moveList({ id: list.id, expectedRevision: list.revision, parentId }));
+  }
+
+  async function moveListTo(
+    list: TaskList, parentId: string | null, afterId: string | null, write: () => Promise<TaskList>,
+  ): Promise<boolean> {
+    // The List moves with every List inside it.
+    setLists((all) => moveSubtree(all, list.id, parentId, afterId));
     setError(null);
     try {
-      const updated = await taskApi.reorderList({ id: list.id, expectedRevision: list.revision, afterId });
+      const updated = await write();
       // Committed before this resolves, so the next key press reads the new revision.
       flushSync(() => setLists((all) => all.map((item) => item.id === list.id ? updated : item)));
       return true;
@@ -640,7 +659,8 @@ export default function App() {
       if (removed) {
         undo.push({ key: `list:${updated.id}`, title: updated.name, undo: () => applyListRemoved(updated, false) });
       }
-      if (removed && view.kind === "list" && view.listId === list.id) {
+      // Removing a List hides the Lists inside it too, the one showing among them.
+      if (removed && view.kind === "list" && listTree(lists).within(list.id, view.listId)) {
         showAllTasks();
       } else {
         retryFirstLoad();
@@ -1046,7 +1066,7 @@ export default function App() {
         theme={appearance.theme} onToggleTheme={appearance.toggle}
         settingsActive={workspace === "settings"} onOpenSettings={openSettings}
         onNavigate={navigate} onCreateList={createList} onRenameList={renameList}
-        onReorderList={reorderList} onStyleList={styleList}
+        onReorderList={reorderList} onPlaceList={placeList} onMoveList={moveList} onStyleList={styleList}
         onRemoveList={(list) => setListRemoved(list, true)}
         onLoadMoreLists={loadMoreLists}
         resizer={<SidebarResizer width={sidebar.width} max={sidebar.max}
@@ -1319,7 +1339,7 @@ export default function App() {
                         onSave={(nextTitle, nextDescription, base) => updateTask(task, nextTitle, nextDescription, base)}
                         onChange={(change, base) => changeTask(task, change, base)}
                         onRecordProgress={(update, base) => recordProgress(task, update, base)}
-                        lists={lists.filter((list) => !list.removed)}
+                        lists={listTree(lists).shown}
                         today={today}
                         onMove={(listId) => moveTask(task, listId)}
                         onUpdateDetails={(tags, dueDate, base) => updateDetails(task, tags, dueDate, base)}
