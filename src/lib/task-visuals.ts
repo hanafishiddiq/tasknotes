@@ -3,7 +3,7 @@ import {
   Circle, LoaderCircle, Minus, Signal, SignalHigh, SignalLow, SignalMedium, SignalZero,
   SquareDashed, X, type LucideIcon,
 } from "lucide-react";
-import type { Difficulty, Priority, WorkStatus } from "./task-api";
+import type { Difficulty, Priority, StatusChoice, WorkStatus } from "./task-api";
 
 export const STATUS_ORDER: WorkStatus[] = ["in_progress", "ready", "completed"];
 export const STATUS_VIEW: Record<WorkStatus, { label: string; icon: LucideIcon }> = {
@@ -34,3 +34,8 @@ export const NO_DIFFICULTY_ICON: LucideIcon = SquareDashed;
 export const WONT_DO_LABEL = "Won't do";
 /** A cross in the neutral ring, never the Completed tick. */
 export const WONT_DO_ICON: LucideIcon = X;
+/** Every status control's choices, in order: the three work statuses, then Won't Do. */
+export const STATUS_CHOICES: StatusChoice[] = [...STATUS_ORDER, "wont_do"];
+export function statusChoiceLabel(choice: StatusChoice): string {
+  return choice === "wont_do" ? WONT_DO_LABEL : STATUS_VIEW[choice].label;
+}

@@ -2,22 +2,25 @@ import {
   useLayoutEffect, useRef, type ButtonHTMLAttributes, type FormEvent, type KeyboardEvent,
 } from "react";
 import { CalendarDays, Check, Folder, LoaderCircle, Tag, Trash2 } from "lucide-react";
-import type {
-  Task,
-  TaskList,
-  WorkStatus,
-  Priority,
-  Difficulty,
-  TaskChange,
-  ProgressDraft,
+import {
+  statusChoiceArgs,
+  statusChoiceOf,
+  type StatusChoice,
+  type Task,
+  type TaskList,
+  type Priority,
+  type Difficulty,
+  type TaskChange,
+  type ProgressDraft,
 } from "../lib/task-api";
 import TaskProgressHistory from "./TaskProgressHistory";
 import TaskLinkedNotes from "./TaskLinkedNotes";
 import { deadlineStatus } from "../lib/deadlines";
 import type { EditableFields, UnsavedTaskEdits } from "../lib/use-task-drafts";
 import {
-  STATUS_ORDER,
+  STATUS_CHOICES,
   STATUS_VIEW,
+  statusChoiceLabel,
   PRIORITY_ORDER,
   PRIORITY_VIEW,
   DIFFICULTY_ORDER,
@@ -26,6 +29,9 @@ import {
   WONT_DO_ICON,
   WONT_DO_LABEL,
 } from "../lib/task-visuals";
+
+/** Why a finished Task's Won't do choice is closed (ADR 0008). */
+const FINISHED_CANNOT_BE_SET_ASIDE = "Reopen it first: a finished Task can't be set aside";
 
 const dateFormatter = new Intl.DateTimeFormat("en", {
   month: "short",
@@ -293,7 +299,8 @@ export default function TaskRow({
           <span className={`status-pill status-pill--${task.status} sr-only`}>
             {STATUS_VIEW[task.status].label}
           </span>
-          {wontDo && <span className="wont-do-label">{WONT_DO_LABEL}</span>}
+          {/* Won't Do keeps its progress, so the row shows it. */}
+          {wontDo && <span className="wont-do-label">{WONT_DO_LABEL} · {task.progress}%</span>}
           <span className={`priority-pill priority-pill--${task.priority}`}>
             <PriorityIcon size={13} strokeWidth={2} aria-hidden="true" />
             {PRIORITY_VIEW[task.priority].label}
@@ -413,27 +420,31 @@ export default function TaskRow({
               <select
                 id={`status-${task.id}`}
                 aria-label="Work status"
-                value={wontDo ? "wont_do" : task.status}
+                value={statusChoiceOf(task)}
                 disabled={!canChangeSelectors}
-                onChange={(event) => {
-                  const value = event.target.value as WorkStatus | "wont_do";
-                  void onChange(value === "wont_do" ? { wontDo: true } : { status: value }, task.revision);
-                }}
+                onChange={(event) =>
+                  void onChange(statusChoiceArgs(event.target.value as StatusChoice), task.revision)
+                }
               >
-                {STATUS_ORDER.map((status) => (
-                  <option
-                    key={status}
-                    value={status}
-                    // Ready is for work not yet started, which a Won't Do Task at 0% still is.
-                    disabled={status === "ready" && task.status !== "ready" && !(wontDo && task.progress === 0)}
-                  >
-                    {STATUS_VIEW[status].label}
-                  </option>
-                ))}
-                {/* A finished Task is reopened first; the core refuses it too. */}
-                <option value="wont_do" disabled={task.status === "completed" && !wontDo}>
-                  {WONT_DO_LABEL}
-                </option>
+                {STATUS_CHOICES.map((choice) => {
+                  // Ready is for work not yet started, which a Task set aside before it started still is.
+                  const readyClosed = choice === "ready" && task.status !== "ready"
+                    && !(wontDo && task.wontDoFrom === "ready");
+                  // A finished Task is reopened first; the core refuses it too.
+                  const finishedNote = choice === "wont_do" && task.status === "completed" && !wontDo
+                    ? FINISHED_CANNOT_BE_SET_ASIDE : undefined;
+                  return (
+                    <option
+                      key={choice}
+                      value={choice}
+                      disabled={readyClosed || finishedNote !== undefined}
+                      title={finishedNote}
+                      aria-description={finishedNote}
+                    >
+                      {statusChoiceLabel(choice)}
+                    </option>
+                  );
+                })}
               </select>
             </label>
             <label className="property" htmlFor={`priority-${task.id}`}>

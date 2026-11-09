@@ -48,8 +48,10 @@ beforeEach(() => {
       }
       case "change_task": {
         const task = saved.find((item) => item.id === input.id)!;
-        Object.assign(task, input.status ? { status: input.status } : {}, { revision: task.revision + 1 });
-        if (task.status === "completed") task.progress = 100;
+        if (input.wontDo) Object.assign(task, { status: "completed", wontDo: true });
+        else if (input.status) Object.assign(task, { status: input.status, wontDo: false });
+        Object.assign(task, { revision: task.revision + 1 });
+        if (task.status === "completed" && !task.wontDo) task.progress = 100;
         return { ...task };
       }
       case "quit_ready": return null;
@@ -137,6 +139,28 @@ describe("Interaction sound", () => {
     await user.click(screen.getByRole("button", { name: "All tasks" }));
     await complete(user, "Synthetic follow-up");
     expect(context.oscillators).toHaveLength(muted);
+  });
+});
+
+describe("Won't Do and the completion cue", () => {
+  it("plays nothing when a Task is set aside, and the cue when a Won't Do Task is then completed", async () => {
+    saved = [{ ...base, status: "in_progress", progress: 40 }];
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("article", { name: "Synthetic plan" });
+    const context = FakeAudioContext.latest();
+    const before = context.oscillators.length;
+
+    await user.click(screen.getByRole("button", { name: "Open Synthetic plan" }));
+    await user.selectOptions(screen.getByRole("combobox", { name: "Work status" }), "wont_do");
+    await waitFor(() => expect(saved[0].wontDo).toBe(true));
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Work status" })).toBeEnabled());
+    expect(context.oscillators).toHaveLength(before);
+
+    // Completed on a Won't Do Task is real completion: 100%, and the cue plays.
+    await user.selectOptions(screen.getByRole("combobox", { name: "Work status" }), "completed");
+    await waitFor(() => expect(saved[0]).toMatchObject({ status: "completed", wontDo: false, progress: 100 }));
+    await waitFor(() => expect(context.oscillators.length).toBeGreaterThan(before));
   });
 });
 
