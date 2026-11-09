@@ -5,9 +5,9 @@ use serde::Deserialize;
 use serde_json::Value;
 use tasknotes_cli::contract::{self, CliError};
 use tasknotes_core::tasks::{
-    ChangeTask, CreateList, CreateTask, Difficulty, DifficultyFilter, MoveTask, PatchTask,
-    PatchTaskDetails, Priority, RecordProgress, RenameList, ReorderList, SetListRemoved, SortMode,
-    TaskError, TaskQuery, TaskScope, TaskView, WorkStatus,
+    ChangeTask, CreateList, CreateSubList, CreateTask, Difficulty, DifficultyFilter, MoveList,
+    MoveTask, PatchTask, PatchTaskDetails, Priority, RecordProgress, RenameList, SetListRemoved,
+    SortMode, TaskError, TaskQuery, TaskScope, TaskView, WorkStatus,
 };
 
 use crate::tools::*;
@@ -105,7 +105,7 @@ pub fn tools() -> Vec<ToolDef> {
         tool(
             "list_list",
             Kind::Read,
-            "List the Lists, in the person's manual order.",
+            "List the Lists as a tree: each List right after the List it sits in (parent_id, null at the top level), siblings in the person's manual order. A List shows only its own Tasks.",
             |c, a: ListPage| {
                 let page =
                     c.store
@@ -119,11 +119,29 @@ pub fn tools() -> Vec<ToolDef> {
         tool(
             "list_create",
             Kind::Write,
-            "Create a List.",
-            |c, a: Name| {
-                item(contract::list(
-                    &c.store.create_list(CreateList { name: a.name })?,
-                ))
+            "Create a List at the top level, or an empty one inside another List with parent_id (at most five levels deep).",
+            |c, a: ListCreate| {
+                item(contract::list(&match a.parent_id {
+                    None => c.store.create_list(CreateList { name: a.name })?,
+                    Some(parent_id) => c.store.create_sub_list(CreateSubList {
+                        name: a.name,
+                        parent_id,
+                    })?,
+                }))
+            },
+        ),
+        tool(
+            "list_move",
+            Kind::Write,
+            "Move a List, with the Lists inside it, into another List or to the top level, at the bottom there. Its Tasks stay its own; refused when it would land inside itself or below five levels.",
+            |c, a: ListMoveArgs| {
+                let parent_id =
+                    contract::destination(a.parent_id, a.top, ("parent_id", "top: true"))?;
+                item(contract::list(&c.store.move_list(MoveList {
+                    expected_revision: revision(a.revision)?,
+                    id: a.id,
+                    parent_id,
+                })?))
             },
         ),
         tool(
@@ -141,14 +159,18 @@ pub fn tools() -> Vec<ToolDef> {
         tool(
             "list_reorder",
             Kind::Write,
-            "Put a List directly after another List in the person's manual order, or first.",
-            |c, a: Reorder| {
-                let after_id = a.after()?;
-                item(contract::list(&c.store.reorder_list(ReorderList {
-                    expected_revision: revision(a.revision)?,
-                    id: a.id,
+            "Put a List directly after a sibling in the person's manual order, or first; give parent_id or top: true to place it under another parent at the same time.",
+            |c, a: ListReorderArgs| {
+                let after_id =
+                    contract::destination(a.after_id, a.first, ("after_id", "first: true"))?;
+                let parent = contract::list_parent(a.parent_id, a.top, ("parent_id", "top: true"))?;
+                item(contract::list(&contract::reorder_list(
+                    c.store,
+                    a.id,
+                    revision(a.revision)?,
                     after_id,
-                })?))
+                    parent,
+                )?))
             },
         ),
         tool(
@@ -166,7 +188,7 @@ pub fn tools() -> Vec<ToolDef> {
         tool(
             "list_remove",
             Kind::Write,
-            "Move a List, and so the Tasks in it, to Removed (reversible with list_restore).",
+            "Move a List, and so the Lists and Tasks inside it, to Removed (reversible with list_restore). A List that holds anything needs the person's approval: use bulk_preview.",
             |c, a: Revisioned| {
                 let expected_revision = revision(a.revision)?;
                 item(contract::list(&c.store.set_list_removed(
@@ -414,4 +436,47 @@ fn task_move(c: &Context, a: TaskMoveArgs) -> Result<Value, CliError> {
         id: a.id,
         list_id,
     })?))
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct ListCreate {
+    name: String,
+    /// The List to create it inside; leave out for the top level.
+    #[serde(default)]
+    parent_id: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct ListMoveArgs {
+    id: String,
+    /// The revision you last read.
+    revision: i64,
+    /// The List to move it into; give this or top.
+    #[serde(default)]
+    parent_id: Option<String>,
+    /// Move to the top level; give this or parent_id.
+    #[serde(default)]
+    top: bool,
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct ListReorderArgs {
+    id: String,
+    /// The revision you last read.
+    revision: i64,
+    /// Put it directly after this sibling; give this or first.
+    #[serde(default)]
+    after_id: Option<String>,
+    /// Put it first among its siblings; give this or after_id.
+    #[serde(default)]
+    first: bool,
+    /// Place it inside this List at the same time.
+    #[serde(default)]
+    parent_id: Option<String>,
+    /// Place it at the top level at the same time.
+    #[serde(default)]
+    top: bool,
 }

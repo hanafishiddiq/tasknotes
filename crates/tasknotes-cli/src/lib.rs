@@ -18,9 +18,10 @@ use tasknotes_core::audit::Interface;
 use tasknotes_core::removed::SetRemoved;
 use tasknotes_core::style::{self, SetStyle};
 use tasknotes_core::tasks::{
-    ChangeTask, CreateList, CreateTask, Difficulty, DifficultyFilter, List, MoveTask, PatchTask,
-    PatchTaskDetails, Priority, RecordProgress, RenameList, ReorderList, SetListRemoved, SortMode,
-    Task, TaskError, TaskQuery, TaskScope, TaskStore, TaskView, WorkStatus,
+    ChangeTask, CreateList, CreateSubList, CreateTask, Difficulty, DifficultyFilter, List,
+    MoveList, MoveTask, PatchTask, PatchTaskDetails, Priority, RecordProgress, RenameList,
+    SetListRemoved, SortMode, Task, TaskError, TaskQuery, TaskScope, TaskStore, TaskView,
+    WorkStatus,
 };
 
 use access::Environment;
@@ -160,7 +161,8 @@ pub(crate) const USAGE: &str = "Usage: tasknotes [--data-dir DIR] \
     <task|list|note|folder|link|removed|audit|bulk|style|backup|export|access> <command> [id] [--options]; \
     task change ID --revision N [--status S] [--priority P] [--difficulty D|none] [--progress N] [--wont-do true|false]; \
     task list [--status S] [--priority P] [--difficulty D|none] [--wont-do true|false] [--tag T] [--sort priority|newest|difficulty]; \
-    list reorder ID --revision N (--after ID | --first); \
+    list create --name N [--parent ID]; list move ID --revision N (--parent ID | --top); \
+    list reorder ID --revision N (--after ID | --first) [--parent ID | --top]; \
     list|folder style ID --revision N [--icon NAME|none] [--color NAME|none]; style options; \
     folder reorder ID --revision N (--after ID | --first) [--parent ID | --top]; \
     bulk preview --action A --id ID... [--status S [--wont-do]] | bulk status REQUEST_ID (approved only in the app); \
@@ -374,9 +376,34 @@ fn list_command(store: &TaskStore, verb: &str, words: &[String]) -> Result<Value
             ))
         }
         "create" => {
-            let p = parse(words, &flags(&["name"], 0))?;
-            item(store.create_list(CreateList {
-                name: p.required("name")?.to_owned(),
+            let p = parse(words, &flags(&["name", "parent"], 0))?;
+            let name = p.required("name")?.to_owned();
+            item(match p.value("parent") {
+                None => store.create_list(CreateList { name })?,
+                Some(parent) => store.create_sub_list(CreateSubList {
+                    name,
+                    parent_id: parent.to_owned(),
+                })?,
+            })
+        }
+        "move" => {
+            let p = parse(
+                words,
+                &Spec {
+                    values: &["revision", "parent"],
+                    repeated: &[],
+                    switches: &["top"],
+                    positionals: 1,
+                },
+            )?;
+            item(store.move_list(MoveList {
+                id: p.id().to_owned(),
+                expected_revision: p.revision()?,
+                parent_id: contract::destination(
+                    p.value("parent").map(str::to_owned),
+                    p.has("top"),
+                    ("--parent ID", "--top"),
+                )?,
             })?)
         }
         "rename" => {
@@ -391,21 +418,27 @@ fn list_command(store: &TaskStore, verb: &str, words: &[String]) -> Result<Value
             let p = parse(
                 words,
                 &Spec {
-                    values: &["revision", "after"],
+                    values: &["revision", "after", "parent"],
                     repeated: &[],
-                    switches: &["first"],
+                    switches: &["first", "top"],
                     positionals: 1,
                 },
             )?;
-            item(store.reorder_list(ReorderList {
-                id: p.id().to_owned(),
-                expected_revision: p.revision()?,
-                after_id: contract::destination(
+            item(contract::reorder_list(
+                store,
+                p.id().to_owned(),
+                p.revision()?,
+                contract::destination(
                     p.value("after").map(str::to_owned),
                     p.has("first"),
                     ("--after ID", "--first"),
                 )?,
-            })?)
+                contract::list_parent(
+                    p.value("parent").map(str::to_owned),
+                    p.has("top"),
+                    ("--parent ID", "--top"),
+                )?,
+            )?)
         }
         "style" => item(store.set_list_style(style_change(words)?)?),
         "remove" | "restore" => {

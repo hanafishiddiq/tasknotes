@@ -62,6 +62,7 @@ fn a_trusted_client_completes_the_handshake_and_lists_the_tools() {
             "link_restore",
             "list_create",
             "list_list",
+            "list_move",
             "list_remove",
             "list_rename",
             "list_reorder",
@@ -91,7 +92,7 @@ fn a_trusted_client_completes_the_handshake_and_lists_the_tools() {
             "task_update",
         ]
     );
-    assert_eq!(tools.len(), 45);
+    assert_eq!(tools.len(), 46);
     for tool in &tools {
         assert_eq!(tool["inputSchema"]["type"], "object", "{tool}");
         assert!(tool["inputSchema"].get("oneOf").is_none(), "{tool}");

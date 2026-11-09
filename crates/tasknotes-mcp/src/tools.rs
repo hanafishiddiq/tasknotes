@@ -260,36 +260,6 @@ pub(crate) struct FolderPage {
     pub cursor: Option<String>,
 }
 
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct Name {
-    pub name: String,
-}
-
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct Reorder {
-    pub id: String,
-    /// The revision you last read.
-    pub revision: i64,
-    /// Put it directly after this sibling; give this or first.
-    #[serde(default)]
-    pub after_id: Option<String>,
-    /// Put it first among its siblings; give this or after_id.
-    #[serde(default)]
-    pub first: bool,
-}
-
-impl Reorder {
-    pub(crate) fn after(&self) -> Result<Option<String>, CliError> {
-        contract::destination(
-            self.after_id.clone(),
-            self.first,
-            ("after_id", "first: true"),
-        )
-    }
-}
-
 /// A List's or Note Folder's icon and colour; the core checks the names.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

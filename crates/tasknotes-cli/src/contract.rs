@@ -20,7 +20,9 @@ use tasknotes_core::links::{LinkedNote, LinkedTask, NoteLink};
 use tasknotes_core::note_folders::{FolderParent, NoteFolder};
 use tasknotes_core::notes::{Note, NoteSummary};
 use tasknotes_core::removed::RemovedItem;
-use tasknotes_core::tasks::{List, ProgressEntry, Task, TaskError, TaskStore};
+use tasknotes_core::tasks::{
+    List, ListParent, PlaceList, ProgressEntry, ReorderList, Task, TaskError, TaskStore,
+};
 
 /// The version of this JSON contract, sent as `schema_version` in every
 /// envelope. Not the database schema (`tasknotes_core::tasks::SCHEMA_VERSION`).
@@ -114,6 +116,49 @@ pub fn folder_parent(
     destination(id, top, names).map(FolderParent::named)
 }
 
+/// The parent an interface names for a List, as for a folder.
+pub fn list_parent(
+    id: Option<String>,
+    top: bool,
+    names: (&str, &str),
+) -> Result<ListParent, CliError> {
+    if id.is_none() && !top {
+        return Ok(ListParent::Current);
+    }
+    destination(id, top, names).map(ListParent::named)
+}
+
+/// Puts a List after a sibling, or first: under the parent it has, or, when
+/// the caller names one, under that parent in the same step. The one entry
+/// the CLI and MCP share.
+pub fn reorder_list(
+    store: &TaskStore,
+    id: String,
+    expected_revision: i64,
+    after_id: Option<String>,
+    parent: ListParent,
+) -> Result<List, CliError> {
+    Ok(match parent {
+        ListParent::Current => store.reorder_list(ReorderList {
+            id,
+            expected_revision,
+            after_id,
+        })?,
+        ListParent::Top => store.place_list(PlaceList {
+            id,
+            expected_revision,
+            parent_id: None,
+            after_id,
+        })?,
+        ListParent::List(parent_id) => store.place_list(PlaceList {
+            id,
+            expected_revision,
+            parent_id: Some(parent_id),
+            after_id,
+        })?,
+    })
+}
+
 pub fn success_item(item: Value) -> Value {
     json!({"schema_version": CONTRACT_VERSION, "ok": true, "item": item})
 }
@@ -172,11 +217,13 @@ pub fn task(task: &Task) -> Value {
 pub fn list(list: &List) -> Value {
     json!({
         "id": list.id,
+        "parent_id": list.parent_id,
         "name": list.name,
         "revision": list.revision,
         "created_at": list.created_at,
         "updated_at": list.updated_at,
         "removed": list.removed,
+        "has_children": list.has_children,
         "icon": list.style.icon,
         "color": list.style.color,
     })
