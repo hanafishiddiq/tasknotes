@@ -586,6 +586,10 @@ fn back_to_v17(db: &Path) {
          ALTER TABLE tasks DROP COLUMN wont_do;
          ALTER TABLE progress_entries DROP COLUMN previous_wont_do;
          ALTER TABLE progress_entries DROP COLUMN wont_do;
+         ALTER TABLE lists DROP COLUMN icon;
+         ALTER TABLE lists DROP COLUMN color;
+         ALTER TABLE note_folders DROP COLUMN icon;
+         ALTER TABLE note_folders DROP COLUMN color;
          PRAGMA user_version = 17;",
     )
     .unwrap();
@@ -621,7 +625,7 @@ fn upgrading_from_v17_leaves_every_task_and_entry_not_wont_do_and_changes_nothin
     let before = snapshot(&Connection::open(&db).unwrap());
 
     let store = store_at(&db);
-    assert_eq!(SCHEMA_VERSION, 18);
+    assert_eq!(SCHEMA_VERSION, 19);
     for id in [&finished.id, &open.id] {
         assert!(!store.get_task(id).unwrap().unwrap().wont_do);
         for entry in store.list_progress_entries(id, 50, None).unwrap().items {

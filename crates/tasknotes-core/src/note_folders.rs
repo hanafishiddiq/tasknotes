@@ -8,6 +8,7 @@ use uuid::Uuid;
 use crate::audit::AuditAction;
 use crate::manual_order::{self, Siblings};
 use crate::removed::SetRemoved;
+use crate::style::Style;
 use crate::tasks::{TaskError, TaskStore, current_millis};
 
 /// A top-level folder is level 1.
@@ -29,6 +30,9 @@ pub struct NoteFolder {
     pub has_children: bool,
     /// In Removed (ADR-0002); its subfolders and Notes are hidden with it.
     pub removed: bool,
+    /// Its icon and colour; serialised as top-level `icon` and `color`.
+    #[serde(flatten)]
+    pub style: Style,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -160,7 +164,9 @@ fn name_fold(name: &str) -> String {
 
 const FOLDER_COLUMNS: &str = "f.id, f.parent_id, f.name, f.revision, f.created_at, f.updated_at,
     EXISTS(SELECT 1 FROM note_folders c WHERE coalesce(c.parent_id, '') = f.id
-      AND c.removed_at IS NULL), f.removed_at";
+      AND c.removed_at IS NULL), f.removed_at, f.icon, f.color";
+/// Where the first column a query selects after `FOLDER_COLUMNS` sits.
+const FIRST_EXTRA_FOLDER_COLUMN: usize = 10;
 
 fn read_folder(row: &Row<'_>) -> rusqlite::Result<NoteFolder> {
     Ok(NoteFolder {
@@ -172,10 +178,11 @@ fn read_folder(row: &Row<'_>) -> rusqlite::Result<NoteFolder> {
         updated_at: row.get(5)?,
         has_children: row.get(6)?,
         removed: row.get::<_, Option<i64>>(7)?.is_some(),
+        style: Style::read(row, 8)?,
     })
 }
 
-fn get_folder(conn: &Connection, id: &str) -> Result<Option<NoteFolder>, TaskError> {
+pub(crate) fn get_folder(conn: &Connection, id: &str) -> Result<Option<NoteFolder>, TaskError> {
     if Uuid::parse_str(id).is_err() {
         return Ok(None);
     }
@@ -263,7 +270,7 @@ pub(crate) fn require_folder(conn: &Connection, id: &str) -> Result<(), TaskErro
 }
 
 /// The folder as stored, provided nobody changed it since `expected_revision`.
-fn current_folder(
+pub(crate) fn current_folder(
     conn: &Connection,
     id: &str,
     expected_revision: i64,
@@ -515,7 +522,7 @@ impl TaskStore {
         let mut positions = Vec::new();
         while let Some(row) = rows.next()? {
             items.push(read_folder(row)?);
-            positions.push(row.get::<_, i64>(8)?);
+            positions.push(row.get::<_, i64>(FIRST_EXTRA_FOLDER_COLUMN)?);
         }
         let next_cursor = if items.len() > limit as usize {
             items.pop();

@@ -18,6 +18,19 @@
   --orange: #ffa53d;
   --focus: rgba(255, 214, 10, 0.7);
   --selection: rgba(255, 214, 10, 0.3);
+  /* The twelve List and Note Folder colours (style.json keys), each 3:1 or more on every sidebar fill. */
+  --style-red: #ff7b72;
+  --style-orange: #ffa13d;
+  --style-yellow: #ffd60a;
+  --style-green: #32d74b;
+  --style-mint: #66e0d6;
+  --style-teal: #5ac8de;
+  --style-cyan: #70d7ff;
+  --style-blue: #6cb4ff;
+  --style-indigo: #a5a4ff;
+  --style-purple: #d98cf5;
+  --style-pink: #ff85ad;
+  --style-brown: #c9a882;
   color-scheme: dark;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   font-size: 13px;
@@ -48,6 +61,18 @@
   --orange: #b45200;
   --focus: #8a6400;
   --selection: rgba(230, 175, 0, 0.28);
+  --style-red: #c4201a;
+  --style-orange: #a84b00;
+  --style-yellow: #8a6700;
+  --style-green: #1f7a33;
+  --style-mint: #0b7570;
+  --style-teal: #0a7085;
+  --style-cyan: #0a6a96;
+  --style-blue: #1d5fd6;
+  --style-indigo: #4b45c4;
+  --style-purple: #8a3fb0;
+  --style-pink: #c0245a;
+  --style-brown: #7a5c3d;
   color-scheme: light;
 }
 * {
@@ -290,6 +315,99 @@ body.sidebar-resizing * {
 .folder-action:hover:not(:disabled) {
   color: var(--text);
   background: var(--hover);
+}
+/* Icon and colour picker: inline under its row, on the sidebar's own fill. */
+.style-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 2px 0 6px;
+  padding: 8px;
+  border: 1px solid var(--sep);
+  border-radius: 8px;
+  background: var(--sidebar);
+}
+.style-picker-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 2px;
+  color: var(--text);
+}
+.style-picker-preview svg {
+  flex: none;
+  color: var(--accent);
+}
+/*
+ * At most --columns a row; never a cell under 22px, so a narrow sidebar wraps
+ * rather than clipping (StylePicker's arrow keys follow the row it lays out).
+ */
+.style-swatches,
+.style-icons {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(max(22px, calc((100% - (var(--columns) - 1) * 2px) / var(--columns))), 1fr));
+  gap: 2px;
+}
+.style-icons {
+  max-height: 156px;
+  overflow-y: auto;
+  scrollbar-color: var(--side-selected) transparent;
+}
+.style-swatches button,
+.style-icons button {
+  display: grid;
+  place-items: center;
+  height: 24px;
+  border-radius: 5px;
+}
+.style-swatches button:hover:not([aria-disabled="true"]),
+.style-icons button:hover:not([aria-disabled="true"]) {
+  background: var(--side-hover);
+}
+.style-swatches button[aria-checked="true"],
+.style-icons button[aria-checked="true"] {
+  background: var(--side-selected);
+}
+.style-icons button svg {
+  color: var(--text-2);
+}
+.style-swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+}
+.style-swatches button[aria-checked="true"] .style-swatch {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}
+.style-swatch--none {
+  border: 1.5px solid var(--text-2);
+}
+.style-search {
+  height: 26px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--field);
+  color: var(--text);
+}
+.style-search::placeholder {
+  color: var(--text-2);
+}
+.style-empty {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.style-picker-actions {
+  display: flex;
+  gap: 6px;
+}
+/* Saving: nothing is disabled (focus stays on Save), it only stops answering. */
+.style-picker[aria-busy="true"] [aria-disabled="true"],
+.style-picker[aria-busy="true"] .style-search {
+  cursor: progress;
 }
 .folder-row--removed {
   height: 28px;

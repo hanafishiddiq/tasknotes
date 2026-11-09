@@ -1,4 +1,5 @@
 import { invoke } from "./invoke";
+import type { Style } from "./style";
 
 export interface Note {
   id: string;
@@ -49,6 +50,10 @@ export interface NoteFolder {
   createdAt: number;
   updatedAt: number;
   hasChildren: boolean;
+  /** Lucide icon name; null (or absent) is the default folder icon. */
+  icon?: string | null;
+  /** One of the twelve colour keys; null (or absent) is the accent. */
+  color?: string | null;
 }
 
 export interface NoteFolderPage {
@@ -117,6 +122,13 @@ export const noteApi = {
   },
 
   /** Puts the folder under `parentId`, directly after `afterId` or first when it is null. */
+  /** Sets both the icon and the colour; null clears one to the default look. */
+  styleFolder(folder: NoteFolder, style: Style): Promise<NoteFolder> {
+    return invoke("set_note_folder_style", {
+      input: { id: folder.id, expectedRevision: folder.revision, ...style },
+    });
+  },
+
   placeFolder(folder: NoteFolder, parentId: string | null, afterId: string | null): Promise<NoteFolder> {
     return invoke("place_note_folder", {
       input: { id: folder.id, expectedRevision: folder.revision, parentId, afterId },

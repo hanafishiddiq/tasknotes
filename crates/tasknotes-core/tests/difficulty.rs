@@ -300,8 +300,10 @@ fn back_to_v16(db: &Path) {
     conn.execute_batch(
         "DROP INDEX tasks_status_difficulty_order;
          ALTER TABLE tasks DROP COLUMN difficulty;
-             ALTER TABLE tasks DROP COLUMN wont_do_from; ALTER TABLE tasks DROP COLUMN wont_do; ALTER TABLE progress_entries DROP COLUMN previous_wont_do;
-             ALTER TABLE progress_entries DROP COLUMN wont_do;
+         ALTER TABLE lists DROP COLUMN icon; ALTER TABLE lists DROP COLUMN color;
+         ALTER TABLE note_folders DROP COLUMN icon; ALTER TABLE note_folders DROP COLUMN color;
+         ALTER TABLE tasks DROP COLUMN wont_do_from; ALTER TABLE tasks DROP COLUMN wont_do; ALTER TABLE progress_entries DROP COLUMN previous_wont_do;
+         ALTER TABLE progress_entries DROP COLUMN wont_do;
          PRAGMA user_version = 16;",
     )
     .unwrap();

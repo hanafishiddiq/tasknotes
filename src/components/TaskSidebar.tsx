@@ -1,8 +1,11 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import {
-  Check, ClipboardCheck, Folder, Inbox, ListChecks, Moon, NotebookText, Pencil,
+  Check, ClipboardCheck, Inbox, ListChecks, Moon, NotebookText, Palette, Pencil,
   Plus, Settings, Sun, Trash2, X,
 } from "lucide-react";
+import StyleIcon from "./StyleIcon";
+import StylePicker from "./StylePicker";
+import type { Style } from "../lib/style";
 import type { TaskList, TaskView } from "../lib/task-api";
 import { alreadyThere, anchorFor, useRowDrag, type RowDrop } from "../lib/use-row-drag";
 import type { Theme } from "../lib/use-theme";
@@ -44,18 +47,21 @@ interface TaskSidebarProps {
   onRenameList: (list: TaskList, name: string) => Promise<boolean>;
   /** Puts the List directly after another, or first when `afterId` is null; false when refused. */
   onReorderList: (list: TaskList, afterId: string | null) => Promise<boolean>;
+  /** Sets the List's icon and colour; false when refused. */
+  onStyleList: (list: TaskList, style: Style) => Promise<boolean>;
   onRemoveList: (list: TaskList) => Promise<void>;
   onLoadMoreLists: () => Promise<void>;
 }
 
 export default function TaskSidebar({
   view, notesActive, removedActive, onOpenRemoved, pendingApprovals, approvalsActive, onOpenApprovals, settingsActive, onOpenSettings, allNotesCurrent, noteFolders, resizer, lists, listError, shownCount, hasMoreTasks, hasMoreLists, busy,
-  theme, onToggleTheme, onNavigate, onOpenNotes, onCreateList, onRenameList, onReorderList, onRemoveList,
+  theme, onToggleTheme, onNavigate, onOpenNotes, onCreateList, onRenameList, onReorderList, onStyleList, onRemoveList,
   onLoadMoreLists,
 }: TaskSidebarProps) {
   const [name, setName] = useState("");
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
+  const [styling, setStyling] = useState<string | null>(null);
   const listsNav = useRef<HTMLElement>(null);
   // The List whose rename just closed, taking its focused field along: its row gets focus instead.
   const renamed = useRef<string | null>(null);
@@ -69,6 +75,25 @@ export default function TaskSidebar({
   function closeRename() {
     renamed.current = renaming;
     setRenaming(null);
+  }
+
+  // The List whose picker just closed: its row gets focus back.
+  const styled = useRef<string | null>(null);
+  useEffect(() => {
+    if (styling || !styled.current) return;
+    listsNav.current?.querySelector<HTMLElement>(`[data-list-id="${CSS.escape(styled.current)}"]`)?.focus();
+    styled.current = null;
+  }, [styling]);
+
+  function closeStyle() {
+    styled.current = styling;
+    setStyling(null);
+  }
+
+  async function saveStyle(list: TaskList, style: Style) {
+    const saved = await onStyleList(list, style);
+    if (saved) closeStyle();
+    return saved;
   }
 
   const activeLists = lists.filter((list) => !list.removed);
@@ -189,11 +214,12 @@ export default function TaskSidebar({
       {listError && <p className="sidebar-error" role="status">{listError}</p>}
       <nav ref={listsNav} aria-label="Lists" className="sidebar-nav">
         {activeLists.map((list) => (
-          <div className="folder-row" key={list.id} data-drag-row={list.id}
+          <Fragment key={list.id}>
+          <div className="folder-row" data-drag-row={list.id}
             data-dragging={drag.dragging === list.id || undefined} data-drop-edge={dropEdge(list.id)}>
             {renaming === list.id ? (
               <form className="folder-form" onSubmit={(event) => void rename(event, list)}>
-                <Folder size={17} aria-hidden="true" />
+                <StyleIcon icon={list.icon} color={list.color} />
                 <input aria-label="Rename list" value={renameDraft}
                   maxLength={100} disabled={busy} autoFocus
                   onChange={(event) => setRenameDraft(event.target.value)} />
@@ -215,10 +241,15 @@ export default function TaskSidebar({
                   onMouseDown={(event) => drag.start(event, list.id)}
                   onKeyDown={(event) => moveWithKeys(event, list)}
                   onClick={() => onNavigate({ kind: "list", listId: list.id })}>
-                  <Folder size={17} aria-hidden="true" /><span className="folder-name">{list.name}</span>
+                  <StyleIcon icon={list.icon} color={list.color} /><span className="folder-name">{list.name}</span>
                   {count({ kind: "list", listId: list.id })}
                 </button>
                 <span className="folder-actions">
+                  <button type="button" className="folder-action" disabled={busy}
+                    aria-label={`Icon and colour for ${list.name}`} aria-expanded={styling === list.id}
+                    onClick={() => setStyling(styling === list.id ? null : list.id)}>
+                    <Palette size={13} />
+                  </button>
                   <button type="button" className="folder-action" disabled={busy}
                     aria-label={`Rename ${list.name}`}
                     onClick={() => { setRenaming(list.id); setRenameDraft(list.name); }}>
@@ -232,6 +263,11 @@ export default function TaskSidebar({
               </>
             )}
           </div>
+          {styling === list.id && (
+            <StylePicker name={list.name} style={{ icon: list.icon ?? null, color: list.color ?? null }}
+              busy={busy} onSave={(style) => saveStyle(list, style)} onCancel={closeStyle} />
+          )}
+          </Fragment>
         ))}
         {hasMoreLists && (
           <button className="sidebar-link" type="button" disabled={busy}

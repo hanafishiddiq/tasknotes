@@ -1,4 +1,5 @@
 import { invoke } from "./invoke";
+import type { Style } from "./style";
 
 export type WorkStatus = "ready" | "in_progress" | "completed";
 export type Priority = "very_low" | "low" | "medium" | "high" | "very_high";
@@ -14,6 +15,10 @@ export interface TaskList {
   createdAt: number;
   updatedAt: number;
   removed: boolean;
+  /** Lucide icon name; null (or absent) is the default folder icon. */
+  icon?: string | null;
+  /** One of the twelve colour keys; null (or absent) is the accent. */
+  color?: string | null;
 }
 
 export interface TaskListPage {
@@ -210,6 +215,11 @@ export const taskApi = {
   /** Puts the List directly after `afterId`, or first when it is null. */
   reorderList(input: ListMutation & { afterId: string | null }): Promise<TaskList> {
     return invoke("reorder_list", { input });
+  },
+
+  /** Sets both the icon and the colour; null clears one to the default look. */
+  setListStyle(input: ListMutation & Style): Promise<TaskList> {
+    return invoke("set_list_style", { input });
   },
 
   setListRemoved(input: ListMutation & { removed: boolean }): Promise<TaskList> {

@@ -172,8 +172,8 @@ fn stores_opening_at_the_same_moment_all_succeed() {
                  ALTER TABLE audit_entries DROP COLUMN requested_by;
                  DROP INDEX lists_manual_order; ALTER TABLE lists DROP COLUMN position;
              CREATE INDEX lists_created_order ON lists(created_at DESC, id DESC);
-             DROP INDEX note_folders_manual_order; ALTER TABLE note_folders DROP COLUMN position;
-             DROP INDEX tasks_status_difficulty_order; ALTER TABLE tasks DROP COLUMN difficulty;
+             DROP INDEX note_folders_manual_order; ALTER TABLE note_folders DROP COLUMN position; ALTER TABLE note_folders DROP COLUMN icon; ALTER TABLE note_folders DROP COLUMN color;
+             DROP INDEX tasks_status_difficulty_order; ALTER TABLE tasks DROP COLUMN difficulty; ALTER TABLE lists DROP COLUMN icon; ALTER TABLE lists DROP COLUMN color;
              ALTER TABLE tasks DROP COLUMN wont_do_from; ALTER TABLE tasks DROP COLUMN wont_do; ALTER TABLE progress_entries DROP COLUMN previous_wont_do;
              ALTER TABLE progress_entries DROP COLUMN wont_do;
              PRAGMA user_version = 13;",

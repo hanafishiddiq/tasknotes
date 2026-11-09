@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from "react";
 import {
-  Check, ChevronDown, ChevronRight, Folder, FolderInput, FolderPlus, Pencil, Plus, Trash2, X,
+  Check, ChevronDown, ChevronRight, FolderInput, FolderPlus, Palette, Pencil, Plus, Trash2, X,
 } from "lucide-react";
+import StyleIcon from "./StyleIcon";
+import StylePicker from "./StylePicker";
 import type { NoteFolder } from "../lib/note-api";
 import type { NoteFolders } from "../lib/use-note-folders";
 import { alreadyThere, anchorFor, useRowDrag, type RowDrop } from "../lib/use-row-drag";
 
 /** Which inline control is open on a folder row, if any. */
-type Editing = { kind: "create" | "rename" | "move"; id: string } | null;
+type Editing = { kind: "create" | "rename" | "move" | "style"; id: string } | null;
 
 const TOP_LEVEL = "";
 
@@ -131,7 +133,7 @@ export default function NoteFolderTree({ folders, currentId, disabled, onOpen, o
     setEditing(null);
   }
 
-  function start(kind: "create" | "rename" | "move", folder: NoteFolder) {
+  function start(kind: "create" | "rename" | "move" | "style", folder: NoteFolder) {
     setEditing({ kind, id: folder.id });
     setDraft(kind === "rename" ? folder.name : "");
   }
@@ -223,9 +225,14 @@ export default function NoteFolderTree({ folders, currentId, disabled, onOpen, o
                       aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown Alt+ArrowLeft Alt+ArrowRight"
                       onMouseDown={(event) => drag.start(event, folder.id)}
                       onClick={() => onOpen(folder)}>
-                      <Folder size={17} aria-hidden="true" /><span className="folder-name">{folder.name}</span>
+                      <StyleIcon icon={folder.icon} color={folder.color} /><span className="folder-name">{folder.name}</span>
                     </button>
                     <span className="folder-actions">
+                      <button type="button" className="folder-action" disabled={busy}
+                        aria-label={`Icon and colour for ${folder.name}`} aria-expanded={edit === "style"}
+                        onClick={() => (edit === "style" ? closeForm() : start("style", folder))}>
+                        <Palette size={13} />
+                      </button>
                       <button type="button" className="folder-action" disabled={busy}
                         aria-label={`New folder in ${folder.name}`} onClick={() => start("create", folder)}>
                         <FolderPlus size={13} />
@@ -256,6 +263,16 @@ export default function NoteFolderTree({ folders, currentId, disabled, onOpen, o
                   <button type="button" className="folder-action" aria-label="Cancel new folder"
                     onClick={closeForm}><X size={14} /></button>
                 </form>
+              )}
+              {edit === "style" && (
+                <StylePicker name={folder.name}
+                  style={{ icon: folder.icon ?? null, color: folder.color ?? null }} busy={busy}
+                  onSave={async (style) => {
+                    const saved = await folders.style(folder, style);
+                    if (saved) closeForm();
+                    return saved;
+                  }}
+                  onCancel={closeForm} />
               )}
               {edit === "move" && (
                 <div className="folder-form folder-form--nested" style={{ marginLeft: (depth + 1) * 14 }}>

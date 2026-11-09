@@ -152,6 +152,18 @@ pub fn tools() -> Vec<ToolDef> {
             },
         ),
         tool(
+            "list_style",
+            Kind::Write,
+            "Set or clear a List's icon and colour, shown in the person's sidebar; fields left out keep their value, null clears to the default look. Names come from style_options.",
+            |c, a: Style| item(contract::list(&c.store.set_list_style(a.change()?)?)),
+        ),
+        tool(
+            "style_options",
+            Kind::Read,
+            "The icon names and the twelve colour names a List or Note Folder may take.",
+            |_, _: NoArguments| item(contract::to_value(tasknotes_core::style::options())),
+        ),
+        tool(
             "list_remove",
             Kind::Write,
             "Move a List, and so the Tasks in it, to Removed (reversible with list_restore).",

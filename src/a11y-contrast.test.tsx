@@ -50,6 +50,11 @@ const TEXT: Record<string, Placement> = {
   ".sidebar-link": { on: ["sidebar"] },
   ".sidebar-link:hover:not(:disabled)": { on: ["sidebar"] },
   ".folder-form select": { on: ["field"] },
+  // Icon and colour picker, inline in the sidebar
+  ".style-picker-preview": { on: ["sidebar"] },
+  ".style-search": { on: ["field"] },
+  ".style-search::placeholder": { on: ["field"] },
+  ".style-empty": { on: ["sidebar"] },
   // Toolbar, filters, capture
   ".toolbar-search input": { on: ["field"] },
   ".toolbar-search input::placeholder": { on: ["field"] },
@@ -210,6 +215,9 @@ const INDICATORS: { selector: string; property: string; means: string; place: Pl
   { selector: '.note-toolbar .icon-button[aria-pressed="true"]', property: "color", means: "pressed icon button", place: { on: ["bg"] } },
   { selector: ".folder-action", property: "color", means: "row icon button", place: { on: ["sidebar", "side-hover", "side-selected"] } },
   { selector: ".folder-action:hover:not(:disabled)", property: "color", means: "row icon button", place: { on: ["hover", "side-hover", "side-selected"] } },
+  { selector: ".style-icons button svg", property: "color", means: "icon choice", place: { on: ["sidebar", "side-hover", "side-selected"] } },
+  { selector: '.style-swatches button[aria-checked="true"] .style-swatch', property: "outline", means: "chosen colour ring", place: { on: ["side-selected"] } },
+  { selector: ".style-swatch--none", property: "border", means: "No colour swatch", place: { on: ["sidebar", "side-hover", "side-selected"] } },
   { selector: ".folder-disclosure", property: "color", means: "folder disclosure arrow", place: { on: ["sidebar"] } },
   { selector: "button.folder-disclosure:hover:not(:disabled)", property: "color", means: "folder disclosure arrow", place: { on: ["sidebar"] } },
   { selector: ".linked-unlink", property: "color", means: "unlink button", place: { on: ["bg", "hover"] } },
@@ -233,6 +241,7 @@ const NO_PAIR_NEEDED: Record<string, string> = {
   ".folder-form svg": "decorative icon beside its field",
   ".folder-form--new svg": "decorative icon beside its field",
   ".folder-form--nested svg": "decorative icon beside its field",
+  ".style-picker-preview svg": "decorative preview beside its name; each chosen colour is checked in style-picker.test",
   ".settings-choice svg": "decorative icon beside its label",
   ".note-hit svg": "decorative icon beside its title",
   ".linked-open svg": "decorative icon beside its title",
@@ -249,7 +258,7 @@ const NO_PAIR_NEEDED: Record<string, string> = {
 const DECORATIVE_LINES = [
   ".undo-bar", ".task-toast", ".sidebar", ".toolbar", ".settings-shortcut", ".settings-backup", ".palette", ".palette-field",
   ".removed-item", ".approval", ".task-slot + .task-slot .task-card::before", ".history-entry", ".linked-item",
-  ".note-list-pane", ".next-step-input", ".note-quote",
+  ".note-list-pane", ".next-step-input", ".note-quote", ".style-picker",
   // The sidebar's resize edge lights up under the pointer; its separator role and focus ring carry the meaning.
   ".sidebar-resizer:hover::after", "body.sidebar-resizing .sidebar-resizer::after",
 ];

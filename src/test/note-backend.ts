@@ -162,6 +162,17 @@ export class NoteBackend {
       this.folders.set(next.id, next);
       return this.withChildren(next);
     }
+    if (command === "set_note_folder_style") {
+      const input = args.input as { id: string; expectedRevision: number; icon: string | null; color: string | null };
+      const current = this.folders.get(input.id);
+      if (!current) throw "Folder not found";
+      if (current.revision !== input.expectedRevision) throw "This folder changed elsewhere; reload before saving";
+      const next: NoteFolder = {
+        ...current, icon: input.icon, color: input.color, revision: current.revision + 1, updatedAt: ++this.clock,
+      };
+      this.folders.set(next.id, next);
+      return this.withChildren(next);
+    }
     if (command === "place_note_folder") {
       const input = args.input as { id: string; expectedRevision: number; parentId: string | null; afterId: string | null };
       const current = this.folders.get(input.id);

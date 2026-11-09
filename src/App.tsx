@@ -47,6 +47,7 @@ import SoundSettings from "./components/SoundSettings";
 import CommandPalette, { type Command } from "./components/CommandPalette";
 import { buildCommands } from "./lib/app-commands";
 import { removedApi, type RemovedItem } from "./lib/removed-api";
+import type { Style } from "./lib/style";
 import "./App.css";
 
 // The rich-text editor loads only when Notes are first opened, keeping Task startup light.
@@ -585,6 +586,21 @@ export default function App() {
     }
   }
 
+  async function styleList(list: TaskList, style: Style): Promise<boolean> {
+    setBusyList(true);
+    setError(null);
+    try {
+      const updated = await taskApi.setListStyle({ id: list.id, expectedRevision: list.revision, ...style });
+      setLists((all) => all.map((item) => item.id === list.id ? updated : item));
+      return true;
+    } catch (reason) {
+      setError(errorMessage(reason));
+      return false;
+    } finally {
+      setBusyList(false);
+    }
+  }
+
   /**
    * Shows the new order at once; the sidebar stays usable, so focus stays on
    * the moved row. Resolves false when the core refused it.
@@ -1030,7 +1046,7 @@ export default function App() {
         theme={appearance.theme} onToggleTheme={appearance.toggle}
         settingsActive={workspace === "settings"} onOpenSettings={openSettings}
         onNavigate={navigate} onCreateList={createList} onRenameList={renameList}
-        onReorderList={reorderList}
+        onReorderList={reorderList} onStyleList={styleList}
         onRemoveList={(list) => setListRemoved(list, true)}
         onLoadMoreLists={loadMoreLists}
         resizer={<SidebarResizer width={sidebar.width} max={sidebar.max}
