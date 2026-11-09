@@ -6,14 +6,14 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** not started
+**Implementation:** in progress — Draft PR
 
 ## Acceptance criteria
 
-- [ ] A toast "Task added · Click to edit" appears bottom-right after any Task is created in the window, fading in and out, about 6 s, paused while hovered; no sound.
-- [ ] Clicking it scrolls to the Task, opens it and flashes it yellow briefly; respects Reduce Motion.
-- [ ] Adding several Tasks in a row keeps one toast pointing to the latest.
-- [ ] The toast never moves the list by itself and never steals keyboard focus; it is announced politely to screen readers.
+- [x] A toast "Task added · Click to edit" appears bottom-right after any Task is created in the window, fading in and out, about 6 s, paused while hovered; no sound. — `src/new-task-toast.test.tsx` (fake timers: leaves at 6000 ms + 120 ms fade; hover and focus hold it and resume with the time left). Every UI path (capture row, ⌘N, palette, Quick Capture) ends in `createTask`, which calls `added()`; the toast plays nothing (the existing create sound is unchanged).
+- [x] Clicking it scrolls to the Task, opens it and flashes it yellow briefly; respects Reduce Motion. — App test: Task details open, `.task-slot--flash`, scroll target > 0 and never `smooth`, row focused; stylesheet test: fades only under `no-preference`, outline highlight outside any motion query. A Task the view hides opens on its own ("Showing the Task you just added").
+- [x] Adding several Tasks in a row keeps one toast pointing to the latest. — unit and App tests: one toast, click opens the newest, timer restarts.
+- [x] The toast never moves the list by itself and never steals keyboard focus; it is announced politely to screen readers. — App test: after adding, scrollTop stays 0, focus stays in the New task field; the toast sits in a persistent `aria-live="polite"` region positioned over the rows (absolute, so no layout shift). Native visual check still open.
 
 ## Delivery guardrails
 
