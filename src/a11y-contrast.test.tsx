@@ -37,6 +37,8 @@ const TEXT: Record<string, Placement> = {
   // Shell and sidebar
   ".undo-bar": { on: ["hover"] },
   ".undo-bar--error": { on: ["hover"] },
+  ".task-toast": { on: ["hover"] },
+  ".task-toast-action": { on: ["hover"] },
   ".sidebar-heading": { on: ["sidebar"] },
   ".folder": { on: ["sidebar", "hover", "side-selected"] },
   ".folder-count": { on: ["sidebar", "hover"] },
@@ -195,6 +197,7 @@ const INDICATORS: { selector: string; property: string; means: string; place: Pl
   { selector: ".task-card--expanded .task-row .task-check", property: "border-color", means: "ring on the open row", place: SELECTED },
   { selector: ".task-card--expanded .task-row .task-check--in_progress::after", property: "background", means: "dot on the open row", place: SELECTED },
   { selector: ".task-card--expanded .task-row .task-check--completed", property: "background", means: "disc on the open row", place: { on: ["row-selected"] } },
+  { selector: ".task-slot--flash", property: "outline", means: "Task opened from the new Task toast", place: { on: ["bg", "hover"] } },
   { selector: ".capture-ring", property: "border", means: "New task ring", place: { on: ["bg", "hover"] } },
   { selector: ".note-check::before", property: "border", means: "open checklist circle", place: { on: ["bg"] } },
   { selector: ".note-check--done::before", property: "background", means: "done checklist circle", place: { on: ["bg"] } },
@@ -244,7 +247,7 @@ const NO_PAIR_NEEDED: Record<string, string> = {
 
 /** Lines and fills that separate or decorate and say nothing by themselves. */
 const DECORATIVE_LINES = [
-  ".undo-bar", ".sidebar", ".toolbar", ".settings-shortcut", ".settings-backup", ".palette", ".palette-field",
+  ".undo-bar", ".task-toast", ".sidebar", ".toolbar", ".settings-shortcut", ".settings-backup", ".palette", ".palette-field",
   ".removed-item", ".approval", ".task-slot + .task-slot .task-card::before", ".history-entry", ".linked-item",
   ".note-list-pane", ".next-step-input", ".note-quote",
 ];

@@ -12,6 +12,7 @@ import { PRIORITY_ORDER, PRIORITY_VIEW, STATUS_ORDER, STATUS_VIEW } from "./lib/
 import TaskRow from "./components/TaskRow";
 import TaskSidebar from "./components/TaskSidebar";
 import VirtualTaskList from "./components/VirtualTaskList";
+import NewTaskToast from "./components/NewTaskToast";
 import { useLocalCalendarDay } from "./lib/use-local-calendar-day";
 import { useTheme } from "./lib/use-theme";
 import { useSound } from "./lib/sound/use-sound";
@@ -19,6 +20,7 @@ import { useShortcuts } from "./lib/use-shortcuts";
 import { useTaskDrafts } from "./lib/use-task-drafts";
 import { flushSync } from "react-dom";
 import { useUndo } from "./lib/use-undo";
+import { useNewTaskToast } from "./lib/use-new-task-toast";
 import { errorMessage, isListRemoved } from "./lib/error-message";
 import { listenForQuit } from "./lib/quit";
 import { listenForQuickCapture, shellApi } from "./lib/shell-api";
@@ -59,6 +61,21 @@ interface TaskQueryNow {
   filters: TaskFilters;
 }
 
+/** Why one Task shows on its own: opened from a Note it is linked to, or from the new Task toast. */
+type AloneReason = "linked" | "added";
+
+/** What the Task view says while, and once, a Task shows on its own, by reason. */
+const ALONE_BANNER: Record<AloneReason, { opening: string; openingText: string; shown: string; shownText: string }> = {
+  linked: {
+    opening: "Opening linked Task", openingText: "Opening the linked Task once the current change is saved…",
+    shown: "Linked Task", shownText: "Showing one Task linked to a Note",
+  },
+  added: {
+    opening: "Opening added Task", openingText: "Opening the Task you just added once the current change is saved…",
+    shown: "Added Task", shownText: "Showing the Task you just added",
+  },
+};
+
 /** The first page of Lists again, and more until at least `keep`, so Lists already loaded stay. */
 async function readListsAgain(keep: number): Promise<TaskListPage> {
   let page = await taskApi.lists();
@@ -88,6 +105,8 @@ export default function App() {
   const [removedKey, setRemovedKey] = useState(0);
   // Recent moves to Removed, which Undo (or ⌘Z) brings back newest first.
   const undo = useUndo();
+  // "Task added · Click to edit" after a Task is created here; view state only.
+  const newTaskToast = useNewTaskToast();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const paletteReturn = useRef<HTMLElement | null>(null);
   // A field to focus once the Task view is showing (⌘N, ⌘F, palette).
@@ -104,8 +123,10 @@ export default function App() {
   const [noteHits, setNoteHits] = useState<NotePage | null>(null);
   const [noteHitsFailed, setNoteHitsFailed] = useState(false);
   const [notesRequest, setNotesRequest] = useState<NotesRequest | null>(null);
-  // A linked Task asked for while the Task view was busy.
-  const [pendingLinkedTask, setPendingLinkedTask] = useState<string | null>(null);
+  // A Task asked to show alone while the Task view was busy, and why.
+  const [pendingAlone, setPendingAlone] = useState<{ taskId: string; reason: AloneReason } | null>(null);
+  // Why one Task shows alone: opened from a Note, or from the new Task toast.
+  const [shownAlone, setShownAlone] = useState<AloneReason>("linked");
   const [lists, setLists] = useState<TaskList[]>([]);
   const [listCursor, setListCursor] = useState<string | null>(null);
   const [busyList, setBusyList] = useState(false);
@@ -250,9 +271,17 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (pendingLinkedTask && !busy) openLinkedTask(pendingLinkedTask);
-    // openLinkedTask reads the same busy flag listed here.
-  }, [pendingLinkedTask, busy]);
+    if (pendingAlone && !busy) showTaskAlone(pendingAlone.taskId, pendingAlone.reason);
+    // showTaskAlone reads the same busy flag listed here.
+  }, [pendingAlone, busy]);
+
+  // A scroll the toast asked for gets one try. A view that finished loading without
+  // its Task (moved to Removed, say) has no list to try it, so drop it here, or a
+  // later Undo or refresh would move the list by itself.
+  const { reveal, clearReveal } = newTaskToast;
+  useEffect(() => {
+    if (reveal && !loading && !tasks.some((task) => task.id === reveal.taskId)) clearReveal();
+  }, [reveal, loading, tasks, clearReveal]);
 
   useEffect(() => {
     if (!focusRequest || workspace !== "tasks") return;
@@ -271,6 +300,7 @@ export default function App() {
 
   function openNotes(scope: NoteScope = ALL_NOTES) {
     undo.hideNotice();
+    newTaskToast.clearReveal();
     setNotesOpened(true);
     setWorkspace("notes");
     setNoteScope(scope);
@@ -284,37 +314,54 @@ export default function App() {
     openNotes(ALL_NOTES);
   }
 
-  /** Shows one Task, expanded, as when it is opened from a Note it is linked to. */
-  function openLinkedTask(taskId: string) {
+  /** Shows one Task on its own and expanded, under the banner for `reason`. */
+  function showTaskAlone(taskId: string, reason: AloneReason) {
     if (busy) {
-      // Opened once the Task view has finished its current change.
-      setPendingLinkedTask(taskId);
+      // Opened once the Task view has finished its current change, for the same reason.
+      setPendingAlone({ taskId, reason });
       setWorkspace("tasks");
       return;
     }
-    setPendingLinkedTask(null);
+    setPendingAlone(null);
+    setShownAlone(reason);
+    // Its banner is the only one: applyFilters clears the filter notice only when a
+    // filter changes, and this view must never show both.
+    setCreatedHidden(false);
     navigate({ kind: "all" });
     setSearchDraft("");
     setTagDraft("");
     applyFilters({ ...NO_FILTERS, taskId });
     setExpandedId(taskId);
+    // After navigate and applyFilters, which drop any earlier scroll request.
+    if (reason === "added") newTaskToast.revealTask(taskId);
+  }
+
+  /** The new Task toast was clicked: open the Task where it is, or on its own when this view hides it. */
+  function openNewTask(taskId: string) {
+    if (workspace === "tasks" && tasks.some((task) => task.id === taskId)) {
+      setExpandedId(taskId);
+      newTaskToast.revealTask(taskId);
+    } else showTaskAlone(taskId, "added");
   }
 
   function openSettings() {
     if (busy) return;
     undo.hideNotice();
+    newTaskToast.clearReveal();
     setWorkspace("settings");
   }
 
   function openRemoved() {
     if (busy) return;
     undo.hideNotice();
+    newTaskToast.clearReveal();
     setWorkspace("removed");
   }
 
   function openApprovals() {
     if (busy) return;
     undo.hideNotice();
+    newTaskToast.clearReveal();
     void approvals.refresh();
     setWorkspace("approvals");
   }
@@ -380,6 +427,7 @@ export default function App() {
     if (busy) return;
     setWorkspace("tasks");
     undo.hideNotice();
+    newTaskToast.clearReveal();
     if (next.kind === view.kind &&
         (next.kind !== "list" || (view.kind === "list" && next.listId === view.listId))) return;
     setTasks([]);
@@ -625,6 +673,7 @@ export default function App() {
         view.kind === "list" ? view.listId : undefined,
       );
       sound.play("create");
+      newTaskToast.added(created.id);
       const generation = ++requestGeneration.current;
       const { sort: latestSort, view: latestView, filters: latestFilters } = currentQuery.current;
       // Clear only after the actual write succeeds; retry must not create a
@@ -785,6 +834,7 @@ export default function App() {
     const saved = await commitTaskMutation(task, async () => (done.task = await removedApi.remove<Task>("task", task)));
     if (saved && done.task) {
       setExpandedId(null);
+      newTaskToast.forget(task.id);
       const removed = done.task;
       undo.push({
         key: `task:${removed.id}`, title: removed.title,
@@ -800,6 +850,7 @@ export default function App() {
 
   function changeSort(nextSort: SortMode) {
     if (sort === nextSort) return;
+    newTaskToast.clearReveal();
     currentQuery.current = { ...currentQuery.current, sort: nextSort };
     requestGeneration.current += 1;
     setError(null);
@@ -814,6 +865,7 @@ export default function App() {
   function applyFilters(next: TaskFilters) {
     if (sameFilters(next, currentQuery.current.filters)) return;
     setCreatedHidden(false);
+    newTaskToast.clearReveal();
     currentQuery.current = { ...currentQuery.current, filters: next };
     requestGeneration.current += 1;
     setError(null);
@@ -1104,16 +1156,16 @@ export default function App() {
               </div>
             )}
 
-            {pendingLinkedTask && (
-              <div role="status" aria-label="Opening linked Task" className="notice-banner">
+            {pendingAlone && (
+              <div role="status" aria-label={ALONE_BANNER[pendingAlone.reason].opening} className="notice-banner">
                 <LoaderCircle className="spin" size={14} aria-hidden="true" />
-                <span>Opening the linked Task once the current change is saved…</span>
+                <span>{ALONE_BANNER[pendingAlone.reason].openingText}</span>
               </div>
             )}
 
             {filters.taskId && (
-              <div role="status" aria-label="Linked Task" className="notice-banner">
-                <span>Showing one Task linked to a Note</span>
+              <div role="status" aria-label={ALONE_BANNER[shownAlone].shown} className="notice-banner">
+                <span>{ALONE_BANNER[shownAlone].shownText}</span>
                 <button className="button button-small" type="button" onClick={clearFilters}>
                   Show all tasks
                 </button>
@@ -1212,6 +1264,9 @@ export default function App() {
                     keepMounted={keepMounted}
                     expandedId={expandedId}
                     onCollapse={() => setExpandedId(null)}
+                    flashId={newTaskToast.flashId}
+                    reveal={newTaskToast.reveal}
+                    onRevealed={newTaskToast.clearReveal}
                     renderTask={(task) => (
                       <TaskRow
                         task={task}
@@ -1257,6 +1312,7 @@ export default function App() {
             </section>
           </div>
         </div>
+        <NewTaskToast toast={newTaskToast} onOpen={openNewTask} />
       </main>
       <SettingsView hidden={workspace !== "settings"} preference={appearance.preference}
         onPreference={appearance.setPreference}>
@@ -1271,7 +1327,8 @@ export default function App() {
           <NotesWorkspace hidden={workspace !== "notes"} scope={noteScope}
             scopeName={noteScope.kind === "folder"
               ? noteFolders.byId.get(noteScope.folderId)?.name ?? "Folder" : "Notes"}
-            folders={noteFolders.options} request={notesRequest} onOpenTask={openLinkedTask}
+            folders={noteFolders.options} request={notesRequest}
+            onOpenTask={(taskId) => showTaskAlone(taskId, "linked")}
             refreshKey={notesRefresh} onRemoved={noteRemoved}
             onScopeHidden={() => setNoteScope(ALL_NOTES)} />
         </Suspense>

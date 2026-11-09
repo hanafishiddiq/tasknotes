@@ -319,6 +319,9 @@ A 560px sheet on the sidebar gray, 72px from the top of the window, with a 1px h
 ### Undo Notice
 After anything moves to Removed, a flat bar in the window's last row (under the main column, beside the sidebar): hover-gray fill, hairline top, secondary text ""Title" moved to Removed" and a small Undo button. It stays in flow (never floats) and the bar leaves on the next navigation, but the last 10 moves to Removed stay undoable, newest first: ⌘Z outside a text field, or Undo in the ⌘K palette, takes back the newest even after moving between views.
 
+### New Task Toast
+After a Task is added in this window, "Task added · Click to edit" sits at the bottom-right of the Task view, above the Undo Notice's row so the two never overlap: a flat hover-gray box with a hairline edge and 8px radius, 12px primary text with "Click to edit" in accent text. It is the one thing that sits over the rows, because it must never move the list; it casts no shadow and does not slide, only fades in and out (120ms). It stays about 6 seconds, held while the pointer or keyboard focus is on it, never takes focus and is announced politely. Adding again replaces it, pointing at the newest Task. Clicking it scrolls the list to that Task (instantly), opens it, focuses its row and flashes it for 1.5 s with a 2px accent outline over the selection tint; under Reduce Motion the flash appears and leaves without fading. A Task the current view hides opens on its own under a notice banner, "Showing the Task you just added", with "Show all tasks". View state only; nothing is stored.
+
 ### Virtualized Task Rows
 Only rows near the visible part of the list are in the page; spacers stand in for the rest, so scrolling, row heights and group headings look exactly as if every row were there. The space above a later status group belongs to its heading (`task-group-heading--later`) so it is measured. A closed row still holding typed text says "Unsaved edits" in italic secondary gray in its metadata.
 
@@ -334,7 +337,7 @@ A quiet list, styled like the progress history: a Label Strong heading ("Notes" 
 - **Do** show priority as icon plus label, deadlines as words ("Overdue", "Due today", "Due Oct 22"), tags as `#name`.
 - **Do** build list hierarchy with bold titles and the three text grays at 13px, with tabular numerals for counts and percentages.
 - **Do** design every new surface in both appearances, starting from dark.
-- **Do** keep motion to 120ms background fades, a 120ms fade-in of an opening Task page and a 240ms progress fill, and drop them under Reduce Motion.
+- **Do** keep motion to 120ms background fades, a 120ms fade-in of an opening Task page or the new Task toast, a 240ms progress fill and the 240ms fade of the new Task flash, and drop them under Reduce Motion.
 
 ### Don't:
 - **Don't** add hero sections, cards, gradients or filled badges; this is the SaaS-dashboard look the owner rejected.

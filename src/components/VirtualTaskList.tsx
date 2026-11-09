@@ -27,6 +27,14 @@ interface VirtualTaskListProps {
   /** The open Task, which Escape closes. */
   expandedId: string | null;
   onCollapse: () => void;
+  /** A Task flashing yellow for a moment (opened from the new Task toast). */
+  flashId?: string | null;
+  /**
+   * A Task to scroll to and focus, when the person asked for it. One try only: hit or
+   * miss, `onRevealed` drops it, so a Task arriving later never moves the list.
+   */
+  reveal?: { taskId: string } | null;
+  onRevealed?: () => void;
 }
 
 /**
@@ -74,6 +82,7 @@ const TaskSlotContent = memo(function TaskSlotContent({ task, renderTask }: {
  */
 export default function VirtualTaskList({
   tasks, hasMore, scrollRef, keepMounted, renderTask, expandedId, onCollapse,
+  flashId = null, reveal = null, onRevealed,
 }: VirtualTaskListProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const [scrollMargin, setScrollMargin] = useState(0);
@@ -166,6 +175,20 @@ export default function VirtualTaskList({
     focusTask(next);
   }
 
+  // Asked for from the new Task toast, so moving the list is the person's doing. A
+  // view still loading has no list yet; the first list it shows gets the one try.
+  // `virtualizer` keeps one instance; `onRevealed` must be stable, or this reruns each render.
+  useLayoutEffect(() => {
+    if (!reveal) return;
+    const index = items.findIndex((item) => item.kind === "task" && item.task.id === reveal.taskId);
+    if (index >= 0) {
+      // Always instant, as in focusTask; the top of the open Task lands at the top of the view.
+      virtualizer.scrollToIndex(index, { align: "start", behavior: "auto" });
+      setFocusTarget(reveal.taskId);
+    }
+    onRevealed?.();
+  }, [reveal, items, virtualizer, onRevealed]);
+
   // An open Task that closed itself (a save, or a click, which gives a button no focus
   // in WebKit) leaves focus on the page: its row gets focus instead. Focus only, no
   // scrollToIndex: the row is on the page, and its old height would throw the list up for a frame.
@@ -216,7 +239,8 @@ export default function VirtualTaskList({
         <span>{item.count}{hasMore ? "+" : ""}</span>
       </h2>
     ) : (
-      <div key={virtual.key} className="task-slot" data-index={virtual.index}
+      <div key={virtual.key} className={`task-slot ${item.task.id === flashId ? "task-slot--flash" : ""}`}
+        data-index={virtual.index}
         data-task-id={item.task.id} ref={virtualizer.measureElement}>
         <TaskSlotContent task={item.task} renderTask={renderTask} />
       </div>

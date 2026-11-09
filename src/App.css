@@ -395,10 +395,42 @@ button.folder-disclosure:hover:not(:disabled) {
 
 /* Main column */
 .main-view {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
   overflow: hidden;
+}
+/*
+ * The new Task toast: bottom-right of the Task view, above the Undo bar's row so
+ * the two never overlap. Flat like everything else (no shadow, no slide); it sits
+ * over the rows rather than in the layout, so it never moves the list.
+ */
+.toast-region {
+  position: absolute;
+  right: 20px;
+  bottom: 16px;
+  z-index: 2;
+  pointer-events: none;
+}
+.task-toast {
+  pointer-events: auto;
+  padding: 7px 12px;
+  border: 1px solid var(--sep);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--hover);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.task-toast-action {
+  color: var(--accent-text);
+}
+.task-toast:hover .task-toast-action {
+  text-decoration: underline;
+}
+.task-toast--leaving {
+  opacity: 0;
 }
 .toolbar {
   display: flex;
@@ -1083,6 +1115,16 @@ kbd {
 /* Rows: Notes list cells */
 .task-card {
   position: relative;
+}
+/* The Task opened from the new Task toast, for a moment. A highlight, not motion. */
+.task-slot {
+  border-radius: 7px;
+  outline: 2px solid transparent;
+  outline-offset: -2px;
+}
+.task-slot--flash {
+  outline: 2px solid var(--accent);
+  background: var(--selection);
 }
 .task-slot + .task-slot .task-card::before {
   content: "";
@@ -2139,6 +2181,13 @@ kbd {
   }
   .task-check {
     transition: background-color 120ms ease-out, border-color 120ms ease-out;
+  }
+  .task-toast {
+    animation: page-in 120ms ease-out;
+    transition: opacity 120ms ease-out;
+  }
+  .task-slot {
+    transition: outline-color 240ms ease-out, background-color 240ms ease-out;
   }
 }
 @keyframes page-in {
