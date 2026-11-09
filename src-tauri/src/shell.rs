@@ -16,7 +16,10 @@ use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, Runtime, State, Window, WindowEvent};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
+use tasknotes_core::pomodoro::PomodoroDurations;
+
 use crate::platform::Platform;
+use crate::pomodoro_state::PomodoroView;
 use crate::quick_capture::{QuickCaptureRequest, Registrar};
 use crate::shell_settings::{CloseAction, SETTINGS_FILE};
 use crate::shell_state::{ShellState, ShellView};
@@ -75,8 +78,10 @@ pub fn start<R: Runtime>(app: &AppHandle<R>, data_dir: PathBuf) {
         &mut SystemShortcuts(app),
     );
     let keep = state.keep_in_menu_bar();
+    let durations = state.pomodoro_durations();
     app.manage(Shell(Mutex::new(state)));
     sync_tray(app, &mut app.state::<Shell>().lock(), keep);
+    crate::pomodoro::start(app, durations);
 }
 
 /// Hides the window instead of quitting when menu-bar mode is on. Returns true
@@ -89,7 +94,9 @@ pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) -> b
     let Some(shell) = app.try_state::<Shell>() else {
         return false;
     };
-    let action = shell.lock().close_action(crate::quit::exiting(app));
+    let action = shell
+        .lock()
+        .close_action(crate::quit::exiting(app), crate::pomodoro::in_menu_bar(app));
     match action {
         CloseAction::HideToMenuBar => {
             api.prevent_close();
@@ -202,6 +209,26 @@ pub fn set_quick_capture(
 #[tauri::command]
 pub fn take_quick_capture(shell: State<'_, Shell>) -> bool {
     shell.lock().take_pending_capture()
+}
+
+/// Saves the Pomodoro lengths; they apply from the next focus or break. When
+/// they are out of range or saving fails nothing changes.
+#[tauri::command]
+pub fn set_pomodoro_durations(
+    app: AppHandle,
+    shell: State<'_, Shell>,
+    durations: PomodoroDurations,
+) -> Result<PomodoroView, String> {
+    shell.lock().set_pomodoro_durations(durations)?;
+    Ok(crate::pomodoro::set_durations(&app, durations))
+}
+
+/// Whether to show the one-time tip about the notification style now. Reads
+/// the style first (`async`: off the main thread, where macOS answers).
+#[tauri::command(async)]
+pub fn take_pomodoro_tip(app: AppHandle) -> bool {
+    let persistent = crate::notification_style::persistent();
+    app.state::<Shell>().lock().take_pomodoro_tip(persistent)
 }
 
 /// The launch-time shortcut problem for the main window, handed out once.

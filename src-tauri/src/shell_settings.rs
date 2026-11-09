@@ -1,9 +1,10 @@
 //! Desktop shell settings: whether closing the window keeps Tasknotes in the
-//! menu bar, and the global Quick Capture shortcut.
+//! menu bar, the global Quick Capture shortcut, and the Pomodoro lengths.
 
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
+use tasknotes_core::pomodoro::PomodoroDurations;
 
 /// Kept in the app data folder beside the database, not in the core: they
 /// describe this device's window behaviour, not Tasks or Notes, and the shell
@@ -14,6 +15,10 @@ pub struct ShellSettings {
     /// Off by default: closing the window quits.
     pub keep_in_menu_bar: bool,
     pub quick_capture: QuickCaptureSetting,
+    /// 25 / 5 / 15 and a long break after 4 until the person changes them.
+    pub pomodoro: PomodoroDurations,
+    /// The one-time tip about the notification style was shown.
+    pub pomodoro_tip_shown: bool,
 }
 
 /// Off by default (owner decision 2026-10-25). The shortcut is remembered while
@@ -38,15 +43,18 @@ pub enum CloseAction {
 }
 
 /// `menu_bar_item_shown` guards against hiding the only way back: where the
-/// system has no menu bar or tray, closing quits as usual.
+/// system has no menu bar or tray, closing quits as usual. While a Pomodoro
+/// Session shows in the menu bar (`pomodoro_item_shown`), closing hides the
+/// window whatever the setting, so the timer keeps running.
 pub fn close_action(
     settings: &ShellSettings,
     menu_bar_item_shown: bool,
+    pomodoro_item_shown: bool,
     exiting: bool,
 ) -> CloseAction {
     if exiting {
         CloseAction::Close
-    } else if settings.keep_in_menu_bar && menu_bar_item_shown {
+    } else if pomodoro_item_shown || (settings.keep_in_menu_bar && menu_bar_item_shown) {
         CloseAction::HideToMenuBar
     } else {
         CloseAction::Quit
@@ -105,7 +113,10 @@ mod tests {
     #[test]
     fn closing_the_window_quits_by_default() {
         let settings = ShellSettings::default();
-        assert_eq!(close_action(&settings, true, false), CloseAction::Quit);
+        assert_eq!(
+            close_action(&settings, true, false, false),
+            CloseAction::Quit
+        );
     }
 
     #[test]
@@ -115,7 +126,7 @@ mod tests {
             ..ShellSettings::default()
         };
         assert_eq!(
-            close_action(&settings, true, false),
+            close_action(&settings, true, false, false),
             CloseAction::HideToMenuBar
         );
     }
@@ -127,7 +138,10 @@ mod tests {
             keep_in_menu_bar: true,
             ..ShellSettings::default()
         };
-        assert_eq!(close_action(&settings, false, false), CloseAction::Quit);
+        assert_eq!(
+            close_action(&settings, false, false, false),
+            CloseAction::Quit
+        );
     }
 
     #[test]
@@ -136,7 +150,45 @@ mod tests {
             keep_in_menu_bar: true,
             ..ShellSettings::default()
         };
-        assert_eq!(close_action(&settings, true, true), CloseAction::Close);
+        assert_eq!(
+            close_action(&settings, true, false, true),
+            CloseAction::Close
+        );
+    }
+
+    #[test]
+    fn a_running_pomodoro_keeps_tasknotes_open_when_the_window_closes() {
+        // Menu-bar mode is off by default; the session's own item is the way back.
+        let settings = ShellSettings::default();
+        assert_eq!(
+            close_action(&settings, false, true, false),
+            CloseAction::HideToMenuBar
+        );
+        assert_eq!(
+            close_action(&settings, false, true, true),
+            CloseAction::Close
+        );
+    }
+
+    #[test]
+    fn pomodoro_lengths_default_to_25_5_15_and_come_back_after_a_restart() {
+        assert_eq!(
+            ShellSettings::default().pomodoro,
+            PomodoroDurations::default()
+        );
+        let path = scratch_file("pomodoro");
+        let settings = ShellSettings {
+            pomodoro: PomodoroDurations {
+                focus_minutes: 50,
+                short_break_minutes: 10,
+                long_break_minutes: 30,
+                sessions_before_long_break: 3,
+            },
+            pomodoro_tip_shown: true,
+            ..ShellSettings::default()
+        };
+        save_settings(&path, &settings).unwrap();
+        assert_eq!(load_settings(&path).settings, settings);
     }
 
     fn scratch_file(name: &str) -> std::path::PathBuf {
@@ -171,6 +223,7 @@ mod tests {
                 enabled: true,
                 shortcut: Some("Control+Alt+Space".into()),
             },
+            ..ShellSettings::default()
         };
         save_settings(&path, &settings).unwrap();
         assert_eq!(load_settings(&path).settings, settings);

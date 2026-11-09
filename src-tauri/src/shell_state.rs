@@ -13,6 +13,7 @@ use crate::quick_capture::{QuickCapture, QuickCaptureRequest, QuickCaptureView, 
 use crate::shell_settings::{
     CloseAction, Loaded, ShellSettings, close_action, load_settings, save_settings,
 };
+use tasknotes_core::pomodoro::PomodoroDurations;
 
 /// What Settings shows.
 #[derive(Debug, PartialEq, Eq, Serialize)]
@@ -79,8 +80,14 @@ impl ShellState {
         self.tray_shown = shown;
     }
 
-    pub fn close_action(&self, exiting: bool) -> CloseAction {
-        close_action(&self.settings, self.tray_shown, exiting)
+    /// `pomodoro_item_shown`: a Pomodoro Session shows in the menu bar.
+    pub fn close_action(&self, exiting: bool, pomodoro_item_shown: bool) -> CloseAction {
+        close_action(
+            &self.settings,
+            self.tray_shown,
+            pomodoro_item_shown,
+            exiting,
+        )
     }
 
     fn save(&mut self) -> Result<(), String> {
@@ -120,6 +127,34 @@ impl ShellState {
         })
     }
 
+    pub fn pomodoro_durations(&self) -> PomodoroDurations {
+        self.settings.pomodoro
+    }
+
+    /// Saves checked Pomodoro lengths. When they are out of range or saving
+    /// fails nothing changes and the error is returned.
+    pub fn set_pomodoro_durations(&mut self, durations: PomodoroDurations) -> Result<(), String> {
+        let durations = durations.check().map_err(|error| error.to_string())?;
+        let before = self.settings.pomodoro;
+        self.settings.pomodoro = durations;
+        self.save().inspect_err(|_| self.settings.pomodoro = before)
+    }
+
+    /// Whether the one-time notification tip is due, given the alert style
+    /// read now (`None`: it could not be read). It is due once, unless the
+    /// style is already Persistent; either way it is never due again.
+    pub fn take_pomodoro_tip(&mut self, persistent: Option<bool>) -> bool {
+        if self.settings.pomodoro_tip_shown {
+            return false;
+        }
+        self.settings.pomodoro_tip_shown = true;
+        if self.save().is_err() {
+            // Shown again next launch rather than never.
+            self.settings.pomodoro_tip_shown = false;
+        }
+        persistent != Some(true)
+    }
+
     /// The shortcut or the tray asked for Quick Capture. Kept until the page
     /// collects it, so a press before the page is listening is not lost.
     pub fn request_capture(&mut self) {
@@ -137,7 +172,7 @@ impl ShellState {
 
     pub fn view(&self) -> ShellView {
         let platform = self.platform;
-        let close_hint = match self.close_action(false) {
+        let close_hint = match self.close_action(false, false) {
             CloseAction::HideToMenuBar => format!(
                 "Closing the window leaves Tasknotes in the {}. Choose Quit Tasknotes there, \
                  or press {}, to quit.",
@@ -307,20 +342,82 @@ mod tests {
     }
 
     #[test]
+    fn pomodoro_lengths_are_checked_saved_and_remembered() {
+        let dir = scratch_dir("pomodoro-lengths");
+        let mut state = launch(&dir, &mut FakeSystem::default());
+        assert_eq!(state.pomodoro_durations(), PomodoroDurations::default());
+        let longer = PomodoroDurations {
+            focus_minutes: 50,
+            ..PomodoroDurations::default()
+        };
+        state.set_pomodoro_durations(longer).unwrap();
+        let refused = state.set_pomodoro_durations(PomodoroDurations {
+            focus_minutes: 0,
+            ..PomodoroDurations::default()
+        });
+        assert!(refused.unwrap_err().starts_with("Pomodoro lengths"));
+        assert_eq!(state.pomodoro_durations(), longer);
+        let again = launch(&dir, &mut FakeSystem::default());
+        assert_eq!(again.pomodoro_durations(), longer);
+    }
+
+    #[test]
+    fn a_failed_save_of_pomodoro_lengths_changes_nothing() {
+        let dir = scratch_dir("pomodoro-save-fails");
+        let mut state = launch(&dir, &mut FakeSystem::default());
+        break_the_data_folder(&dir);
+        let result = state.set_pomodoro_durations(PomodoroDurations {
+            focus_minutes: 30,
+            ..PomodoroDurations::default()
+        });
+        assert!(result.is_err());
+        assert_eq!(state.pomodoro_durations(), PomodoroDurations::default());
+    }
+
+    #[test]
+    fn the_notification_tip_is_due_once_unless_the_style_is_persistent() {
+        let dir = scratch_dir("pomodoro-tip");
+        let mut state = launch(&dir, &mut FakeSystem::default());
+        assert!(state.take_pomodoro_tip(Some(false)));
+        assert!(!state.take_pomodoro_tip(Some(false)));
+        // Remembered across a restart.
+        let mut again = launch(&dir, &mut FakeSystem::default());
+        assert!(!again.take_pomodoro_tip(None));
+
+        let dir = scratch_dir("pomodoro-tip-persistent");
+        let mut state = launch(&dir, &mut FakeSystem::default());
+        assert!(!state.take_pomodoro_tip(Some(true)));
+        assert!(!state.take_pomodoro_tip(Some(false)));
+
+        // A style that cannot be read still gets the tip once.
+        let dir = scratch_dir("pomodoro-tip-unknown");
+        let mut state = launch(&dir, &mut FakeSystem::default());
+        assert!(state.take_pomodoro_tip(None));
+    }
+
+    #[test]
+    fn a_running_pomodoro_hides_the_window_instead_of_quitting() {
+        let dir = scratch_dir("pomodoro-close");
+        let state = launch(&dir, &mut FakeSystem::default());
+        assert_eq!(state.close_action(false, true), CloseAction::HideToMenuBar);
+        assert_eq!(state.close_action(false, false), CloseAction::Quit);
+    }
+
+    #[test]
     fn closing_quits_when_the_tray_item_could_not_be_built() {
         let dir = scratch_dir("tray-failed");
         let mut state = launch(&dir, &mut FakeSystem::default());
         state.set_keep_in_menu_bar(true).unwrap();
 
         state.record_tray(false);
-        assert_eq!(state.close_action(false), CloseAction::Quit);
+        assert_eq!(state.close_action(false, false), CloseAction::Quit);
         assert_eq!(
             state.view().close_hint,
             "Tasknotes could not show its menu-bar item here, so closing the window still quits."
         );
 
         state.record_tray(true);
-        assert_eq!(state.close_action(false), CloseAction::HideToMenuBar);
+        assert_eq!(state.close_action(false, false), CloseAction::HideToMenuBar);
         assert_eq!(
             state.view().close_hint,
             "Closing the window leaves Tasknotes in the menu bar. Choose Quit Tasknotes there, \

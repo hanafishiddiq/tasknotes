@@ -19,7 +19,13 @@ use tauri::{Manager, State};
 
 mod data;
 #[cfg(desktop)]
+mod notification_style;
+#[cfg(desktop)]
 mod platform;
+#[cfg(desktop)]
+mod pomodoro;
+#[cfg(desktop)]
+mod pomodoro_state;
 #[cfg(feature = "qa-probe")]
 mod qa_probe;
 #[cfg(desktop)]
@@ -412,7 +418,9 @@ fn decline_bulk_request(store: State<'_, TaskStore>, id: String) -> Result<BulkR
 pub fn run() {
     let builder = tauri::Builder::default();
     #[cfg(desktop)]
-    let builder = builder.plugin(shell::shortcut_plugin());
+    let builder = builder
+        .plugin(shell::shortcut_plugin())
+        .plugin(tauri_plugin_notification::init());
     builder
         .manage(quit::QuitState::default())
         .menu(quit::menu)
@@ -504,7 +512,19 @@ pub fn run() {
             #[cfg(desktop)]
             shell::take_quick_capture,
             #[cfg(desktop)]
-            shell::take_launch_notice
+            shell::take_launch_notice,
+            #[cfg(desktop)]
+            shell::set_pomodoro_durations,
+            #[cfg(desktop)]
+            shell::take_pomodoro_tip,
+            #[cfg(desktop)]
+            pomodoro::pomodoro_state,
+            #[cfg(desktop)]
+            pomodoro::pomodoro_command,
+            #[cfg(desktop)]
+            pomodoro::set_pomodoro_silent,
+            #[cfg(desktop)]
+            pomodoro::open_notification_settings
         ])
         .build(tauri::generate_context!())
         .expect("Unable to launch Tasknotes")

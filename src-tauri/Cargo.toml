@@ -30,6 +30,15 @@ tasknotes-core = { path = "../crates/tasknotes-core" }
 # Global Quick Capture shortcut (Ticket 15); desktop only, used from Rust, no JS permissions.
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-global-shortcut = "=2.4.1"
+# Pomodoro focus-end notification with Start break / Keep focusing (Ticket 02);
+# used from Rust only, so no JavaScript permission is granted.
+tauri-plugin-notification = "=2.8.0"
+
+# Reads the notification alert style (Persistent or not) for the one-time tip.
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSBundle", "NSString"] }
+objc2-user-notifications = { version = "0.3", default-features = false, features = ["std", "block2", "UNUserNotificationCenter", "UNNotificationSettings"] }
 
 [dev-dependencies]
 tempfile = "3"
