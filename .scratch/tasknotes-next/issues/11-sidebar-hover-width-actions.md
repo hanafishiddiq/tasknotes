@@ -24,3 +24,13 @@
 ## Comments
 
 **2026-11-09 — owner decision (Han), Q11/Q21/Q28.**
+
+**2026-11-09 — owner decision (Han): hover scope.** The pale-yellow hover stays on **all** sidebar entries (All tasks, Inbox, Settings, Removed, Lists, Note Folders), not only Lists and Note Folders. Decided, not open; recorded in DESIGN.md (Sidebar Hover Yellow).
+
+**2026-11-09 — review fixes (PR #28).**
+- Drag performance: a drag now moves only the shell's `--sidebar-width` and the edge's `aria-valuenow`; React state and `localStorage` are written once on release (and once per keyboard step). Evidence: `src/sidebar-width.test.tsx` "moves the edge without re-rendering the app, and commits once on release" (React `Profiler` sees no commit during five moves, exactly one on release; one `setItem`) and "writes the width once per keyboard step".
+- Lost mouseup: window blur ends the drag and keeps the width reached; Escape puts the starting width back; unmounting mid-drag clears the col-resize cursor. Evidence: three tests in "sidebar width while dragging".
+- Narrow windows: the shown width is at most `min(400, window width − 480)`, never below 210, and follows window resizes without changing the stored preference; a drag that ends where it started does not overwrite it. Evidence: "sidebar width on a narrow window" (2 tests).
+- Drop target: `.folder-row[data-drop-edge="into"] .folder-actions` takes the row's `--side-selected` fill. Disabled rows never turn yellow (`:not(:disabled)` on the row hover rule; their action fill is `--sidebar`). Actions show on `.folder-row:focus-within`. Evidence: `src/sidebar-stylesheet.test.tsx` (3 new tests, 1 updated).
+- The App.css and TaskSidebar.tsx comments about where the edge sits now agree: inside the sidebar in the markup, positioned against the shell.
+- `pnpm typecheck` passes; `pnpm test` 35 files, 1074 passed, 4 todo. Native drag feel and visuals still to be checked by the owner.
