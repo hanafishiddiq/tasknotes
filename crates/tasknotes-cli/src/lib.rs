@@ -23,7 +23,7 @@ use tasknotes_core::tasks::{
 };
 
 use access::Environment;
-use args::{Spec, parse};
+use args::{Parsed, Spec, parse};
 use contract::CliError;
 
 /// What the process prints on stdout and exits with.
@@ -236,27 +236,17 @@ fn task_change(store: &TaskStore, words: &[String]) -> Result<Task, CliError> {
         status: p.choice("status", &WorkStatus::ALL)?,
         priority: p.choice("priority", &Priority::ALL)?,
         progress: p.number("progress")?,
-        difficulty: difficulty_change(p.value("difficulty"))?,
+        difficulty: difficulty_change(&p)?,
     })?)
 }
 
 /// `--difficulty NAME` sets the Difficulty and `--difficulty none` clears it
 /// to No Difficulty; left out, it is kept.
-fn difficulty_change(raw: Option<&str>) -> Result<Option<Option<Difficulty>>, CliError> {
-    let Some(raw) = raw else { return Ok(None) };
-    if raw == "none" {
+fn difficulty_change(p: &Parsed) -> Result<Option<Option<Difficulty>>, CliError> {
+    if p.value("difficulty") == Some("none") {
         return Ok(Some(None));
     }
-    serde_json::from_value(Value::String(raw.to_owned()))
-        .map(|difficulty| Some(Some(difficulty)))
-        .map_err(|_| {
-            let names: Vec<Value> = Difficulty::ALL.iter().map(contract::to_value).collect();
-            let names: Vec<&str> = names.iter().filter_map(Value::as_str).collect();
-            CliError::invalid(format!(
-                "--difficulty must be one of: {}, none",
-                names.join(", ")
-            ))
-        })
+    Ok(p.choice("difficulty", &Difficulty::ALL)?.map(Some))
 }
 
 fn task_progress(store: &TaskStore, words: &[String]) -> Result<Task, CliError> {
