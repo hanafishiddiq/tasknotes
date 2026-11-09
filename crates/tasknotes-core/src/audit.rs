@@ -182,7 +182,7 @@ pub struct AuditPage {
 pub struct OutsideChanges {
     /// Where the log ends now; the window hands it back as `seen`.
     pub latest: i64,
-    /// An entry after `seen` came from another interface. Always false without `seen`.
+    /// An applied entry after `seen` came from another interface. Always false without `seen`.
     pub changed: bool,
 }
 
@@ -339,9 +339,11 @@ impl TaskStore {
         (self.interface(), self.requested_by())
     }
 
-    /// Whether the CLI or an MCP client wrote after `seen`. Desktop only: an
-    /// append number would tell an AI interface how much it may not see. It
-    /// walks only the entries since `seen`, so its cost does not grow with the log.
+    /// Whether the CLI or an MCP client changed something after `seen`: an
+    /// applied entry from another interface. A refused call changed nothing, so
+    /// it does not count. Desktop only: an append number would tell an AI
+    /// interface how much it may not see. It walks only the entries since
+    /// `seen`, so its cost does not grow with the log.
     pub fn outside_changes(&self, seen: Option<i64>) -> Result<OutsideChanges, TaskError> {
         self.require_desktop()?;
         let conn = self.connect()?;
@@ -353,8 +355,12 @@ impl TaskStore {
         let changed = match seen {
             Some(seen) => conn.query_row(
                 "SELECT EXISTS(SELECT 1 FROM audit_entries
-                               WHERE sequence > ?1 AND interface <> 'desktop')",
-                params![seen],
+                               WHERE sequence > ?1 AND interface <> ?2 AND outcome = ?3)",
+                params![
+                    seen,
+                    Interface::Desktop.as_str(),
+                    AuditOutcome::Applied.as_str()
+                ],
                 |row| row.get(0),
             )?,
             None => false,

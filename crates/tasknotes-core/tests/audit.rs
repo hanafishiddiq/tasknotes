@@ -594,3 +594,29 @@ fn only_the_window_may_ask_about_outside_changes() {
         assert!(store.outside_changes(None).is_err());
     }
 }
+
+#[test]
+fn a_refused_outside_call_is_not_an_outside_change() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("t.db");
+    let desktop = store_at(&db);
+    let cli = TaskStore::open_as(&db, Interface::Cli).unwrap();
+    let task = desktop
+        .create_task(CreateTask {
+            title: "Draft the quarterly summary".into(),
+            description: String::new(),
+        })
+        .unwrap();
+    let before = desktop.outside_changes(None).unwrap();
+
+    let stale = cli.update_task(UpdateTask {
+        id: task.id.clone(),
+        title: "Overwrite attempt".into(),
+        description: String::new(),
+        expected_revision: task.revision + 1,
+    });
+    assert!(matches!(stale, Err(TaskError::RevisionConflict)));
+    let after = desktop.outside_changes(Some(before.latest)).unwrap();
+    assert!(after.latest > before.latest, "the refusal is still audited");
+    assert!(!after.changed, "nothing changed, so nothing is read again");
+}
