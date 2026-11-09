@@ -1002,7 +1002,7 @@ export default function App() {
   const countKnown = !(loadError && filtering);
 
   return (
-    <div className="app-shell" inert={paletteOpen}
+    <div className="app-shell" inert={paletteOpen} ref={sidebar.shellRef}
       style={{ "--sidebar-width": `${sidebar.width}px` } as CSSProperties}>
       <TaskSidebar
         view={view} notesActive={workspace !== "tasks"} onOpenNotes={() => openNotes()}
@@ -1026,7 +1026,8 @@ export default function App() {
         onReorderList={reorderList}
         onRemoveList={(list) => setListRemoved(list, true)}
         onLoadMoreLists={loadMoreLists}
-        resizer={<SidebarResizer width={sidebar.width} onResize={sidebar.setWidth} />}
+        resizer={<SidebarResizer width={sidebar.width} max={sidebar.max}
+          onPreview={sidebar.preview} onResize={sidebar.setWidth} />}
       />
 
       <main className="main-view" hidden={workspace !== "tasks"}>

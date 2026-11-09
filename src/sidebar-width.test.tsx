@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { Profiler } from "react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
 import App from "./App";
@@ -29,6 +30,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  setWindowWidth(1024);
   vi.restoreAllMocks();
 });
 
@@ -40,6 +42,13 @@ async function open() {
   render(<App />);
   await screen.findByRole("button", { name: "All tasks" });
 }
+
+function setWindowWidth(width: number) {
+  Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: width });
+}
+
+const storedWrites = (spy: { mock: { calls: unknown[][] } }) =>
+  spy.mock.calls.filter(([key]) => key === STORAGE_KEY);
 
 function dragEdge(from: number, to: number) {
   fireEvent.mouseDown(edge(), { button: 0, clientX: from });
@@ -144,6 +153,105 @@ describe("sidebar width", () => {
     expect(edge()).toHaveAttribute("aria-valuenow", "260");
     dragEdge(260, 300);
     expect(edge()).toHaveAttribute("aria-valuenow", "300");
+  });
+});
+
+describe("sidebar width while dragging", () => {
+  it("moves the edge without re-rendering the app, and commits once on release", async () => {
+    let commits = 0;
+    render(<Profiler id="app" onRender={() => { commits += 1; }}><App /></Profiler>);
+    await screen.findByRole("button", { name: "All tasks" });
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    const before = commits;
+
+    fireEvent.mouseDown(edge(), { button: 0, clientX: 260 });
+    for (const x of [270, 290, 310, 330, 350]) fireEvent.mouseMove(window, { clientX: x });
+    expect(shellWidth()).toBe("350px");
+    expect(edge()).toHaveAttribute("aria-valuenow", "350");
+    expect(commits).toBe(before);
+    expect(storedWrites(setItem)).toEqual([]);
+
+    fireEvent.mouseUp(window, { clientX: 350 });
+    expect(commits).toBe(before + 1);
+    expect(storedWrites(setItem)).toEqual([[STORAGE_KEY, "350"]]);
+    expect(shellWidth()).toBe("350px");
+  });
+
+  it("writes the width once per keyboard step", async () => {
+    const user = userEvent.setup();
+    await open();
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    edge().focus();
+    await user.keyboard("{ArrowRight}{ArrowRight}");
+    expect(storedWrites(setItem)).toEqual([[STORAGE_KEY, "270"], [STORAGE_KEY, "280"]]);
+  });
+
+  it("ends the drag when the window loses focus, keeping the width it reached", async () => {
+    await open();
+    fireEvent.mouseDown(edge(), { button: 0, clientX: 260 });
+    fireEvent.mouseMove(window, { clientX: 320 });
+    fireEvent.blur(window);
+    expect(document.body).not.toHaveClass("sidebar-resizing");
+    expect(edge()).toHaveAttribute("aria-valuenow", "320");
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe("320");
+
+    // The lost mouseup never arrives; later moves no longer resize.
+    fireEvent.mouseMove(window, { clientX: 390 });
+    expect(shellWidth()).toBe("320px");
+  });
+
+  it("puts the starting width back on Escape", async () => {
+    await open();
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    fireEvent.mouseDown(edge(), { button: 0, clientX: 260 });
+    fireEvent.mouseMove(window, { clientX: 360 });
+    expect(shellWidth()).toBe("360px");
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(document.body).not.toHaveClass("sidebar-resizing");
+    expect(shellWidth()).toBe("260px");
+    expect(edge()).toHaveAttribute("aria-valuenow", "260");
+    expect(storedWrites(setItem)).toEqual([]);
+
+    fireEvent.mouseMove(window, { clientX: 390 });
+    fireEvent.mouseUp(window, { clientX: 390 });
+    expect(shellWidth()).toBe("260px");
+  });
+
+  it("releases the resize cursor if the app unmounts mid-drag", async () => {
+    await open();
+    fireEvent.mouseDown(edge(), { button: 0, clientX: 260 });
+    expect(document.body).toHaveClass("sidebar-resizing");
+    cleanup();
+    expect(document.body).not.toHaveClass("sidebar-resizing");
+  });
+});
+
+describe("sidebar width on a narrow window", () => {
+  it("leaves the main view at least 480 px without changing the remembered width", async () => {
+    window.localStorage.setItem(STORAGE_KEY, "400");
+    setWindowWidth(800);
+    await open();
+    expect(edge()).toHaveAttribute("aria-valuenow", "320");
+    expect(edge()).toHaveAttribute("aria-valuemax", "320");
+    expect(shellWidth()).toBe("320px");
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe("400");
+
+    dragEdge(320, 600);
+    expect(edge()).toHaveAttribute("aria-valuenow", "320");
+
+    act(() => {
+      setWindowWidth(1400);
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(edge()).toHaveAttribute("aria-valuenow", "400");
+    expect(shellWidth()).toBe("400px");
+  });
+
+  it("never goes below the 210 px minimum", async () => {
+    setWindowWidth(600);
+    await open();
+    expect(edge()).toHaveAttribute("aria-valuenow", "210");
+    expect(edge()).toHaveAttribute("aria-valuemax", "210");
   });
 });
 
