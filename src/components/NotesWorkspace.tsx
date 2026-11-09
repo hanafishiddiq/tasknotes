@@ -147,6 +147,12 @@ export default function NotesWorkspace({
     return text ? noteApi.list(cursor, ALL_NOTES, text) : noteApi.list(cursor, scopeRef.current);
   }
 
+  /** What opens when no Note is picked: the first of `items`, or a new draft in the scope. */
+  async function firstOf(items: NoteSummary[]): Promise<Saved> {
+    const next = items[0] ? await noteApi.get(items[0].id) : null;
+    return next ? savedFrom(next) : draftIn(scopeRef.current);
+  }
+
   function show(next: Saved) {
     saved.current = next;
     dirty.current = false;
@@ -173,10 +179,10 @@ export default function NotesWorkspace({
       setNotes(page.items);
       setMoreCursor(page.nextCursor);
       if (!left || (first && pickedByPerson.current)) return;
-      const latest = page.items[0] ? await noteApi.get(page.items[0].id) : null;
+      const next = await firstOf(page.items);
       // The person may already have picked a Note or started a new one.
       if (!active || (first && pickedByPerson.current)) return;
-      show(latest ? savedFrom(latest) : draftIn(scope));
+      show(next);
     })().catch((reason) => { if (active) setError(errorMessage(reason)); });
     return () => { active = false; };
     // A scope is identified by its folder id, not by object identity.
@@ -402,9 +408,8 @@ export default function NotesWorkspace({
     if (!untouched()) return;
     if (!latest || latest.removed) {
       // Removed elsewhere: as when it is removed here, the next Note opens.
-      const { items } = await listPage(null);
-      const next = items[0] ? await noteApi.get(items[0].id) : null;
-      if (untouched()) show(next ? savedFrom(next) : draftIn(scopeRef.current));
+      const next = await firstOf((await listPage(null)).items);
+      if (untouched()) show(next);
       return;
     }
     if (latest.markdown === saved.current.markdown) {
@@ -449,8 +454,7 @@ export default function NotesWorkspace({
       setNotes(rest);
       setError(null);
       onRemoved(removed);
-      const next = rest[0] ? await noteApi.get(rest[0].id) : null;
-      show(next ? savedFrom(next) : draftIn(scopeRef.current));
+      show(await firstOf(rest));
     } catch (reason) {
       setError(errorMessage(reason));
     } finally {
