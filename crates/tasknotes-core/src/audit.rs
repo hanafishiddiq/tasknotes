@@ -81,6 +81,7 @@ actions! {
     ListCreate => "list.create",
     ListRename => "list.rename",
     ListReorder => "list.reorder",
+    ListStyle => "list.style",
     ListRemove => "list.remove",
     ListRestore => "list.restore",
     NoteCreate => "note.create",
@@ -94,6 +95,7 @@ actions! {
     FolderRename => "folder.rename",
     FolderMove => "folder.move",
     FolderReorder => "folder.reorder",
+    FolderStyle => "folder.style",
     FolderRemove => "folder.remove",
     FolderRestore => "folder.restore",
     LinkCreate => "link.create",
@@ -114,11 +116,11 @@ impl AuditAction {
         Some(match self {
             TaskCreate | TaskUpdate | TaskChange | TaskProgress | TaskDetails | TaskMove
             | TaskRemove | TaskRestore => "tasks",
-            ListCreate | ListRename | ListReorder | ListRemove | ListRestore => "lists",
+            ListCreate | ListRename | ListReorder | ListStyle | ListRemove | ListRestore => "lists",
             NoteCreate | NoteUpdate | NoteMove | NotePin | NoteRemove | NoteRestore
             | NotePrivacy => "notes",
-            FolderCreate | FolderRename | FolderMove | FolderReorder | FolderRemove
-            | FolderRestore => "note_folders",
+            FolderCreate | FolderRename | FolderMove | FolderReorder | FolderStyle
+            | FolderRemove | FolderRestore => "note_folders",
             LinkCreate | LinkRemove | LinkRestore => "task_note_links",
             BulkRequest | BulkApprove | BulkDecline => "bulk_requests",
             BackupRestore => return None,
@@ -328,6 +330,7 @@ revisioned!(
     crate::notes::UpdateNote,
     crate::note_folders::RenameNoteFolder,
     crate::note_folders::MoveNoteFolder,
+    crate::style::SetStyle,
 );
 
 impl Revisioned for crate::notes::MoveNote {

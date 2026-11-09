@@ -79,5 +79,6 @@ mod organization;
 pub mod privacy;
 pub mod removed;
 mod search;
+pub mod style;
 pub mod tasks;
 mod text_fold;

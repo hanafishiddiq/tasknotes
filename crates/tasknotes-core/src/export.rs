@@ -86,6 +86,10 @@ struct ListRecord {
     updated_at: i64,
     removed: bool,
     position: i64,
+    /// `null` for the default icon.
+    icon: Option<String>,
+    /// `null` for the default colour.
+    color: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -130,6 +134,10 @@ struct FolderRecord {
     updated_at: i64,
     removed: bool,
     position: i64,
+    /// `null` for the default icon.
+    icon: Option<String>,
+    /// `null` for the default colour.
+    color: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -228,7 +236,7 @@ impl TaskStore {
         };
         let lists = collect(
             conn,
-            "SELECT id, name, revision, created_at, updated_at, removed_at, position FROM lists
+            "SELECT id, name, revision, created_at, updated_at, removed_at, position, icon, color FROM lists
              ORDER BY position, id",
             |row| {
                 Ok(ListRecord {
@@ -239,6 +247,8 @@ impl TaskStore {
                     updated_at: row.get(4)?,
                     removed: row.get::<_, Option<i64>>(5)?.is_some(),
                     position: row.get(6)?,
+                    icon: row.get(7)?,
+                    color: row.get(8)?,
                 })
             },
         )?;
@@ -300,7 +310,8 @@ impl TaskStore {
             .collect();
         let note_folders = collect(
             conn,
-            "SELECT id, parent_id, name, revision, created_at, updated_at, removed_at, position
+            "SELECT id, parent_id, name, revision, created_at, updated_at, removed_at, position,
+               icon, color
              FROM note_folders ORDER BY coalesce(parent_id, ''), position, id",
             |row| {
                 Ok(FolderRecord {
@@ -312,6 +323,8 @@ impl TaskStore {
                     updated_at: row.get(5)?,
                     removed: row.get::<_, Option<i64>>(6)?.is_some(),
                     position: row.get(7)?,
+                    icon: row.get(8)?,
+                    color: row.get(9)?,
                 })
             },
         )?;

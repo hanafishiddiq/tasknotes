@@ -883,7 +883,7 @@ fn opening_a_v7_database_merges_tags_that_now_fold_alike() {
          DROP TABLE note_folders;
          DROP INDEX tasks_removed_order; DROP INDEX lists_removed_order;
          DROP TABLE IF EXISTS audit_entries; DROP TABLE IF EXISTS bulk_requests; DROP TABLE IF EXISTS retired_revisions;
-         DROP INDEX tasks_status_difficulty_order; ALTER TABLE tasks DROP COLUMN difficulty;
+         DROP INDEX tasks_status_difficulty_order; ALTER TABLE tasks DROP COLUMN difficulty; ALTER TABLE lists DROP COLUMN icon; ALTER TABLE lists DROP COLUMN color;
          DROP INDEX lists_manual_order; ALTER TABLE lists DROP COLUMN position;
              CREATE INDEX lists_created_order ON lists(created_at DESC, id DESC);
              PRAGMA user_version = 7;",

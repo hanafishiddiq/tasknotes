@@ -16,6 +16,10 @@ pub struct List {
     pub created_at: i64,
     pub updated_at: i64,
     pub removed: bool,
+    /// A Lucide icon name from the allow-list (`style`), or the default icon.
+    pub icon: Option<String>,
+    /// One of the twelve colour keys (`style`), or the default accent.
+    pub color: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -258,7 +262,7 @@ pub(crate) fn list_holds_tasks(conn: &rusqlite::Connection, id: &str) -> Result<
 /// The List as stored, or `ListNotFound`.
 pub(crate) fn get_list(conn: &rusqlite::Connection, id: &str) -> Result<List, TaskError> {
     conn.query_row(
-        "SELECT id,name,revision,created_at,updated_at,removed_at FROM lists WHERE id=?1",
+        &format!("SELECT {LIST_COLUMNS} FROM lists WHERE id=?1"),
         params![id],
         read_list,
     )
@@ -293,7 +297,13 @@ fn list_name(value: &str) -> Result<&str, TaskError> {
     Ok(name)
 }
 
-fn read_list(row: &rusqlite::Row<'_>) -> rusqlite::Result<List> {
+/// What every read of a List selects, in `read_list`'s order.
+pub(crate) const LIST_COLUMNS: &str =
+    "id,name,revision,created_at,updated_at,removed_at,icon,color";
+/// The index of the first column a query adds after `LIST_COLUMNS`.
+const LIST_COLUMN_COUNT: usize = 8;
+
+pub(crate) fn read_list(row: &rusqlite::Row<'_>) -> rusqlite::Result<List> {
     Ok(List {
         id: row.get(0)?,
         name: row.get(1)?,
@@ -301,6 +311,8 @@ fn read_list(row: &rusqlite::Row<'_>) -> rusqlite::Result<List> {
         created_at: row.get(3)?,
         updated_at: row.get(4)?,
         removed: row.get::<_, Option<i64>>(5)?.is_some(),
+        icon: row.get(6)?,
+        color: row.get(7)?,
     })
 }
 
@@ -459,6 +471,8 @@ impl TaskStore {
             created_at: now,
             updated_at: now,
             removed: false,
+            icon: None,
+            color: None,
         };
         tx.execute(
             "INSERT INTO lists(id, name, revision, created_at, updated_at, removed_at, position)
@@ -482,7 +496,7 @@ impl TaskStore {
         let tx = self.begin_write(&mut conn)?;
         let old = tx
             .query_row(
-                "SELECT id,name,revision,created_at,updated_at,removed_at FROM lists WHERE id=?1",
+                &format!("SELECT {LIST_COLUMNS} FROM lists WHERE id=?1"),
                 params![input.id],
                 read_list,
             )
@@ -503,9 +517,11 @@ impl TaskStore {
         )? { return Err(TaskError::ListNameConflict); }
         let now = current_millis()?;
         let updated = tx.query_row(
-            "UPDATE lists SET name=?1,revision=revision+1,updated_at=max(updated_at+1,?2)
+            &format!(
+                "UPDATE lists SET name=?1,revision=revision+1,updated_at=max(updated_at+1,?2)
              WHERE id=?3 AND revision=?4
-             RETURNING id,name,revision,created_at,updated_at,removed_at",
+             RETURNING {LIST_COLUMNS}"
+            ),
             params![name, now, input.id, input.expected_revision],
             read_list,
         )?;
@@ -535,9 +551,11 @@ impl TaskStore {
         }
         let now = current_millis()?;
         let updated = tx.query_row(
-            "UPDATE lists SET revision=revision+1,updated_at=max(updated_at+1,?1)
+            &format!(
+                "UPDATE lists SET revision=revision+1,updated_at=max(updated_at+1,?1)
              WHERE id=?2 AND revision=?3
-             RETURNING id,name,revision,created_at,updated_at,removed_at",
+             RETURNING {LIST_COLUMNS}"
+            ),
             params![now, input.id, input.expected_revision],
             read_list,
         )?;
@@ -586,7 +604,7 @@ impl TaskStore {
     ) -> Result<List, TaskError> {
         let old = tx
             .query_row(
-                "SELECT id,name,revision,created_at,updated_at,removed_at FROM lists WHERE id=?1",
+                &format!("SELECT {LIST_COLUMNS} FROM lists WHERE id=?1"),
                 params![input.id],
                 read_list,
             )
@@ -605,9 +623,11 @@ impl TaskStore {
         let now = current_millis()?;
         let removed_at = input.removed.then_some(now);
         let changed = tx.query_row(
-            "UPDATE lists SET removed_at=?1,revision=revision+1,updated_at=max(updated_at+1,?2)
+            &format!(
+                "UPDATE lists SET removed_at=?1,revision=revision+1,updated_at=max(updated_at+1,?2)
              WHERE id=?3 AND revision=?4
-             RETURNING id,name,revision,created_at,updated_at,removed_at",
+             RETURNING {LIST_COLUMNS}"
+            ),
             params![removed_at, now, input.id, input.expected_revision],
             read_list,
         )?;
@@ -649,12 +669,12 @@ impl TaskStore {
             }
         };
         let conn = self.connect()?;
-        let mut stmt = conn.prepare(
-            "SELECT id,name,revision,created_at,updated_at,removed_at,position FROM lists
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {LIST_COLUMNS},position FROM lists
              WHERE (?1 OR removed_at IS NULL)
                AND (?2 IS NULL OR (position, id) > (?2, ?3))
-             ORDER BY position,id LIMIT ?4",
-        )?;
+             ORDER BY position,id LIMIT ?4"
+        ))?;
         let mut rows = stmt.query(params![
             include_removed,
             after_position,
@@ -665,7 +685,7 @@ impl TaskStore {
         let mut positions = Vec::new();
         while let Some(row) = rows.next()? {
             items.push(read_list(row)?);
-            positions.push(row.get::<_, i64>(6)?);
+            positions.push(row.get::<_, i64>(LIST_COLUMN_COUNT)?);
         }
         let next_cursor = if items.len() > limit as usize {
             items.pop();

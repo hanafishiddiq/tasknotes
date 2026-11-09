@@ -305,6 +305,8 @@ fn back_to_v16(db: &Path) {
     conn.execute_batch(
         "DROP INDEX tasks_status_difficulty_order;
          ALTER TABLE tasks DROP COLUMN difficulty;
+         ALTER TABLE lists DROP COLUMN icon; ALTER TABLE lists DROP COLUMN color;
+         ALTER TABLE note_folders DROP COLUMN icon; ALTER TABLE note_folders DROP COLUMN color;
          PRAGMA user_version = 16;",
     )
     .unwrap();
@@ -332,7 +334,7 @@ fn upgrading_from_v16_gives_every_task_no_difficulty_and_changes_nothing_else() 
     };
 
     let store = store_at(&db);
-    assert_eq!(SCHEMA_VERSION, 17);
+    assert!(SCHEMA_VERSION >= 17);
     for id in [&a.id, &b.id] {
         assert_eq!(store.get_task(id).unwrap().unwrap().difficulty, None);
     }

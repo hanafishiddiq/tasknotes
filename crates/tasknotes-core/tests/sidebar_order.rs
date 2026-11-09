@@ -89,6 +89,8 @@ fn back_to_v15(db: &Path) {
     conn.execute_batch(
         "DROP INDEX tasks_status_difficulty_order;
          ALTER TABLE tasks DROP COLUMN difficulty;
+         ALTER TABLE lists DROP COLUMN icon; ALTER TABLE lists DROP COLUMN color;
+         ALTER TABLE note_folders DROP COLUMN icon; ALTER TABLE note_folders DROP COLUMN color;
          DROP INDEX lists_manual_order;
          DROP INDEX note_folders_manual_order;
          ALTER TABLE lists DROP COLUMN position;

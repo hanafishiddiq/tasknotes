@@ -149,6 +149,10 @@ pub enum TaskError {
     NeedsApproval,
     #[error("The sidebar changed while this was moving; reload and try again")]
     OrderAnchorChanged,
+    #[error("Unknown icon: choose one of Tasknotes' icon names (style options)")]
+    InvalidStyleIcon,
+    #[error("Unknown colour: choose one of Tasknotes' twelve colour names (style options)")]
+    InvalidStyleColor,
     #[error("Bulk Change request not found")]
     BulkRequestNotFound,
     #[error("This request has already been decided")]
@@ -225,6 +229,8 @@ impl TaskError {
             | InvalidNoteFolderName
             | NoteFolderTooDeep
             | NoteFolderCycle
+            | InvalidStyleIcon
+            | InvalidStyleColor
             | InvalidBulkSelection => "invalid_input",
             InvalidCursor
             | InvalidHistoryCursor
@@ -716,7 +722,9 @@ const DIFFICULTY_COLUMN: usize = 13;
 pub(crate) const COLUMN_COUNT: usize = 14;
 
 /// The database schema this core reads and writes.
-pub const SCHEMA_VERSION: i64 = 17;
+/// v18 is left to Ticket 10 (Won't Do) on its own branch; whichever merges
+/// second renumbers its step.
+pub const SCHEMA_VERSION: i64 = 19;
 
 /// How long a write waits for another process (the CLI, MCP) holding the database lock.
 pub const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -930,6 +938,11 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), TaskError> {
     if version < 17 {
         let migration = connection.transaction()?;
         migrate_v17(&migration)?;
+        migration.commit()?;
+    }
+    if version < 19 {
+        let migration = connection.transaction()?;
+        crate::style::migrate_v19(&migration)?;
         migration.commit()?;
     }
     Ok(())

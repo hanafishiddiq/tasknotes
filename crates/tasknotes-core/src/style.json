@@ -1,0 +1,39 @@
+{
+  "colors": [
+    "red", "orange", "yellow", "green", "mint", "teal", "cyan", "blue", "indigo", "purple", "pink",
+    "brown"
+  ],
+  "icons": [
+    "folder", "folder-open", "folder-heart", "folder-kanban", "folder-code", "folder-git-2",
+    "folder-lock", "folder-archive", "folder-clock", "folder-check", "list-checks", "list-todo",
+    "list", "list-ordered", "clipboard-list", "clipboard-check", "square-check", "circle-check",
+    "check-check", "target", "inbox", "archive", "box", "package", "boxes", "layers", "layout-grid",
+    "kanban", "table", "calendar", "calendar-days", "calendar-check", "clock", "alarm-clock",
+    "hourglass", "timer", "star", "heart", "bookmark", "flag", "pin", "tag", "tags", "award",
+    "trophy", "medal", "crown", "gem", "sparkles", "zap", "flame", "sun", "moon", "cloud",
+    "snowflake", "umbrella", "rainbow", "leaf", "trees", "flower", "sprout", "mountain",
+    "waves-horizontal", "droplet", "house", "building", "building-complex", "store", "warehouse",
+    "school", "landmark", "church", "hospital", "hotel", "factory", "tent", "castle", "briefcase",
+    "wallet", "credit-card", "piggy-bank", "banknote", "coins", "receipt", "chart-line",
+    "chart-bar", "chart-pie", "trending-up", "calculator", "scale", "book", "book-open", "notebook",
+    "notebook-pen", "notepad-text", "file-text", "files", "newspaper", "library", "graduation-cap",
+    "pencil", "pen-tool", "highlighter", "brush", "palette", "paintbrush", "scissors", "ruler",
+    "lightbulb", "brain", "puzzle", "rocket", "telescope", "microscope", "flask-conical", "atom",
+    "dna", "code", "terminal", "bug", "git-branch", "git-pull-request", "database", "server", "cpu",
+    "monitor", "laptop", "smartphone", "tablet", "keyboard", "mouse", "wifi", "globe", "link",
+    "cloud-upload", "download", "upload", "shield", "lock", "key", "mail", "message-circle",
+    "message-square", "phone", "send", "at-sign", "bell", "megaphone", "users", "user",
+    "user-round", "baby", "contact", "handshake", "music", "headphones", "mic", "camera", "image",
+    "film", "video", "tv", "gamepad-2", "dice-5", "drama", "ticket", "clapperboard", "car", "bike",
+    "bus", "train-front", "plane", "ship", "map", "map-pin", "compass", "navigation", "earth",
+    "luggage", "fuel", "shopping-cart", "shopping-bag", "gift", "utensils", "coffee", "cup-soda",
+    "wine", "pizza", "apple", "cake-slice", "cookie", "carrot", "sandwich", "chef-hat", "dumbbell",
+    "activity", "heart-pulse", "stethoscope", "pill", "syringe", "bed", "bath", "shirt", "glasses",
+    "watch", "footprints", "dog", "cat", "bird", "fish", "paw-print", "bone", "rabbit", "turtle",
+    "bug-off", "wrench", "hammer", "settings", "sliders-horizontal", "plug", "battery", "power",
+    "lamp", "sofa", "armchair", "key-round", "trash", "recycle", "face-slightly-smiling",
+    "face-grinning", "face-slightly-frowning", "face-angry", "face-neutral", "party-popper",
+    "hand-heart", "thumbs-up", "hand", "eye", "ghost", "skull", "circle", "square", "triangle",
+    "hexagon", "diamond", "octagon", "pentagon", "shapes", "infinity", "hash", "asterisk"
+  ]
+}
