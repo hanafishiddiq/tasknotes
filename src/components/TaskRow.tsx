@@ -78,18 +78,20 @@ function saveOnShortcut<Group extends HTMLElement>(save: (event: KeyboardEvent<G
 interface SaveButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   /** The id of the hidden "Command Return" description. */
   shortcutDescription: string;
+  /** While it reads "Saving...", the button drops its ⌘↵ hint. */
+  busy?: boolean;
 }
 
 /**
  * A Task edit group's Save button: its label, then a quiet ⌘↵. Assistive tech
  * hears "Command Return" through the description, not as part of the name.
  */
-function SaveButton({ shortcutDescription, children, ...button }: SaveButtonProps) {
+function SaveButton({ shortcutDescription, busy = false, children, ...button }: SaveButtonProps) {
   return (
     <button className="button button-primary button-small" {...button}
       aria-keyshortcuts="Meta+Enter" aria-describedby={shortcutDescription}>
       {children}
-      <kbd className="save-shortcut" aria-hidden="true">⌘↵</kbd>
+      {!busy && <kbd className="save-shortcut" aria-hidden="true">⌘↵</kbd>}
     </button>
   );
 }
@@ -367,6 +369,7 @@ export default function TaskRow({
                 <SaveButton
                   type="submit"
                   shortcutDescription={shortcutDescription}
+                  busy={saving}
                   disabled={
                     !draftTitle.trim() || saving || hasUnsavedProgressUpdate || hasUnsavedDetails
                   }

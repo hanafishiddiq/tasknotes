@@ -24,11 +24,11 @@ const onRecordProgress = vi.fn(async () => undefined);
 const onUpdateDetails = vi.fn(async () => undefined);
 
 /** TaskRow with its unsaved edits held above it, as App holds them. */
-function Row({ initialEdits }: { initialEdits?: UnsavedTaskEdits }) {
+function Row({ initialEdits, saving = false }: { initialEdits?: UnsavedTaskEdits; saving?: boolean }) {
   const [edits, setEdits] = useState<UnsavedTaskEdits | undefined>(initialEdits);
   return (
     <TaskRow
-      task={synthetic} expanded saving={false} onToggle={() => undefined}
+      task={synthetic} expanded saving={saving} onToggle={() => undefined}
       onSave={onSave} onChange={onChange} onRecordProgress={onRecordProgress}
       lists={[]} today="2026-11-09" onMove={async () => undefined}
       onUpdateDetails={onUpdateDetails} onOpenNote={() => undefined}
@@ -184,6 +184,12 @@ describe("the ⌘↵ hint on each Save button", () => {
     expect(button).toHaveAttribute("aria-keyshortcuts", "Meta+Enter");
     expect(button).toHaveAccessibleDescription("Command Return");
   });
+});
+
+it("hides the ⌘↵ hint while the button reads Saving...", () => {
+  render(<Row saving initialEdits={{ baseRevision: 3, fields: { description: "Draft" } }} />);
+  const button = screen.getByRole("button", { name: "Saving..." });
+  expect(within(button).queryByText("⌘↵")).toBeNull();
 });
 
 it("lists ⌘↵ in the Settings keyboard shortcuts", () => {
