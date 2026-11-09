@@ -76,7 +76,8 @@ fn a_v10_database_keeps_its_notes_visible_to_ai_after_gaining_the_flag() {
     let kept = note(&fx.desktop(), "# Existing synthetic Note");
     let conn = rusqlite::Connection::open(&fx.db).unwrap();
     conn.execute_batch(
-        "ALTER TABLE notes DROP COLUMN exclude_from_ai;
+        "DROP TABLE pomodoro_sessions;
+         ALTER TABLE notes DROP COLUMN exclude_from_ai;
          ALTER TABLE audit_entries DROP COLUMN hidden_from_ai;
          ALTER TABLE audit_entries DROP COLUMN requested_by;
          DROP TABLE retired_revisions;

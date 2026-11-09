@@ -298,7 +298,8 @@ fn a_difficulty_filter_reads_and_writes_a_level_name_or_none() {
 fn back_to_v16(db: &Path) {
     let conn = Connection::open(db).unwrap();
     conn.execute_batch(
-        "DROP INDEX tasks_status_difficulty_order;
+        "DROP TABLE pomodoro_sessions;
+         DROP INDEX tasks_status_difficulty_order;
          ALTER TABLE tasks DROP COLUMN difficulty;
          ALTER TABLE lists DROP COLUMN icon; ALTER TABLE lists DROP COLUMN color;
          ALTER TABLE note_folders DROP COLUMN icon; ALTER TABLE note_folders DROP COLUMN color;

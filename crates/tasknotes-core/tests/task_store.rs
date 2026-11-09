@@ -167,7 +167,8 @@ fn stores_opening_at_the_same_moment_all_succeed() {
     for older in [
         None,
         Some(
-            "DROP TABLE retired_revisions;
+            "DROP TABLE pomodoro_sessions;
+                 DROP TABLE retired_revisions;
                  DROP TABLE bulk_requests;
                  ALTER TABLE audit_entries DROP COLUMN requested_by;
                  DROP INDEX lists_manual_order; ALTER TABLE lists DROP COLUMN position;

@@ -60,7 +60,7 @@ fn v6_database(db: &Path) {
              CREATE INDEX notes_updated_order ON notes(updated_at DESC, id DESC);
              INSERT INTO notes VALUES ('00000000-0000-4000-8000-0000000000aa',
                '# Packing list\n\nPassport and tickets', 'Packing list', 3, 10, 20);
-             DROP TABLE IF EXISTS audit_entries; DROP TABLE IF EXISTS bulk_requests; DROP TABLE IF EXISTS retired_revisions;
+             DROP TABLE IF EXISTS audit_entries; DROP TABLE IF EXISTS bulk_requests; DROP TABLE IF EXISTS retired_revisions; DROP TABLE IF EXISTS pomodoro_sessions;
              DROP INDEX tasks_status_difficulty_order; ALTER TABLE tasks DROP COLUMN difficulty; ALTER TABLE lists DROP COLUMN icon; ALTER TABLE lists DROP COLUMN color;
              ALTER TABLE tasks DROP COLUMN wont_do_from; ALTER TABLE tasks DROP COLUMN wont_do; ALTER TABLE progress_entries DROP COLUMN previous_wont_do;
              ALTER TABLE progress_entries DROP COLUMN wont_do;

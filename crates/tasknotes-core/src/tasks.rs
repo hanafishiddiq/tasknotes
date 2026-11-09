@@ -153,6 +153,12 @@ pub enum TaskError {
     InvalidStyleIcon,
     #[error("Unknown colour: choose one of Tasknotes' twelve colour names (style options)")]
     InvalidStyleColor,
+    #[error(
+        "Pomodoro lengths: focus 1–180 minutes, breaks 1–60 minutes, a long break after 1–12 sessions"
+    )]
+    InvalidPomodoroDurations,
+    #[error("This Pomodoro Session cannot be stored: its times or outcome do not fit together")]
+    InvalidPomodoroSession,
     #[error("Bulk Change request not found")]
     BulkRequestNotFound,
     #[error("This request has already been decided")]
@@ -231,7 +237,9 @@ impl TaskError {
             | NoteFolderCycle
             | InvalidStyleIcon
             | InvalidStyleColor
-            | InvalidBulkSelection => "invalid_input",
+            | InvalidBulkSelection
+            | InvalidPomodoroDurations
+            | InvalidPomodoroSession => "invalid_input",
             InvalidCursor
             | InvalidHistoryCursor
             | InvalidRemovedCursor
@@ -862,7 +870,7 @@ const WONT_DO_FROM_COLUMN: usize = 15;
 pub(crate) const COLUMN_COUNT: usize = 16;
 
 /// The database schema this core reads and writes.
-pub const SCHEMA_VERSION: i64 = 19;
+pub const SCHEMA_VERSION: i64 = 22;
 
 /// How long a write waits for another process (the CLI, MCP) holding the database lock.
 pub const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -1086,6 +1094,12 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), TaskError> {
     if version < 19 {
         let migration = connection.transaction()?;
         crate::style::migrate_v19(&migration)?;
+        migration.commit()?;
+    }
+    // v20 and v21 belong to Tickets 13 and 12; v22 needs neither.
+    if version < 22 {
+        let migration = connection.transaction()?;
+        crate::pomodoro::migrate_v22(&migration)?;
         migration.commit()?;
     }
     Ok(())
