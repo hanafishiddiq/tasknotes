@@ -6,11 +6,11 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** in progress — Draft PR #23 awaiting review
+**Implementation:** in progress — PR #23 merged 2026-11-09; the real-build check waits for the single batch-2 build (Ticket 15)
 
 ## Acceptance criteria
 
-- [ ] Independent review of PR #23 with findings addressed.
+- [x] Independent review of PR #23 with findings addressed. *(standards + spec review 2026-11-09; fixes 0ed8660…c7e247e, Vitest 980, Rust green; combined with #22/#24/#25: Vitest 999, Rust core 239 / CLI 46 / MCP 35 / app 42)*
 - [ ] A change made through the CLI appears in the open window within a few seconds without a reopen, on the real build.
 - [ ] A Task with unsaved edits stays visible after such a reload until saved or discarded.
 

@@ -7,7 +7,7 @@ Tujuan akhir: Tasknotes di /Applications berisi 11 isi batch ini (PR #23, PR #24
 - [x] Keputusan produk disepakati lewat grilling (2026-11-09)
 - [x] Keputusan dicatat di glosarium, ADR, dan spec
 - [x] Tiket dipecah di .scratch/tasknotes-next/
-- [ ] PR #23 dan PR #24 di-review lalu di-merge ke main
+- [x] PR #23 dan PR #24 di-review lalu di-merge ke main (bersama #22 ikon dan #25 spec, 2026-11-09)
 - [ ] Fitur kecil selesai: Cmd+Enter, toast Task baru, cek mute
 - [ ] Fitur sedang selesai: Difficulty, Won't do, sidebar + ikon/warna
 - [ ] Fitur besar selesai: drag sort + Custom, nested List, Pomodoro
@@ -18,3 +18,5 @@ Tujuan akhir: Tasknotes di /Applications berisi 11 isi batch ini (PR #23, PR #24
 ## Perlu Han lakukan
 
 ## Riwayat sesi
+
+- 2026-11-09 · 17451773
