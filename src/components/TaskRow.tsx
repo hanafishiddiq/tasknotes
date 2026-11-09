@@ -1,7 +1,7 @@
 import {
   useLayoutEffect, useRef, type ButtonHTMLAttributes, type FormEvent, type KeyboardEvent,
 } from "react";
-import { CalendarDays, Check, Folder, LoaderCircle, SignalZero, Tag, Trash2 } from "lucide-react";
+import { CalendarDays, Check, Folder, LoaderCircle, Tag, Trash2 } from "lucide-react";
 import type {
   Task,
   TaskList,
@@ -22,6 +22,7 @@ import {
   PRIORITY_VIEW,
   DIFFICULTY_ORDER,
   DIFFICULTY_VIEW,
+  NO_DIFFICULTY_ICON,
 } from "../lib/task-visuals";
 
 const dateFormatter = new Intl.DateTimeFormat("en", {
@@ -156,7 +157,7 @@ export default function TaskRow({
   const PriorityIcon = PRIORITY_VIEW[task.priority].icon;
   // Older replies may lack the field; treat that as No Difficulty.
   const difficulty = task.difficulty ?? null;
-  const DifficultyIcon = difficulty ? DIFFICULTY_VIEW[difficulty].icon : SignalZero;
+  const DifficultyIcon = difficulty ? DIFFICULTY_VIEW[difficulty].icon : NO_DIFFICULTY_ICON;
   const hiddenTags = (task.tags ?? []).slice(2);
   const titleField = useRef<HTMLTextAreaElement>(null);
   const due = deadlineStatus(task.dueDate, today, task.status);

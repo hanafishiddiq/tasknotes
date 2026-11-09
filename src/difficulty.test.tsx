@@ -131,4 +131,17 @@ describe("Difficulty", () => {
     await user.selectOptions(screen.getByRole("combobox", { name: "Filter by difficulty" }), "");
     await waitFor(() => expect(listCalls[listCalls.length - 1]).toEqual({ limit: 50, cursor: null }));
   });
+
+  it("marks No Difficulty in the editor with a neutral icon, not the Very easy one", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open Synthetic errand" }));
+    const capsule = screen.getByRole("combobox", { name: "Difficulty" }).closest("label")!;
+    expect(capsule.querySelector("svg.lucide-square-dashed")).not.toBeNull();
+    expect(capsule.querySelector("svg.lucide-signal-zero")).toBeNull();
+
+    await user.selectOptions(screen.getByRole("combobox", { name: "Difficulty" }), "very_easy");
+    await waitFor(() => expect(capsule.querySelector("svg.lucide-signal-zero")).not.toBeNull());
+    expect(capsule.querySelector("svg.lucide-square-dashed")).toBeNull();
+  });
 });

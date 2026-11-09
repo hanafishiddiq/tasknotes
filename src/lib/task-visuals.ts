@@ -1,7 +1,7 @@
 import {
   ArrowDown, ArrowUp, CheckCircle2, ChevronsDown, ChevronsUp,
   Circle, LoaderCircle, Minus, Signal, SignalHigh, SignalLow, SignalMedium, SignalZero,
-  type LucideIcon,
+  SquareDashed, type LucideIcon,
 } from "lucide-react";
 import type { Difficulty, Priority, WorkStatus } from "./task-api";
 
@@ -28,3 +28,5 @@ export const DIFFICULTY_VIEW: Record<Difficulty, { label: string; icon: LucideIc
   very_hard: { label: "Very hard", icon: Signal },
 };
 export const DIFFICULTY_ORDER: Difficulty[] = ["very_easy", "easy", "medium", "hard", "very_hard"];
+/** No Difficulty: an empty marker, so it never reads as Very easy's single bar. */
+export const NO_DIFFICULTY_ICON: LucideIcon = SquareDashed;
