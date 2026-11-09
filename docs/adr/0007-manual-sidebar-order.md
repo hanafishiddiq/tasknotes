@@ -10,6 +10,10 @@ Lists used to show newest first and Note Folders by name, so a person could not 
 
 **Removed.** A List or folder in Removed keeps its position, so restoring it brings it back where it was. A move that changes nothing a person can see is `unchanged`.
 
-**Exports** carry `position`, so a person's arrangement is not lost with the rest of their data; existing fields do not change, so the format version stays.
+**Exports** carry `position`, so a person's arrangement is not lost with the rest of their data; existing fields do not change, so the format version stays. Exports now list Lists by position and folders grouped by parent, so the order of records in the file changed, but the format version did not.
+
+**Interfaces.** The CLI and MCP call one entry, `reorder_note_folder`, naming a folder, the top level, or no parent to stay where the folder is; whether the change is recorded as `folder.move` or `folder.reorder` is decided inside the write from the folder as it then stands.
+
+**Known limit.** The sidebar loads Lists and folders a page at a time. Dropping below the last row, or Alt+Down on it, while more pages exist puts the item after the last *loaded* sibling, not at the true bottom. A "last" destination resolved in the core would fix it but touches every interface, so it waits for a ticket.
 
 We chose whole integers renumbered on a move over fractional positions because sibling groups are small, and over a separate order table because position has no meaning apart from its row. Moving through an AI interface is a single-item change, so it does not go through Bulk Change approval.
