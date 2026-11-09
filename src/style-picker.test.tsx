@@ -6,7 +6,7 @@ import App from "./App";
 import type { TaskList } from "./lib/task-api";
 import { STYLE_ICONS } from "./lib/style-icons";
 import { STYLE_COLORS, STYLE_ICON_NAMES, searchIcons } from "./lib/style";
-import { contrast, parseColor, tokens, type Theme } from "./test/stylesheet";
+import { contrast, declared, parseColor, rules, selectorsOf, tokens, type Theme } from "./test/stylesheet";
 import { NoteBackend } from "./test/note-backend";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -182,6 +182,67 @@ describe("icons and colours on Lists", () => {
     ]);
   });
 
+  it("keeps focus on Save while the write is pending and after the core refuses it", async () => {
+    let refuse!: (reason: string) => void;
+    const base = invokeMock.getMockImplementation()!;
+    invokeMock.mockImplementation((command, args) => command === "set_list_style"
+      ? new Promise((_, reject) => { refuse = reject; })
+      : base(command, args));
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await within(listsNav()).findByRole("button", { name: "Icon and colour for Alpha" }));
+    const picker = screen.getByRole("group", { name: "Icon and colour for Alpha" });
+    await user.click(within(picker).getByRole("radio", { name: "Blue" }));
+    const save = within(picker).getByRole("button", { name: "Save" });
+    await user.click(save);
+
+    await eventually(() => expect(picker).toHaveAttribute("aria-busy", "true"));
+    expect(save).toHaveFocus();
+    expect(save).toHaveAttribute("aria-disabled", "true");
+    // Nothing in the picker changes while saving, but nothing drops focus either.
+    const red = within(picker).getByRole("radio", { name: "Red" });
+    expect(red).not.toBeDisabled();
+    expect(red).toHaveAttribute("aria-disabled", "true");
+    await user.click(red);
+    expect(red).toHaveAttribute("aria-checked", "false");
+    await user.click(save);
+    expect(styleCalls("set_list_style")).toHaveLength(1);
+
+    refuse("Revision conflict: reload before saving");
+    await eventually(() => expect(picker).not.toHaveAttribute("aria-busy"));
+    expect(save).toHaveFocus();
+    expect(save).not.toHaveAttribute("aria-disabled");
+  });
+
+  it("moves Down by the columns the picker actually shows when a narrow sidebar wraps it", async () => {
+    // jsdom has no layout: lay the icon buttons out six to a row by hand.
+    const width = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth")!;
+    const top = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetTop")!;
+    const inIcons = (element: HTMLElement) => element.parentElement?.getAttribute("aria-label") === "Icon";
+    Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
+      configurable: true, get(this: HTMLElement) { return inIcons(this) ? 22 : 0; },
+    });
+    Object.defineProperty(HTMLElement.prototype, "offsetTop", {
+      configurable: true,
+      get(this: HTMLElement) { return inIcons(this) ? Math.floor([...this.parentElement!.children].indexOf(this) / 6) * 24 : 0; },
+    });
+    try {
+      const user = userEvent.setup();
+      render(<App />);
+      await user.click(await within(listsNav()).findByRole("button", { name: "Icon and colour for Alpha" }));
+      const icons = within(screen.getByRole("group", { name: "Icon and colour for Alpha" })).getByRole("radiogroup", { name: "Icon" });
+      const radios = within(icons).getAllByRole("radio");
+      radios[0].focus();
+      await user.keyboard("{ArrowDown}");
+      expect(radios[6]).toHaveFocus();
+      await user.keyboard("{ArrowUp}");
+      expect(radios[0]).toHaveFocus();
+    } finally {
+      Object.defineProperty(HTMLElement.prototype, "offsetWidth", width);
+      Object.defineProperty(HTMLElement.prototype, "offsetTop", top);
+    }
+  });
+
   it("does not start a drag from the picker and still drags a styled row", async () => {
     render(<App />);
     const home = await within(listsNav()).findByRole("button", { name: "🏠 Home" });
@@ -189,6 +250,42 @@ describe("icons and colours on Lists", () => {
     fireEvent.click(within(listsNav()).getByRole("button", { name: "Icon and colour for Alpha" }));
     const picker = screen.getByRole("group", { name: "Icon and colour for Alpha" });
     expect(picker.closest("[data-drag-row]")).toBeNull();
+  });
+});
+
+describe("the picker at a narrow sidebar and a deep folder", () => {
+  const value = (selector: string, property: string) => {
+    const rule = rules.find((item) => item.media === null && selectorsOf(item).includes(selector) && declared(item, property));
+    return rule ? declared(rule, property) : null;
+  };
+
+  it("wraps its grids instead of shrinking a cell below a 22px target", () => {
+    // jsdom has no layout, so the rule itself is checked: never more columns than the
+    // keyboard expects, never a cell narrower than 22px; a narrow picker wraps.
+    for (const grid of [".style-swatches", ".style-icons"]) {
+      expect(value(grid, "grid-template-columns"), grid)
+        .toBe("repeat(auto-fill, minmax(max(22px, calc((100% - (var(--columns) - 1) * 2px) / var(--columns))), 1fr))");
+      expect(value(grid, "gap"), grid).toBe("2px");
+    }
+    // 7 swatches of 22px fit 210px - sidebar padding (20) - border (1) - picker border and padding (18).
+    expect(7 * 22 + 6 * 2).toBeLessThanOrEqual(210 - 20 - 1 - 18);
+  });
+
+  it("opens at the sidebar's full width under a folder five levels deep", async () => {
+    let parent = backend.folder("Level 1");
+    for (let level = 2; level <= 5; level++) parent = backend.folder(`Level ${level}`, parent);
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "All notes" }));
+    const tree = () => screen.getByRole("navigation", { name: "Note folders" });
+    for (let level = 1; level <= 4; level++) {
+      await user.click(await within(tree()).findByRole("button", { name: `Expand Level ${level}` }));
+    }
+    await user.click(await within(tree()).findByRole("button", { name: "Icon and colour for Level 5" }));
+    const picker = screen.getByRole("group", { name: "Icon and colour for Level 5" });
+    expect(picker.style.marginLeft).toBe("");
+    expect(picker.style.paddingLeft).toBe("");
+    expect(picker.closest(".folder-row")).toBeNull();
   });
 });
 

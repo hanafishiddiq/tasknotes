@@ -339,10 +339,14 @@ body.sidebar-resizing * {
   flex: none;
   color: var(--accent);
 }
+/*
+ * At most --columns a row; never a cell under 22px, so a narrow sidebar wraps
+ * rather than clipping (StylePicker's arrow keys follow the row it lays out).
+ */
 .style-swatches,
 .style-icons {
   display: grid;
-  grid-template-columns: repeat(var(--columns), minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(max(22px, calc((100% - (var(--columns) - 1) * 2px) / var(--columns))), 1fr));
   gap: 2px;
 }
 .style-icons {
@@ -357,8 +361,8 @@ body.sidebar-resizing * {
   height: 24px;
   border-radius: 5px;
 }
-.style-swatches button:hover:not(:disabled),
-.style-icons button:hover:not(:disabled) {
+.style-swatches button:hover:not([aria-disabled="true"]),
+.style-icons button:hover:not([aria-disabled="true"]) {
   background: var(--side-hover);
 }
 .style-swatches button[aria-checked="true"],
@@ -399,6 +403,11 @@ body.sidebar-resizing * {
 .style-picker-actions {
   display: flex;
   gap: 6px;
+}
+/* Saving: nothing is disabled (focus stays on Save), it only stops answering. */
+.style-picker[aria-busy="true"] [aria-disabled="true"],
+.style-picker[aria-busy="true"] .style-search {
+  cursor: progress;
 }
 .folder-row--removed {
   height: 28px;

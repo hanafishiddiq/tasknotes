@@ -3,7 +3,11 @@ import { Folder } from "lucide-react";
 import StyleIcon from "./StyleIcon";
 import { STYLE_COLORS, searchIcons, styleColor, styleLabel, type Style } from "../lib/style";
 
-/** Swatches and icons per row: the arrow keys move by these, matching the CSS grids. */
+/**
+ * The most swatches and icons a row shows. A narrow sidebar wraps them into fewer
+ * (App.css keeps every cell at least 22px), so the arrow keys move by the row the
+ * window actually lays out, and by these only where there is no layout.
+ */
 export const SWATCH_COLUMNS = 7;
 export const ICON_COLUMNS = 8;
 
@@ -15,15 +19,16 @@ interface StylePickerProps {
   /** Resolves true once the core saved it. */
   onSave: (style: Style) => Promise<boolean>;
   onCancel: () => void;
-  indent?: number;
 }
 
 /**
  * Chooses a List's or Note Folder's colour and icon inline under its row
- * (nothing floats). Both are a draft until Save; each group is a radio group
- * whose arrow keys move across and down its grid. Escape cancels.
+ * (nothing floats), at the sidebar's full width whatever the row's depth. Both
+ * are a draft until Save; each group is a radio group whose arrow keys move
+ * across and down its grid. Escape cancels. While saving nothing is disabled, so
+ * focus stays where it was (on Save): the controls are aria-disabled instead.
  */
-export default function StylePicker({ name, style, busy, onSave, onCancel, indent = 0 }: StylePickerProps) {
+export default function StylePicker({ name, style, busy, onSave, onCancel }: StylePickerProps) {
   const [draft, setDraft] = useState<Style>(style);
   const [search, setSearch] = useState("");
   const iconGroup = useRef<HTMLDivElement>(null);
@@ -51,7 +56,7 @@ export default function StylePicker({ name, style, busy, onSave, onCancel, inden
 
   return (
     <div className="style-picker" role="group" aria-label={`Icon and colour for ${name}`}
-      style={{ marginLeft: indent }} onKeyDown={onKeyDown}>
+      aria-busy={busy || undefined} onKeyDown={onKeyDown}>
       <div className="style-picker-preview" aria-hidden="true">
         <StyleIcon icon={draft.icon} color={draft.color} />
         <span className="folder-name">{name}</span>
@@ -65,7 +70,7 @@ export default function StylePicker({ name, style, busy, onSave, onCancel, inden
             style={{ background: styleColor(color) }} />,
         })} />
       <input className="style-search" type="search" aria-label="Search icons" placeholder="Search icons"
-        value={search} disabled={busy} onChange={(event) => setSearch(event.target.value)} onKeyDown={intoIcons} />
+        value={search} readOnly={busy} onChange={(event) => setSearch(event.target.value)} onKeyDown={intoIcons} />
       <RadioGrid label="Icon" className="style-icons" columns={ICON_COLUMNS} groupRef={iconGroup}
         options={search.trim() ? icons : [null, ...icons]} chosen={draft.icon} disabled={busy}
         onChoose={(icon) => setDraft((current) => ({ ...current, icon }))}
@@ -75,8 +80,8 @@ export default function StylePicker({ name, style, busy, onSave, onCancel, inden
         })} />
       {search.trim() && icons.length === 0 && <p className="style-empty">No icons match "{search.trim()}"</p>}
       <div className="style-picker-actions">
-        <button type="button" className="button button-small button-primary" disabled={busy || !changed}
-          onClick={() => void save()}>Save</button>
+        <button type="button" className="button button-small button-primary" disabled={!changed && !busy}
+          aria-disabled={busy || undefined} onClick={() => void save()}>Save</button>
         <button type="button" className="button button-small" onClick={onCancel}>Cancel</button>
       </div>
     </div>
@@ -102,17 +107,32 @@ function RadioGrid({ label, className, columns, options, chosen, disabled, onCho
   const group = groupRef ?? own;
   // The chosen option is the tab stop; when a search hides it, the first shown one is.
   const stop = options.includes(chosen) ? chosen : options[0];
+  const radios = () => [...(group.current?.querySelectorAll<HTMLElement>('[role="radio"]') ?? [])];
+
+  /** Options in the first row as laid out; `columns` when nothing is laid out (tests). */
+  function perRow(): number {
+    const [first, ...rest] = radios();
+    if (!first || first.offsetWidth === 0) return columns;
+    const below = rest.findIndex((radio) => radio.offsetTop !== first.offsetTop);
+    return below === -1 ? rest.length + 1 : below + 1;
+  }
+
+  function choose(option: string | null) {
+    if (!disabled) onChoose(option);
+  }
 
   function onKeyDown(event: KeyboardEvent<HTMLElement>, at: number) {
+    const row = perRow();
     const step: Record<string, number> = {
-      ArrowRight: 1, ArrowLeft: -1, ArrowDown: columns, ArrowUp: -columns,
+      ArrowRight: 1, ArrowLeft: -1, ArrowDown: row, ArrowUp: -row,
       Home: -at, End: options.length - 1 - at,
     };
     if (!(event.key in step)) return;
     event.preventDefault();
+    if (disabled) return;
     const next = Math.min(options.length - 1, Math.max(0, at + step[event.key]));
     onChoose(options[next]);
-    group.current?.querySelectorAll<HTMLElement>('[role="radio"]')[next]?.focus();
+    radios()[next]?.focus();
   }
 
   return (
@@ -122,8 +142,8 @@ function RadioGrid({ label, className, columns, options, chosen, disabled, onCho
         const { label: name, content } = render(option);
         return (
           <button key={option ?? ""} type="button" role="radio" aria-checked={option === chosen}
-            aria-label={name} title={name} tabIndex={option === stop ? 0 : -1} disabled={disabled}
-            onClick={() => onChoose(option)} onKeyDown={(event) => onKeyDown(event, at)}>
+            aria-label={name} title={name} tabIndex={option === stop ? 0 : -1}
+            aria-disabled={disabled || undefined} onClick={() => choose(option)} onKeyDown={(event) => onKeyDown(event, at)}>
             {content}
           </button>
         );

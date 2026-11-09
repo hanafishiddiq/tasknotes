@@ -265,7 +265,7 @@ export default function NoteFolderTree({ folders, currentId, disabled, onOpen, o
                 </form>
               )}
               {edit === "style" && (
-                <StylePicker name={folder.name} indent={(depth + 1) * 14}
+                <StylePicker name={folder.name}
                   style={{ icon: folder.icon ?? null, color: folder.color ?? null }} busy={busy}
                   onSave={async (style) => {
                     const saved = await folders.style(folder, style);
