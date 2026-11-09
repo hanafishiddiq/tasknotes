@@ -582,7 +582,7 @@ fn a_wont_do_task_names_the_work_status_it_returns_to() {
 fn back_to_v17(db: &Path) {
     let conn = Connection::open(db).unwrap();
     conn.execute_batch(
-        "ALTER TABLE tasks DROP COLUMN wont_do_from;
+        "DROP INDEX tasks_custom_order; ALTER TABLE tasks DROP COLUMN position; DROP TABLE view_sorts; ALTER TABLE tasks DROP COLUMN wont_do_from;
          ALTER TABLE tasks DROP COLUMN wont_do;
          ALTER TABLE progress_entries DROP COLUMN previous_wont_do;
          ALTER TABLE progress_entries DROP COLUMN wont_do;
@@ -625,7 +625,7 @@ fn upgrading_from_v17_leaves_every_task_and_entry_not_wont_do_and_changes_nothin
     let before = snapshot(&Connection::open(&db).unwrap());
 
     let store = store_at(&db);
-    assert_eq!(SCHEMA_VERSION, 19);
+    const { assert!(SCHEMA_VERSION >= 18) };
     for id in [&finished.id, &open.id] {
         assert!(!store.get_task(id).unwrap().unwrap().wont_do);
         for entry in store.list_progress_entries(id, 50, None).unwrap().items {

@@ -82,7 +82,7 @@ fn a_v10_database_keeps_its_notes_visible_to_ai_after_gaining_the_flag() {
          DROP TABLE retired_revisions;
          DROP TABLE bulk_requests;
          DROP INDEX tasks_status_difficulty_order; ALTER TABLE tasks DROP COLUMN difficulty; ALTER TABLE lists DROP COLUMN icon; ALTER TABLE lists DROP COLUMN color;
-         ALTER TABLE tasks DROP COLUMN wont_do_from; ALTER TABLE tasks DROP COLUMN wont_do; ALTER TABLE progress_entries DROP COLUMN previous_wont_do;
+         DROP INDEX tasks_custom_order; ALTER TABLE tasks DROP COLUMN position; DROP TABLE view_sorts; ALTER TABLE tasks DROP COLUMN wont_do_from; ALTER TABLE tasks DROP COLUMN wont_do; ALTER TABLE progress_entries DROP COLUMN previous_wont_do;
          ALTER TABLE progress_entries DROP COLUMN wont_do;
          DROP INDEX lists_manual_order; ALTER TABLE lists DROP COLUMN position;
              CREATE INDEX lists_created_order ON lists(created_at DESC, id DESC);

@@ -435,13 +435,21 @@ impl TaskStore {
             require_active_list(tx, id)?;
         }
         let now = current_millis()?;
+        // It lands at the top of its group in the new List's Custom Order.
+        let position = crate::custom_order::top(tx, input.list_id.as_deref())?;
         let updated = tx.query_row(
             &format!(
                 "UPDATE tasks SET list_id=?1,revision=revision+1,
-                updated_at=max(updated_at+1,?2) WHERE id=?3 AND revision=?4
+                updated_at=max(updated_at+1,?2),position=?5 WHERE id=?3 AND revision=?4
                 RETURNING {COLUMNS}"
             ),
-            params![input.list_id, now, input.id, input.expected_revision],
+            params![
+                input.list_id,
+                now,
+                input.id,
+                input.expected_revision,
+                position
+            ],
             read_task,
         )?;
         self.audit_applied(tx, AuditAction::TaskMove, &updated.id, updated.revision)?;

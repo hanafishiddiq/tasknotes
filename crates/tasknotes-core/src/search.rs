@@ -3,8 +3,8 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::tasks::{
-    COLUMNS, Difficulty, DifficultyFilter, Priority, SortMode, TaskError, TaskPage, TaskStore,
-    TaskView, WorkStatus, read_task,
+    COLUMN_COUNT, COLUMNS, Difficulty, DifficultyFilter, Priority, SortMode, TaskError, TaskPage,
+    TaskStore, TaskView, WorkStatus, read_task,
 };
 
 /// Whether a query looks at active Tasks or only at Removed ones (ADR-0002).
@@ -39,11 +39,12 @@ pub struct TaskQuery {
 
 const MAX_SEARCH_WORDS: usize = 16;
 
-const STATUS_RANK: &str = "CASE status WHEN 'in_progress' THEN 0 WHEN 'ready' THEN 1 ELSE 2 END";
-const PRIORITY_RANK: &str = "CASE priority WHEN 'very_high' THEN 5 WHEN 'high' THEN 4 WHEN 'medium' THEN 3 WHEN 'low' THEN 2 ELSE 1 END";
+pub(crate) const STATUS_RANK: &str =
+    "CASE status WHEN 'in_progress' THEN 0 WHEN 'ready' THEN 1 ELSE 2 END";
+pub(crate) const PRIORITY_RANK: &str = "CASE priority WHEN 'very_high' THEN 5 WHEN 'high' THEN 4 WHEN 'medium' THEN 3 WHEN 'low' THEN 2 ELSE 1 END";
 /// Must match the v17 index expression and `Difficulty::rank`; the tests
 /// below check both.
-const DIFFICULTY_RANK: &str =
+pub(crate) const DIFFICULTY_RANK: &str =
     "CASE difficulty WHEN 'very_hard' THEN 5 WHEN 'hard' THEN 4 WHEN 'medium' THEN 3
                WHEN 'easy' THEN 2 WHEN 'very_easy' THEN 1 ELSE 0 END";
 const TOKENIZER: &str = "tokenize='unicode61 remove_diacritics 2'";
@@ -130,7 +131,8 @@ pub(crate) fn fingerprint(parts: &[&str]) -> String {
 
 struct After {
     status: i64,
-    /// The Priority or Difficulty rank of the sort; 0 under Newest.
+    /// The Priority or Difficulty rank of the sort, or the Custom Order
+    /// position; 0 under Newest.
     rank: i64,
     time: i64,
     id: String,
@@ -153,6 +155,7 @@ fn parse_cursor(value: &str, key: &str, sort: SortMode) -> Result<After, TaskErr
             SortMode::Priority => (1..=5).contains(&after.rank),
             SortMode::Difficulty => (0..=5).contains(&after.rank),
             SortMode::Newest => after.rank == 0,
+            SortMode::Custom => true,
         }
         || after.time < 0
         || Uuid::parse_str(&after.id).is_err()
@@ -180,6 +183,9 @@ impl TaskStore {
             .as_deref()
             .map(|tag| crate::organization::tag_fold(tag.trim()));
         let sort = query.sort;
+        if sort == SortMode::Custom && query.view == TaskView::All {
+            return Err(TaskError::CustomOrderNeedsOneList);
+        }
         let key = fingerprint(&[
             sort.as_cursor(),
             &query.view.cursor_key(),
@@ -212,8 +218,10 @@ impl TaskStore {
         let mut stmt = conn.prepare(&sql)?;
         let mut rows = stmt.query(params_from_iter(values))?;
         let mut items = Vec::with_capacity(limit as usize + 1);
+        let mut positions = Vec::with_capacity(limit as usize + 1);
         while let Some(row) = rows.next()? {
             items.push(read_task(row)?);
+            positions.push(row.get::<_, i64>(COLUMN_COUNT)?);
         }
         drop(rows);
         drop(stmt);
@@ -226,13 +234,16 @@ impl TaskStore {
                     SortMode::Priority => task.priority.rank(),
                     SortMode::Difficulty => Difficulty::rank(task.difficulty),
                     SortMode::Newest => 0,
+                    // A Task carries no position; the query read it.
+                    SortMode::Custom => positions[items.len() - 1],
                 };
-                format!(
-                    "v4|{key}|{}|{rank}|{}|{}",
-                    task.status.rank(),
-                    task.created_at,
-                    task.id
-                )
+                // Custom Order ties fall back to the id alone.
+                let time = if sort == SortMode::Custom {
+                    0
+                } else {
+                    task.created_at
+                };
+                format!("v4|{key}|{}|{rank}|{time}|{}", task.status.rank(), task.id)
             })
         } else {
             None
@@ -313,11 +324,12 @@ fn page_sql(
         SortMode::Priority => PRIORITY_RANK,
         SortMode::Difficulty => DIFFICULTY_RANK,
         SortMode::Newest => "0",
+        SortMode::Custom => "position",
     };
-    let secondary_order = if sort == SortMode::Newest {
-        ""
-    } else {
-        "sort_rank DESC, "
+    let order = match sort {
+        SortMode::Newest => "created_at DESC, id DESC",
+        SortMode::Custom => "sort_rank ASC, id ASC",
+        SortMode::Priority | SortMode::Difficulty => "sort_rank DESC, created_at DESC, id DESC",
     };
     let cursor_filter = match after {
         None => "1".to_owned(),
@@ -325,7 +337,14 @@ fn page_sql(
             let status = bind(Value::Integer(after.status));
             let time = bind(Value::Integer(after.time));
             let id = bind(Value::Text(after.id.clone()));
-            if sort == SortMode::Newest {
+            if sort == SortMode::Custom {
+                let rank = bind(Value::Integer(after.rank));
+                format!(
+                    "(status_rank > {status}
+                      OR (status_rank = {status} AND sort_rank > {rank})
+                      OR (status_rank = {status} AND sort_rank = {rank} AND id > {id}))"
+                )
+            } else if sort == SortMode::Newest {
                 format!(
                     "(status_rank > {status}
                       OR (status_rank = {status} AND created_at < {time})
@@ -351,9 +370,9 @@ fn page_sql(
             SELECT {COLUMNS}, {STATUS_RANK} AS status_rank, {rank_expr} AS sort_rank
             FROM tasks WHERE {}
          )
-         SELECT {COLUMNS} FROM ranked
+         SELECT {COLUMNS}, sort_rank FROM ranked
          WHERE {cursor_filter}
-         ORDER BY status_rank ASC, {secondary_order}created_at DESC, id DESC
+         ORDER BY status_rank ASC, {order}
          LIMIT {page_size}",
         filters.join(" AND ")
     );
@@ -424,6 +443,41 @@ mod difficulty_rank_tests {
             let plan = plan.join("\n");
             assert!(plan.contains("tasks_status_difficulty_order"), "{plan}");
             assert!(!plan.contains("TEMP B-TREE"), "{plan}");
+        }
+    }
+
+    /// A List's Custom Order is read from its index, with no sort of its own.
+    #[test]
+    fn the_custom_sort_is_served_by_its_index() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = TaskStore::open(&dir.path().join("t.db")).unwrap();
+        let conn = store.connect().unwrap();
+        for view in [TaskView::Inbox, TaskView::List(Uuid::nil().to_string())] {
+            for after in [
+                None,
+                Some(After {
+                    status: 1,
+                    rank: -3,
+                    time: 0,
+                    id: Uuid::nil().to_string(),
+                }),
+            ] {
+                let query = TaskQuery {
+                    sort: SortMode::Custom,
+                    view: view.clone(),
+                    ..TaskQuery::default()
+                };
+                let (sql, values) = page_sql(&query, Vec::new(), None, after.as_ref(), 50);
+                let mut statement = conn.prepare(&format!("EXPLAIN QUERY PLAN {sql}")).unwrap();
+                let plan: Vec<String> = statement
+                    .query_map(params_from_iter(values), |row| row.get::<_, String>(3))
+                    .unwrap()
+                    .collect::<rusqlite::Result<_>>()
+                    .unwrap();
+                let plan = plan.join("\n");
+                assert!(plan.contains("tasks_custom_order"), "{plan}");
+                assert!(!plan.contains("TEMP B-TREE"), "{plan}");
+            }
         }
     }
 }

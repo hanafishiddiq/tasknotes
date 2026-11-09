@@ -1,11 +1,12 @@
-//! Manual order of Lists and Note Folders (ADR-0007): where one sits among
-//! its siblings, the same rule for both. Siblings keep the order of their
-//! `position`, the id settling ties; a List or Folder in Removed keeps its
-//! place, so restoring it brings it back there.
+//! Manual order of Lists and Note Folders (ADR-0007), and the Custom Order
+//! of a List's Tasks (ADR 0010): where one sits among its siblings, the same
+//! rule for all. Siblings keep the order of their `position`, the id
+//! settling ties; one in Removed keeps its place, so restoring it brings it
+//! back there.
 
 use rusqlite::{Connection, Transaction, params};
 
-use crate::tasks::TaskError;
+use crate::tasks::{TaskError, WorkStatus};
 
 /// The rows that are ordered against each other.
 #[derive(Clone, Copy)]
@@ -15,13 +16,21 @@ pub(crate) enum Siblings<'a> {
     Folders {
         parent_id: Option<&'a str>,
     },
+    /// Every Task of one List (or Inbox, `None`), numbered as one sequence;
+    /// only the shown Tasks of one work-status group are the ones a move
+    /// is placed among.
+    Tasks {
+        list_id: Option<&'a str>,
+        status: WorkStatus,
+    },
 }
 
 /// One sibling as stored.
 struct Sibling {
     id: String,
     position: i64,
-    /// Not in Removed: what a person sees.
+    /// What a person sees among these siblings: not in Removed (and for a
+    /// Task, in the moving Task's group).
     active: bool,
 }
 
@@ -30,6 +39,25 @@ impl Siblings<'_> {
         match self {
             Self::Lists => "lists",
             Self::Folders { .. } => "note_folders",
+            Self::Tasks { .. } => "tasks",
+        }
+    }
+
+    /// The error for an anchor that is gone, in Removed or elsewhere.
+    const fn anchor_changed(self) -> TaskError {
+        match self {
+            Self::Tasks { .. } => TaskError::TaskOrderAnchorChanged,
+            _ => TaskError::OrderAnchorChanged,
+        }
+    }
+
+    /// Where renumbering starts. Lists and folders count from 1. Tasks keep
+    /// the lowest position they have, since a new Task takes one below it:
+    /// a move then renumbers only the Tasks it passes.
+    fn first_position(self, rows: &[Sibling]) -> i64 {
+        match self {
+            Self::Tasks { .. } => rows.first().map_or(1, |row| row.position),
+            _ => 1,
         }
     }
 
@@ -55,6 +83,13 @@ impl Siblings<'_> {
                      WHERE coalesce(parent_id, '') = coalesce(?1, '') ORDER BY position, id",
                 )?
                 .query_map(params![parent_id], read)?
+                .collect::<rusqlite::Result<_>>()?,
+            Self::Tasks { list_id, status } => conn
+                .prepare(
+                    "SELECT id, position, removed_at IS NULL AND status = ?2 FROM tasks
+                     WHERE list_id IS ?1 ORDER BY position, id",
+                )?
+                .query_map(params![list_id, status.as_sql()], read)?
                 .collect::<rusqlite::Result<_>>()?,
         };
         Ok(rows)
@@ -90,6 +125,26 @@ pub(crate) fn bottom(conn: &Connection, siblings: Siblings) -> Result<i64, TaskE
     Ok(last + 1)
 }
 
+/// The anchor that puts `id` directly before the active sibling
+/// `before_id`: the active sibling before it, or `None` (first).
+pub(crate) fn after_for_before(
+    conn: &Connection,
+    siblings: Siblings,
+    id: &str,
+    before_id: &str,
+) -> Result<Option<String>, TaskError> {
+    let rows = siblings.rows(conn)?;
+    let shown: Vec<&Sibling> = rows
+        .iter()
+        .filter(|row| row.active && row.id != id)
+        .collect();
+    let at = shown
+        .iter()
+        .position(|row| row.id == before_id)
+        .ok_or(siblings.anchor_changed())?;
+    Ok(at.checked_sub(1).map(|before| shown[before].id.clone()))
+}
+
 /// Puts `id` directly after the active sibling `after_id`, or first among
 /// all siblings without one. `id` need not be among `siblings` yet: a folder
 /// moving in from another parent. Only positions change, so a neighbour's
@@ -106,7 +161,7 @@ pub(crate) fn place(
         return if rows.iter().any(|row| row.id == id) {
             Ok(false)
         } else {
-            Err(TaskError::OrderAnchorChanged)
+            Err(siblings.anchor_changed())
         };
     }
     let order: Vec<&Sibling> = rows.iter().filter(|row| row.id != id).collect();
@@ -116,7 +171,7 @@ pub(crate) fn place(
             order
                 .iter()
                 .position(|row| row.active && row.id == anchor)
-                .ok_or(TaskError::OrderAnchorChanged)?
+                .ok_or(siblings.anchor_changed())?
                 + 1
         }
     };
@@ -138,15 +193,15 @@ pub(crate) fn place(
         "UPDATE {} SET position = ?1 WHERE id = ?2",
         siblings.table()
     ))?;
-    // Positions count up from 1 in the new order; the moved row has no
-    // stored position among these siblings worth keeping.
+    // Positions count up in the new order; the moved row has no stored
+    // position among these siblings worth keeping.
     let stored = |row: &&Sibling| (row.id.clone(), Some(row.position));
     let new_order = order[..at]
         .iter()
         .map(stored)
         .chain([(id.to_owned(), None)])
         .chain(order[at..].iter().map(stored));
-    for (wanted, (row_id, position)) in (1_i64..).zip(new_order) {
+    for (wanted, (row_id, position)) in (siblings.first_position(&rows)..).zip(new_order) {
         if position != Some(wanted) {
             update.execute(params![wanted, row_id])?;
         }
