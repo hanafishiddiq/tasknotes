@@ -6,7 +6,7 @@ import {
 import {
   taskApi, NO_FILTERS, TASK_PAGE_SIZE, type Task, type TaskList, type TaskView,
   type SortMode, type TaskChange, type ProgressDraft, type TaskFilters, type WorkStatus,
-  type Priority,
+  type Priority, type TaskListPage,
 } from "./lib/task-api";
 import { PRIORITY_ORDER, PRIORITY_VIEW, STATUS_ORDER, STATUS_VIEW } from "./lib/task-visuals";
 import TaskRow from "./components/TaskRow";
@@ -18,7 +18,7 @@ import { useSound } from "./lib/sound/use-sound";
 import { useShortcuts } from "./lib/use-shortcuts";
 import { useTaskDrafts } from "./lib/use-task-drafts";
 import { useUndo } from "./lib/use-undo";
-import { errorMessage } from "./lib/error-message";
+import { errorMessage, isListRemoved } from "./lib/error-message";
 import { listenForQuit } from "./lib/quit";
 import { listenForQuickCapture, shellApi } from "./lib/shell-api";
 import { newTaskKeys } from "./lib/shortcuts";
@@ -56,6 +56,17 @@ interface TaskQueryNow {
   sort: SortMode;
   view: TaskView;
   filters: TaskFilters;
+}
+
+/** The first page of Lists again, and more until at least `keep`, so Lists already loaded stay. */
+async function readListsAgain(keep: number): Promise<TaskListPage> {
+  let page = await taskApi.lists();
+  let items = page.items;
+  while (items.length < keep && page.nextCursor !== null) {
+    page = await taskApi.lists(page.nextCursor);
+    items = [...items, ...page.items];
+  }
+  return { ...page, items };
 }
 
 /** A page read again. What its cursor held may be gone: then the first page is what shows. */
@@ -138,6 +149,11 @@ export default function App() {
   const scrollAnchor = useRef<ScrollAnchor | null>(null);
   // Tasks kept on screen for their unsaved text, though the view no longer holds them.
   const keptForEdits = useRef<ReadonlySet<string>>(new Set());
+  // The open Task as last rendered, for a read that finishes after the person opened another.
+  const expandedNow = useRef(expandedId);
+  expandedNow.current = expandedId;
+  // Only the newest re-read of an outside change may show what it read.
+  const outsideRead = useRef(0);
 
   useOutsideChanges(showOutsideChanges);
 
@@ -378,11 +394,13 @@ export default function App() {
   }
 
   async function refreshLists() {
-    const page = await taskApi.lists();
+    showLists(await taskApi.lists());
+  }
+
+  function showLists(page: TaskListPage) {
     setLists(page.items);
     setListCursor(page.nextCursor);
     setListError(null);
-    return page;
   }
 
   function showAllTasks() {
@@ -409,17 +427,28 @@ export default function App() {
     return true;
   }
 
-  /** Lists and the Task page showing, read again. A Task with unsaved text stays on screen. */
+  /**
+   * Lists and the Task page showing, read again. A Task with unsaved text stays
+   * on screen. A newer re-read, or anything the person did meanwhile, wins.
+   */
   async function readTaskViewAgain(): Promise<boolean> {
+    const read = ++outsideRead.current;
     const query = currentQuery.current;
     const cursor = currentPage.current;
     const generation = requestGeneration.current;
     const edited = tasks.filter((task) => drafts.get(task.id));
+    const superseded = () =>
+      read !== outsideRead.current || generation !== requestGeneration.current || cursor !== currentPage.current;
     try {
-      const listPage = await refreshLists();
-      const viewed = query.view.kind === "list" ? query.view.listId : null;
-      if (listPage.items.some((list) => list.id === viewed && list.removed)) {
-        if (generation !== requestGeneration.current) return false;
+      const listPage = await readListsAgain(lists.length);
+      let again: Awaited<ReturnType<typeof readPageAgain>>;
+      try {
+        again = await readPageAgain(cursor, query);
+      } catch (reason) {
+        // The List on screen went to Removed: the core says so for that List, on any page of Lists.
+        if (query.view.kind !== "list" || !isListRemoved(reason)) throw reason;
+        if (superseded()) return false;
+        showLists(listPage);
         keptForEdits.current = new Set(edited.map((task) => task.id));
         if (edited.length === 0) {
           setExpandedId(null);
@@ -427,18 +456,18 @@ export default function App() {
         }
         return true;
       }
-      const { page, stayOnPage } = await readPageAgain(cursor, query);
+      const { page, stayOnPage } = again;
       const gone = edited.filter((task) => !page.items.some((item) => item.id === task.id));
       // Where each is now, if anywhere: a newer revision lets the row offer to keep the edits.
       const kept = await Promise.all(gone.map((task) =>
         taskApi.list(null, query.sort, { kind: "all" }, { ...NO_FILTERS, taskId: task.id })
           .then((found) => found.items[0] ?? task, () => task)));
-      // The person did something meanwhile: its own read decides what shows.
-      if (generation !== requestGeneration.current || cursor !== currentPage.current) return false;
+      if (superseded()) return false;
+      showLists(listPage);
       const items = [...kept, ...page.items];
       keptForEdits.current = new Set(kept.map((task) => task.id));
       setExpandedId((open) => items.some((task) => task.id === open) ? open : null);
-      scrollAnchor.current = captureScrollAnchor(taskScroll.current, expandedId);
+      scrollAnchor.current = captureScrollAnchor(taskScroll.current, expandedNow.current);
       setTasks(items);
       setNextCursor(page.nextCursor);
       if (!stayOnPage) {

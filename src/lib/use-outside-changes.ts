@@ -15,6 +15,10 @@ interface OutsideChanges {
  * `show` resolves false when it could not show them yet: they stay unseen and
  * the next check offers them again. A failed check says nothing, as with
  * pending approvals: the views report failures themselves.
+ *
+ * The first answer only says where the log ends, and the window's first reads
+ * may have run before it: a change made in between would never be offered. So
+ * the first `show` runs without a change, once, and its reads start after that answer.
  */
 export function useOutsideChanges(show: () => Promise<boolean>) {
   const latestShow = useRef(show);
@@ -27,7 +31,7 @@ export function useOutsideChanges(show: () => Promise<boolean>) {
       checking = true;
       try {
         const { latest, changed } = await invoke<OutsideChanges>("outside_changes", { seen });
-        if (!changed || await latestShow.current()) seen = latest;
+        if ((seen !== null && !changed) || await latestShow.current()) seen = latest;
       } catch {
         // Asked again on the next tick.
       } finally {

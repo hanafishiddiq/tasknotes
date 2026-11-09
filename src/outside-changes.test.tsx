@@ -25,6 +25,24 @@ let latestOutside: number;
 /** Holds the next save open, to show what a check does in the meantime. */
 let holdSave: Promise<void> | null;
 
+/** A call held open by `holdNext`: answered from the data as it was when asked, or as it is once released. */
+interface Hold {
+  answer: "asked" | "released";
+  reached: boolean;
+  released: Promise<void>;
+  release: () => void;
+}
+let holds: Map<string, Hold>;
+
+/** Holds the next call of `command` open until the test releases it. */
+function holdNext(command: string, answer: Hold["answer"]): Hold {
+  let release = () => {};
+  const released = new Promise<void>((resolve) => { release = resolve; });
+  const hold = { answer, reached: false, released, release };
+  holds.set(command, hold);
+  return hold;
+}
+
 function outside() {
   latestEntry += 1;
   latestOutside = latestEntry;
@@ -62,17 +80,44 @@ beforeEach(() => {
   latestEntry = 1;
   latestOutside = 0;
   holdSave = null;
+  holds = new Map();
   window.localStorage.clear();
   call.mockReset();
   call.mockImplementation(async (command, args) => {
+    const hold = holds.get(command);
+    if (!hold) return answer(command, args);
+    holds.delete(command);
+    hold.reached = true;
+    if (hold.answer === "released") {
+      await hold.released;
+      return answer(command, args);
+    }
+    const result = answer(command, args);
+    await hold.released;
+    return result;
+  });
+});
+
+async function answer(command: string, args: unknown): Promise<unknown> {
+  {
     const body = (args ?? {}) as Record<string, any>;
     switch (command) {
       case "outside_changes":
         return { latest: latestEntry, changed: body.seen != null && latestOutside > body.seen };
-      case "list_lists": return { items: lists.map((item) => ({ ...item })), nextCursor: null };
+      case "list_lists": {
+        const start = body.cursor ? Number(body.cursor) : 0;
+        const end = start + body.limit;
+        return {
+          items: lists.slice(start, end).map((item) => ({ ...item })),
+          nextCursor: end < lists.length ? String(end) : null,
+        };
+      }
       case "list_tasks": {
         const viewed = body.view?.kind === "list" ? body.view.listId : null;
-        if (viewed && lists.find((item) => item.id === viewed)?.removed) throw "This List is in Removed";
+        // The core's refusal (`TaskError::ListRemoved`), whichever page of Lists holds it.
+        if (viewed && lists.find((item) => item.id === viewed)?.removed) {
+          throw "List has been removed; restore it before assigning Tasks";
+        }
         const hidden = new Set(lists.filter((item) => item.removed).map((item) => item.id));
         const items = tasks
           .filter((item) => !(item.listId && hidden.has(item.listId)))
@@ -107,8 +152,8 @@ beforeEach(() => {
       case "quit_ready": return null;
       default: return notes.handle(command, body);
     }
-  });
-});
+  }
+}
 
 afterEach(() => {
   vi.useRealTimers();
@@ -362,6 +407,82 @@ describe("Changes made outside the window", () => {
   });
 });
 
+describe("Changes made outside the window, read while something else happens", () => {
+  it("shows what another process changed between the first load and the first check", async () => {
+    tasks = [task(1)];
+    const firstCheck = holdNext("outside_changes", "released");
+    render(<App />);
+    await screen.findByRole("article", { name: "Synthetic task 1" });
+
+    tasks.unshift(task(2, { title: "Added through the CLI" }));
+    outside();
+    await act(async () => { firstCheck.release(); });
+
+    expect(await screen.findByRole("article", { name: "Added through the CLI" })).toBeVisible();
+  });
+
+  it("never lets an older read replace a newer one", async () => {
+    tasks = [task(1), task(2)];
+    const user = userEvent.setup();
+    render(<App />);
+    await focusWindow();
+    await user.click(await screen.findByRole("button", { name: "Open Synthetic task 1" }));
+    const field = screen.getByRole("textbox", { name: "Edit description" });
+    await user.type(field, "Half a thought");
+    tasks.shift();
+    outside();
+    await focusWindow();
+    expect(await screen.findByRole("article", { name: "Synthetic task 1" })).toBeVisible();
+    expect(screen.getByRole("article", { name: "Synthetic task 2" })).toBeVisible();
+
+    // Giving up the text reads the list again; that read is held as it was.
+    const older = holdNext("list_tasks", "asked");
+    await user.clear(field);
+    await waitFor(() => expect(older.reached).toBe(true));
+    tasks.unshift(task(3, { title: "Added through MCP" }));
+    outside();
+    await focusWindow();
+    expect(await screen.findByRole("article", { name: "Added through MCP" })).toBeVisible();
+
+    await act(async () => { older.release(); });
+    await focusWindow();
+    expect(screen.getByRole("article", { name: "Added through MCP" })).toBeVisible();
+  });
+
+  it("goes to All tasks when a List past the first page of Lists was removed outside", async () => {
+    const work = list("Work");
+    lists = [...Array.from({ length: 100 }, (_, i) => list(`Other ${i + 1}`)), work];
+    tasks = [task(1), task(2, { listId: work.id, title: "In Work" })];
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Load more lists" }));
+    await user.click(await screen.findByRole("button", { name: "Work" }));
+    await screen.findByRole("article", { name: "In Work" });
+
+    lists[100] = { ...work, removed: true, revision: 2 };
+    outside();
+    await focusWindow();
+
+    expect(await screen.findByRole("heading", { name: "All tasks" })).toBeVisible();
+    expect(await screen.findByRole("article", { name: "Synthetic task 1" })).toBeVisible();
+  });
+
+  it("keeps the Lists already loaded with Load more", async () => {
+    lists = Array.from({ length: 101 }, (_, i) => list(`Other ${i + 1}`));
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Load more lists" }));
+    await screen.findByRole("button", { name: "Other 101" });
+
+    tasks.unshift(task(2, { title: "Added through MCP" }));
+    outside();
+    await focusWindow();
+
+    await screen.findByRole("article", { name: "Added through MCP" });
+    expect(screen.getByRole("button", { name: "Other 101" })).toBeVisible();
+  });
+});
+
 describe("The Task list's scroll position", () => {
   let restore: () => void;
   beforeEach(() => {
@@ -407,6 +528,28 @@ describe("The Task list's scroll position", () => {
 
     expect(screen.getByRole("textbox", { name: "Edit description" })).toHaveValue("Half a thought");
     // Two rows of 50 went in above it.
+    await waitFor(() => expect(area.scrollTop).toBe(900));
+  });
+
+  it("keeps a Task opened while the change was being read where it is", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("article", { name: "Synthetic task 1" });
+    await focusWindow();
+    const reading = holdNext("list_lists", "asked");
+
+    // Two rows go in just above Task 20, below the rows at the top of the view.
+    tasks.splice(19, 0, task(50, { title: "Added through MCP" }), task(51, { title: "Also through MCP" }));
+    outside();
+    await focusWindow();
+    expect(reading.reached).toBe(true);
+    await user.click(screen.getByRole("button", { name: "Open Synthetic task 20" }));
+    const area = scrollArea();
+    area.scrollTop = 800;
+    fireEvent.scroll(area);
+
+    await act(async () => { reading.release(); });
+    await screen.findByRole("article", { name: "Added through MCP" });
     await waitFor(() => expect(area.scrollTop).toBe(900));
   });
 

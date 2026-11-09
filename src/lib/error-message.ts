@@ -12,3 +12,11 @@ const FOLDER_REMOVED = "This folder, or a folder it is in, is in Removed";
 export function isFolderRemoved(error: unknown): boolean {
   return errorMessage(error).startsWith(FOLDER_REMOVED);
 }
+
+/** How the core refuses to list the Tasks of a List in Removed (`TaskError::ListRemoved`). */
+const LIST_REMOVED = "List has been removed";
+
+/** Whether the core refused because the List asked for is in Removed. */
+export function isListRemoved(error: unknown): boolean {
+  return errorMessage(error).startsWith(LIST_REMOVED);
+}
