@@ -6,14 +6,14 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** not started
+**Implementation:** in progress — Draft PR
 
 ## Acceptance criteria
 
-- [ ] ⌘↵ in the title/description, progress update, or tags/deadline group does exactly what that group's Save button does, including revision checks.
-- [ ] With no unsaved edits ⌘↵ does nothing; Notes are unaffected (they autosave).
-- [ ] Each Save button shows a small `⌘↵` hint, readable by screen readers as "Command Return".
-- [ ] The shortcut list in the app includes it.
+- [x] ⌘↵ in the title/description, progress update, or tags/deadline group does exactly what that group's Save button does, including revision checks. — each group's key handler calls that group's existing save (form `requestSubmit`, `saveProgressUpdate`, `saveDetails`); `src/cmd-enter-save.test.tsx` checks the saved values and that an older draft still names its base revision (2, not 3).
+- [x] With no unsaved edits ⌘↵ does nothing; Notes are unaffected (they autosave). — "does nothing in any group with no unsaved edits" test; the handlers sit only on TaskRow's three groups, the Notes editor is untouched; plain Return still makes a newline (two tests).
+- [x] Each Save button shows a small `⌘↵` hint, readable by screen readers as "Command Return". — `aria-hidden` `kbd.save-shortcut` (11px, weight 400, button ink), `aria-keyshortcuts="Meta+Enter"` and accessible description "Command Return"; button names unchanged; recorded in DESIGN.md › Buttons. Native VoiceOver check not done.
+- [x] The shortcut list in the app includes it. — `SHORTCUTS` gains "⌘↵ Save the open Task edit"; Settings › Keyboard test.
 
 ## Delivery guardrails
 
