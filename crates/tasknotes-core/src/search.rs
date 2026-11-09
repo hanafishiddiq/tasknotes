@@ -3,7 +3,8 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::tasks::{
-    COLUMNS, Priority, SortMode, TaskError, TaskPage, TaskStore, TaskView, WorkStatus, read_task,
+    COLUMNS, Difficulty, Priority, SortMode, TaskError, TaskPage, TaskStore, TaskView, WorkStatus,
+    read_task,
 };
 
 /// Whether a query looks at active Tasks or only at Removed ones (ADR-0002).
@@ -23,6 +24,7 @@ pub struct TaskQuery {
     pub text: String,
     pub status: Option<WorkStatus>,
     pub priority: Option<Priority>,
+    pub difficulty: Option<Difficulty>,
     pub tag: Option<String>,
     pub view: TaskView,
     pub scope: TaskScope,
@@ -116,7 +118,8 @@ pub(crate) fn fingerprint(parts: &[&str]) -> String {
 
 struct After {
     status: i64,
-    priority: i64,
+    /// The Priority or Difficulty rank of the sort; 0 under Newest.
+    rank: i64,
     time: i64,
     id: String,
 }
@@ -129,13 +132,16 @@ fn parse_cursor(value: &str, key: &str, sort: SortMode) -> Result<After, TaskErr
     let number = |text: &str| text.parse::<i64>().map_err(|_| TaskError::InvalidCursor);
     let after = After {
         status: number(fields[2])?,
-        priority: number(fields[3])?,
+        rank: number(fields[3])?,
         time: number(fields[4])?,
         id: fields[5].to_owned(),
     };
     if !(0..=2).contains(&after.status)
-        || (sort == SortMode::Priority && !(1..=5).contains(&after.priority))
-        || (sort == SortMode::Newest && after.priority != 0)
+        || !match sort {
+            SortMode::Priority => (1..=5).contains(&after.rank),
+            SortMode::Difficulty => (0..=5).contains(&after.rank),
+            SortMode::Newest => after.rank == 0,
+        }
         || after.time < 0
         || Uuid::parse_str(&after.id).is_err()
     {
@@ -171,6 +177,7 @@ impl TaskStore {
             },
             query.status.map_or("", WorkStatus::as_sql),
             query.priority.map_or("", Priority::as_sql),
+            query.difficulty.map_or("", Difficulty::as_sql),
             tag_fold.as_deref().unwrap_or(""),
             &terms.join(" "),
             query.task_id.as_deref().unwrap_or(""),
@@ -182,6 +189,10 @@ impl TaskStore {
         const STATUS_RANK: &str =
             "CASE status WHEN 'in_progress' THEN 0 WHEN 'ready' THEN 1 ELSE 2 END";
         const PRIORITY_RANK: &str = "CASE priority WHEN 'very_high' THEN 5 WHEN 'high' THEN 4 WHEN 'medium' THEN 3 WHEN 'low' THEN 2 ELSE 1 END";
+        // Must match the v17 index expression, and `Difficulty::rank`.
+        const DIFFICULTY_RANK: &str =
+            "CASE difficulty WHEN 'very_hard' THEN 5 WHEN 'hard' THEN 4 WHEN 'medium' THEN 3
+               WHEN 'easy' THEN 2 WHEN 'very_easy' THEN 1 ELSE 0 END";
         let mut values: Vec<Value> = Vec::new();
         let mut bind = |value: Value| {
             values.push(value);
@@ -214,6 +225,12 @@ impl TaskStore {
                 bind(Value::Text(priority.as_sql().into()))
             ));
         }
+        if let Some(difficulty) = query.difficulty {
+            filters.push(format!(
+                "difficulty = {}",
+                bind(Value::Text(difficulty.as_sql().into()))
+            ));
+        }
         if let Some(fold) = tag_fold {
             filters.push(format!(
                 "EXISTS (SELECT 1 FROM task_tags tt JOIN tags t ON t.name = tt.tag_name
@@ -230,55 +247,46 @@ impl TaskStore {
             ));
         }
 
-        let priority_expr = if sort == SortMode::Priority {
-            PRIORITY_RANK
-        } else {
-            "0"
+        let rank_expr = match sort {
+            SortMode::Priority => PRIORITY_RANK,
+            SortMode::Difficulty => DIFFICULTY_RANK,
+            SortMode::Newest => "0",
         };
-        let (cursor_filter, secondary_order) = match &after {
-            None => (
-                "1".to_owned(),
-                if sort == SortMode::Priority {
-                    "priority_rank DESC, "
-                } else {
-                    ""
-                },
-            ),
+        let secondary_order = if sort == SortMode::Newest {
+            ""
+        } else {
+            "sort_rank DESC, "
+        };
+        let cursor_filter = match &after {
+            None => "1".to_owned(),
             Some(after) => {
                 let status = bind(Value::Integer(after.status));
                 let time = bind(Value::Integer(after.time));
                 let id = bind(Value::Text(after.id.clone()));
-                match sort {
-                    SortMode::Priority => {
-                        let priority = bind(Value::Integer(after.priority));
-                        (
-                            format!(
-                                "(status_rank > {status}
-                                  OR (status_rank = {status} AND priority_rank < {priority})
-                                  OR (status_rank = {status} AND priority_rank = {priority} AND created_at < {time})
-                                  OR (status_rank = {status} AND priority_rank = {priority}
-                                      AND created_at = {time} AND id < {id}))"
-                            ),
-                            "priority_rank DESC, ",
-                        )
-                    }
-                    SortMode::Newest => (
-                        format!(
-                            "(status_rank > {status}
-                              OR (status_rank = {status} AND created_at < {time})
-                              OR (status_rank = {status} AND created_at = {time} AND id < {id}))"
-                        ),
-                        "",
-                    ),
+                if sort == SortMode::Newest {
+                    format!(
+                        "(status_rank > {status}
+                          OR (status_rank = {status} AND created_at < {time})
+                          OR (status_rank = {status} AND created_at = {time} AND id < {id}))"
+                    )
+                } else {
+                    let rank = bind(Value::Integer(after.rank));
+                    format!(
+                        "(status_rank > {status}
+                          OR (status_rank = {status} AND sort_rank < {rank})
+                          OR (status_rank = {status} AND sort_rank = {rank} AND created_at < {time})
+                          OR (status_rank = {status} AND sort_rank = {rank}
+                              AND created_at = {time} AND id < {id}))"
+                    )
                 }
             }
         };
         let page_size = bind(Value::Integer(i64::from(limit) + 1));
-        // Do not add a constant priority_rank sort key in Newest mode: doing so
+        // Do not add a constant sort_rank sort key in Newest mode: doing so
         // forces SQLite to build a temporary B-tree instead of using the index.
         let sql = format!(
             "WITH ranked AS (
-                SELECT {COLUMNS}, {STATUS_RANK} AS status_rank, {priority_expr} AS priority_rank
+                SELECT {COLUMNS}, {STATUS_RANK} AS status_rank, {rank_expr} AS sort_rank
                 FROM tasks WHERE {}
              )
              SELECT {COLUMNS} FROM ranked
@@ -305,13 +313,13 @@ impl TaskStore {
         let next_cursor = if items.len() > limit as usize {
             items.pop();
             items.last().map(|task| {
-                let priority = if sort == SortMode::Priority {
-                    task.priority.rank()
-                } else {
-                    0
+                let rank = match sort {
+                    SortMode::Priority => task.priority.rank(),
+                    SortMode::Difficulty => Difficulty::rank(task.difficulty),
+                    SortMode::Newest => 0,
                 };
                 format!(
-                    "v4|{key}|{}|{priority}|{}|{}",
+                    "v4|{key}|{}|{rank}|{}|{}",
                     task.status.rank(),
                     task.created_at,
                     task.id

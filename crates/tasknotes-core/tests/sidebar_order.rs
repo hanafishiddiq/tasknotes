@@ -87,7 +87,9 @@ fn place(
 fn back_to_v15(db: &Path) {
     let conn = Connection::open(db).unwrap();
     conn.execute_batch(
-        "DROP INDEX lists_manual_order;
+        "DROP INDEX tasks_status_difficulty_order;
+         ALTER TABLE tasks DROP COLUMN difficulty;
+         DROP INDEX lists_manual_order;
          DROP INDEX note_folders_manual_order;
          ALTER TABLE lists DROP COLUMN position;
          ALTER TABLE note_folders DROP COLUMN position;

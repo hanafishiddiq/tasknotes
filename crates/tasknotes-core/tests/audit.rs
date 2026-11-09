@@ -121,6 +121,7 @@ fn every_task_and_list_change_is_audited_under_the_interface_that_made_it() {
         .unwrap();
     let t = cli
         .change_task(ChangeTask {
+            difficulty: None,
             id: t.id,
             expected_revision: t.revision,
             status: None,
@@ -319,6 +320,7 @@ fn v9_database(db: &Path) -> String {
              DROP INDEX lists_manual_order; ALTER TABLE lists DROP COLUMN position;
              CREATE INDEX lists_created_order ON lists(created_at DESC, id DESC);
              DROP INDEX note_folders_manual_order; ALTER TABLE note_folders DROP COLUMN position;
+             DROP INDEX tasks_status_difficulty_order; ALTER TABLE tasks DROP COLUMN difficulty;
              PRAGMA user_version = 9;",
         )
         .unwrap();
@@ -411,6 +413,7 @@ fn a_refused_write_naming_no_existing_row_stores_no_caller_text() {
             .err(),
         store
             .change_task(ChangeTask {
+                difficulty: None,
                 id: invented.into(),
                 expected_revision: 1,
                 status: None,

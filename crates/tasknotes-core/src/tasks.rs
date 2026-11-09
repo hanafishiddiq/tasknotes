@@ -355,6 +355,72 @@ impl Priority {
     }
 }
 
+/// An optional estimate of how hard a Task is (GLOSSARY: Difficulty). A Task
+/// without one has No Difficulty, stored as NULL and sent as `null`.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Difficulty {
+    VeryEasy,
+    Easy,
+    Medium,
+    Hard,
+    VeryHard,
+}
+
+impl Difficulty {
+    /// Every Difficulty, easiest first.
+    pub const ALL: [Self; 5] = [
+        Self::VeryEasy,
+        Self::Easy,
+        Self::Medium,
+        Self::Hard,
+        Self::VeryHard,
+    ];
+
+    fn from_sql(value: &str) -> Option<Self> {
+        match value {
+            "very_easy" => Some(Self::VeryEasy),
+            "easy" => Some(Self::Easy),
+            "medium" => Some(Self::Medium),
+            "hard" => Some(Self::Hard),
+            "very_hard" => Some(Self::VeryHard),
+            _ => None,
+        }
+    }
+
+    /// Very Hard ranks highest; No Difficulty ranks 0, below Very Easy.
+    pub(crate) fn rank(difficulty: Option<Self>) -> i64 {
+        match difficulty {
+            None => 0,
+            Some(Self::VeryEasy) => 1,
+            Some(Self::Easy) => 2,
+            Some(Self::Medium) => 3,
+            Some(Self::Hard) => 4,
+            Some(Self::VeryHard) => 5,
+        }
+    }
+
+    pub(crate) fn as_sql(self) -> &'static str {
+        match self {
+            Self::VeryEasy => "very_easy",
+            Self::Easy => "easy",
+            Self::Medium => "medium",
+            Self::Hard => "hard",
+            Self::VeryHard => "very_hard",
+        }
+    }
+}
+
+/// Tells a field that is absent (`None`, keep) from one that is `null`
+/// (`Some(None)`, clear) when the desktop sends a change.
+fn present<'de, D, T>(d: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(d).map(Some)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct Task {
@@ -363,6 +429,7 @@ pub struct Task {
     pub description: String,
     pub status: WorkStatus,
     pub priority: Priority,
+    pub difficulty: Option<Difficulty>,
     pub progress: u8,
     pub next_step: String,
     pub list_id: Option<String>,
@@ -407,15 +474,18 @@ pub enum SortMode {
     #[default]
     Priority,
     Newest,
+    /// Very Hard first, No Difficulty last, within each work-status group.
+    Difficulty,
 }
 
 impl SortMode {
-    pub const ALL: [Self; 2] = [Self::Priority, Self::Newest];
+    pub const ALL: [Self; 3] = [Self::Priority, Self::Newest, Self::Difficulty];
 
     pub(crate) fn as_cursor(self) -> &'static str {
         match self {
             Self::Priority => "priority",
             Self::Newest => "newest",
+            Self::Difficulty => "difficulty",
         }
     }
 }
@@ -428,6 +498,9 @@ pub struct ChangeTask {
     pub status: Option<WorkStatus>,
     pub priority: Option<Priority>,
     pub progress: Option<u8>,
+    /// `None` keeps the Difficulty, `Some(None)` clears it.
+    #[serde(default, deserialize_with = "present")]
+    pub difficulty: Option<Option<Difficulty>>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -511,6 +584,7 @@ pub(crate) fn checked_change(
     }
     if input.status.is_none()
         && input.priority.is_none()
+        && input.difficulty.is_none()
         && input.progress.is_none()
         && next_step.is_none()
         && note.is_empty()
@@ -559,12 +633,16 @@ pub(crate) fn invalid_db_text(index: usize, value: String) -> rusqlite::Error {
 pub(crate) fn read_task(row: &Row<'_>) -> rusqlite::Result<Task> {
     let status: String = row.get(3)?;
     let priority: String = row.get(4)?;
+    let difficulty: Option<String> = row.get(13)?;
     Ok(Task {
         id: row.get(0)?,
         title: row.get(1)?,
         description: row.get(2)?,
         status: WorkStatus::from_sql(&status).ok_or_else(|| invalid_db_text(3, status))?,
         priority: Priority::from_sql(&priority).ok_or_else(|| invalid_db_text(4, priority))?,
+        difficulty: difficulty
+            .map(|value| Difficulty::from_sql(&value).ok_or_else(|| invalid_db_text(13, value)))
+            .transpose()?,
         progress: row.get(5)?,
         next_step: row.get(9)?,
         list_id: row.get(10)?,
@@ -577,10 +655,10 @@ pub(crate) fn read_task(row: &Row<'_>) -> rusqlite::Result<Task> {
     })
 }
 
-pub(crate) const COLUMNS: &str = "id, title, description, status, priority, progress, revision, created_at, updated_at, next_step, list_id, due_date, removed_at";
+pub(crate) const COLUMNS: &str = "id, title, description, status, priority, progress, revision, created_at, updated_at, next_step, list_id, due_date, removed_at, difficulty";
 
 /// The database schema this core reads and writes.
-pub const SCHEMA_VERSION: i64 = 16;
+pub const SCHEMA_VERSION: i64 = 17;
 
 /// How long a write waits for another process (the CLI, MCP) holding the database lock.
 pub const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -791,6 +869,28 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), TaskError> {
         crate::manual_order::migrate_v16(&migration)?;
         migration.commit()?;
     }
+    if version < 17 {
+        let migration = connection.transaction()?;
+        migrate_v17(&migration)?;
+        migration.commit()?;
+    }
+    Ok(())
+}
+
+/// Schema v17: an optional Difficulty. Every existing Task has No Difficulty
+/// (NULL); the index serves the Difficulty sort as the v2 one serves Priority.
+fn migrate_v17(migration: &Transaction) -> Result<(), TaskError> {
+    migration.execute_batch(
+        "ALTER TABLE tasks ADD COLUMN difficulty TEXT CHECK (difficulty IS NULL
+             OR difficulty IN ('very_easy', 'easy', 'medium', 'hard', 'very_hard'));
+         CREATE INDEX tasks_status_difficulty_order ON tasks (
+             CASE status WHEN 'in_progress' THEN 0 WHEN 'ready' THEN 1 ELSE 2 END ASC,
+             CASE difficulty WHEN 'very_hard' THEN 5 WHEN 'hard' THEN 4 WHEN 'medium' THEN 3
+               WHEN 'easy' THEN 2 WHEN 'very_easy' THEN 1 ELSE 0 END DESC,
+             created_at DESC, id DESC
+         );
+         PRAGMA user_version = 17;",
+    )?;
     Ok(())
 }
 
@@ -941,6 +1041,7 @@ impl TaskStore {
             description,
             status: WorkStatus::Ready,
             priority: Priority::Medium,
+            difficulty: None,
             progress: 0,
             next_step: String::new(),
             list_id: list_id.map(str::to_owned),
@@ -1031,7 +1132,7 @@ impl TaskStore {
         })
     }
 
-    /// Applies a status, priority, or percentage change atomically under the same
+    /// Applies a status, priority, Difficulty or percentage change atomically under the same
     /// optimistic revision rules used by ordinary Task editing.
     ///
     /// Ready means not yet started. An in-progress Task does not become Ready when
@@ -1054,6 +1155,7 @@ impl TaskStore {
         self.apply_task_change(
             AuditAction::TaskProgress,
             ChangeTask {
+                difficulty: None,
                 id: input.id,
                 expected_revision: input.expected_revision,
                 status: input.status,
@@ -1094,7 +1196,7 @@ impl TaskStore {
             format!("SELECT {COLUMNS}, previous_incomplete_progress FROM tasks WHERE id = ?1");
         let current = transaction
             .query_row(&sql, params![input.id], |row| {
-                Ok((read_task(row)?, row.get::<_, u8>(13)?))
+                Ok((read_task(row)?, row.get::<_, u8>(14)?))
             })
             .optional()?;
         let (before, mut previous_incomplete) = current.ok_or(TaskError::NotFound)?;
@@ -1151,6 +1253,7 @@ impl TaskStore {
             previous_incomplete = next_progress;
         }
         let next_priority = input.priority.unwrap_or(before.priority);
+        let next_difficulty = input.difficulty.unwrap_or(before.difficulty);
         let new_next_step = next_step
             .map(|value| value.trim().to_owned())
             .unwrap_or_else(|| before.next_step.clone());
@@ -1158,7 +1261,8 @@ impl TaskStore {
             || next_progress != before.progress
             || new_next_step != before.next_step
             || !note.is_empty();
-        if !substantive && next_priority == before.priority {
+        if !substantive && next_priority == before.priority && next_difficulty == before.difficulty
+        {
             return Err(TaskError::EmptyProgressUpdate);
         }
         let now = current_millis()?;
@@ -1167,6 +1271,7 @@ impl TaskStore {
                 status = ?1, priority = ?2, progress = ?3,
                 previous_incomplete_progress = ?4,
                 next_step = ?5,
+                difficulty = ?9,
                 revision = revision + 1,
                 updated_at = max(updated_at + 1, ?6)
              WHERE id = ?7 AND revision = ?8
@@ -1182,7 +1287,8 @@ impl TaskStore {
                 new_next_step,
                 now,
                 input.id,
-                input.expected_revision
+                input.expected_revision,
+                next_difficulty.map(Difficulty::as_sql)
             ],
             read_task,
         )?;

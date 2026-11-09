@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::calendar::TimeZone;
-use crate::tasks::{Priority, Task, TaskError, TaskStore, WorkStatus, current_millis};
+use crate::tasks::{Difficulty, Priority, Task, TaskError, TaskStore, WorkStatus, current_millis};
 
 /// The version of the export document's shape, sent as `format_version`.
 pub const EXPORT_FORMAT_VERSION: u32 = 1;
@@ -95,6 +95,8 @@ struct TaskRecord {
     description: String,
     status: WorkStatus,
     priority: Priority,
+    /// `null` for No Difficulty.
+    difficulty: Option<Difficulty>,
     progress: i64,
     next_step: String,
     list_id: Option<String>,
@@ -284,6 +286,7 @@ impl TaskStore {
                 description: task.description,
                 status: task.status,
                 priority: task.priority,
+                difficulty: task.difficulty,
                 progress: i64::from(task.progress),
                 next_step: task.next_step,
                 list_id: task.list_id,
@@ -481,6 +484,9 @@ fn task_markdown(task: &TaskRecord) -> String {
         priority_label(task.priority),
         task.progress
     ));
+    if let Some(difficulty) = task.difficulty {
+        text.push_str(&format!("- Difficulty: {}\n", difficulty_label(difficulty)));
+    }
     if let Some(deadline) = &task.deadline {
         text.push_str(&format!("- Deadline: {deadline}\n"));
     }
@@ -550,6 +556,16 @@ fn status_label(status: WorkStatus) -> &'static str {
         WorkStatus::InProgress => "In Progress",
         WorkStatus::Ready => "Ready",
         WorkStatus::Completed => "Completed",
+    }
+}
+
+fn difficulty_label(difficulty: Difficulty) -> &'static str {
+    match difficulty {
+        Difficulty::VeryEasy => "Very Easy",
+        Difficulty::Easy => "Easy",
+        Difficulty::Medium => "Medium",
+        Difficulty::Hard => "Hard",
+        Difficulty::VeryHard => "Very Hard",
     }
 }
 

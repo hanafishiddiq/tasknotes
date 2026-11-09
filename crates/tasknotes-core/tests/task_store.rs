@@ -173,6 +173,7 @@ fn stores_opening_at_the_same_moment_all_succeed() {
                  DROP INDEX lists_manual_order; ALTER TABLE lists DROP COLUMN position;
              CREATE INDEX lists_created_order ON lists(created_at DESC, id DESC);
              DROP INDEX note_folders_manual_order; ALTER TABLE note_folders DROP COLUMN position;
+             DROP INDEX tasks_status_difficulty_order; ALTER TABLE tasks DROP COLUMN difficulty;
              PRAGMA user_version = 13;",
         ),
     ] {
