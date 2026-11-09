@@ -318,3 +318,26 @@ fn a_v19_database_gains_the_session_table_and_keeps_its_tasks() {
     assert!(store.get_task(&created.id).unwrap().is_some());
     store.record_pomodoro_session(finished(None, 0)).unwrap();
 }
+
+#[test]
+fn a_task_completed_during_the_session_gets_the_entry_and_stays_completed() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("t.db"));
+    let created = task(&store, "Finished mid-session");
+    let done = store
+        .change_task(ChangeTask {
+            id: created.id.clone(),
+            expected_revision: created.revision,
+            status: Some(WorkStatus::Completed),
+            ..ChangeTask::default()
+        })
+        .unwrap();
+    let recorded = store
+        .record_pomodoro_session(finished(Some(&created.id), 0))
+        .unwrap();
+    let after = recorded.task.unwrap();
+    assert_eq!(after.status, WorkStatus::Completed);
+    assert_eq!(after.progress, done.progress);
+    let history = store.list_progress_entries(&created.id, 10, None).unwrap();
+    assert_eq!(history.items[0].note, "Pomodoro: 25 min focus");
+}
