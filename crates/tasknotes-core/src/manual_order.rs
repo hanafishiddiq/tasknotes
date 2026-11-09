@@ -138,12 +138,17 @@ pub(crate) fn place(
         "UPDATE {} SET position = ?1 WHERE id = ?2",
         siblings.table()
     ))?;
-    let moved_to = i64::try_from(at).unwrap_or(i64::MAX) + 1;
-    update.execute(params![moved_to, id])?;
-    for (index, row) in order.iter().enumerate() {
-        let wanted = i64::try_from(index).unwrap_or(i64::MAX) + if index < at { 1 } else { 2 };
-        if row.position != wanted {
-            update.execute(params![wanted, row.id])?;
+    // Positions count up from 1 in the new order; the moved row has no
+    // stored position among these siblings worth keeping.
+    let stored = |row: &&Sibling| (row.id.clone(), Some(row.position));
+    let new_order = order[..at]
+        .iter()
+        .map(stored)
+        .chain([(id.to_owned(), None)])
+        .chain(order[at..].iter().map(stored));
+    for (wanted, (row_id, position)) in (1_i64..).zip(new_order) {
+        if position != Some(wanted) {
+            update.execute(params![wanted, row_id])?;
         }
     }
     Ok(true)
