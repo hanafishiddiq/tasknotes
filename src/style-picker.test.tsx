@@ -56,7 +56,8 @@ const styleCalls = (command: string) =>
 
 describe("the allow-list the window shares with the core", () => {
   it("draws exactly the icons the core accepts", () => {
-    expect(Object.keys(STYLE_ICONS)).toEqual([...STYLE_ICON_NAMES]);
+    // After editing style.json, run `pnpm gen:style-icons` to rewrite src/lib/style-icons.ts.
+    expect(Object.keys(STYLE_ICONS), "style-icons.ts is stale: run `pnpm gen:style-icons`").toEqual([...STYLE_ICON_NAMES]);
     expect(STYLE_COLORS).toHaveLength(12);
   });
 

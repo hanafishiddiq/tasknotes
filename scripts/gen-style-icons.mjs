@@ -2,7 +2,7 @@
 // Writes src/lib/style-icons.ts from the core's allow-list, so the picker
 // imports exactly the icons the core accepts and nothing more (tree-shaken).
 // Run after editing crates/tasknotes-core/src/style.json:
-//   node scripts/gen-style-icons.mjs
+//   pnpm gen:style-icons
 // src/style-picker.test.tsx fails while the two disagree.
 import { readFileSync, writeFileSync } from "node:fs";
 
