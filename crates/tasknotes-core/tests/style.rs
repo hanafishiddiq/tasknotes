@@ -301,7 +301,7 @@ fn a_note_folder_takes_an_icon_and_a_colour_with_the_same_rules() {
     assert_eq!(styled.revision, made.revision + 1);
     assert_eq!(store.get_note_folder(&made.id).unwrap().unwrap(), styled);
     let listed = store.list_note_folders(None, 10, None).unwrap().items;
-    assert_eq!(listed, [styled.clone()]);
+    assert_eq!(listed, std::slice::from_ref(&styled));
     assert_eq!(
         last_entry(&store, &made.id),
         (AuditAction::FolderStyle, AuditOutcome::Applied, None)

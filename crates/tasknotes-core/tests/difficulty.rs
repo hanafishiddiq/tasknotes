@@ -334,7 +334,7 @@ fn upgrading_from_v16_gives_every_task_no_difficulty_and_changes_nothing_else() 
     };
 
     let store = store_at(&db);
-    assert!(SCHEMA_VERSION >= 17);
+    const { assert!(SCHEMA_VERSION >= 17) };
     for id in [&a.id, &b.id] {
         assert_eq!(store.get_task(id).unwrap().unwrap().difficulty, None);
     }
