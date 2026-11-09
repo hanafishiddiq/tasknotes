@@ -16,6 +16,7 @@ use serde_json::{Value, json};
 use tasknotes_core::ai_access;
 use tasknotes_core::audit::Interface;
 use tasknotes_core::removed::SetRemoved;
+use tasknotes_core::style::{self, SetStyle};
 use tasknotes_core::tasks::{
     ChangeTask, CreateList, CreateTask, Difficulty, DifficultyFilter, List, MoveTask, PatchTask,
     PatchTaskDetails, Priority, RecordProgress, RenameList, ReorderList, SetListRemoved, SortMode,
@@ -127,6 +128,7 @@ fn dispatch(
             | "link"
             | "removed"
             | "bulk"
+            | "style"
             | "backup"
             | "export"
     ) {
@@ -149,15 +151,17 @@ fn dispatch(
         "link" => notes::link_command(&store, verb, words),
         "removed" => notes::removed_command(&store, verb, words),
         "bulk" => bulk::bulk_command(&store, verb, words),
+        "style" => style_command(verb, words),
         _ => audit_command(&store, verb, words),
     }
 }
 
 pub(crate) const USAGE: &str = "Usage: tasknotes [--data-dir DIR] \
-    <task|list|note|folder|link|removed|audit|bulk|backup|export|access> <command> [id] [--options]; \
+    <task|list|note|folder|link|removed|audit|bulk|style|backup|export|access> <command> [id] [--options]; \
     task change ID --revision N [--status S] [--priority P] [--difficulty D|none] [--progress N]; \
     task list [--status S] [--priority P] [--difficulty D|none] [--tag T] [--sort priority|newest|difficulty]; \
     list reorder ID --revision N (--after ID | --first); \
+    list|folder style ID --revision N [--icon NAME|none] [--color NAME|none]; style options; \
     folder reorder ID --revision N (--after ID | --first) [--parent ID | --top]; \
     bulk preview --action A --id ID... | bulk status REQUEST_ID (approved only in the app); \
     access grant|revoke [--mcp]";
@@ -383,6 +387,7 @@ fn list_command(store: &TaskStore, verb: &str, words: &[String]) -> Result<Value
                 )?,
             })?)
         }
+        "style" => item(store.set_list_style(style_change(words)?)?),
         "remove" | "restore" => {
             let p = parse(words, &flags(&["revision"], 1))?;
             item(store.set_list_removed(SetListRemoved {
@@ -393,6 +398,32 @@ fn list_command(store: &TaskStore, verb: &str, words: &[String]) -> Result<Value
         }
         _ => Err(CliError::invalid(USAGE)),
     }
+}
+
+/// `ID --revision N [--icon NAME|none] [--color NAME|none]` for a List or
+/// Note Folder: a flag left out keeps its value and `none` clears it. The
+/// names are checked by the core.
+pub(crate) fn style_change(words: &[String]) -> Result<SetStyle, CliError> {
+    let p = parse(words, &flags(&["revision", "icon", "color"], 1))?;
+    let named = |flag: &str| {
+        p.value(flag)
+            .map(|name| (name != "none").then(|| name.to_owned()))
+    };
+    Ok(SetStyle {
+        id: p.id().to_owned(),
+        expected_revision: p.revision()?,
+        icon: named("icon"),
+        color: named("color"),
+    })
+}
+
+/// `style options`: every icon name and colour a Style may hold.
+fn style_command(verb: &str, words: &[String]) -> Result<Value, CliError> {
+    if verb != "options" {
+        return Err(CliError::invalid(USAGE));
+    }
+    parse(words, &NO_FLAGS)?;
+    Ok(contract::success_item(contract::to_value(style::options())))
 }
 
 fn audit_command(store: &TaskStore, verb: &str, words: &[String]) -> Result<Value, CliError> {

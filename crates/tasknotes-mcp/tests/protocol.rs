@@ -55,6 +55,7 @@ fn a_trusted_client_completes_the_handshake_and_lists_the_tools() {
             "folder_rename",
             "folder_reorder",
             "folder_restore",
+            "folder_style",
             "link_create",
             "link_get",
             "link_remove",
@@ -65,6 +66,7 @@ fn a_trusted_client_completes_the_handshake_and_lists_the_tools() {
             "list_rename",
             "list_reorder",
             "list_restore",
+            "list_style",
             "note_create",
             "note_get",
             "note_list",
@@ -74,6 +76,7 @@ fn a_trusted_client_completes_the_handshake_and_lists_the_tools() {
             "note_tasks",
             "note_update",
             "removed_list",
+            "style_options",
             "task_change",
             "task_create",
             "task_details",
@@ -88,7 +91,7 @@ fn a_trusted_client_completes_the_handshake_and_lists_the_tools() {
             "task_update",
         ]
     );
-    assert_eq!(tools.len(), 42);
+    assert_eq!(tools.len(), 45);
     for tool in &tools {
         assert_eq!(tool["inputSchema"]["type"], "object", "{tool}");
         assert!(tool["inputSchema"].get("oneOf").is_none(), "{tool}");

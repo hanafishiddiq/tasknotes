@@ -177,6 +177,12 @@ pub fn tools() -> Vec<ToolDef> {
             folder_reorder,
         ),
         tool(
+            "folder_style",
+            Kind::Write,
+            "Set or clear a Note Folder's icon and colour, shown in the person's sidebar; fields left out keep their value, null clears to the default look. Names come from style_options.",
+            |c, a: Style| folder(c, c.store.set_note_folder_style(a.change()?)?),
+        ),
+        tool(
             "folder_remove",
             Kind::Write,
             "Move a Note Folder, and what is in it, to Removed (reversible).",

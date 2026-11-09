@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tasknotes_cli::contract::{self, CliError};
 use tasknotes_core::removed::SetRemoved;
+use tasknotes_core::style::{self, SetStyle};
 use tasknotes_core::tasks::{
     Difficulty, DifficultyFilter, Priority, SortMode, Task, TaskStore, WorkStatus,
 };
@@ -288,6 +289,58 @@ impl Reorder {
         )
     }
 }
+
+/// A List's or Note Folder's icon and colour; the core checks the names.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct Style {
+    pub id: String,
+    /// The revision you last read.
+    pub revision: i64,
+    #[serde(default, deserialize_with = "present")]
+    #[schemars(schema_with = "nullable_icon_schema")]
+    pub icon: Option<Option<String>>,
+    #[serde(default, deserialize_with = "present")]
+    #[schemars(schema_with = "nullable_color_schema")]
+    pub color: Option<Option<String>>,
+}
+
+impl Style {
+    pub(crate) fn change(self) -> Result<SetStyle, CliError> {
+        Ok(SetStyle {
+            expected_revision: revision(self.revision)?,
+            id: self.id,
+            icon: self.icon,
+            color: self.color,
+        })
+    }
+}
+
+/// The icon names are too many for an enum; `style_options` lists them.
+pub(crate) fn nullable_icon_schema(_: &mut SchemaGenerator) -> Schema {
+    json_schema!({
+        "type": ["string", "null"],
+        "description": "A Lucide icon name from style_options sets the icon; null clears it to the default; leave out to keep it."
+    })
+}
+
+pub(crate) fn nullable_color_schema(_: &mut SchemaGenerator) -> Schema {
+    let mut names: Vec<Value> = style::options()
+        .colors
+        .iter()
+        .map(|c| Value::from(c.as_str()))
+        .collect();
+    names.push(Value::Null);
+    json_schema!({
+        "type": ["string", "null"],
+        "enum": names,
+        "description": "A colour name sets the colour; null clears it to the default; leave out to keep it."
+    })
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct NoArguments {}
 
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

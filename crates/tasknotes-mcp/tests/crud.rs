@@ -485,3 +485,72 @@ fn difficulty_is_set_cleared_filtered_and_sorted_through_mcp() {
         "invalid_input",
     );
 }
+
+/// Ticket 01: an AI client reads, sets and clears a List's or Note Folder's
+/// icon and colour with revision checks; `null` is the default look.
+#[test]
+fn icons_and_colours_are_read_set_and_cleared_through_mcp() {
+    let data = Data::trusted();
+    let mut s = data.server();
+    let made = s.ok("list_create", json!({"name": "🏠 Synthetic home"}));
+    assert!(made["item"]["icon"].is_null() && made["item"]["color"].is_null());
+
+    let styled = s.ok(
+        "list_style",
+        json!({"id": id(&made), "revision": rev(&made), "icon": "house", "color": "green"}),
+    );
+    assert_eq!(styled["item"]["icon"], "house");
+    assert_eq!(styled["item"]["color"], "green");
+    assert_eq!(styled["item"]["name"], "🏠 Synthetic home");
+    assert_eq!(s.ok("list_list", json!({}))["items"][0], styled["item"]);
+
+    // Left out keeps; null clears.
+    let cleared = s.ok(
+        "list_style",
+        json!({"id": id(&made), "revision": rev(&styled), "icon": null}),
+    );
+    assert!(cleared["item"]["icon"].is_null());
+    assert_eq!(cleared["item"]["color"], "green");
+    s.refused(
+        "list_style",
+        json!({"id": id(&made), "revision": rev(&styled), "color": "red"}),
+        "revision_conflict",
+    );
+    s.refused(
+        "list_style",
+        json!({"id": id(&made), "revision": rev(&cleared), "icon": "not-an-icon"}),
+        "invalid_input",
+    );
+    s.refused(
+        "list_style",
+        json!({"id": id(&made), "revision": rev(&cleared), "color": "magenta"}),
+        "invalid_input",
+    );
+
+    let folder = s.ok("folder_create", json!({"name": "Synthetic recipes"}));
+    let styled = s.ok(
+        "folder_style",
+        json!({"id": id(&folder), "revision": rev(&folder), "icon": "chef-hat", "color": "pink"}),
+    );
+    assert_eq!(styled["item"]["icon"], "chef-hat");
+    assert_eq!(styled["item"]["color"], "pink");
+    assert_eq!(
+        s.ok("folder_get", json!({"id": id(&folder)}))["item"],
+        styled["item"]
+    );
+    let plain = s.ok(
+        "folder_style",
+        json!({"id": id(&folder), "revision": rev(&styled), "icon": null, "color": null}),
+    );
+    assert!(plain["item"]["icon"].is_null() && plain["item"]["color"].is_null());
+
+    let options = s.ok("style_options", json!({}));
+    assert_eq!(options["item"]["colors"].as_array().unwrap().len(), 12);
+    assert!(
+        options["item"]["icons"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|icon| icon == "chef-hat")
+    );
+}

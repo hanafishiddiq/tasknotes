@@ -194,6 +194,7 @@ pub fn folder_command(store: &TaskStore, verb: &str, words: &[String]) -> Result
                 )?,
             })?
         }
+        "style" => store.set_note_folder_style(crate::style_change(words)?)?,
         "remove" | "restore" => {
             let p = parse(words, &flags(&["revision"], 1))?;
             store.set_note_folder_removed(SetRemoved {
