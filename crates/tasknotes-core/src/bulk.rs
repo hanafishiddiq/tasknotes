@@ -57,9 +57,13 @@ pub enum BulkAction {
     MoveTasks {
         list_id: Option<String>,
     },
-    /// Under the same transition rules as `change_task`.
+    /// Under the same transition rules as `change_task`. `wont_do` (with
+    /// Completed) marks the Tasks Won't Do instead of finishing them; left
+    /// out, it is false and the request reads as before Won't Do existed.
     SetTaskStatus {
         status: WorkStatus,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        wont_do: bool,
     },
     RemoveNotes,
     RestoreNotes,
@@ -567,10 +571,11 @@ impl TaskStore {
                     before,
                 )
             }
-            BulkAction::SetTaskStatus { status } => {
+            BulkAction::SetTaskStatus { status, wont_do } => {
                 let before = self.get_task_in(tx, &id)?;
                 let change = ChangeTask {
                     difficulty: None,
+                    wont_do: wont_do.then_some(true),
                     id: id.clone(),
                     expected_revision,
                     status: Some(*status),

@@ -254,6 +254,7 @@ fn a_change_after_the_request_makes_it_stale_with_a_generic_audit_entry() {
         w.ai.request_bulk(
             BulkAction::SetTaskStatus {
                 status: WorkStatus::Completed,
+                wont_do: false,
             },
             ids(&all),
         )
@@ -422,6 +423,7 @@ fn bulk_status_changes_follow_the_same_rules_as_change_task() {
     let bulk = tasks(&w.ai, 2);
     for pair in [&one, &bulk] {
         w.ai.change_task(ChangeTask {
+            wont_do: None,
             difficulty: None,
             id: pair[1].id.clone(),
             expected_revision: 1,
@@ -434,6 +436,7 @@ fn bulk_status_changes_follow_the_same_rules_as_change_task() {
     for status in [WorkStatus::Completed, WorkStatus::InProgress] {
         for task in &one {
             w.ai.change_task(ChangeTask {
+                wont_do: None,
                 difficulty: None,
                 id: task.id.clone(),
                 expected_revision: task_now(&w, &task.id).revision,
@@ -444,10 +447,16 @@ fn bulk_status_changes_follow_the_same_rules_as_change_task() {
             .unwrap();
         }
         let id =
-            w.ai.request_bulk(BulkAction::SetTaskStatus { status }, ids(&bulk))
-                .unwrap()
-                .request
-                .id;
+            w.ai.request_bulk(
+                BulkAction::SetTaskStatus {
+                    status,
+                    wont_do: false,
+                },
+                ids(&bulk),
+            )
+            .unwrap()
+            .request
+            .id;
         w.desktop.approve_bulk_request(&id).unwrap();
         for (a, b) in one.iter().zip(&bulk) {
             let (a, b) = (task_now(&w, &a.id), task_now(&w, &b.id));
@@ -469,6 +478,7 @@ fn bulk_status_changes_follow_the_same_rules_as_change_task() {
     for status in [WorkStatus::Ready, WorkStatus::InProgress] {
         let single =
             w.ai.change_task(ChangeTask {
+                wont_do: None,
                 difficulty: None,
                 id: one[1].id.clone(),
                 expected_revision: task_now(&w, &one[1].id).revision,
@@ -478,8 +488,14 @@ fn bulk_status_changes_follow_the_same_rules_as_change_task() {
             })
             .unwrap_err();
         let error =
-            w.ai.request_bulk(BulkAction::SetTaskStatus { status }, ids(&bulk))
-                .unwrap_err();
+            w.ai.request_bulk(
+                BulkAction::SetTaskStatus {
+                    status,
+                    wont_do: false,
+                },
+                ids(&bulk),
+            )
+            .unwrap_err();
         assert_eq!(error.code(), single.code(), "{status:?}");
     }
 }

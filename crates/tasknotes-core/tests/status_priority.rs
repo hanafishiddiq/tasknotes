@@ -13,6 +13,7 @@ fn priority_and_lifecycle_are_persisted_even_while_idle() {
         .unwrap();
     let urgent = store
         .change_task(ChangeTask {
+            wont_do: None,
             difficulty: None,
             id: task.id.clone(),
             expected_revision: task.revision,
@@ -26,6 +27,7 @@ fn priority_and_lifecycle_are_persisted_even_while_idle() {
     assert_eq!(urgent.description, "Research");
     let started = store
         .change_task(ChangeTask {
+            wont_do: None,
             difficulty: None,
             id: urgent.id.clone(),
             expected_revision: urgent.revision,
@@ -54,6 +56,7 @@ fn percent_and_status_transitions_preserve_last_incomplete_progress() {
     let update = |previous: &tasknotes_core::tasks::Task, status, progress| {
         store
             .change_task(ChangeTask {
+                wont_do: None,
                 difficulty: None,
                 id: previous.id.clone(),
                 expected_revision: previous.revision,
@@ -98,6 +101,7 @@ fn contradicting_status_progress_or_reset_to_ready_is_rejected_without_changes()
         .unwrap();
     let underway = store
         .change_task(ChangeTask {
+            wont_do: None,
             difficulty: None,
             id: ready.id.clone(),
             expected_revision: ready.revision,
@@ -118,6 +122,7 @@ fn contradicting_status_progress_or_reset_to_ready_is_rejected_without_changes()
         assert!(
             store
                 .change_task(ChangeTask {
+                    wont_do: None,
                     difficulty: None,
                     id: underway.id.clone(),
                     expected_revision: underway.revision,
@@ -132,6 +137,7 @@ fn contradicting_status_progress_or_reset_to_ready_is_rejected_without_changes()
     assert!(
         store
             .change_task(ChangeTask {
+                wont_do: None,
                 difficulty: None,
                 id: underway.id.clone(),
                 expected_revision: underway.revision,
@@ -143,6 +149,7 @@ fn contradicting_status_progress_or_reset_to_ready_is_rejected_without_changes()
     );
     let stale = store
         .change_task(ChangeTask {
+            wont_do: None,
             difficulty: None,
             id: underway.id.clone(),
             expected_revision: ready.revision,
@@ -155,6 +162,7 @@ fn contradicting_status_progress_or_reset_to_ready_is_rejected_without_changes()
 
     let completed = store
         .change_task(ChangeTask {
+            wont_do: None,
             difficulty: None,
             id: underway.id.clone(),
             expected_revision: underway.revision,
@@ -166,6 +174,7 @@ fn contradicting_status_progress_or_reset_to_ready_is_rejected_without_changes()
     assert!(
         store
             .change_task(ChangeTask {
+                wont_do: None,
                 difficulty: None,
                 id: completed.id.clone(),
                 expected_revision: completed.revision,
@@ -216,6 +225,7 @@ fn v1_database_migrates_without_losing_tasks() {
     assert_eq!(existing.progress, 60);
     let completed = store
         .change_task(ChangeTask {
+            wont_do: None,
             difficulty: None,
             id: existing.id.clone(),
             expected_revision: existing.revision,
@@ -226,6 +236,7 @@ fn v1_database_migrates_without_losing_tasks() {
         .unwrap();
     let reopened = store
         .change_task(ChangeTask {
+            wont_do: None,
             difficulty: None,
             id: existing.id.clone(),
             expected_revision: completed.revision,
@@ -263,6 +274,7 @@ fn group_then_priority_sort_and_cursor_preserve_all_records() {
             .unwrap();
         store
             .change_task(ChangeTask {
+                wont_do: None,
                 difficulty: None,
                 id: created.id.clone(),
                 expected_revision: created.revision,

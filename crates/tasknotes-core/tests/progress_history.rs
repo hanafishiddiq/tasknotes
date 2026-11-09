@@ -65,6 +65,7 @@ fn existing_status_transitions_also_append_entries_and_reopen_at_previous_progre
     let created = task(&store);
     let underway = store
         .change_task(ChangeTask {
+            wont_do: None,
             difficulty: None,
             id: created.id.clone(),
             expected_revision: created.revision,
@@ -75,6 +76,7 @@ fn existing_status_transitions_also_append_entries_and_reopen_at_previous_progre
         .unwrap();
     let done = store
         .change_task(ChangeTask {
+            wont_do: None,
             difficulty: None,
             id: created.id.clone(),
             expected_revision: underway.revision,
@@ -85,6 +87,7 @@ fn existing_status_transitions_also_append_entries_and_reopen_at_previous_progre
         .unwrap();
     let reopened = store
         .change_task(ChangeTask {
+            wont_do: None,
             difficulty: None,
             id: created.id.clone(),
             expected_revision: done.revision,
@@ -121,6 +124,7 @@ fn existing_status_transitions_also_append_entries_and_reopen_at_previous_progre
     // Changing only Priority does not fabricate a Progress Entry.
     let _ = store
         .change_task(ChangeTask {
+            wont_do: None,
             difficulty: None,
             id: created.id.clone(),
             expected_revision: reopened.revision,
@@ -493,6 +497,7 @@ fn v2_database_upgrades_without_losing_completed_task_and_previous_progress() {
     );
     let reopened = store
         .change_task(ChangeTask {
+            wont_do: None,
             difficulty: None,
             id: old.id.clone(),
             expected_revision: old.revision,

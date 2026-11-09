@@ -228,6 +228,7 @@ fn a_task_in_removed_cannot_be_changed_until_it_is_restored() {
         expected_revision: revision,
     }));
     refused(store.change_task(ChangeTask {
+        wont_do: None,
         difficulty: None,
         id: id.clone(),
         expected_revision: revision,
@@ -295,6 +296,8 @@ fn v8_database(db: &Path) -> (String, String) {
                ON note_folders(coalesce(parent_id, ''), name_fold);
              DROP TABLE IF EXISTS audit_entries; DROP TABLE IF EXISTS bulk_requests; DROP TABLE IF EXISTS retired_revisions;
              DROP INDEX tasks_status_difficulty_order; ALTER TABLE tasks DROP COLUMN difficulty;
+             ALTER TABLE tasks DROP COLUMN wont_do; ALTER TABLE progress_entries DROP COLUMN previous_wont_do;
+             ALTER TABLE progress_entries DROP COLUMN wont_do;
              DROP INDEX lists_manual_order; ALTER TABLE lists DROP COLUMN position;
              CREATE INDEX lists_created_order ON lists(created_at DESC, id DESC);
              DROP INDEX note_folders_manual_order; ALTER TABLE note_folders DROP COLUMN position;

@@ -481,6 +481,10 @@ pub struct Task {
     pub priority: Priority,
     pub difficulty: Option<Difficulty>,
     pub progress: u8,
+    /// A Completed Task set aside rather than finished (ADR 0008): it keeps
+    /// the progress it had. Always false unless `status` is Completed.
+    #[serde(default)]
+    pub wont_do: bool,
     pub next_step: String,
     pub list_id: Option<String>,
     pub due_date: Option<String>,
@@ -551,6 +555,10 @@ pub struct ChangeTask {
     /// `None` keeps the Difficulty, `Some(None)` clears it.
     #[serde(default, deserialize_with = "present")]
     pub difficulty: Option<Option<Difficulty>>,
+    /// `Some(true)` marks the Task Won't Do (Completed, keeping its
+    /// progress); `Some(false)` clears it and reopens the Task by the usual
+    /// progress rules; `None` keeps it unless the status or progress changes.
+    pub wont_do: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -575,6 +583,9 @@ pub struct ProgressEntry {
     pub status: WorkStatus,
     pub previous_progress: u8,
     pub progress: u8,
+    /// Whether the Task was Won't Do before and after this entry.
+    pub previous_wont_do: bool,
+    pub wont_do: bool,
     pub note: String,
     pub next_step: String,
     pub created_at: i64,
@@ -635,6 +646,7 @@ pub(crate) fn checked_change(
     if input.status.is_none()
         && input.priority.is_none()
         && input.difficulty.is_none()
+        && input.wont_do.is_none()
         && input.progress.is_none()
         && next_step.is_none()
         && note.is_empty()
@@ -669,6 +681,96 @@ fn validated_text(title: &str, description: &str) -> Result<(String, String), Ta
     Ok((clean_title.to_owned(), description.to_owned()))
 }
 
+/// The work status, progress and Won't Do a change leads to, under the
+/// transition rules every interface shares. Won't Do (ADR 0008) is a
+/// resolution of a Completed Task that keeps its progress; reopening it, by
+/// status, progress or clearing it, follows the usual progress rules, and a
+/// normal Complete (100%) clears it.
+fn next_work_state(
+    before: &Task,
+    input: &ChangeTask,
+    previous_incomplete: u8,
+) -> Result<(WorkStatus, u8, bool), TaskError> {
+    if input.wont_do == Some(true) {
+        if input.progress.is_some()
+            || input
+                .status
+                .is_some_and(|status| status != WorkStatus::Completed)
+        {
+            return Err(TaskError::InvalidTransition(
+                "Won't Do is Completed and keeps the Task's progress; give no other status or progress",
+            ));
+        }
+        if before.status == WorkStatus::Completed && !before.wont_do {
+            return Err(TaskError::InvalidTransition(
+                "A finished Task cannot be Won't Do; reopen it first",
+            ));
+        }
+        return Ok((WorkStatus::Completed, before.progress, true));
+    }
+    if input.wont_do == Some(false)
+        && before.wont_do
+        && input.status.is_none()
+        && input.progress.is_none()
+    {
+        let reopened = if before.progress == 0 {
+            WorkStatus::Ready
+        } else {
+            WorkStatus::InProgress
+        };
+        return Ok((reopened, before.progress, false));
+    }
+
+    let mut next_status = before.status;
+    let mut next_progress = before.progress;
+    if let Some(progress) = input.progress {
+        next_progress = progress;
+        next_status = if progress == 100 {
+            WorkStatus::Completed
+        } else if progress == 0 && before.status == WorkStatus::Ready {
+            WorkStatus::Ready
+        } else {
+            WorkStatus::InProgress
+        };
+    }
+    if let Some(status) = input.status {
+        match status {
+            WorkStatus::Ready => {
+                // A Won't Do Task that never started may go back to Ready.
+                let unstarted = before.status == WorkStatus::Ready || before.wont_do;
+                if !unstarted || next_progress != 0 {
+                    return Err(TaskError::InvalidTransition(
+                        "Ready is only available for work that has not started",
+                    ));
+                }
+                next_status = WorkStatus::Ready;
+            }
+            WorkStatus::InProgress => {
+                if next_progress == 100 && input.progress.is_some() {
+                    return Err(TaskError::InvalidTransition(
+                        "In Progress cannot have 100% completion",
+                    ));
+                }
+                if before.status == WorkStatus::Completed && input.progress.is_none() {
+                    next_progress = previous_incomplete;
+                }
+                next_status = WorkStatus::InProgress;
+            }
+            WorkStatus::Completed => {
+                if input.progress.is_some_and(|progress| progress != 100) {
+                    return Err(TaskError::InvalidTransition(
+                        "Completed requires progress of 100%",
+                    ));
+                }
+                next_status = WorkStatus::Completed;
+                next_progress = 100;
+            }
+        }
+    }
+    let wont_do = before.wont_do && next_status == WorkStatus::Completed && next_progress < 100;
+    Ok((next_status, next_progress, wont_do))
+}
+
 pub(crate) fn invalid_db_text(index: usize, value: String) -> rusqlite::Error {
     rusqlite::Error::FromSqlConversionFailure(
         index,
@@ -697,6 +799,7 @@ pub(crate) fn read_task(row: &Row<'_>) -> rusqlite::Result<Task> {
             })
             .transpose()?,
         progress: row.get(5)?,
+        wont_do: row.get(WONT_DO_COLUMN)?,
         next_step: row.get(9)?,
         list_id: row.get(10)?,
         due_date: row.get(11)?,
@@ -708,15 +811,17 @@ pub(crate) fn read_task(row: &Row<'_>) -> rusqlite::Result<Task> {
     })
 }
 
-pub(crate) const COLUMNS: &str = "id, title, description, status, priority, progress, revision, created_at, updated_at, next_step, list_id, due_date, removed_at, difficulty";
+pub(crate) const COLUMNS: &str = "id, title, description, status, priority, progress, revision, created_at, updated_at, next_step, list_id, due_date, removed_at, difficulty, wont_do";
 /// Where `difficulty` sits in `COLUMNS`, for `read_task`.
 const DIFFICULTY_COLUMN: usize = 13;
+/// Where `wont_do` sits in `COLUMNS`, for `read_task`.
+const WONT_DO_COLUMN: usize = 14;
 /// How many columns `COLUMNS` selects: the index of the first column a query
 /// adds after `{COLUMNS}`.
-pub(crate) const COLUMN_COUNT: usize = 14;
+pub(crate) const COLUMN_COUNT: usize = 15;
 
 /// The database schema this core reads and writes.
-pub const SCHEMA_VERSION: i64 = 17;
+pub const SCHEMA_VERSION: i64 = 18;
 
 /// How long a write waits for another process (the CLI, MCP) holding the database lock.
 pub const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -932,6 +1037,27 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), TaskError> {
         migrate_v17(&migration)?;
         migration.commit()?;
     }
+    if version < 18 {
+        let migration = connection.transaction()?;
+        migrate_v18(&migration)?;
+        migration.commit()?;
+    }
+    Ok(())
+}
+
+/// Schema v18: Won't Do (ADR 0008), a resolution of a Completed Task. No
+/// existing Task or Progress Entry is Won't Do; the CHECK keeps the flag on
+/// Completed Tasks only, whoever writes the file.
+fn migrate_v18(migration: &Transaction) -> Result<(), TaskError> {
+    migration.execute_batch(
+        "ALTER TABLE tasks ADD COLUMN wont_do INTEGER NOT NULL DEFAULT 0
+             CHECK (wont_do IN (0, 1) AND (wont_do = 0 OR status = 'completed'));
+         ALTER TABLE progress_entries ADD COLUMN previous_wont_do INTEGER NOT NULL DEFAULT 0
+             CHECK (previous_wont_do IN (0, 1));
+         ALTER TABLE progress_entries ADD COLUMN wont_do INTEGER NOT NULL DEFAULT 0
+             CHECK (wont_do IN (0, 1));
+         PRAGMA user_version = 18;",
+    )?;
     Ok(())
 }
 
@@ -1101,6 +1227,7 @@ impl TaskStore {
             priority: Priority::Medium,
             difficulty: None,
             progress: 0,
+            wont_do: false,
             next_step: String::new(),
             list_id: list_id.map(str::to_owned),
             due_date: None,
@@ -1214,6 +1341,7 @@ impl TaskStore {
             AuditAction::TaskProgress,
             ChangeTask {
                 difficulty: None,
+                wont_do: None,
                 id: input.id,
                 expected_revision: input.expected_revision,
                 status: input.status,
@@ -1263,50 +1391,8 @@ impl TaskStore {
             return Err(TaskError::RevisionConflict);
         }
 
-        let mut next_status = before.status;
-        let mut next_progress = before.progress;
-        if let Some(progress) = input.progress {
-            next_progress = progress;
-            next_status = if progress == 100 {
-                WorkStatus::Completed
-            } else if progress == 0 && before.status == WorkStatus::Ready {
-                WorkStatus::Ready
-            } else {
-                WorkStatus::InProgress
-            };
-        }
-        if let Some(status) = input.status {
-            match status {
-                WorkStatus::Ready => {
-                    if before.status != WorkStatus::Ready || next_progress != 0 {
-                        return Err(TaskError::InvalidTransition(
-                            "Ready is only available for work that has not started",
-                        ));
-                    }
-                    next_status = WorkStatus::Ready;
-                }
-                WorkStatus::InProgress => {
-                    if next_progress == 100 && input.progress.is_some() {
-                        return Err(TaskError::InvalidTransition(
-                            "In Progress cannot have 100% completion",
-                        ));
-                    }
-                    if before.status == WorkStatus::Completed && input.progress.is_none() {
-                        next_progress = previous_incomplete;
-                    }
-                    next_status = WorkStatus::InProgress;
-                }
-                WorkStatus::Completed => {
-                    if input.progress.is_some_and(|progress| progress != 100) {
-                        return Err(TaskError::InvalidTransition(
-                            "Completed requires progress of 100%",
-                        ));
-                    }
-                    next_status = WorkStatus::Completed;
-                    next_progress = 100;
-                }
-            }
-        }
+        let (next_status, next_progress, next_wont_do) =
+            next_work_state(&before, &input, previous_incomplete)?;
         if next_progress < 100 {
             previous_incomplete = next_progress;
         }
@@ -1317,6 +1403,7 @@ impl TaskStore {
             .unwrap_or_else(|| before.next_step.clone());
         let substantive = next_status != before.status
             || next_progress != before.progress
+            || next_wont_do != before.wont_do
             || new_next_step != before.next_step
             || !note.is_empty();
         if !substantive && next_priority == before.priority && next_difficulty == before.difficulty
@@ -1330,6 +1417,7 @@ impl TaskStore {
                 previous_incomplete_progress = ?4,
                 next_step = ?5,
                 difficulty = ?9,
+                wont_do = ?10,
                 revision = revision + 1,
                 updated_at = max(updated_at + 1, ?6)
              WHERE id = ?7 AND revision = ?8
@@ -1346,7 +1434,8 @@ impl TaskStore {
                 now,
                 input.id,
                 input.expected_revision,
-                next_difficulty.map(Difficulty::as_sql)
+                next_difficulty.map(Difficulty::as_sql),
+                next_wont_do
             ],
             read_task,
         )?;
@@ -1354,8 +1443,8 @@ impl TaskStore {
             transaction.execute(
                 "INSERT INTO progress_entries
                   (id, task_id, previous_status, status, previous_progress, progress,
-                   note, next_step, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                   note, next_step, created_at, previous_wont_do, wont_do)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
                 params![
                     Uuid::new_v4().to_string(),
                     updated.id,
@@ -1365,7 +1454,9 @@ impl TaskStore {
                     updated.progress,
                     note,
                     updated.next_step,
-                    updated.updated_at
+                    updated.updated_at,
+                    before.wont_do,
+                    updated.wont_do
                 ],
             )?;
         }
@@ -1425,7 +1516,8 @@ impl TaskStore {
         }
         let mut statement = conn.prepare(
             "SELECT sequence, id, task_id, previous_status, status,
-                    previous_progress, progress, note, next_step, created_at
+                    previous_progress, progress, note, next_step, created_at,
+                    previous_wont_do, wont_do
              FROM progress_entries
              WHERE task_id = ?1 AND (?2 IS NULL OR sequence < ?2)
              ORDER BY sequence DESC LIMIT ?3",
@@ -1447,6 +1539,8 @@ impl TaskStore {
                 note: row.get(7)?,
                 next_step: row.get(8)?,
                 created_at: row.get(9)?,
+                previous_wont_do: row.get(10)?,
+                wont_do: row.get(11)?,
             });
         }
         let next_cursor = if items.len() > limit as usize {
@@ -1516,7 +1610,7 @@ mod upgrade_lock_tests {
 
 #[cfg(test)]
 mod column_tests {
-    use super::{COLUMN_COUNT, COLUMNS, DIFFICULTY_COLUMN};
+    use super::{COLUMN_COUNT, COLUMNS, DIFFICULTY_COLUMN, WONT_DO_COLUMN};
 
     /// `read_task` reads by position: the constants must follow `COLUMNS`.
     #[test]
@@ -1524,6 +1618,7 @@ mod column_tests {
         let names: Vec<&str> = COLUMNS.split(',').map(str::trim).collect();
         assert_eq!(names.len(), COLUMN_COUNT);
         assert_eq!(names[DIFFICULTY_COLUMN], "difficulty");
+        assert_eq!(names[WONT_DO_COLUMN], "wont_do");
         for (index, name) in [
             (0, "id"),
             (1, "title"),
