@@ -175,8 +175,8 @@ pub fn list(list: &List) -> Value {
         "created_at": list.created_at,
         "updated_at": list.updated_at,
         "removed": list.removed,
-        "icon": list.icon,
-        "color": list.color,
+        "icon": list.style.icon,
+        "color": list.style.color,
     })
 }
 
@@ -279,8 +279,8 @@ pub fn folder(folder: &NoteFolder, path: String, note_count: i64) -> Value {
         "has_children": folder.has_children,
         "note_count": note_count,
         "removed": folder.removed,
-        "icon": folder.icon,
-        "color": folder.color,
+        "icon": folder.style.icon,
+        "color": folder.style.color,
     })
 }
 

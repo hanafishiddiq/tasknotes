@@ -5,6 +5,7 @@ use uuid::Uuid;
 
 use crate::audit::AuditAction;
 use crate::manual_order::{self, Siblings};
+use crate::style::Style;
 use crate::tasks::{COLUMNS, Task, TaskError, TaskStore, current_millis, read_task};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -16,10 +17,9 @@ pub struct List {
     pub created_at: i64,
     pub updated_at: i64,
     pub removed: bool,
-    /// A Lucide icon name from the allow-list (`style`), or the default icon.
-    pub icon: Option<String>,
-    /// One of the twelve colour keys (`style`), or the default accent.
-    pub color: Option<String>,
+    /// Its icon and colour; serialised as top-level `icon` and `color`.
+    #[serde(flatten)]
+    pub style: Style,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -298,12 +298,11 @@ fn list_name(value: &str) -> Result<&str, TaskError> {
 }
 
 /// What every read of a List selects, in `read_list`'s order.
-pub(crate) const LIST_COLUMNS: &str =
-    "id,name,revision,created_at,updated_at,removed_at,icon,color";
-/// The index of the first column a query adds after `LIST_COLUMNS`.
-const LIST_COLUMN_COUNT: usize = 8;
+const LIST_COLUMNS: &str = "id,name,revision,created_at,updated_at,removed_at,icon,color";
+/// Where the first column a query selects after `LIST_COLUMNS` sits.
+const FIRST_EXTRA_LIST_COLUMN: usize = 8;
 
-pub(crate) fn read_list(row: &rusqlite::Row<'_>) -> rusqlite::Result<List> {
+fn read_list(row: &rusqlite::Row<'_>) -> rusqlite::Result<List> {
     Ok(List {
         id: row.get(0)?,
         name: row.get(1)?,
@@ -311,8 +310,7 @@ pub(crate) fn read_list(row: &rusqlite::Row<'_>) -> rusqlite::Result<List> {
         created_at: row.get(3)?,
         updated_at: row.get(4)?,
         removed: row.get::<_, Option<i64>>(5)?.is_some(),
-        icon: row.get(6)?,
-        color: row.get(7)?,
+        style: Style::read(row, 6)?,
     })
 }
 
@@ -471,8 +469,7 @@ impl TaskStore {
             created_at: now,
             updated_at: now,
             removed: false,
-            icon: None,
-            color: None,
+            style: Style::default(),
         };
         tx.execute(
             "INSERT INTO lists(id, name, revision, created_at, updated_at, removed_at, position)
@@ -685,7 +682,7 @@ impl TaskStore {
         let mut positions = Vec::new();
         while let Some(row) = rows.next()? {
             items.push(read_list(row)?);
-            positions.push(row.get::<_, i64>(LIST_COLUMN_COUNT)?);
+            positions.push(row.get::<_, i64>(FIRST_EXTRA_LIST_COLUMN)?);
         }
         let next_cursor = if items.len() > limit as usize {
             items.pop();

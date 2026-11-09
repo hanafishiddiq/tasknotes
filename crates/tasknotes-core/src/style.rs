@@ -7,12 +7,33 @@
 
 use std::sync::OnceLock;
 
-use rusqlite::{Transaction, params};
+use rusqlite::{Row, Transaction, params};
 use serde::{Deserialize, Serialize};
 
 use crate::audit::AuditAction;
-use crate::organization::{LIST_COLUMNS, List, get_list, read_list};
+use crate::note_folders::{NoteFolder, current_folder, get_folder};
+use crate::organization::{List, get_list};
 use crate::tasks::{TaskError, TaskStore, current_millis, present};
+
+/// A List's or Note Folder's icon and colour (GLOSSARY: Style). `None` in
+/// either keeps the default look for it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Style {
+    /// A Lucide icon name from the allow-list, or the default folder icon.
+    pub icon: Option<String>,
+    /// One of the twelve colour keys, or the default accent.
+    pub color: Option<String>,
+}
+
+impl Style {
+    /// The `icon` and `color` columns, selected next to each other from `first`.
+    pub(crate) fn read(row: &Row<'_>, first: usize) -> rusqlite::Result<Self> {
+        Ok(Self {
+            icon: row.get(first)?,
+            color: row.get(first + 1)?,
+        })
+    }
+}
 
 /// Every icon name and colour key a Style may hold.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -71,24 +92,45 @@ impl SetStyle {
         Ok(())
     }
 
-    /// The icon and colour after this change over the current ones.
-    fn over(&self, icon: &Option<String>, color: &Option<String>) -> Look {
-        Look {
-            icon: self.icon.clone().unwrap_or_else(|| icon.clone()),
-            color: self.color.clone().unwrap_or_else(|| color.clone()),
+    /// The Style after this change is applied to `current`.
+    fn applied_to(&self, current: &Style) -> Style {
+        Style {
+            icon: self.icon.clone().unwrap_or_else(|| current.icon.clone()),
+            color: self.color.clone().unwrap_or_else(|| current.color.clone()),
         }
     }
 }
 
-struct Look {
-    icon: Option<String>,
-    color: Option<String>,
-}
-
-impl Look {
-    fn is(&self, icon: &Option<String>, color: &Option<String>) -> bool {
-        &self.icon == icon && &self.color == color
+/// Writes `input` over `current` in `table` ("lists" or "note_folders"),
+/// once the caller has checked the row's revision and that it is not
+/// Removed. Refuses with `unchanged` when the Style would stay the same.
+fn restyle(
+    tx: &Transaction,
+    table: &'static str,
+    input: &SetStyle,
+    current: &Style,
+    unchanged: TaskError,
+) -> Result<(), TaskError> {
+    let style = input.applied_to(current);
+    if &style == current {
+        return Err(unchanged);
     }
+    let now = current_millis()?;
+    tx.execute(
+        &format!(
+            "UPDATE {table} SET icon = ?1, color = ?2, revision = revision + 1,
+               updated_at = max(updated_at + 1, ?3)
+             WHERE id = ?4 AND revision = ?5"
+        ),
+        params![
+            style.icon,
+            style.color,
+            now,
+            input.id,
+            input.expected_revision
+        ],
+    )?;
+    Ok(())
 }
 
 /// Schema v19: Lists and Note Folders may carry an icon and a colour. Every
@@ -128,54 +170,33 @@ impl TaskStore {
         if old.removed {
             return Err(TaskError::ListRemoved);
         }
-        let look = input.over(&old.icon, &old.color);
-        if look.is(&old.icon, &old.color) {
-            return Err(TaskError::ListUnchanged);
-        }
-        let now = current_millis()?;
-        let updated = tx.query_row(
-            &format!(
-                "UPDATE lists SET icon=?1,color=?2,revision=revision+1,updated_at=max(updated_at+1,?3)
-                 WHERE id=?4 AND revision=?5 RETURNING {LIST_COLUMNS}"
-            ),
-            params![look.icon, look.color, now, input.id, input.expected_revision],
-            read_list,
-        )?;
-        self.audit_applied(&tx, AuditAction::ListStyle, &updated.id, updated.revision)?;
+        restyle(&tx, "lists", &input, &old.style, TaskError::ListUnchanged)?;
+        let styled = get_list(&tx, &old.id)?;
+        self.audit_applied(&tx, AuditAction::ListStyle, &styled.id, styled.revision)?;
         tx.commit()?;
-        Ok(updated)
+        Ok(styled)
     }
 
-    pub fn set_note_folder_style(
-        &self,
-        input: SetStyle,
-    ) -> Result<crate::note_folders::NoteFolder, TaskError> {
+    pub fn set_note_folder_style(&self, input: SetStyle) -> Result<NoteFolder, TaskError> {
         self.audited(AuditAction::FolderStyle, input, |input| {
             self.set_note_folder_style_inner(input)
         })
     }
 
-    fn set_note_folder_style_inner(
-        &self,
-        input: SetStyle,
-    ) -> Result<crate::note_folders::NoteFolder, TaskError> {
+    fn set_note_folder_style_inner(&self, input: SetStyle) -> Result<NoteFolder, TaskError> {
         input.check()?;
         let mut conn = self.connect()?;
         let tx = self.begin_write(&mut conn)?;
-        let old = crate::note_folders::current_folder(&tx, &input.id, input.expected_revision)?;
-        let look = input.over(&old.icon, &old.color);
-        if look.is(&old.icon, &old.color) {
-            return Err(TaskError::NoteFolderUnchanged);
-        }
-        let now = current_millis()?;
-        tx.execute(
-            "UPDATE note_folders SET icon = ?1, color = ?2, revision = revision + 1,
-               updated_at = max(updated_at + 1, ?3)
-             WHERE id = ?4 AND revision = ?5",
-            params![look.icon, look.color, now, old.id, old.revision],
+        // Refuses a stale revision and a Removed folder.
+        let old = current_folder(&tx, &input.id, input.expected_revision)?;
+        restyle(
+            &tx,
+            "note_folders",
+            &input,
+            &old.style,
+            TaskError::NoteFolderUnchanged,
         )?;
-        let styled =
-            crate::note_folders::get_folder(&tx, &old.id)?.ok_or(TaskError::NoteFolderNotFound)?;
+        let styled = get_folder(&tx, &old.id)?.ok_or(TaskError::NoteFolderNotFound)?;
         self.audit_applied(&tx, AuditAction::FolderStyle, &styled.id, styled.revision)?;
         tx.commit()?;
         Ok(styled)

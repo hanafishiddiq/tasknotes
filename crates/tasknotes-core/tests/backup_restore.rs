@@ -1016,7 +1016,12 @@ fn a_backup_from_an_older_schema_is_upgraded_on_restore() {
         assert_eq!(lists, ["Synthetic newer List", "Synthetic older List"]);
         // A schema before v19 held no Style: every List comes back with the default look.
         for list in &restored {
-            assert_eq!((&list.icon, &list.color), (&None, &None), "{}", list.name);
+            assert_eq!(
+                (&list.style.icon, &list.style.color),
+                (&None, &None),
+                "{}",
+                list.name
+            );
         }
         task(&store, "Synthetic task after the upgrade");
     }

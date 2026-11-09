@@ -25,6 +25,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::calendar::TimeZone;
+use crate::style::Style;
 use crate::tasks::{Difficulty, Priority, Task, TaskError, TaskStore, WorkStatus, current_millis};
 
 /// The version of the export document's shape, sent as `format_version`.
@@ -86,10 +87,9 @@ struct ListRecord {
     updated_at: i64,
     removed: bool,
     position: i64,
-    /// `null` for the default icon.
-    icon: Option<String>,
-    /// `null` for the default colour.
-    color: Option<String>,
+    /// `icon` and `color`, each `null` for the default look.
+    #[serde(flatten)]
+    style: Style,
 }
 
 #[derive(Serialize)]
@@ -134,10 +134,9 @@ struct FolderRecord {
     updated_at: i64,
     removed: bool,
     position: i64,
-    /// `null` for the default icon.
-    icon: Option<String>,
-    /// `null` for the default colour.
-    color: Option<String>,
+    /// `icon` and `color`, each `null` for the default look.
+    #[serde(flatten)]
+    style: Style,
 }
 
 #[derive(Serialize)]
@@ -247,8 +246,7 @@ impl TaskStore {
                     updated_at: row.get(4)?,
                     removed: row.get::<_, Option<i64>>(5)?.is_some(),
                     position: row.get(6)?,
-                    icon: row.get(7)?,
-                    color: row.get(8)?,
+                    style: Style::read(row, 7)?,
                 })
             },
         )?;
@@ -323,8 +321,7 @@ impl TaskStore {
                     updated_at: row.get(5)?,
                     removed: row.get::<_, Option<i64>>(6)?.is_some(),
                     position: row.get(7)?,
-                    icon: row.get(8)?,
-                    color: row.get(9)?,
+                    style: Style::read(row, 8)?,
                 })
             },
         )?;

@@ -99,9 +99,15 @@ fn a_new_list_and_folder_keep_the_default_look() {
     let dir = tempfile::tempdir().unwrap();
     let store = store_at(&dir.path().join("t.db"));
     let made = list(&store, "Synthetic list");
-    assert_eq!((made.icon.as_deref(), made.color.as_deref()), (None, None));
+    assert_eq!(
+        (made.style.icon.as_deref(), made.style.color.as_deref()),
+        (None, None)
+    );
     let made = folder(&store, "Synthetic folder");
-    assert_eq!((made.icon.as_deref(), made.color.as_deref()), (None, None));
+    assert_eq!(
+        (made.style.icon.as_deref(), made.style.color.as_deref()),
+        (None, None)
+    );
     let json = serde_json::to_value(&made).unwrap();
     assert_eq!(json["icon"], Value::Null);
     assert_eq!(json["color"], Value::Null);
@@ -122,8 +128,8 @@ fn a_list_takes_an_icon_and_a_colour_in_one_revisioned_audited_write() {
         ))
         .unwrap();
 
-    assert_eq!(styled.icon.as_deref(), Some("briefcase"));
-    assert_eq!(styled.color.as_deref(), Some("blue"));
+    assert_eq!(styled.style.icon.as_deref(), Some("briefcase"));
+    assert_eq!(styled.style.color.as_deref(), Some("blue"));
     assert_eq!(styled.revision, made.revision + 1);
     assert_eq!(styled.name, made.name);
     assert_eq!(current_list(&store, &made.id), styled);
@@ -151,8 +157,8 @@ fn a_field_left_out_keeps_its_value_and_null_clears_it() {
             color: Some(Some("orange".into())),
         })
         .unwrap();
-    assert_eq!(recoloured.icon.as_deref(), Some("house"));
-    assert_eq!(recoloured.color.as_deref(), Some("orange"));
+    assert_eq!(recoloured.style.icon.as_deref(), Some("house"));
+    assert_eq!(recoloured.style.color.as_deref(), Some("orange"));
 
     let plain_icon = store
         .set_list_style(SetStyle {
@@ -162,13 +168,16 @@ fn a_field_left_out_keeps_its_value_and_null_clears_it() {
             color: None,
         })
         .unwrap();
-    assert_eq!(plain_icon.icon, None);
-    assert_eq!(plain_icon.color.as_deref(), Some("orange"));
+    assert_eq!(plain_icon.style.icon, None);
+    assert_eq!(plain_icon.style.color.as_deref(), Some("orange"));
 
     let default_look = store
         .set_list_style(both(&made.id, plain_icon.revision, None, None))
         .unwrap();
-    assert_eq!((default_look.icon, default_look.color), (None, None));
+    assert_eq!(
+        (default_look.style.icon, default_look.style.color),
+        (None, None)
+    );
 }
 
 #[test]
@@ -287,8 +296,8 @@ fn a_note_folder_takes_an_icon_and_a_colour_with_the_same_rules() {
             Some("pink"),
         ))
         .unwrap();
-    assert_eq!(styled.icon.as_deref(), Some("chef-hat"));
-    assert_eq!(styled.color.as_deref(), Some("pink"));
+    assert_eq!(styled.style.icon.as_deref(), Some("chef-hat"));
+    assert_eq!(styled.style.color.as_deref(), Some("pink"));
     assert_eq!(styled.revision, made.revision + 1);
     assert_eq!(store.get_note_folder(&made.id).unwrap().unwrap(), styled);
     let listed = store.list_note_folders(None, 10, None).unwrap().items;
@@ -331,7 +340,10 @@ fn restoring_a_removed_list_or_note_folder_keeps_its_style() {
         })
         .unwrap();
     assert_eq!(
-        (removed.icon.as_deref(), removed.color.as_deref()),
+        (
+            removed.style.icon.as_deref(),
+            removed.style.color.as_deref()
+        ),
         (Some("star"), Some("teal"))
     );
     let restored = store
@@ -343,7 +355,10 @@ fn restoring_a_removed_list_or_note_folder_keeps_its_style() {
         .unwrap();
     assert!(!restored.removed);
     assert_eq!(
-        (restored.icon.as_deref(), restored.color.as_deref()),
+        (
+            restored.style.icon.as_deref(),
+            restored.style.color.as_deref()
+        ),
         (Some("star"), Some("teal"))
     );
     assert_eq!(current_list(&store, &made.id), restored);
@@ -373,7 +388,10 @@ fn restoring_a_removed_list_or_note_folder_keeps_its_style() {
         .unwrap();
     assert!(!restored.removed);
     assert_eq!(
-        (restored.icon.as_deref(), restored.color.as_deref()),
+        (
+            restored.style.icon.as_deref(),
+            restored.style.color.as_deref()
+        ),
         (Some("chef-hat"), Some("pink"))
     );
     assert_eq!(store.get_note_folder(&made.id).unwrap().unwrap(), restored);
@@ -396,8 +414,8 @@ fn emoji_names_stay_as_typed_and_a_rename_keeps_the_look() {
         })
         .unwrap();
     assert_eq!(renamed.name, "🏡 Synthetic house");
-    assert_eq!(renamed.icon.as_deref(), Some("house"));
-    assert_eq!(renamed.color.as_deref(), Some("teal"));
+    assert_eq!(renamed.style.icon.as_deref(), Some("house"));
+    assert_eq!(renamed.style.color.as_deref(), Some("teal"));
 
     let made = folder(&store, "📚 Synthetic reading");
     let styled = store
@@ -411,7 +429,7 @@ fn emoji_names_stay_as_typed_and_a_rename_keeps_the_look() {
         })
         .unwrap();
     assert_eq!(renamed.name, "📖 Synthetic books");
-    assert_eq!(renamed.icon.as_deref(), Some("book-open"));
+    assert_eq!(renamed.style.icon.as_deref(), Some("book-open"));
 }
 
 /// Puts a database back exactly as schema v17 left it.
@@ -464,9 +482,9 @@ fn upgrading_from_v17_gives_everything_the_default_look_and_changes_nothing_else
 
     assert_eq!(SCHEMA_VERSION, 19);
     let read = current_list(&store, &a.id);
-    assert_eq!((read.icon, read.color), (None, None));
+    assert_eq!((read.style.icon, read.style.color), (None, None));
     let read = store.get_note_folder(&f.id).unwrap().unwrap();
-    assert_eq!((read.icon, read.color), (None, None));
+    assert_eq!((read.style.icon, read.style.color), (None, None));
     let version: i64 = Connection::open(&db)
         .unwrap()
         .pragma_query_value(None, "user_version", |row| row.get(0))
