@@ -2,9 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import App from "./App";
 import NewTaskToast from "./components/NewTaskToast";
+import VirtualTaskList from "./components/VirtualTaskList";
 import { TOAST_FADE_MS, TOAST_MS, FLASH_MS, useNewTaskToast } from "./lib/use-new-task-toast";
 import type { Task } from "./lib/task-api";
 import { rules } from "./test/stylesheet";
@@ -277,7 +278,32 @@ function watchScrolls() {
 }
 
 describe("the list never moves by itself after the toast", () => {
-  it("a Task removed before the toast is clicked is not scrolled to when Undo brings it back", async () => {
+  it("a scroll request that misses is let go at once, so a Task arriving later never moves the list", () => {
+    const scrollTo = vi.fn();
+    function Shell({ shown, reveal }: { shown: Task[]; reveal: { taskId: string } | null }) {
+      const scrollRef = useRef<HTMLDivElement>(null);
+      return (
+        <div ref={scrollRef} style={{ height: 500, overflow: "auto" }}>
+          <VirtualTaskList tasks={shown} hasMore={false} scrollRef={scrollRef} keepMounted={new Set()}
+            renderTask={(item) => <article aria-label={item.title} />} expandedId={null}
+            onCollapse={() => undefined} reveal={reveal} onRevealed={onRevealed} />
+        </div>
+      );
+    }
+    const onRevealed = vi.fn();
+    const shown = Array.from({ length: 30 }, (_, i) => task(i + 1, { status: "in_progress" }));
+    const { rerender, container } = render(<Shell shown={shown} reveal={{ taskId: "task-999" }} />);
+    (container.firstElementChild as HTMLElement).scrollTo = scrollTo;
+    expect(onRevealed).toHaveBeenCalledTimes(1);
+
+    // The parent dropped the request as asked; the Task then arrives.
+    rerender(<Shell shown={[...shown, task(999)]} reveal={null} />);
+    const down = scrollTo.mock.calls.filter(([options]) => (options?.top ?? 0) > 0);
+    expect(down).toEqual([]);
+    expect(onRevealed).toHaveBeenCalledTimes(1);
+  });
+
+  it("moving its Task to Removed takes the toast away; Undo brings neither the toast nor a scroll", async () => {
     tasks = Array.from({ length: 30 }, (_, i) => task(i + 1, { status: "in_progress" }));
     const scrolls = watchScrolls();
     try {
@@ -289,21 +315,35 @@ describe("the list never moves by itself after the toast", () => {
       await user.click(screen.getByRole("button", { name: "Open Short lived" }));
       await user.click(screen.getByRole("button", { name: "Move to Removed" }));
       await screen.findByRole("status", { name: "Moved to Removed" });
-      await waitFor(() => expect(screen.queryByRole("article", { name: "Short lived" })).toBeNull());
+      // Nothing left to open: no empty "Showing the Task you just added" view can be reached.
+      expect(screen.queryByRole("button", { name: TOAST })).toBeNull();
 
-      const toast = screen.queryByRole("button", { name: TOAST });
-      if (toast) await user.click(toast);
       area.scrollTop = 0;
       const before = scrolls.scrollTo.mock.calls.length;
-      (document.activeElement as HTMLElement | null)?.blur();
-      await user.keyboard("{Meta>}z{/Meta}");
+      await user.click(screen.getByRole("button", { name: "Undo" }));
       await screen.findByRole("article", { name: "Short lived" });
       await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
       expect(scrolls.movedSince(before)).toEqual([]);
       expect(area.scrollTop).toBe(0);
+      expect(screen.queryByRole("button", { name: TOAST })).toBeNull();
+      expect(screen.queryByRole("status", { name: "Added Task" })).toBeNull();
     } finally {
       scrolls.restore();
     }
+  });
+
+  it("removing another Task leaves the toast pointing at the new one", async () => {
+    tasks = [task(1, { title: "Keep me" }), task(2, { title: "Drop me" })];
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("article", { name: "Drop me" });
+    await addTask(user, "Brand new");
+    await user.click(screen.getByRole("button", { name: "Open Drop me" }));
+    await user.click(screen.getByRole("button", { name: "Move to Removed" }));
+    await screen.findByRole("status", { name: "Moved to Removed" });
+    await user.click(screen.getByRole("button", { name: TOAST }));
+    const row = await screen.findByRole("article", { name: "Brand new" });
+    expect(within(row).getByRole("region", { name: "Task details" })).toBeInTheDocument();
   });
 });
 

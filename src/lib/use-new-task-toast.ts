@@ -35,6 +35,8 @@ export interface NewTaskToastState {
    * so the list does not move by itself. Stable across renders.
    */
   clearReveal(): void;
+  /** This Task was moved to Removed: a toast, flash or scroll for it goes, as there is nothing to open. */
+  forget(taskId: string): void;
 }
 
 /**
@@ -111,8 +113,18 @@ export function useNewTaskToast(): NewTaskToastState {
 
   const clearReveal = useCallback(() => setReveal(null), []);
 
+  function forget(taskId: string) {
+    if (current.current?.taskId === taskId) {
+      clearTimeout(timer.current);
+      held.current.clear();
+      setShown(null);
+    }
+    setFlashId((now) => now === taskId ? null : now);
+    setReveal((now) => now?.taskId === taskId ? null : now);
+  }
+
   return {
     taskId: shown?.taskId ?? null, seq: shown?.seq ?? 0, leaving: shown?.leaving ?? false,
-    flashId, reveal, added, hold, open, revealTask: (taskId) => setReveal({ taskId }), clearReveal,
+    flashId, reveal, added, hold, open, revealTask: (taskId) => setReveal({ taskId }), clearReveal, forget,
   };
 }

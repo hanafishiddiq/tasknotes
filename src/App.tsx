@@ -817,6 +817,7 @@ export default function App() {
     const saved = await commitTaskMutation(task, async () => (done.task = await removedApi.remove<Task>("task", task)));
     if (saved && done.task) {
       setExpandedId(null);
+      newTaskToast.forget(task.id);
       const removed = done.task;
       undo.push({
         key: `task:${removed.id}`, title: removed.title,
