@@ -259,4 +259,20 @@ fn lists_and_folders_reorder_through_the_cli() {
         "--first",
     ]);
     assert_eq!(refused.json["error"]["code"], "invalid_input");
+    let both = cli.run(&[
+        "folder",
+        "reorder",
+        id(&home),
+        "--revision",
+        "3",
+        "--parent",
+        id(&work),
+        "--top",
+        "--first",
+    ]);
+    assert_eq!(both.json["error"]["code"], "invalid_input");
+    assert_eq!(
+        names(cli.ok(&["folder", "list", "--parent", id(&work)])),
+        ["Synthetic Inner", "Synthetic Home"]
+    );
 }

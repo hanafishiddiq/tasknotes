@@ -70,13 +70,47 @@ pub struct PlaceNoteFolder {
     pub after_id: Option<String>,
 }
 
-/// Puts a folder directly after a sibling, or first, under the parent it has
-/// when the write happens.
+/// Puts a folder directly after a sibling, or first, under the parent an
+/// interface names, or under the one it has when the write happens if it
+/// names none. The one entry point for the CLI and MCP (ADR-0007).
 #[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ReorderNoteFolder {
     pub id: String,
     pub expected_revision: i64,
+    #[serde(default)]
     pub after_id: Option<String>,
+    #[serde(default)]
+    pub parent: FolderParent,
+}
+
+/// Which parent a placed folder ends up under.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FolderParent {
+    /// The parent it has when the write happens.
+    #[default]
+    Current,
+    /// The top level.
+    Top,
+    /// Under this folder.
+    Folder(String),
+}
+
+impl FolderParent {
+    /// A parent named as an interface does: a folder id, or None for the top.
+    pub fn named(parent_id: Option<String>) -> Self {
+        parent_id.map_or(Self::Top, Self::Folder)
+    }
+
+    /// The parent id this resolves to for a folder now under `current`.
+    fn resolve<'a>(&'a self, current: Option<&'a str>) -> Option<&'a str> {
+        match self {
+            Self::Current => current,
+            Self::Top => None,
+            Self::Folder(id) => Some(id),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -402,60 +436,52 @@ impl TaskStore {
     /// Puts a folder, with its subfolders and Notes, exactly where the person
     /// dropped it. A new parent takes every rule `move_note_folder` has.
     pub fn place_note_folder(&self, input: PlaceNoteFolder) -> Result<NoteFolder, TaskError> {
-        let leaves_parent = self
-            .get_note_folder(&input.id)?
-            .is_some_and(|folder| folder.parent_id != input.parent_id);
-        let action = if leaves_parent {
-            AuditAction::FolderMove
-        } else {
-            AuditAction::FolderReorder
-        };
-        self.audited(action, input, |input| {
-            self.place_inner(
-                &input.id,
-                input.expected_revision,
-                Some(input.parent_id.as_deref()),
-                input.after_id.as_deref(),
-                action,
-            )
+        self.reorder_note_folder(ReorderNoteFolder {
+            id: input.id,
+            expected_revision: input.expected_revision,
+            after_id: input.after_id,
+            parent: FolderParent::named(input.parent_id),
         })
     }
 
-    /// Moves a folder among its siblings; for an interface that names no parent.
+    /// Puts a folder after a sibling, or first, under the parent `input`
+    /// names. Recorded as `folder.move` when that is another parent than the
+    /// folder has as the write finds it, else as `folder.reorder`; a refusal
+    /// is recorded the same way, or as a reorder when the folder is gone.
     pub fn reorder_note_folder(&self, input: ReorderNoteFolder) -> Result<NoteFolder, TaskError> {
-        self.audited(AuditAction::FolderReorder, input, |input| {
-            self.place_inner(
-                &input.id,
-                input.expected_revision,
-                None,
-                input.after_id.as_deref(),
-                AuditAction::FolderReorder,
-            )
-        })
+        #[cfg(test)]
+        crate::privacy::between_reads();
+        let mut action = AuditAction::FolderReorder;
+        self.place_inner(&input, &mut action)
+            .map_err(|error| self.refused(action, &input.id, Some(input.expected_revision), error))
     }
 
-    /// `destination` is the new parent (`Some(None)` the top level), or `None`
-    /// to stay under the current one.
+    /// Sets `action` from the folder as the transaction reads it, before any
+    /// check can refuse the write.
     fn place_inner(
         &self,
-        id: &str,
-        expected_revision: i64,
-        destination: Option<Option<&str>>,
-        after_id: Option<&str>,
-        action: AuditAction,
+        input: &ReorderNoteFolder,
+        action: &mut AuditAction,
     ) -> Result<NoteFolder, TaskError> {
         let mut conn = self.connect()?;
         let tx = self.begin_write(&mut conn)?;
-        let old = current_folder(&tx, id, expected_revision)?;
-        let parent_id = destination.unwrap_or(old.parent_id.as_deref());
+        let leaves_parent = get_folder(&tx, &input.id)?.is_some_and(|stored| {
+            input.parent.resolve(stored.parent_id.as_deref()) != stored.parent_id.as_deref()
+        });
+        if leaves_parent {
+            *action = AuditAction::FolderMove;
+        }
+        let old = current_folder(&tx, &input.id, input.expected_revision)?;
+        let parent_id = input.parent.resolve(old.parent_id.as_deref());
         if parent_id != old.parent_id.as_deref() {
             require_destination(&tx, &old, parent_id)?;
         }
+        let after_id = input.after_id.as_deref();
         if !manual_order::place(&tx, Siblings::Folders { parent_id }, &old.id, after_id)? {
             return Err(TaskError::NoteFolderUnchanged);
         }
         let placed = write_folder(&tx, &old, parent_id, &old.name)?;
-        self.audit_applied(&tx, action, &placed.id, placed.revision)?;
+        self.audit_applied(&tx, *action, &placed.id, placed.revision)?;
         tx.commit()?;
         Ok(placed)
     }
@@ -623,5 +649,63 @@ impl TaskStore {
         let changed = get_folder(tx, &old.id)?.ok_or(TaskError::NoteFolderNotFound)?;
         self.audit_applied(tx, action, &changed.id, changed.revision)?;
         Ok(changed)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::audit::Interface;
+
+    /// Review finding (2026-11-09): whether a placement was a move or a
+    /// reorder was decided from a read before the write, so another writer
+    /// moving the folder in between left the history naming the wrong one.
+    #[test]
+    fn a_placement_is_recorded_from_the_folder_as_the_write_finds_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("place-race.db");
+        let desktop = TaskStore::open(&db).unwrap();
+        let ai = TaskStore::open_as(&db, Interface::Cli).unwrap();
+        let folder = |name: &str, parent_id: Option<String>| {
+            desktop
+                .create_note_folder(CreateNoteFolder {
+                    name: name.into(),
+                    parent_id,
+                })
+                .unwrap()
+        };
+        let work = folder("Work", None);
+        let home = folder("Home", None);
+        let moving = folder("Moving", Some(work.id.clone()));
+        let (id, home_id) = (moving.id.clone(), home.id.clone());
+        crate::privacy::set_between_reads(move || {
+            desktop
+                .move_note_folder(MoveNoteFolder {
+                    id,
+                    expected_revision: moving.revision,
+                    parent_id: Some(home_id),
+                })
+                .unwrap();
+        });
+
+        let stale = ai.place_note_folder(PlaceNoteFolder {
+            id: moving.id.clone(),
+            expected_revision: moving.revision,
+            parent_id: Some(home.id.clone()),
+            after_id: None,
+        });
+
+        assert!(matches!(stale, Err(TaskError::NoteFolderRevisionConflict)));
+        let entries = ai.list_audit_entries(Some(&moving.id), 10, None).unwrap();
+        let refused = entries
+            .items
+            .iter()
+            .find(|entry| entry.interface == Interface::Cli)
+            .expect("the refusal is recorded");
+        assert_eq!(
+            refused.action.as_str(),
+            "folder.reorder",
+            "the folder already sat under Home when the write ran"
+        );
     }
 }

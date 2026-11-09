@@ -34,6 +34,12 @@ thread_local! {
         const { std::cell::RefCell::new(None) };
 }
 
+/// Sets the step `between_reads` runs next on this thread.
+#[cfg(test)]
+pub(crate) fn set_between_reads(step: impl FnOnce() + 'static) {
+    BETWEEN_READS.set(Some(Box::new(step)));
+}
+
 #[cfg(test)]
 pub(crate) fn between_reads() {
     if let Some(step) = BETWEEN_READS.take() {

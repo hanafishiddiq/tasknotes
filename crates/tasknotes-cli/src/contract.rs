@@ -17,7 +17,7 @@
 use serde::Serialize;
 use serde_json::{Value, json};
 use tasknotes_core::links::{LinkedNote, LinkedTask, NoteLink};
-use tasknotes_core::note_folders::NoteFolder;
+use tasknotes_core::note_folders::{FolderParent, NoteFolder};
 use tasknotes_core::notes::{Note, NoteSummary};
 use tasknotes_core::removed::RemovedItem;
 use tasknotes_core::tasks::{List, ProgressEntry, Task, TaskError, TaskStore};
@@ -99,6 +99,19 @@ pub fn destination(
         )));
     }
     Ok(id)
+}
+
+/// The parent an interface names for a folder: a folder id, the top-level
+/// switch, or neither to keep the parent it has. Both is refused.
+pub fn folder_parent(
+    id: Option<String>,
+    top: bool,
+    names: (&str, &str),
+) -> Result<FolderParent, CliError> {
+    if id.is_none() && !top {
+        return Ok(FolderParent::Current);
+    }
+    destination(id, top, names).map(FolderParent::named)
 }
 
 pub fn success_item(item: Value) -> Value {

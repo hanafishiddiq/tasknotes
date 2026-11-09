@@ -6,7 +6,7 @@ use std::path::Path;
 use rusqlite::{Connection, params};
 
 use tasknotes_core::note_folders::{
-    CreateNoteFolder, MAX_FOLDER_DEPTH, MoveNoteFolder, NoteFolder, PlaceNoteFolder,
+    CreateNoteFolder, FolderParent, MAX_FOLDER_DEPTH, MoveNoteFolder, NoteFolder, PlaceNoteFolder,
     RenameNoteFolder, ReorderNoteFolder,
 };
 use tasknotes_core::removed::SetRemoved;
@@ -663,6 +663,7 @@ fn reordering_without_naming_a_parent_stays_under_the_parent_it_has_at_that_mome
             id: two.id.clone(),
             expected_revision: two.revision,
             after_id: None,
+            parent: FolderParent::Current,
         })
         .unwrap();
 
@@ -681,6 +682,7 @@ fn reordering_without_naming_a_parent_stays_under_the_parent_it_has_at_that_mome
             id: two.id.clone(),
             expected_revision: two.revision,
             after_id: None,
+            parent: FolderParent::Current,
         }),
         Err(TaskError::NoteFolderRevisionConflict)
     ));
@@ -689,7 +691,48 @@ fn reordering_without_naming_a_parent_stays_under_the_parent_it_has_at_that_mome
             id: one.id.clone(),
             expected_revision: one.revision,
             after_id: Some(work.id.clone()),
+            parent: FolderParent::Current,
         }),
         Err(TaskError::OrderAnchorChanged)
     ));
+}
+
+#[test]
+fn reordering_under_a_named_parent_moves_the_folder_there_in_one_step() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("named.db"));
+    let work = folder(&store, "Work", None);
+    let one = folder(&store, "One", Some(&work));
+    let loose = folder(&store, "Loose", None);
+    let revision = |item: &NoteFolder| store.get_note_folder(&item.id).unwrap().unwrap().revision;
+
+    let moved = store
+        .reorder_note_folder(ReorderNoteFolder {
+            id: loose.id.clone(),
+            expected_revision: revision(&loose),
+            after_id: Some(one.id.clone()),
+            parent: FolderParent::Folder(work.id.clone()),
+        })
+        .unwrap();
+    assert_eq!(moved.parent_id.as_deref(), Some(work.id.as_str()));
+    assert_eq!(folder_names(&store, Some(&work)), ["One", "Loose"]);
+
+    store
+        .reorder_note_folder(ReorderNoteFolder {
+            id: loose.id.clone(),
+            expected_revision: revision(&loose),
+            after_id: None,
+            parent: FolderParent::Top,
+        })
+        .unwrap();
+    assert_eq!(folder_names(&store, None), ["Loose", "Work"]);
+
+    let actions: Vec<String> = store
+        .list_audit_entries(Some(&loose.id), 10, None)
+        .unwrap()
+        .items
+        .iter()
+        .map(|entry| entry.action.as_str().to_owned())
+        .collect();
+    assert_eq!(actions, ["folder.move", "folder.move", "folder.create"]);
 }

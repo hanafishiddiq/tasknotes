@@ -5,7 +5,7 @@
 
 use serde_json::Value;
 use tasknotes_core::note_folders::{
-    CreateNoteFolder, MoveNoteFolder, PlaceNoteFolder, RenameNoteFolder, ReorderNoteFolder,
+    CreateNoteFolder, MoveNoteFolder, RenameNoteFolder, ReorderNoteFolder,
 };
 use tasknotes_core::notes::{CreateNote, MoveNote, Note, NoteQuery, NoteScope, UpdateNote};
 use tasknotes_core::removed::SetRemoved;
@@ -183,25 +183,16 @@ pub fn folder_command(store: &TaskStore, verb: &str, words: &[String]) -> Result
                 p.has("first"),
                 ("--after ID", "--first"),
             )?;
-            let parent = p.value("parent").map(str::to_owned);
-            if parent.is_none() && !p.has("top") {
-                store.reorder_note_folder(ReorderNoteFolder {
-                    id: p.id().to_owned(),
-                    expected_revision: p.revision()?,
-                    after_id,
-                })?
-            } else {
-                store.place_note_folder(PlaceNoteFolder {
-                    id: p.id().to_owned(),
-                    expected_revision: p.revision()?,
-                    parent_id: contract::destination(
-                        parent,
-                        p.has("top"),
-                        ("--parent ID", "--top"),
-                    )?,
-                    after_id,
-                })?
-            }
+            store.reorder_note_folder(ReorderNoteFolder {
+                id: p.id().to_owned(),
+                expected_revision: p.revision()?,
+                after_id,
+                parent: contract::folder_parent(
+                    p.value("parent").map(str::to_owned),
+                    p.has("top"),
+                    ("--parent ID", "--top"),
+                )?,
+            })?
         }
         "remove" | "restore" => {
             let p = parse(words, &flags(&["revision"], 1))?;
