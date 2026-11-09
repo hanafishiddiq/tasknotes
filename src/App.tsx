@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   ArrowDownWideNarrow, CheckCircle2, LoaderCircle, LockKeyhole, NotebookText, Search, SearchX, SquarePen,
   Tag,
@@ -6,7 +6,7 @@ import {
 import {
   taskApi, NO_FILTERS, TASK_PAGE_SIZE, type Task, type TaskList, type TaskView,
   type SortMode, type TaskChange, type ProgressDraft, type TaskFilters, type WorkStatus,
-  type Priority,
+  type Priority, type TaskListPage,
 } from "./lib/task-api";
 import { PRIORITY_ORDER, PRIORITY_VIEW, STATUS_ORDER, STATUS_VIEW } from "./lib/task-visuals";
 import TaskRow from "./components/TaskRow";
@@ -19,7 +19,7 @@ import { useShortcuts } from "./lib/use-shortcuts";
 import { useTaskDrafts } from "./lib/use-task-drafts";
 import { flushSync } from "react-dom";
 import { useUndo } from "./lib/use-undo";
-import { errorMessage } from "./lib/error-message";
+import { errorMessage, isListRemoved } from "./lib/error-message";
 import { listenForQuit } from "./lib/quit";
 import { listenForQuickCapture, shellApi } from "./lib/shell-api";
 import { newTaskKeys } from "./lib/shortcuts";
@@ -33,6 +33,8 @@ import NoteSnippet from "./components/NoteSnippet";
 import RemovedView from "./components/RemovedView";
 import ApprovalsView from "./components/ApprovalsView";
 import { usePendingApprovals } from "./lib/use-pending-approvals";
+import { useOutsideChanges } from "./lib/use-outside-changes";
+import { captureScrollAnchor, holdScrollAnchor, type ScrollAnchor } from "./lib/scroll-anchor";
 import SettingsView from "./components/SettingsView";
 import SoundSettings from "./components/SoundSettings";
 import CommandPalette, { type Command } from "./components/CommandPalette";
@@ -49,6 +51,31 @@ const SEARCH_DELAY_MS = 250;
 function sameFilters(a: TaskFilters, b: TaskFilters): boolean {
   return a.text.trim() === b.text.trim() && a.tag.trim() === b.tag.trim() &&
     a.status === b.status && a.priority === b.priority && a.taskId === b.taskId;
+}
+
+interface TaskQueryNow {
+  sort: SortMode;
+  view: TaskView;
+  filters: TaskFilters;
+}
+
+/** The first page of Lists again, and more until at least `keep`, so Lists already loaded stay. */
+async function readListsAgain(keep: number): Promise<TaskListPage> {
+  let page = await taskApi.lists();
+  let items = page.items;
+  while (items.length < keep && page.nextCursor !== null) {
+    page = await taskApi.lists(page.nextCursor);
+    items = [...items, ...page.items];
+  }
+  return { ...page, items };
+}
+
+/** A page read again. What its cursor held may be gone: then the first page is what shows. */
+async function readPageAgain(cursor: string | null, { sort, view, filters }: TaskQueryNow) {
+  let page = await taskApi.list(cursor, sort, view, filters);
+  const stayOnPage = cursor !== null && page.items.length > 0;
+  if (cursor !== null && !stayOnPage) page = await taskApi.list(null, sort, view, filters);
+  return { page, stayOnPage };
 }
 
 export default function App() {
@@ -115,10 +142,34 @@ export default function App() {
   const searchInput = useRef<HTMLInputElement>(null);
   // Ignore stale results from older Task queries after a newer user action.
   const requestGeneration = useRef(0);
-  const currentQuery = useRef({ sort, view, filters });
+  const currentQuery = useRef<TaskQueryNow>({ sort, view, filters });
   // The page showing now, for Undo: it runs long after the render that queued it.
   const currentPage = useRef(currentPageCursor);
   currentPage.current = currentPageCursor;
+  // Where the rows sat before an outside change replaced them.
+  const scrollAnchor = useRef<ScrollAnchor | null>(null);
+  // Tasks kept on screen for their unsaved text, though the view no longer holds them.
+  const keptForEdits = useRef<ReadonlySet<string>>(new Set());
+  // The open Task as last rendered, for a read that finishes after the person opened another.
+  const expandedNow = useRef(expandedId);
+  expandedNow.current = expandedId;
+  // Only the newest re-read of an outside change may show what it read.
+  const outsideRead = useRef(0);
+
+  useOutsideChanges(showOutsideChanges);
+
+  // Before paint, so the rows never show in their new place.
+  useLayoutEffect(() => {
+    if (scrollAnchor.current && taskScroll.current) holdScrollAnchor(taskScroll.current, scrollAnchor.current);
+    scrollAnchor.current = null;
+  }, [tasks]);
+
+  // Once the text is saved or given up, the list is what the core says again.
+  const keptWithoutEdits = [...keptForEdits.current].some((id) => !drafts.get(id));
+  useEffect(() => {
+    if (keptWithoutEdits && !busy && !loading) void showOutsideChanges();
+    // showOutsideChanges only has to see the edits gone and the view at rest.
+  }, [keptWithoutEdits, busy, loading]);
 
   useEffect(() => {
     currentQuery.current = { sort, view, filters };
@@ -176,7 +227,8 @@ export default function App() {
         setNoteHitsFailed(true);
       });
     return () => { active = false; };
-  }, [filters.text]);
+    // Asked again when Notes change, so what another process added is found too.
+  }, [filters.text, notesRefresh]);
 
   useEffect(() => {
     let active = true;
@@ -343,10 +395,90 @@ export default function App() {
   }
 
   async function refreshLists() {
-    const page = await taskApi.lists();
+    showLists(await taskApi.lists());
+  }
+
+  function showLists(page: TaskListPage) {
     setLists(page.items);
     setListCursor(page.nextCursor);
     setListError(null);
+  }
+
+  function showAllTasks() {
+    setTasks([]);
+    setNextCursor(null);
+    resetTaskPages();
+    setLoading(true);
+    const newView: TaskView = { kind: "all" };
+    currentQuery.current = { ...currentQuery.current, view: newView };
+    setView(newView);
+  }
+
+  /**
+   * Shows in place what the CLI or an MCP client changed. Unlike retryFirstLoad
+   * it never shows the loading state, which would unmount the rows, so what is
+   * typed, the focus and the scroll position stay. A failed read says nothing:
+   * resolving false has the next check offer the change again.
+   */
+  async function showOutsideChanges(): Promise<boolean> {
+    if (busy || loading || loadError || !(await readTaskViewAgain())) return false;
+    setRemovedKey((key) => key + 1);
+    setNotesRefresh((key) => key + 1);
+    if (notesOpened) void noteFolders.refresh();
+    return true;
+  }
+
+  /**
+   * Lists and the Task page showing, read again. A Task with unsaved text stays
+   * on screen. A newer re-read, or anything the person did meanwhile, wins.
+   */
+  async function readTaskViewAgain(): Promise<boolean> {
+    const read = ++outsideRead.current;
+    const query = currentQuery.current;
+    const cursor = currentPage.current;
+    const generation = requestGeneration.current;
+    const edited = tasks.filter((task) => drafts.get(task.id));
+    const superseded = () =>
+      read !== outsideRead.current || generation !== requestGeneration.current || cursor !== currentPage.current;
+    try {
+      const listPage = await readListsAgain(lists.length);
+      let again: Awaited<ReturnType<typeof readPageAgain>>;
+      try {
+        again = await readPageAgain(cursor, query);
+      } catch (reason) {
+        // The List on screen went to Removed: the core says so for that List, on any page of Lists.
+        if (query.view.kind !== "list" || !isListRemoved(reason)) throw reason;
+        if (superseded()) return false;
+        showLists(listPage);
+        keptForEdits.current = new Set(edited.map((task) => task.id));
+        if (edited.length === 0) {
+          setExpandedId(null);
+          showAllTasks();
+        }
+        return true;
+      }
+      const { page, stayOnPage } = again;
+      const gone = edited.filter((task) => !page.items.some((item) => item.id === task.id));
+      // Where each is now, if anywhere: a newer revision lets the row offer to keep the edits.
+      const kept = await Promise.all(gone.map((task) =>
+        taskApi.list(null, query.sort, { kind: "all" }, { ...NO_FILTERS, taskId: task.id })
+          .then((found) => found.items[0] ?? task, () => task)));
+      if (superseded()) return false;
+      showLists(listPage);
+      const items = [...kept, ...page.items];
+      keptForEdits.current = new Set(kept.map((task) => task.id));
+      setExpandedId((open) => items.some((task) => task.id === open) ? open : null);
+      scrollAnchor.current = captureScrollAnchor(taskScroll.current, expandedNow.current);
+      setTasks(items);
+      setNextCursor(page.nextCursor);
+      if (!stayOnPage) {
+        setCurrentPageCursor(null);
+        setPreviousPageCursors([]);
+      }
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async function createList(name: string): Promise<boolean> {
@@ -438,13 +570,7 @@ export default function App() {
         undo.push({ key: `list:${updated.id}`, title: updated.name, undo: () => applyListRemoved(updated, false) });
       }
       if (removed && view.kind === "list" && view.listId === list.id) {
-        setTasks([]);
-        setNextCursor(null);
-        resetTaskPages();
-        setLoading(true);
-        const newView: TaskView = { kind: "all" };
-        currentQuery.current = { ...currentQuery.current, view: newView };
-        setView(newView);
+        showAllTasks();
       } else {
         retryFirstLoad();
       }
@@ -587,11 +713,9 @@ export default function App() {
       setTasks((current) => current.map((item) => item.id === updated.id ? updated : item));
       // The mutation already succeeded; never let an old page replace its result.
       try {
-        let page = await taskApi.list(pageCursor, latestSort, latestView, latestFilters);
-        const stayOnPage = pageCursor !== null && page.items.length > 0;
-        if (pageCursor !== null && !stayOnPage) {
-          page = await taskApi.list(null, latestSort, latestView, latestFilters);
-        }
+        const { page, stayOnPage } = await readPageAgain(
+          pageCursor, { sort: latestSort, view: latestView, filters: latestFilters },
+        );
         if (generation !== requestGeneration.current) return true;
         setLoading(false);
         setTasks(page.items);

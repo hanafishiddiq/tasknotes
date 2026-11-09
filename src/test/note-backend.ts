@@ -37,10 +37,12 @@ export class NoteBackend {
     this.refusals.set(command, message);
   }
 
-  private write(fields: Omit<Note, "createdAt" | "updatedAt">, touch = true): Note {
+  private write(fields: Omit<Note, "createdAt" | "updatedAt" | "removed">, touch = true): Note {
     const previous = this.notes.get(fields.id);
     const stamp = touch || !previous ? ++this.clock : previous.updatedAt;
-    const note = { ...fields, createdAt: previous?.createdAt ?? stamp, updatedAt: stamp };
+    const note = {
+      ...fields, createdAt: previous?.createdAt ?? stamp, updatedAt: stamp, removed: this.removedAt.has(fields.id),
+    };
     this.notes.set(note.id, note);
     return note;
   }
@@ -91,7 +93,11 @@ export class NoteBackend {
         }));
       return page(all, args);
     }
-    if (command === "get_note") return this.notes.get(args.id as string) ?? null;
+    if (command === "get_note") {
+      // As in the core: the desktop can still read a Note in Removed, marked as such.
+      const note = this.notes.get(args.id as string);
+      return note ? { ...note, removed: this.removedAt.has(note.id) } : null;
+    }
     // An open Note lists its linked Tasks (Ticket 08); these tests link none.
     if (command === "list_note_tasks") return { items: [], nextCursor: null };
     if (command === "create_note") {
@@ -181,7 +187,9 @@ export class NoteBackend {
       }
       if (input.removed) this.removedAt.set(input.id, ++this.clock);
       else this.removedAt.delete(input.id);
-      const next = { ...current, revision: current.revision + 1 };
+      const next = isNote
+        ? { ...current, revision: current.revision + 1, removed: input.removed }
+        : { ...current, revision: current.revision + 1 };
       if (isNote) this.notes.set(next.id, next as Note);
       else this.folders.set(next.id, next as NoteFolder);
       return isNote ? next : this.withChildren(next as NoteFolder);

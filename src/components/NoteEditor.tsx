@@ -18,6 +18,8 @@ import { NOTE_NODES, NOTE_TRANSFORMERS } from "../lib/note-markdown";
 export interface NoteEditorHandle {
   /** Canonical Markdown of what is on screen, exported only when asked. */
   markdown(): string;
+  /** Whether the person's cursor is in this editor, in the window they are using. */
+  holdsCursor(): boolean;
 }
 
 interface NoteEditorProps {
@@ -103,6 +105,7 @@ function MarkdownHandle({ editorRef }: { editorRef: Ref<NoteEditorHandle> }) {
   const [editor] = useLexicalComposerContext();
   useImperativeHandle(editorRef, () => ({
     markdown: () => editor.getEditorState().read(() => $convertToMarkdownString(NOTE_TRANSFORMERS)),
+    holdsCursor: () => document.hasFocus() && Boolean(editor.getRootElement()?.contains(document.activeElement)),
   }), [editor]);
   return null;
 }

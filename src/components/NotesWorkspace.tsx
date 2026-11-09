@@ -138,11 +138,19 @@ export default function NotesWorkspace({
   const inFlight = useRef<Promise<boolean> | null>(null);
   // Set once the person opens a Note or a draft, so the first load does not replace it.
   const pickedByPerson = useRef(false);
+  // The open Note changed elsewhere while the cursor was in it.
+  const followOnLeave = useRef(false);
 
   /** A search looks in every folder; otherwise the list is the scope's Notes. */
   function listPage(cursor: string | null) {
     const text = searchRef.current.trim();
     return text ? noteApi.list(cursor, ALL_NOTES, text) : noteApi.list(cursor, scopeRef.current);
+  }
+
+  /** What opens when no Note is picked: the first of `items`, or a new draft in the scope. */
+  async function firstOf(items: NoteSummary[]): Promise<Saved> {
+    const next = items[0] ? await noteApi.get(items[0].id) : null;
+    return next ? savedFrom(next) : draftIn(scopeRef.current);
   }
 
   function show(next: Saved) {
@@ -171,10 +179,10 @@ export default function NotesWorkspace({
       setNotes(page.items);
       setMoreCursor(page.nextCursor);
       if (!left || (first && pickedByPerson.current)) return;
-      const latest = page.items[0] ? await noteApi.get(page.items[0].id) : null;
+      const next = await firstOf(page.items);
       // The person may already have picked a Note or started a new one.
       if (!active || (first && pickedByPerson.current)) return;
-      show(latest ? savedFrom(latest) : draftIn(scope));
+      show(next);
     })().catch((reason) => { if (active) setError(errorMessage(reason)); });
     return () => { active = false; };
     // A scope is identified by its folder id, not by object identity.
@@ -234,7 +242,7 @@ export default function NotesWorkspace({
   useEffect(() => {
     if (refreshKey === seenRefresh.current) return;
     seenRefresh.current = refreshKey;
-    refreshList().catch((reason) => {
+    refreshList(notes.length).then(followOpenNote).catch((reason) => {
       // The open folder, or one above it, went to Removed: the core decides that.
       if (scopeRef.current.kind === "folder" && isFolderRemoved(reason)) onScopeHidden();
       else setError("Couldn't refresh the Notes list: " + errorMessage(reason));
@@ -368,13 +376,53 @@ export default function NotesWorkspace({
     }
   }
 
-  /** The first page again, in the core's order, after the open Note was placed elsewhere. */
-  async function refreshList() {
+  /**
+   * The first page again, in the core's order, after the open Note was placed
+   * elsewhere; with `keep`, at least that many, so Notes already loaded stay.
+   */
+  async function refreshList(keep = 0) {
     const generation = ++listGeneration.current;
-    const page = await listPage(null);
+    let page = await listPage(null);
+    let items = page.items;
+    while (items.length < keep && page.nextCursor !== null) {
+      page = await listPage(page.nextCursor);
+      items = [...items, ...page.items];
+    }
     if (generation !== listGeneration.current) return;
-    setNotes(page.items);
+    setNotes(items);
     setMoreCursor(page.nextCursor);
+  }
+
+  /**
+   * After a change made elsewhere: the open Note follows what is stored. Where
+   * it lives, its pin and Exclude from AI follow at once; its text only while
+   * nothing is typed there. Unsaved text stays, and its autosave finds the
+   * conflict. With the cursor in the editor the text waits for the cursor to leave.
+   */
+  async function followOpenNote() {
+    followOnLeave.current = false;
+    const { id } = saved.current;
+    if (id === null) return;
+    const untouched = () =>
+      saved.current.id === id && !dirty.current && !conflicted.current && !inFlight.current;
+    const latest = await noteApi.get(id);
+    if (saved.current.id !== id) return;
+    if (!latest || latest.removed) {
+      // Removed elsewhere: as when it is removed here, the next Note opens.
+      if (!untouched()) return;
+      const next = await firstOf((await listPage(null)).items);
+      if (untouched()) show(next);
+      return;
+    }
+    // The revision stays: it is what lets a save of older text find the conflict.
+    saved.current = {
+      ...saved.current, folderId: latest.folderId, pinned: latest.pinned, excludeFromAi: latest.excludeFromAi,
+    };
+    setPlacement({ folderId: latest.folderId, pinned: latest.pinned, excludeFromAi: latest.excludeFromAi });
+    if (!untouched()) return;
+    if (latest.markdown === saved.current.markdown) saved.current = savedFrom(latest);
+    else if (editorRef.current?.holdsCursor()) followOnLeave.current = true;
+    else show(savedFrom(latest));
   }
 
   /** Pins, moves or excludes the open Note from AI. None of these changes its text or revision. */
@@ -409,8 +457,7 @@ export default function NotesWorkspace({
       setNotes(rest);
       setError(null);
       onRemoved(removed);
-      const next = rest[0] ? await noteApi.get(rest[0].id) : null;
-      show(next ? savedFrom(next) : draftIn(scopeRef.current));
+      show(await firstOf(rest));
     } catch (reason) {
       setError(errorMessage(reason));
     } finally {
@@ -460,7 +507,10 @@ export default function NotesWorkspace({
           </button>
         )}
       </section>
-      <section className="note-editor-pane" aria-label="Note editor">
+      <section className="note-editor-pane" aria-label="Note editor"
+        onBlur={() => {
+          if (followOnLeave.current) followOpenNote().catch((reason) => setError(errorMessage(reason)));
+        }}>
         <div className="note-toolbar">
           <label className="note-folder-picker">
             <FolderIcon size={14} aria-hidden="true" />

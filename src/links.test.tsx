@@ -35,7 +35,7 @@ class Backend {
   note(id: string, title: string): Note {
     const stamp = ++this.clock;
     const note = {
-      id, markdown: `# ${title}`, title, revision: 1, createdAt: stamp, updatedAt: stamp, folderId: null, pinned: false, excludeFromAi: false,
+      id, markdown: `# ${title}`, title, revision: 1, createdAt: stamp, updatedAt: stamp, folderId: null, pinned: false, removed: false, excludeFromAi: false,
     };
     this.notes.set(id, note);
     return note;
