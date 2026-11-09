@@ -12,6 +12,7 @@ import { PRIORITY_ORDER, PRIORITY_VIEW, STATUS_ORDER, STATUS_VIEW } from "./lib/
 import TaskRow from "./components/TaskRow";
 import TaskSidebar from "./components/TaskSidebar";
 import VirtualTaskList from "./components/VirtualTaskList";
+import NewTaskToast from "./components/NewTaskToast";
 import { useLocalCalendarDay } from "./lib/use-local-calendar-day";
 import { useTheme } from "./lib/use-theme";
 import { useSound } from "./lib/sound/use-sound";
@@ -19,6 +20,7 @@ import { useShortcuts } from "./lib/use-shortcuts";
 import { useTaskDrafts } from "./lib/use-task-drafts";
 import { flushSync } from "react-dom";
 import { useUndo } from "./lib/use-undo";
+import { useNewTaskToast } from "./lib/use-new-task-toast";
 import { errorMessage, isListRemoved } from "./lib/error-message";
 import { listenForQuit } from "./lib/quit";
 import { listenForQuickCapture, shellApi } from "./lib/shell-api";
@@ -88,6 +90,8 @@ export default function App() {
   const [removedKey, setRemovedKey] = useState(0);
   // Recent moves to Removed, which Undo (or ⌘Z) brings back newest first.
   const undo = useUndo();
+  // "Task added · Click to edit" after a Task is created here; view state only.
+  const newTaskToast = useNewTaskToast();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const paletteReturn = useRef<HTMLElement | null>(null);
   // A field to focus once the Task view is showing (⌘N, ⌘F, palette).
@@ -106,6 +110,8 @@ export default function App() {
   const [notesRequest, setNotesRequest] = useState<NotesRequest | null>(null);
   // A linked Task asked for while the Task view was busy.
   const [pendingLinkedTask, setPendingLinkedTask] = useState<string | null>(null);
+  // Why one Task shows alone: opened from a Note, or from the new Task toast.
+  const [shownAlone, setShownAlone] = useState<"linked" | "added">("linked");
   const [lists, setLists] = useState<TaskList[]>([]);
   const [listCursor, setListCursor] = useState<string | null>(null);
   const [busyList, setBusyList] = useState(false);
@@ -284,8 +290,12 @@ export default function App() {
     openNotes(ALL_NOTES);
   }
 
-  /** Shows one Task, expanded, as when it is opened from a Note it is linked to. */
-  function openLinkedTask(taskId: string) {
+  /**
+   * Shows one Task, expanded, as when it is opened from a Note it is linked to.
+   * Without a reason, the one already given stands (a deferred open).
+   */
+  function openLinkedTask(taskId: string, reason?: "linked" | "added") {
+    if (reason) setShownAlone(reason);
     if (busy) {
       // Opened once the Task view has finished its current change.
       setPendingLinkedTask(taskId);
@@ -298,6 +308,12 @@ export default function App() {
     setTagDraft("");
     applyFilters({ ...NO_FILTERS, taskId });
     setExpandedId(taskId);
+  }
+
+  /** The new Task toast was clicked: open the Task where it is, or on its own when this view hides it. */
+  function openNewTask(taskId: string) {
+    if (workspace === "tasks" && tasks.some((task) => task.id === taskId)) setExpandedId(taskId);
+    else openLinkedTask(taskId, "added");
   }
 
   function openSettings() {
@@ -625,6 +641,7 @@ export default function App() {
         view.kind === "list" ? view.listId : undefined,
       );
       sound.play("create");
+      newTaskToast.added(created.id);
       const generation = ++requestGeneration.current;
       const { sort: latestSort, view: latestView, filters: latestFilters } = currentQuery.current;
       // Clear only after the actual write succeeds; retry must not create a
@@ -1112,8 +1129,9 @@ export default function App() {
             )}
 
             {filters.taskId && (
-              <div role="status" aria-label="Linked Task" className="notice-banner">
-                <span>Showing one Task linked to a Note</span>
+              <div role="status" aria-label={shownAlone === "added" ? "Added Task" : "Linked Task"}
+                className="notice-banner">
+                <span>{shownAlone === "added" ? "Showing the Task you just added" : "Showing one Task linked to a Note"}</span>
                 <button className="button button-small" type="button" onClick={clearFilters}>
                   Show all tasks
                 </button>
@@ -1212,6 +1230,9 @@ export default function App() {
                     keepMounted={keepMounted}
                     expandedId={expandedId}
                     onCollapse={() => setExpandedId(null)}
+                    flashId={newTaskToast.flashId}
+                    reveal={newTaskToast.reveal}
+                    onRevealed={newTaskToast.revealed}
                     renderTask={(task) => (
                       <TaskRow
                         task={task}
@@ -1257,6 +1278,7 @@ export default function App() {
             </section>
           </div>
         </div>
+        <NewTaskToast toast={newTaskToast} onOpen={openNewTask} />
       </main>
       <SettingsView hidden={workspace !== "settings"} preference={appearance.preference}
         onPreference={appearance.setPreference}>
@@ -1271,7 +1293,8 @@ export default function App() {
           <NotesWorkspace hidden={workspace !== "notes"} scope={noteScope}
             scopeName={noteScope.kind === "folder"
               ? noteFolders.byId.get(noteScope.folderId)?.name ?? "Folder" : "Notes"}
-            folders={noteFolders.options} request={notesRequest} onOpenTask={openLinkedTask}
+            folders={noteFolders.options} request={notesRequest}
+            onOpenTask={(taskId) => openLinkedTask(taskId, "linked")}
             refreshKey={notesRefresh} onRemoved={noteRemoved}
             onScopeHidden={() => setNoteScope(ALL_NOTES)} />
         </Suspense>
