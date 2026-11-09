@@ -290,7 +290,7 @@ export default function TaskRow({
           aria-label="Task details"
           className="task-editor"
         >
-          <span id={`save-shortcut-${task.id}`} className="sr-only">Command Return</span>
+          <span id={`save-shortcut-${task.id}`} hidden>Command Return</span>
           <p className="task-stamp">
             Updated {stampFormatter.format(new Date(task.updatedAt))} · {listName}
           </p>

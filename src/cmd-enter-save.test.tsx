@@ -168,6 +168,9 @@ describe("the ⌘↵ hint on each Save button", () => {
     const button = screen.getByRole("button", { name });
     expect(button).toHaveAttribute("aria-keyshortcuts", "Meta+Enter");
     expect(button).toHaveAccessibleDescription("Command Return");
+    // The description's source is hidden, so reading line by line never meets it as stray text.
+    const source = document.getElementById(button.getAttribute("aria-describedby")!)!;
+    expect(source).toHaveAttribute("hidden");
     const hint = within(button).getByText("⌘↵");
     expect(hint.tagName).toBe("KBD");
     expect(hint).toHaveAttribute("aria-hidden", "true");
