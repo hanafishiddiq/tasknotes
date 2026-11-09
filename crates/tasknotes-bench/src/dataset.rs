@@ -271,6 +271,7 @@ fn write_task(store: &TaskStore, lists: &[String], plan: TaskPlan) -> Result<Str
     if let Some((status, priority)) = plan.change {
         // Ready at the default priority is no change, which the core refuses.
         match store.change_task(ChangeTask {
+            wont_do: None,
             difficulty: None,
             id: task.id.clone(),
             expected_revision: task.revision,

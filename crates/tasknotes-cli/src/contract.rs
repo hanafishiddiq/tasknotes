@@ -156,6 +156,8 @@ pub fn task(task: &Task) -> Value {
         // `null` for No Difficulty.
         "difficulty": to_value(&task.difficulty),
         "progress": task.progress,
+        // A Completed Task set aside rather than finished (ADR 0008).
+        "wont_do": task.wont_do,
         "next_step": task.next_step,
         "list_id": task.list_id,
         "deadline": task.due_date,
@@ -187,6 +189,8 @@ pub fn progress_entry(entry: &ProgressEntry) -> Value {
         "status": to_value(&entry.status),
         "previous_progress": entry.previous_progress,
         "progress": entry.progress,
+        "previous_wont_do": entry.previous_wont_do,
+        "wont_do": entry.wont_do,
         "note": entry.note,
         "next_step": entry.next_step,
         "created_at": entry.created_at,
