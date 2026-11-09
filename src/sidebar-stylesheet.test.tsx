@@ -29,7 +29,7 @@ describe("sidebar hover", () => {
 
   it("fills hovered rows but leaves the current place showing as current", () => {
     expect(value('.folder:hover:not(:disabled):not([aria-current="page"])', "background")).toBe("var(--side-hover)");
-    expect(value('.folder-row:hover .folder:not([aria-current="page"])', "background")).toBe("var(--side-hover)");
+    expect(value('.folder-row:hover .folder:not(:disabled):not([aria-current="page"])', "background")).toBe("var(--side-hover)");
     expect(value('.folder[aria-current="page"]', "background")).toBe("var(--side-selected)");
     // No hover rule may reach the current place.
     for (const rule of outside) {
@@ -40,9 +40,36 @@ describe("sidebar hover", () => {
       }
     }
   });
+
+  it("never turns a disabled row yellow", () => {
+    for (const rule of outside) {
+      for (const selector of selectorsOf(rule)) {
+        if (/:hover/.test(selector) && /\.folder(?![\w-])/.test(selector) && declared(rule, "background") === "var(--side-hover)") {
+          expect(selector, selector).toContain(":not(:disabled)");
+        }
+      }
+    }
+    // A disabled row shows no fill, so its icons cover the name on the sidebar's own colour.
+    expect(value(".folder:disabled + .folder-actions", "background")).toBe("var(--sidebar)");
+  });
 });
 
 describe("sidebar action icons", () => {
+  it("show while the row's own button has keyboard focus, not only on hover", () => {
+    expect(value(".folder-row:focus-within .folder-actions", "opacity")).toBe("1");
+    expect(value(".folder-row:hover .folder-actions", "opacity")).toBe("1");
+  });
+
+  it("match the row's drop-target fill while a row is dragged onto it", () => {
+    const into = value('.folder-row[data-drop-edge="into"] .folder', "background");
+    expect(into).toBe("var(--side-selected)");
+    expect(value('.folder-row[data-drop-edge="into"] .folder-actions', "background")).toBe(into);
+    // Later in the stylesheet than the hover fill and the disabled fill, at no lower specificity, so it wins.
+    const index = (selector: string) => outside.findIndex((rule) => selectorsOf(rule).includes(selector));
+    expect(index('.folder-row[data-drop-edge="into"] .folder-actions')).toBeGreaterThan(index(".folder-actions"));
+    expect(index('.folder-row[data-drop-edge="into"] .folder-actions')).toBeGreaterThan(index(".folder:disabled + .folder-actions"));
+  });
+
   it("sit over the end of the name on the row's own opaque background", () => {
     expect(value(".folder-actions", "position")).toBe("absolute");
     expect(value(".folder-actions", "background")).toBe("var(--side-hover)");

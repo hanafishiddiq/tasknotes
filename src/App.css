@@ -249,7 +249,7 @@ body.sidebar-resizing * {
   align-items: center;
 }
 /* Hovering anywhere on a row, its icons included, fills it; the current place keeps its own fill. */
-.folder-row:hover .folder:not([aria-current="page"]),
+.folder-row:hover .folder:not(:disabled):not([aria-current="page"]),
 .folder-row:focus-within .folder:not([aria-current="page"]) {
   background: var(--side-hover);
 }
@@ -267,11 +267,15 @@ body.sidebar-resizing * {
   background: var(--side-hover);
   opacity: 0;
 }
+.folder:disabled + .folder-actions {
+  background: var(--sidebar);
+}
 .folder[aria-current="page"] + .folder-actions {
   background: var(--side-selected);
 }
+/* Shown on row hover or while anything in the row, its own button included, has keyboard focus. */
 .folder-row:hover .folder-actions,
-.folder-actions:focus-within {
+.folder-row:focus-within .folder-actions {
   opacity: 1;
 }
 .folder-action {
@@ -367,7 +371,8 @@ body.sidebar-resizing * {
   bottom: -1px;
 }
 .folder-row[data-drop-edge="into"] .folder,
-.folder-row[data-drop-edge="into"]:hover .folder:not([aria-current="page"]) {
+.folder-row[data-drop-edge="into"]:hover .folder:not(:disabled):not([aria-current="page"]),
+.folder-row[data-drop-edge="into"] .folder-actions {
   background: var(--side-selected);
 }
 .folder-tree[data-drop-end] {
