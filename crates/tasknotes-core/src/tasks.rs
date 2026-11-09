@@ -633,7 +633,7 @@ pub(crate) fn invalid_db_text(index: usize, value: String) -> rusqlite::Error {
 pub(crate) fn read_task(row: &Row<'_>) -> rusqlite::Result<Task> {
     let status: String = row.get(3)?;
     let priority: String = row.get(4)?;
-    let difficulty: Option<String> = row.get(13)?;
+    let difficulty: Option<String> = row.get(DIFFICULTY_COLUMN)?;
     Ok(Task {
         id: row.get(0)?,
         title: row.get(1)?,
@@ -641,7 +641,10 @@ pub(crate) fn read_task(row: &Row<'_>) -> rusqlite::Result<Task> {
         status: WorkStatus::from_sql(&status).ok_or_else(|| invalid_db_text(3, status))?,
         priority: Priority::from_sql(&priority).ok_or_else(|| invalid_db_text(4, priority))?,
         difficulty: difficulty
-            .map(|value| Difficulty::from_sql(&value).ok_or_else(|| invalid_db_text(13, value)))
+            .map(|value| {
+                Difficulty::from_sql(&value)
+                    .ok_or_else(|| invalid_db_text(DIFFICULTY_COLUMN, value))
+            })
             .transpose()?,
         progress: row.get(5)?,
         next_step: row.get(9)?,
@@ -656,6 +659,11 @@ pub(crate) fn read_task(row: &Row<'_>) -> rusqlite::Result<Task> {
 }
 
 pub(crate) const COLUMNS: &str = "id, title, description, status, priority, progress, revision, created_at, updated_at, next_step, list_id, due_date, removed_at, difficulty";
+/// Where `difficulty` sits in `COLUMNS`, for `read_task`.
+const DIFFICULTY_COLUMN: usize = 13;
+/// How many columns `COLUMNS` selects: the index of the first column a query
+/// adds after `{COLUMNS}`.
+pub(crate) const COLUMN_COUNT: usize = 14;
 
 /// The database schema this core reads and writes.
 pub const SCHEMA_VERSION: i64 = 17;
@@ -1196,7 +1204,7 @@ impl TaskStore {
             format!("SELECT {COLUMNS}, previous_incomplete_progress FROM tasks WHERE id = ?1");
         let current = transaction
             .query_row(&sql, params![input.id], |row| {
-                Ok((read_task(row)?, row.get::<_, u8>(14)?))
+                Ok((read_task(row)?, row.get::<_, u8>(COLUMN_COUNT)?))
             })
             .optional()?;
         let (before, mut previous_incomplete) = current.ok_or(TaskError::NotFound)?;
@@ -1453,5 +1461,35 @@ mod upgrade_lock_tests {
 
         drop(held);
         assert!(lock_upgrades(&database, Duration::ZERO).is_ok());
+    }
+}
+
+#[cfg(test)]
+mod column_tests {
+    use super::{COLUMN_COUNT, COLUMNS, DIFFICULTY_COLUMN};
+
+    /// `read_task` reads by position: the constants must follow `COLUMNS`.
+    #[test]
+    fn column_constants_follow_the_column_list() {
+        let names: Vec<&str> = COLUMNS.split(',').map(str::trim).collect();
+        assert_eq!(names.len(), COLUMN_COUNT);
+        assert_eq!(names[DIFFICULTY_COLUMN], "difficulty");
+        for (index, name) in [
+            (0, "id"),
+            (1, "title"),
+            (2, "description"),
+            (3, "status"),
+            (4, "priority"),
+            (5, "progress"),
+            (6, "revision"),
+            (7, "created_at"),
+            (8, "updated_at"),
+            (9, "next_step"),
+            (10, "list_id"),
+            (11, "due_date"),
+            (12, "removed_at"),
+        ] {
+            assert_eq!(names[index], name, "read_task reads {name} at {index}");
+        }
     }
 }
