@@ -437,6 +437,7 @@ fn difficulty_is_set_cleared_filtered_and_sorted_through_the_cli() {
         ["Synthetic hard", "Synthetic easy", "Synthetic plain"]
     );
     assert_eq!(titles(&["--difficulty", "easy"]), ["Synthetic easy"]);
+    assert_eq!(titles(&["--difficulty", "none"]), ["Synthetic plain"]);
 
     let cleared = cli.ok(&[
         "task",
@@ -465,10 +466,32 @@ fn difficulty_is_set_cleared_filtered_and_sorted_through_the_cli() {
         wrong.json["error"]["message"]
             .as_str()
             .unwrap()
-            .contains("very_easy, easy, medium, hard, very_hard, none"),
+            .contains("--difficulty must be one of: very_easy, easy, medium, hard, very_hard"),
         "{}",
         wrong.json
     );
-    let wrong_filter = cli.run(&["task", "list", "--difficulty", "none"]);
+    let wrong_filter = cli.run(&["task", "list", "--difficulty", "brutal"]);
     assert_eq!(error_code(&wrong_filter, 2), "invalid_input");
+    assert!(
+        wrong_filter.json["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("very_easy, easy, medium, hard, very_hard, none"),
+        "{}",
+        wrong_filter.json
+    );
+    // The usage text names `none` for both the change and the filter.
+    let usage = cli.run(&["task", "bogus"]);
+    assert_eq!(error_code(&usage, 2), "invalid_input");
+    let usage = usage.json["error"]["message"].as_str().unwrap().to_owned();
+    assert!(
+        usage.contains(
+            "task change ID --revision N [--status S] [--priority P] [--difficulty D|none]"
+        ),
+        "{usage}"
+    );
+    assert!(
+        usage.contains("task list [--status S] [--priority P] [--difficulty D|none]"),
+        "{usage}"
+    );
 }

@@ -409,6 +409,24 @@ fn difficulty_is_set_cleared_filtered_and_sorted_through_mcp() {
         schema["enum"],
         json!(["very_easy", "easy", "medium", "hard", "very_hard", null])
     );
+    let list = s
+        .tools()
+        .into_iter()
+        .find(|tool| tool["name"] == "task_list")
+        .unwrap();
+    let filter = list["inputSchema"]["properties"]["difficulty"].clone();
+    assert_eq!(
+        filter["enum"],
+        json!(["very_easy", "easy", "medium", "hard", "very_hard", "none"]),
+        "{filter}"
+    );
+    assert!(
+        list["description"]
+            .as_str()
+            .unwrap()
+            .contains("difficulty \"none\""),
+        "{list}"
+    );
 
     let plain = s.ok("task_create", json!({"title": "Synthetic plain"}));
     assert!(plain["item"]["difficulty"].is_null());
@@ -439,6 +457,15 @@ fn difficulty_is_set_cleared_filtered_and_sorted_through_mcp() {
     assert_eq!(
         titles(&mut s, json!({"difficulty": "easy"})),
         ["Synthetic easy"]
+    );
+    assert_eq!(
+        titles(&mut s, json!({"difficulty": "none"})),
+        ["Synthetic plain"]
+    );
+    s.refused(
+        "task_list",
+        json!({"difficulty": "brutal"}),
+        "invalid_input",
     );
 
     // A priority change leaves the Difficulty alone; null clears it.

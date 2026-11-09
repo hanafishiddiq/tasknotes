@@ -411,6 +411,55 @@ impl Difficulty {
     }
 }
 
+/// What a Task query keeps by Difficulty: one level, or only the Tasks with
+/// No Difficulty. Sent as a level's name or `none`; leaving the filter out
+/// (Any Difficulty) keeps every Task.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DifficultyFilter {
+    Is(Difficulty),
+    NoDifficulty,
+}
+
+impl DifficultyFilter {
+    /// Every filter: the levels easiest first, then `none`.
+    pub const ALL: [Self; 6] = [
+        Self::Is(Difficulty::VeryEasy),
+        Self::Is(Difficulty::Easy),
+        Self::Is(Difficulty::Medium),
+        Self::Is(Difficulty::Hard),
+        Self::Is(Difficulty::VeryHard),
+        Self::NoDifficulty,
+    ];
+
+    pub(crate) fn as_name(self) -> &'static str {
+        match self {
+            Self::Is(difficulty) => difficulty.as_sql(),
+            Self::NoDifficulty => "none",
+        }
+    }
+}
+
+impl Serialize for DifficultyFilter {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(self.as_name())
+    }
+}
+
+impl<'de> Deserialize<'de> for DifficultyFilter {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let name = String::deserialize(d)?;
+        Self::ALL
+            .into_iter()
+            .find(|filter| filter.as_name() == name)
+            .ok_or_else(|| {
+                serde::de::Error::unknown_variant(
+                    &name,
+                    &["very_easy", "easy", "medium", "hard", "very_hard", "none"],
+                )
+            })
+    }
+}
+
 /// Tells a field that is absent (`None`, keep) from one that is `null`
 /// (`Some(None)`, clear) in a change. Use it as
 /// `#[serde(default, deserialize_with = "present")]`.

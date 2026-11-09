@@ -112,4 +112,23 @@ describe("Difficulty", () => {
     }));
     expect(screen.getByRole("button", { name: "Clear search and filters" })).toBeInTheDocument();
   });
+
+  it("filters to Tasks with No Difficulty, and Any difficulty sends no filter", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("article", { name: "Synthetic essay" });
+    const filter = screen.getByRole("combobox", { name: "Filter by difficulty" });
+    expect(within(filter).getAllByRole("option").map((option) => option.textContent)).toEqual([
+      "Any difficulty", "Very hard", "Hard", "Medium", "Easy", "Very easy", "No difficulty",
+    ]);
+
+    await user.selectOptions(filter, "none");
+    await waitFor(() => expect(listCalls[listCalls.length - 1]).toEqual({
+      limit: 50, cursor: null, difficulty: "none",
+    }));
+    expect(screen.getByRole("button", { name: "Clear search and filters" })).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByRole("combobox", { name: "Filter by difficulty" }), "");
+    await waitFor(() => expect(listCalls[listCalls.length - 1]).toEqual({ limit: 50, cursor: null }));
+  });
 });

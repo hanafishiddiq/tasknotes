@@ -7,8 +7,8 @@ use serde_json::Value;
 use tasknotes_core::audit::{AuditAction, AuditOutcome, Interface};
 use tasknotes_core::export::{ExportFormat, ExportRequest};
 use tasknotes_core::tasks::{
-    ChangeTask, CreateTask, Difficulty, SCHEMA_VERSION, SortMode, Task, TaskError, TaskQuery,
-    TaskStore, WorkStatus,
+    ChangeTask, CreateTask, Difficulty, DifficultyFilter, SCHEMA_VERSION, SortMode, Task,
+    TaskError, TaskQuery, TaskStore, WorkStatus,
 };
 
 fn store_at(path: &Path) -> TaskStore {
@@ -230,16 +230,73 @@ fn filtering_by_difficulty_keeps_only_that_level() {
     let store = store_at(&dir.path().join("t.db"));
     sorted_world(&store);
     let query = TaskQuery {
-        difficulty: Some(Difficulty::Hard),
+        difficulty: Some(DifficultyFilter::Is(Difficulty::Hard)),
         ..TaskQuery::default()
     };
     assert_eq!(titles(&store, &query, 100), ["hard-new", "hard-old"]);
     let combined = TaskQuery {
-        difficulty: Some(Difficulty::Hard),
+        difficulty: Some(DifficultyFilter::Is(Difficulty::Hard)),
         status: Some(WorkStatus::InProgress),
         ..TaskQuery::default()
     };
     assert!(titles(&store, &combined, 100).is_empty());
+}
+
+#[test]
+fn filtering_by_no_difficulty_keeps_only_tasks_without_one_and_any_keeps_all() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("t.db"));
+    sorted_world(&store);
+    let none = TaskQuery {
+        difficulty: Some(DifficultyFilter::NoDifficulty),
+        ..TaskQuery::default()
+    };
+    let expected = ["started-none", "none-new", "none-old"];
+    assert_eq!(titles(&store, &none, 100), expected);
+    assert_eq!(titles(&store, &none, 1), expected);
+    // Combined with the Difficulty sort, the cursor walks the same rows.
+    let sorted = TaskQuery {
+        sort: SortMode::Difficulty,
+        ..none.clone()
+    };
+    assert_eq!(titles(&store, &sorted, 1), expected);
+    // A cursor from the No Difficulty filter is refused by an unfiltered query.
+    let cursor = store
+        .query_tasks(&none, 1, None)
+        .unwrap()
+        .next_cursor
+        .unwrap();
+    let refused = store
+        .query_tasks(&TaskQuery::default(), 1, Some(&cursor))
+        .unwrap_err();
+    assert!(matches!(refused, TaskError::InvalidCursor), "{refused:?}");
+    // Any Difficulty is no filter at all.
+    assert_eq!(titles(&store, &TaskQuery::default(), 100).len(), 7);
+}
+
+#[test]
+fn a_difficulty_filter_reads_and_writes_a_level_name_or_none() {
+    let names: Vec<Value> = DifficultyFilter::ALL
+        .iter()
+        .map(|f| serde_json::to_value(f).unwrap())
+        .collect();
+    assert_eq!(
+        names,
+        ["very_easy", "easy", "medium", "hard", "very_hard", "none"].map(Value::from)
+    );
+    for filter in DifficultyFilter::ALL {
+        let name = serde_json::to_value(filter).unwrap();
+        assert_eq!(
+            serde_json::from_value::<DifficultyFilter>(name).unwrap(),
+            filter
+        );
+    }
+    assert!(serde_json::from_value::<DifficultyFilter>(Value::from("brutal")).is_err());
+    assert!(serde_json::from_value::<DifficultyFilter>(Value::Null).is_err());
+    // The desktop sends the filter inside a camelCase query.
+    let query: TaskQuery =
+        serde_json::from_value(serde_json::json!({"difficulty": "none"})).unwrap();
+    assert_eq!(query.difficulty, Some(DifficultyFilter::NoDifficulty));
 }
 
 /// Puts a database back exactly as schema v16 left it.

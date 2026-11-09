@@ -12,7 +12,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tasknotes_cli::contract::{self, CliError};
 use tasknotes_core::removed::SetRemoved;
-use tasknotes_core::tasks::{Difficulty, Priority, SortMode, Task, TaskStore, WorkStatus};
+use tasknotes_core::tasks::{
+    Difficulty, DifficultyFilter, Priority, SortMode, Task, TaskStore, WorkStatus,
+};
 
 /// What a tool runs against.
 pub struct Context<'a> {
@@ -131,8 +133,10 @@ pub(crate) fn priority_schema(_: &mut SchemaGenerator) -> Schema {
     names_schema(&Priority::ALL)
 }
 
-pub(crate) fn difficulty_schema(_: &mut SchemaGenerator) -> Schema {
-    names_schema(&Difficulty::ALL)
+/// For a filter: a level's name, or `none` for only the Tasks with No
+/// Difficulty; leaving it out is Any Difficulty.
+pub(crate) fn difficulty_filter_schema(_: &mut SchemaGenerator) -> Schema {
+    names_schema(&DifficultyFilter::ALL)
 }
 
 /// For a change: a name sets the Difficulty, `null` clears it to No

@@ -10,7 +10,7 @@ use tasknotes_core::notes::{
 use tasknotes_core::privacy::SetNoteExcludeFromAi;
 use tasknotes_core::removed::{RemovedPage, SetRemoved};
 use tasknotes_core::tasks::{
-    ChangeTask, CreateList, CreateTask, Difficulty, List, ListPage, MoveTask, Priority,
+    ChangeTask, CreateList, CreateTask, DifficultyFilter, List, ListPage, MoveTask, Priority,
     ProgressSequencePage, RecordProgress, RenameList, ReorderList, SetListRemoved, SortMode, Task,
     TaskPage, TaskQuery, TaskStore, TaskView, UpdateTask, UpdateTaskDetails, WorkStatus,
 };
@@ -42,7 +42,8 @@ fn list_tasks(
     text: Option<String>,
     status: Option<WorkStatus>,
     priority: Option<Priority>,
-    difficulty: Option<Difficulty>,
+    // A level's name, or "none" for only the Tasks with No Difficulty.
+    difficulty: Option<DifficultyFilter>,
     tag: Option<String>,
     task_id: Option<String>,
 ) -> Result<TaskPage, String> {

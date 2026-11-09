@@ -17,9 +17,9 @@ use tasknotes_core::ai_access;
 use tasknotes_core::audit::Interface;
 use tasknotes_core::removed::SetRemoved;
 use tasknotes_core::tasks::{
-    ChangeTask, CreateList, CreateTask, Difficulty, List, MoveTask, PatchTask, PatchTaskDetails,
-    Priority, RecordProgress, RenameList, ReorderList, SetListRemoved, SortMode, Task, TaskError,
-    TaskQuery, TaskScope, TaskStore, TaskView, WorkStatus,
+    ChangeTask, CreateList, CreateTask, Difficulty, DifficultyFilter, List, MoveTask, PatchTask,
+    PatchTaskDetails, Priority, RecordProgress, RenameList, ReorderList, SetListRemoved, SortMode,
+    Task, TaskError, TaskQuery, TaskScope, TaskStore, TaskView, WorkStatus,
 };
 
 use access::Environment;
@@ -156,7 +156,7 @@ fn dispatch(
 pub(crate) const USAGE: &str = "Usage: tasknotes [--data-dir DIR] \
     <task|list|note|folder|link|removed|audit|bulk|backup|export|access> <command> [id] [--options]; \
     task change ID --revision N [--status S] [--priority P] [--difficulty D|none] [--progress N]; \
-    task list [--status S] [--priority P] [--difficulty D] [--tag T] [--sort priority|newest|difficulty]; \
+    task list [--status S] [--priority P] [--difficulty D|none] [--tag T] [--sort priority|newest|difficulty]; \
     list reorder ID --revision N (--after ID | --first); \
     folder reorder ID --revision N (--after ID | --first) [--parent ID | --top]; \
     bulk preview --action A --id ID... | bulk status REQUEST_ID (approved only in the app); \
@@ -457,7 +457,7 @@ fn task_page(store: &TaskStore, words: &[String]) -> Result<Value, CliError> {
         text: p.value("text").unwrap_or_default().to_owned(),
         status: p.choice("status", &WorkStatus::ALL)?,
         priority: p.choice("priority", &Priority::ALL)?,
-        difficulty: p.choice("difficulty", &Difficulty::ALL)?,
+        difficulty: p.choice("difficulty", &DifficultyFilter::ALL)?,
         tag: p.value("tag").map(str::to_owned),
         view: match (p.value("list"), p.has("inbox")) {
             (Some(id), _) => TaskView::List(id.to_owned()),

@@ -3,8 +3,8 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::tasks::{
-    COLUMNS, Difficulty, Priority, SortMode, TaskError, TaskPage, TaskStore, TaskView, WorkStatus,
-    read_task,
+    COLUMNS, Difficulty, DifficultyFilter, Priority, SortMode, TaskError, TaskPage, TaskStore,
+    TaskView, WorkStatus, read_task,
 };
 
 /// Whether a query looks at active Tasks or only at Removed ones (ADR-0002).
@@ -24,7 +24,8 @@ pub struct TaskQuery {
     pub text: String,
     pub status: Option<WorkStatus>,
     pub priority: Option<Priority>,
-    pub difficulty: Option<Difficulty>,
+    /// `None` is Any Difficulty: no filter.
+    pub difficulty: Option<DifficultyFilter>,
     pub tag: Option<String>,
     pub view: TaskView,
     pub scope: TaskScope,
@@ -185,7 +186,7 @@ impl TaskStore {
             },
             query.status.map_or("", WorkStatus::as_sql),
             query.priority.map_or("", Priority::as_sql),
-            query.difficulty.map_or("", Difficulty::as_sql),
+            query.difficulty.map_or("", DifficultyFilter::as_name),
             tag_fold.as_deref().unwrap_or(""),
             &terms.join(" "),
             query.task_id.as_deref().unwrap_or(""),
@@ -273,11 +274,13 @@ fn page_sql(
             bind(Value::Text(priority.as_sql().into()))
         ));
     }
-    if let Some(difficulty) = query.difficulty {
-        filters.push(format!(
+    match query.difficulty {
+        None => {}
+        Some(DifficultyFilter::NoDifficulty) => filters.push("difficulty IS NULL".to_owned()),
+        Some(DifficultyFilter::Is(difficulty)) => filters.push(format!(
             "difficulty = {}",
             bind(Value::Text(difficulty.as_sql().into()))
-        ));
+        )),
     }
     if let Some(fold) = tag_fold {
         filters.push(format!(

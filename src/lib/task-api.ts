@@ -107,7 +107,8 @@ export interface TaskFilters {
   text: string;
   status: WorkStatus | "";
   priority: Priority | "";
-  difficulty: Difficulty | "";
+  /** "" is Any difficulty (no filter); "none" keeps only Tasks with No Difficulty. */
+  difficulty: Difficulty | "none" | "";
   tag: string;
   /** Show only this Task, as when it is opened from a Note it is linked to. */
   taskId?: string;

@@ -6,7 +6,7 @@ import {
 import {
   taskApi, NO_FILTERS, TASK_PAGE_SIZE, type Task, type TaskList, type TaskView,
   type SortMode, type TaskChange, type ProgressDraft, type TaskFilters, type WorkStatus,
-  type Priority, type Difficulty, type TaskListPage,
+  type Priority, type TaskListPage,
 } from "./lib/task-api";
 import {
   DIFFICULTY_ORDER, DIFFICULTY_VIEW, PRIORITY_ORDER, PRIORITY_VIEW, STATUS_ORDER, STATUS_VIEW,
@@ -1096,12 +1096,14 @@ export default function App() {
               <label className={`property filter-chip ${filters.difficulty ? "filter-chip--active" : ""}`}>
                 <select aria-label="Filter by difficulty" value={filters.difficulty}
                   onChange={(event) => applyFilters({
-                    ...currentQuery.current.filters, difficulty: event.target.value as Difficulty | "",
+                    ...currentQuery.current.filters,
+                    difficulty: event.target.value as TaskFilters["difficulty"],
                   })}>
                   <option value="">Any difficulty</option>
                   {[...DIFFICULTY_ORDER].reverse().map((difficulty) => (
                     <option key={difficulty} value={difficulty}>{DIFFICULTY_VIEW[difficulty].label}</option>
                   ))}
+                  <option value="none">No difficulty</option>
                 </select>
               </label>
               <label className={`property filter-chip filter-chip--tag ${filters.tag ? "filter-chip--active" : ""}`}>

@@ -5,9 +5,9 @@ use serde::Deserialize;
 use serde_json::Value;
 use tasknotes_cli::contract::{self, CliError};
 use tasknotes_core::tasks::{
-    ChangeTask, CreateList, CreateTask, Difficulty, MoveTask, PatchTask, PatchTaskDetails,
-    Priority, RecordProgress, RenameList, ReorderList, SetListRemoved, SortMode, TaskError,
-    TaskQuery, TaskScope, TaskView, WorkStatus,
+    ChangeTask, CreateList, CreateTask, Difficulty, DifficultyFilter, MoveTask, PatchTask,
+    PatchTaskDetails, Priority, RecordProgress, RenameList, ReorderList, SetListRemoved, SortMode,
+    TaskError, TaskQuery, TaskScope, TaskView, WorkStatus,
 };
 
 use crate::tools::*;
@@ -17,7 +17,7 @@ pub fn tools() -> Vec<ToolDef> {
         tool(
             "task_list",
             Kind::Read,
-            "List or search active Tasks (or Removed ones), In Progress → Ready → Completed, in pages with an opaque next_cursor. Sort by priority (default), newest or difficulty (Very Hard first, No Difficulty last).",
+            "List or search active Tasks (or Removed ones), In Progress → Ready → Completed, in pages with an opaque next_cursor. Filter by difficulty with a level, or difficulty \"none\" for only Tasks with No Difficulty; leave it out for any. Sort by priority (default), newest or difficulty (Very Hard first, No Difficulty last).",
             task_list,
         ),
         tool(
@@ -197,8 +197,8 @@ struct TaskListArgs {
     #[schemars(schema_with = "priority_schema")]
     priority: Option<Priority>,
     #[serde(default)]
-    #[schemars(schema_with = "difficulty_schema")]
-    difficulty: Option<Difficulty>,
+    #[schemars(schema_with = "difficulty_filter_schema")]
+    difficulty: Option<DifficultyFilter>,
     #[serde(default)]
     tag: Option<String>,
     /// Only Tasks in this List.
