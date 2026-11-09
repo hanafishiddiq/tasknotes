@@ -30,13 +30,10 @@ fn change(
     difficulty: Option<Difficulty>,
 ) -> Result<Task, TaskError> {
     store.change_task(ChangeTask {
-        wont_do: None,
         id: task.id.clone(),
         expected_revision: task.revision,
-        status: None,
-        priority: None,
-        progress: None,
         difficulty: Some(difficulty),
+        ..Default::default()
     })
 }
 
@@ -124,13 +121,11 @@ fn difficulty_and_priority_change_together_in_one_revision() {
     let created = task(&store, "Synthetic migration");
     let changed = store
         .change_task(ChangeTask {
-            wont_do: None,
             id: created.id.clone(),
             expected_revision: created.revision,
-            status: None,
             priority: Some(tasknotes_core::tasks::Priority::High),
-            progress: None,
             difficulty: Some(Some(Difficulty::VeryHard)),
+            ..Default::default()
         })
         .unwrap();
     assert_eq!(changed.revision, created.revision + 1);
@@ -172,13 +167,10 @@ fn sorted_world(store: &TaskStore) {
     let started = task(store, "started-none");
     store
         .change_task(ChangeTask {
-            wont_do: None,
             id: started.id,
             expected_revision: started.revision,
-            status: None,
-            priority: None,
             progress: Some(10),
-            difficulty: None,
+            ..Default::default()
         })
         .unwrap();
 }
@@ -308,7 +300,7 @@ fn back_to_v16(db: &Path) {
     conn.execute_batch(
         "DROP INDEX tasks_status_difficulty_order;
          ALTER TABLE tasks DROP COLUMN difficulty;
-             ALTER TABLE tasks DROP COLUMN wont_do; ALTER TABLE progress_entries DROP COLUMN previous_wont_do;
+             ALTER TABLE tasks DROP COLUMN wont_do_from; ALTER TABLE tasks DROP COLUMN wont_do; ALTER TABLE progress_entries DROP COLUMN previous_wont_do;
              ALTER TABLE progress_entries DROP COLUMN wont_do;
          PRAGMA user_version = 16;",
     )

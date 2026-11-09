@@ -6,7 +6,7 @@ use std::path::Path;
 use rusqlite::{Connection, params};
 use serde_json::Value;
 use tasknotes_core::audit::{AuditAction, AuditOutcome, Interface};
-use tasknotes_core::bulk::BulkAction;
+use tasknotes_core::bulk::{BulkAction, StatusTarget};
 use tasknotes_core::export::{ExportFormat, ExportRequest};
 use tasknotes_core::removed::SetRemoved;
 use tasknotes_core::tasks::{
@@ -28,15 +28,7 @@ fn task(store: &TaskStore, title: &str) -> Task {
 }
 
 fn change() -> ChangeTask {
-    ChangeTask {
-        id: String::new(),
-        expected_revision: 0,
-        status: None,
-        priority: None,
-        progress: None,
-        difficulty: None,
-        wont_do: None,
-    }
+    ChangeTask::default()
 }
 
 fn apply(store: &TaskStore, task: &Task, input: ChangeTask) -> Result<Task, TaskError> {
@@ -287,6 +279,97 @@ fn clearing_wont_do_alone_reopens_to_ready_or_in_progress_by_progress() {
     assert!(matches!(error, TaskError::EmptyProgressUpdate), "{error:?}");
 }
 
+/// AGENTS.md and ADR 0006: a started Task stays In Progress while idle, even
+/// at 0%; Ready is only for work not yet started. Reopening a Won't Do Task
+/// returns it to the work status it had before it was set aside.
+#[test]
+fn reopening_returns_the_task_to_the_work_status_it_had_before_wont_do() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("t.db"));
+    let clear = ChangeTask {
+        wont_do: Some(false),
+        ..change()
+    };
+    let started_at_zero = |title: &str| {
+        apply(
+            &store,
+            &task(&store, title),
+            ChangeTask {
+                status: Some(WorkStatus::InProgress),
+                ..change()
+            },
+        )
+        .unwrap()
+    };
+
+    // Ready → Won't Do → clear: Ready.
+    let ready = wont_do(&store, &task(&store, "Synthetic never started")).unwrap();
+    let reopened = apply(&store, &ready, clear.clone()).unwrap();
+    assert_eq!(
+        (reopened.status, reopened.progress, reopened.wont_do),
+        (WorkStatus::Ready, 0, false)
+    );
+
+    // In Progress at 0% → Won't Do → clear: still In Progress, not Ready.
+    let idle = started_at_zero("Synthetic started, idle");
+    assert_eq!((idle.status, idle.progress), (WorkStatus::InProgress, 0));
+    let set_aside = wont_do(&store, &idle).unwrap();
+    let reopened = apply(&store, &set_aside, clear.clone()).unwrap();
+    assert_eq!(
+        (reopened.status, reopened.progress, reopened.wont_do),
+        (WorkStatus::InProgress, 0, false)
+    );
+    let entry = &store
+        .list_progress_entries(&idle.id, 1, None)
+        .unwrap()
+        .items[0];
+    assert_eq!(
+        (entry.previous_status, entry.status),
+        (WorkStatus::Completed, WorkStatus::InProgress)
+    );
+
+    // In Progress at 40% → Won't Do → clear: In Progress at 40%.
+    let partial = wont_do(&store, &at_progress(&store, "Synthetic forty", 40)).unwrap();
+    let reopened = apply(&store, &partial, clear.clone()).unwrap();
+    assert_eq!(
+        (reopened.status, reopened.progress, reopened.wont_do),
+        (WorkStatus::InProgress, 40, false)
+    );
+
+    // A started Task set aside at 0% cannot be reopened as Ready either…
+    let idle = wont_do(&store, &started_at_zero("Synthetic idle again")).unwrap();
+    let error = apply(
+        &store,
+        &idle,
+        ChangeTask {
+            status: Some(WorkStatus::Ready),
+            ..change()
+        },
+    )
+    .unwrap_err();
+    transition_message(&error);
+    // …and progress 0 keeps it In Progress.
+    let reopened = apply(
+        &store,
+        &idle,
+        ChangeTask {
+            progress: Some(0),
+            ..change()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        (reopened.status, reopened.progress, reopened.wont_do),
+        (WorkStatus::InProgress, 0, false)
+    );
+
+    // Set aside again after reopening: it returns to the status it had just
+    // before, each time.
+    let again = wont_do(&store, &reopened).unwrap();
+    let reopened = apply(&store, &again, clear).unwrap();
+    assert_eq!(reopened.status, WorkStatus::InProgress);
+}
+
 #[test]
 fn changing_progress_reopens_and_a_normal_complete_clears_wont_do() {
     let dir = tempfile::tempdir().unwrap();
@@ -469,11 +552,38 @@ fn the_desktop_change_reads_wont_do_in_camel_case() {
     assert_eq!(serde_json::to_value(&task).unwrap()["wontDo"], true);
 }
 
+/// The window reads where reopening returns a Won't Do Task, so it offers
+/// Ready only to one that never started.
+#[test]
+fn a_wont_do_task_names_the_work_status_it_returns_to() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("t.db"));
+    let started = at_progress(&store, "Synthetic started", 10);
+    assert_eq!(started.wont_do_from, None);
+    let set_aside = wont_do(&store, &started).unwrap();
+    assert_eq!(set_aside.wont_do_from, Some(WorkStatus::InProgress));
+    assert_eq!(store.get_task(&started.id).unwrap().unwrap(), set_aside);
+    assert_eq!(
+        serde_json::to_value(&set_aside).unwrap()["wontDoFrom"],
+        "in_progress"
+    );
+    let ready = wont_do(&store, &task(&store, "Synthetic idea")).unwrap();
+    assert_eq!(ready.wont_do_from, Some(WorkStatus::Ready));
+    // Not Won't Do: the field is left out.
+    assert!(
+        serde_json::to_value(&started)
+            .unwrap()
+            .get("wontDoFrom")
+            .is_none()
+    );
+}
+
 /// Puts a database back exactly as schema v17 left it.
 fn back_to_v17(db: &Path) {
     let conn = Connection::open(db).unwrap();
     conn.execute_batch(
-        "ALTER TABLE tasks DROP COLUMN wont_do;
+        "ALTER TABLE tasks DROP COLUMN wont_do_from;
+         ALTER TABLE tasks DROP COLUMN wont_do;
          ALTER TABLE progress_entries DROP COLUMN previous_wont_do;
          ALTER TABLE progress_entries DROP COLUMN wont_do;
          PRAGMA user_version = 17;",
@@ -530,6 +640,17 @@ fn upgrading_from_v17_leaves_every_task_and_entry_not_wont_do_and_changes_nothin
         params![open.id],
     );
     assert!(invalid.is_err());
+    // A Won't Do Task always names the work status it returns to on reopening.
+    let unnamed = conn.execute(
+        "UPDATE tasks SET wont_do = 1 WHERE id = ?1",
+        params![finished.id],
+    );
+    assert!(unnamed.is_err());
+    let completed_origin = conn.execute(
+        "UPDATE tasks SET wont_do = 1, wont_do_from = 'completed' WHERE id = ?1",
+        params![finished.id],
+    );
+    assert!(completed_origin.is_err());
 }
 
 #[test]
@@ -599,10 +720,7 @@ fn a_bulk_status_request_can_mark_wont_do_after_approval() {
     let a = at_progress(&ai, "Synthetic bulk a", 25);
     let b = task(&ai, "Synthetic bulk b");
 
-    let action = BulkAction::SetTaskStatus {
-        status: WorkStatus::Completed,
-        wont_do: true,
-    };
+    let action = BulkAction::SetTaskStatus(StatusTarget::WontDo);
     let requested = ai
         .request_bulk(action.clone(), vec![a.id.clone(), b.id.clone()])
         .unwrap();
@@ -622,37 +740,50 @@ fn a_bulk_status_request_can_mark_wont_do_after_approval() {
         (WorkStatus::Completed, 0, true)
     );
 
-    // The action's serde form names it; older requests without the field
-    // still read as a plain status change.
+    // The stored form is unchanged: Won't Do is Completed with `wont_do`,
+    // and a request stored before Won't Do existed still reads.
     assert_eq!(
         serde_json::to_value(&action).unwrap(),
         serde_json::json!({"action": "set_task_status", "status": "completed", "wont_do": true})
     );
+    let stored: BulkAction = serde_json::from_value(serde_json::json!(
+        {"action": "set_task_status", "status": "completed", "wont_do": true}
+    ))
+    .unwrap();
+    assert_eq!(stored, action);
     let plain: BulkAction = serde_json::from_value(
         serde_json::json!({"action": "set_task_status", "status": "completed"}),
     )
     .unwrap();
     assert_eq!(
         plain,
-        BulkAction::SetTaskStatus {
-            status: WorkStatus::Completed,
-            wont_do: false
-        }
+        BulkAction::SetTaskStatus(StatusTarget::Work(WorkStatus::Completed))
     );
     assert_eq!(
         serde_json::to_value(&plain).unwrap(),
         serde_json::json!({"action": "set_task_status", "status": "completed"})
     );
+    let explicit_false: BulkAction = serde_json::from_value(serde_json::json!(
+        {"action": "set_task_status", "status": "ready", "wont_do": false}
+    ))
+    .unwrap();
+    assert_eq!(
+        explicit_false,
+        BulkAction::SetTaskStatus(StatusTarget::Work(WorkStatus::Ready))
+    );
 
-    // Won't Do with another status is refused at request time, as for one Task.
-    let error = ai
-        .request_bulk(
-            BulkAction::SetTaskStatus {
-                status: WorkStatus::InProgress,
-                wont_do: true,
-            },
-            vec![a.id.clone()],
-        )
+    // Won't Do with another status cannot be built or read.
+    for status in ["ready", "in_progress"] {
+        let error = serde_json::from_value::<BulkAction>(serde_json::json!(
+            {"action": "set_task_status", "status": status, "wont_do": true}
+        ))
         .unwrap_err();
+        assert!(error.to_string().contains("Won't Do"), "{error}");
+    }
+    let error = StatusTarget::new(WorkStatus::InProgress, true).unwrap_err();
     assert_eq!(error.code(), "invalid_transition");
+    assert_eq!(
+        StatusTarget::new(WorkStatus::Completed, true).unwrap(),
+        StatusTarget::WontDo
+    );
 }

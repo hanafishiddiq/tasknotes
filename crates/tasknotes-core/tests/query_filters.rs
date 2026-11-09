@@ -38,13 +38,11 @@ fn make(
     } else {
         store
             .change_task(ChangeTask {
-                wont_do: None,
-                difficulty: None,
                 id: created.id,
                 expected_revision: created.revision,
-                status: None,
                 priority: Some(priority),
                 progress,
+                ..Default::default()
             })
             .unwrap()
     };

@@ -37,6 +37,66 @@ use crate::tasks::{
     ChangeTask, MoveTask, SetListRemoved, Task, TaskError, TaskStore, WorkStatus, current_millis,
 };
 
+/// What a Bulk status change sets each Task to: a work status, or Won't Do
+/// (ADR 0008: Completed, keeping its progress). Won't Do with any status but
+/// Completed cannot be built.
+///
+/// Its serde form is the one stored requests already use: `{"status": ..}`,
+/// plus `"wont_do": true` for Won't Do. A request stored before Won't Do
+/// existed has no `wont_do` and reads as the plain status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "StatusWire", into = "StatusWire")]
+pub enum StatusTarget {
+    Work(WorkStatus),
+    WontDo,
+}
+
+impl StatusTarget {
+    /// From the wire's two fields: `wont_do` only with Completed.
+    pub fn new(status: WorkStatus, wont_do: bool) -> Result<Self, TaskError> {
+        match (status, wont_do) {
+            (status, false) => Ok(Self::Work(status)),
+            (WorkStatus::Completed, true) => Ok(Self::WontDo),
+            (_, true) => Err(TaskError::InvalidTransition(
+                "Won't Do is Completed and keeps the Task's progress; give no other status",
+            )),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+struct StatusWire {
+    status: WorkStatus,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    wont_do: bool,
+}
+
+impl TryFrom<StatusWire> for StatusTarget {
+    type Error = &'static str;
+
+    fn try_from(wire: StatusWire) -> Result<Self, Self::Error> {
+        Self::new(wire.status, wire.wont_do).map_err(|error| match error {
+            TaskError::InvalidTransition(message) => message,
+            _ => "Invalid status",
+        })
+    }
+}
+
+impl From<StatusTarget> for StatusWire {
+    fn from(target: StatusTarget) -> Self {
+        match target {
+            StatusTarget::Work(status) => Self {
+                status,
+                wont_do: false,
+            },
+            StatusTarget::WontDo => Self {
+                status: WorkStatus::Completed,
+                wont_do: true,
+            },
+        }
+    }
+}
+
 /// The most items one bulk change may name.
 pub const BULK_MAX_ITEMS: usize = 100;
 /// How long a request waits for the person: one day.
@@ -57,14 +117,8 @@ pub enum BulkAction {
     MoveTasks {
         list_id: Option<String>,
     },
-    /// Under the same transition rules as `change_task`. `wont_do` (with
-    /// Completed) marks the Tasks Won't Do instead of finishing them; left
-    /// out, it is false and the request reads as before Won't Do existed.
-    SetTaskStatus {
-        status: WorkStatus,
-        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-        wont_do: bool,
-    },
+    /// Under the same transition rules as `change_task`.
+    SetTaskStatus(StatusTarget),
     RemoveNotes,
     RestoreNotes,
     /// One List, with every Task in it.
@@ -571,14 +625,18 @@ impl TaskStore {
                     before,
                 )
             }
-            BulkAction::SetTaskStatus { status, wont_do } => {
+            BulkAction::SetTaskStatus(target) => {
                 let before = self.get_task_in(tx, &id)?;
+                let (status, wont_do) = match *target {
+                    StatusTarget::Work(status) => (Some(status), None),
+                    StatusTarget::WontDo => (None, Some(true)),
+                };
                 let change = ChangeTask {
                     difficulty: None,
-                    wont_do: wont_do.then_some(true),
+                    wont_do,
                     id: id.clone(),
                     expected_revision,
-                    status: Some(*status),
+                    status,
                     priority: None,
                     progress: None,
                 };

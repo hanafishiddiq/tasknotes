@@ -485,6 +485,10 @@ pub struct Task {
     /// the progress it had. Always false unless `status` is Completed.
     #[serde(default)]
     pub wont_do: bool,
+    /// While Won't Do, the work status the Task had before it was set aside
+    /// (Ready or In Progress): reopening returns it there (ADR 0006).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wont_do_from: Option<WorkStatus>,
     pub next_step: String,
     pub list_id: Option<String>,
     pub due_date: Option<String>,
@@ -544,7 +548,9 @@ impl SortMode {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+/// `ChangeTask { id, expected_revision, status: Some(..), ..Default::default() }`
+/// leaves every other field as it is.
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChangeTask {
     pub id: String,
@@ -681,16 +687,28 @@ fn validated_text(title: &str, description: &str) -> Result<(String, String), Ta
     Ok((clean_title.to_owned(), description.to_owned()))
 }
 
-/// The work status, progress and Won't Do a change leads to, under the
-/// transition rules every interface shares. Won't Do (ADR 0008) is a
-/// resolution of a Completed Task that keeps its progress; reopening it, by
-/// status, progress or clearing it, follows the usual progress rules, and a
-/// normal Complete (100%) clears it.
+/// Where a change leaves a Task's work: its status and progress, and, while
+/// it is Won't Do, the work status it had before it was set aside.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct WorkState {
+    status: WorkStatus,
+    progress: u8,
+    /// `Some` exactly while the Task is Won't Do: Ready or In Progress.
+    wont_do_from: Option<WorkStatus>,
+}
+
+/// The work a change leads to, under the transition rules every interface
+/// shares. Won't Do (ADR 0008) is a resolution of a Completed Task that keeps
+/// its progress. Reopening it, by status, progress or clearing it, treats the
+/// Task as the one it was before it was set aside (`wont_do_from`): a
+/// started Task stays In Progress even at 0% (ADR 0006), and only one that
+/// never started may go back to Ready. A normal Complete (100%) clears it.
 fn next_work_state(
     before: &Task,
     input: &ChangeTask,
     previous_incomplete: u8,
-) -> Result<(WorkStatus, u8, bool), TaskError> {
+) -> Result<WorkState, TaskError> {
+    let wont_do_from = before.wont_do_from;
     if input.wont_do == Some(true) {
         if input.progress.is_some()
             || input
@@ -706,19 +724,24 @@ fn next_work_state(
                 "A finished Task cannot be Won't Do; reopen it first",
             ));
         }
-        return Ok((WorkStatus::Completed, before.progress, true));
+        return Ok(WorkState {
+            status: WorkStatus::Completed,
+            progress: before.progress,
+            wont_do_from: Some(wont_do_from.unwrap_or(before.status)),
+        });
     }
+    // The status the usual rules see: a Won't Do Task is the Task it was.
+    let lifecycle = wont_do_from.unwrap_or(before.status);
     if input.wont_do == Some(false)
         && before.wont_do
         && input.status.is_none()
         && input.progress.is_none()
     {
-        let reopened = if before.progress == 0 {
-            WorkStatus::Ready
-        } else {
-            WorkStatus::InProgress
-        };
-        return Ok((reopened, before.progress, false));
+        return Ok(WorkState {
+            status: lifecycle,
+            progress: before.progress,
+            wont_do_from: None,
+        });
     }
 
     let mut next_status = before.status;
@@ -727,7 +750,7 @@ fn next_work_state(
         next_progress = progress;
         next_status = if progress == 100 {
             WorkStatus::Completed
-        } else if progress == 0 && before.status == WorkStatus::Ready {
+        } else if progress == 0 && lifecycle == WorkStatus::Ready {
             WorkStatus::Ready
         } else {
             WorkStatus::InProgress
@@ -736,9 +759,8 @@ fn next_work_state(
     if let Some(status) = input.status {
         match status {
             WorkStatus::Ready => {
-                // A Won't Do Task that never started may go back to Ready.
-                let unstarted = before.status == WorkStatus::Ready || before.wont_do;
-                if !unstarted || next_progress != 0 {
+                let not_started = lifecycle == WorkStatus::Ready;
+                if !not_started || next_progress != 0 {
                     return Err(TaskError::InvalidTransition(
                         "Ready is only available for work that has not started",
                     ));
@@ -767,8 +789,12 @@ fn next_work_state(
             }
         }
     }
-    let wont_do = before.wont_do && next_status == WorkStatus::Completed && next_progress < 100;
-    Ok((next_status, next_progress, wont_do))
+    let still_set_aside = next_status == WorkStatus::Completed && next_progress < 100;
+    Ok(WorkState {
+        status: next_status,
+        progress: next_progress,
+        wont_do_from: wont_do_from.filter(|_| still_set_aside),
+    })
 }
 
 pub(crate) fn invalid_db_text(index: usize, value: String) -> rusqlite::Error {
@@ -786,6 +812,7 @@ pub(crate) fn read_task(row: &Row<'_>) -> rusqlite::Result<Task> {
     let status: String = row.get(3)?;
     let priority: String = row.get(4)?;
     let difficulty: Option<String> = row.get(DIFFICULTY_COLUMN)?;
+    let wont_do_from: Option<String> = row.get(WONT_DO_FROM_COLUMN)?;
     Ok(Task {
         id: row.get(0)?,
         title: row.get(1)?,
@@ -800,6 +827,12 @@ pub(crate) fn read_task(row: &Row<'_>) -> rusqlite::Result<Task> {
             .transpose()?,
         progress: row.get(5)?,
         wont_do: row.get(WONT_DO_COLUMN)?,
+        wont_do_from: wont_do_from
+            .map(|value| {
+                WorkStatus::from_sql(&value)
+                    .ok_or_else(|| invalid_db_text(WONT_DO_FROM_COLUMN, value))
+            })
+            .transpose()?,
         next_step: row.get(9)?,
         list_id: row.get(10)?,
         due_date: row.get(11)?,
@@ -811,14 +844,16 @@ pub(crate) fn read_task(row: &Row<'_>) -> rusqlite::Result<Task> {
     })
 }
 
-pub(crate) const COLUMNS: &str = "id, title, description, status, priority, progress, revision, created_at, updated_at, next_step, list_id, due_date, removed_at, difficulty, wont_do";
+pub(crate) const COLUMNS: &str = "id, title, description, status, priority, progress, revision, created_at, updated_at, next_step, list_id, due_date, removed_at, difficulty, wont_do, wont_do_from";
 /// Where `difficulty` sits in `COLUMNS`, for `read_task`.
 const DIFFICULTY_COLUMN: usize = 13;
 /// Where `wont_do` sits in `COLUMNS`, for `read_task`.
 const WONT_DO_COLUMN: usize = 14;
+/// Where `wont_do_from` sits in `COLUMNS`, for `read_task`.
+const WONT_DO_FROM_COLUMN: usize = 15;
 /// How many columns `COLUMNS` selects: the index of the first column a query
 /// adds after `{COLUMNS}`.
-pub(crate) const COLUMN_COUNT: usize = 15;
+pub(crate) const COLUMN_COUNT: usize = 16;
 
 /// The database schema this core reads and writes.
 pub const SCHEMA_VERSION: i64 = 18;
@@ -1046,12 +1081,18 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), TaskError> {
 }
 
 /// Schema v18: Won't Do (ADR 0008), a resolution of a Completed Task. No
-/// existing Task or Progress Entry is Won't Do; the CHECK keeps the flag on
-/// Completed Tasks only, whoever writes the file.
+/// existing Task or Progress Entry is Won't Do; the CHECKs keep the flag on
+/// Completed Tasks only, whoever writes the file. `wont_do_from` is the work
+/// status a Won't Do Task had before it was set aside (Ready or In Progress),
+/// where reopening returns it; it is set exactly while the Task is Won't Do.
 fn migrate_v18(migration: &Transaction) -> Result<(), TaskError> {
     migration.execute_batch(
         "ALTER TABLE tasks ADD COLUMN wont_do INTEGER NOT NULL DEFAULT 0
              CHECK (wont_do IN (0, 1) AND (wont_do = 0 OR status = 'completed'));
+         ALTER TABLE tasks ADD COLUMN wont_do_from TEXT
+             CHECK ((wont_do = 0 AND wont_do_from IS NULL)
+                    OR (wont_do = 1 AND wont_do_from IS NOT NULL
+                        AND wont_do_from IN ('ready', 'in_progress')));
          ALTER TABLE progress_entries ADD COLUMN previous_wont_do INTEGER NOT NULL DEFAULT 0
              CHECK (previous_wont_do IN (0, 1));
          ALTER TABLE progress_entries ADD COLUMN wont_do INTEGER NOT NULL DEFAULT 0
@@ -1228,6 +1269,7 @@ impl TaskStore {
             difficulty: None,
             progress: 0,
             wont_do: false,
+            wont_do_from: None,
             next_step: String::new(),
             list_id: list_id.map(str::to_owned),
             due_date: None,
@@ -1340,13 +1382,11 @@ impl TaskStore {
         self.apply_task_change(
             AuditAction::TaskProgress,
             ChangeTask {
-                difficulty: None,
-                wont_do: None,
                 id: input.id,
                 expected_revision: input.expected_revision,
                 status: input.status,
                 progress: input.progress,
-                priority: None,
+                ..Default::default()
             },
             input.next_step,
             input.note,
@@ -1391,8 +1431,9 @@ impl TaskStore {
             return Err(TaskError::RevisionConflict);
         }
 
-        let (next_status, next_progress, next_wont_do) =
-            next_work_state(&before, &input, previous_incomplete)?;
+        let next = next_work_state(&before, &input, previous_incomplete)?;
+        let (next_status, next_progress) = (next.status, next.progress);
+        let next_wont_do = next.wont_do_from.is_some();
         if next_progress < 100 {
             previous_incomplete = next_progress;
         }
@@ -1418,6 +1459,7 @@ impl TaskStore {
                 next_step = ?5,
                 difficulty = ?9,
                 wont_do = ?10,
+                wont_do_from = ?11,
                 revision = revision + 1,
                 updated_at = max(updated_at + 1, ?6)
              WHERE id = ?7 AND revision = ?8
@@ -1435,7 +1477,8 @@ impl TaskStore {
                 input.id,
                 input.expected_revision,
                 next_difficulty.map(Difficulty::as_sql),
-                next_wont_do
+                next_wont_do,
+                next.wont_do_from.map(WorkStatus::as_sql)
             ],
             read_task,
         )?;
@@ -1610,7 +1653,7 @@ mod upgrade_lock_tests {
 
 #[cfg(test)]
 mod column_tests {
-    use super::{COLUMN_COUNT, COLUMNS, DIFFICULTY_COLUMN, WONT_DO_COLUMN};
+    use super::{COLUMN_COUNT, COLUMNS, DIFFICULTY_COLUMN, WONT_DO_COLUMN, WONT_DO_FROM_COLUMN};
 
     /// `read_task` reads by position: the constants must follow `COLUMNS`.
     #[test]
@@ -1619,6 +1662,7 @@ mod column_tests {
         assert_eq!(names.len(), COLUMN_COUNT);
         assert_eq!(names[DIFFICULTY_COLUMN], "difficulty");
         assert_eq!(names[WONT_DO_COLUMN], "wont_do");
+        assert_eq!(names[WONT_DO_FROM_COLUMN], "wont_do_from");
         for (index, name) in [
             (0, "id"),
             (1, "title"),

@@ -7,7 +7,7 @@
 use schemars::{JsonSchema, Schema, SchemaGenerator};
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
-use tasknotes_core::bulk::{BulkAction, BulkItem, BulkRequest, BulkRequestStatus};
+use tasknotes_core::bulk::{BulkAction, BulkItem, BulkRequest, BulkRequestStatus, StatusTarget};
 use tasknotes_core::notes::Note;
 use tasknotes_core::tasks::{TaskStore, WorkStatus};
 
@@ -87,7 +87,10 @@ impl BulkArgs {
                 ids,
                 status,
                 wont_do,
-            } => (BulkAction::SetTaskStatus { status, wont_do }, ids),
+            } => (
+                BulkAction::SetTaskStatus(StatusTarget::new(status, wont_do)?),
+                ids,
+            ),
             Self::RemoveNotes { ids } => (BulkAction::RemoveNotes, ids),
             Self::RestoreNotes { ids } => (BulkAction::RestoreNotes, ids),
             Self::RemoveList { ids } => (BulkAction::RemoveList, ids),
