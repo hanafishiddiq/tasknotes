@@ -125,7 +125,8 @@ textarea:disabled {
 }
 /*
  * The sidebar's right edge: a thin grab strip over its border, drawn only while used.
- * Placed against the shell, not the sidebar, so it neither scrolls nor clips with the sidebar's rows.
+ * In the markup it sits inside the sidebar (its landmark), but the sidebar is not positioned,
+ * so the edge is placed against the shell and neither scrolls nor clips with the sidebar's rows.
  */
 .sidebar-resizer {
   position: absolute;

@@ -24,7 +24,10 @@ interface TaskSidebarProps {
   allNotesCurrent: boolean;
   /** The Note Folder tree, once Notes have been opened. */
   noteFolders?: ReactNode;
-  /** The draggable right edge; inside the sidebar so it belongs to its landmark. */
+  /**
+   * The draggable right edge. Rendered inside the sidebar so it belongs to its landmark;
+   * App.css positions it against the shell, so it does not scroll with the sidebar.
+   */
   resizer?: ReactNode;
   lists: TaskList[];
   listError: string | null;
