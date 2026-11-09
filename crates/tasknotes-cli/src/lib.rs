@@ -17,13 +17,13 @@ use tasknotes_core::ai_access;
 use tasknotes_core::audit::Interface;
 use tasknotes_core::removed::SetRemoved;
 use tasknotes_core::tasks::{
-    ChangeTask, CreateList, CreateTask, List, MoveTask, PatchTask, PatchTaskDetails, Priority,
-    RecordProgress, RenameList, ReorderList, SetListRemoved, SortMode, Task, TaskError, TaskQuery,
-    TaskScope, TaskStore, TaskView, WorkStatus,
+    ChangeTask, CreateList, CreateTask, Difficulty, DifficultyFilter, List, MoveTask, PatchTask,
+    PatchTaskDetails, Priority, RecordProgress, RenameList, ReorderList, SetListRemoved, SortMode,
+    Task, TaskError, TaskQuery, TaskScope, TaskStore, TaskView, WorkStatus,
 };
 
 use access::Environment;
-use args::{Spec, parse};
+use args::{Parsed, Spec, parse};
 use contract::CliError;
 
 /// What the process prints on stdout and exits with.
@@ -155,6 +155,8 @@ fn dispatch(
 
 pub(crate) const USAGE: &str = "Usage: tasknotes [--data-dir DIR] \
     <task|list|note|folder|link|removed|audit|bulk|backup|export|access> <command> [id] [--options]; \
+    task change ID --revision N [--status S] [--priority P] [--difficulty D|none] [--progress N]; \
+    task list [--status S] [--priority P] [--difficulty D|none] [--tag T] [--sort priority|newest|difficulty]; \
     list reorder ID --revision N (--after ID | --first); \
     folder reorder ID --revision N (--after ID | --first) [--parent ID | --top]; \
     bulk preview --action A --id ID... | bulk status REQUEST_ID (approved only in the app); \
@@ -223,7 +225,10 @@ fn task_update(store: &TaskStore, words: &[String]) -> Result<Task, CliError> {
 fn task_change(store: &TaskStore, words: &[String]) -> Result<Task, CliError> {
     let p = parse(
         words,
-        &flags(&["revision", "status", "priority", "progress"], 1),
+        &flags(
+            &["revision", "status", "priority", "difficulty", "progress"],
+            1,
+        ),
     )?;
     Ok(store.change_task(ChangeTask {
         id: p.id().to_owned(),
@@ -231,7 +236,17 @@ fn task_change(store: &TaskStore, words: &[String]) -> Result<Task, CliError> {
         status: p.choice("status", &WorkStatus::ALL)?,
         priority: p.choice("priority", &Priority::ALL)?,
         progress: p.number("progress")?,
+        difficulty: difficulty_change(&p)?,
     })?)
+}
+
+/// `--difficulty NAME` sets the Difficulty and `--difficulty none` clears it
+/// to No Difficulty; left out, it is kept.
+fn difficulty_change(p: &Parsed) -> Result<Option<Option<Difficulty>>, CliError> {
+    if p.value("difficulty") == Some("none") {
+        return Ok(Some(None));
+    }
+    Ok(p.choice("difficulty", &Difficulty::ALL)?.map(Some))
 }
 
 fn task_progress(store: &TaskStore, words: &[String]) -> Result<Task, CliError> {
@@ -408,7 +423,15 @@ fn task_page(store: &TaskStore, words: &[String]) -> Result<Value, CliError> {
         words,
         &Spec {
             values: &[
-                "limit", "cursor", "text", "status", "priority", "tag", "list", "sort",
+                "limit",
+                "cursor",
+                "text",
+                "status",
+                "priority",
+                "difficulty",
+                "tag",
+                "list",
+                "sort",
             ],
             repeated: &[],
             switches: &["inbox", "removed"],
@@ -424,6 +447,7 @@ fn task_page(store: &TaskStore, words: &[String]) -> Result<Value, CliError> {
         text: p.value("text").unwrap_or_default().to_owned(),
         status: p.choice("status", &WorkStatus::ALL)?,
         priority: p.choice("priority", &Priority::ALL)?,
+        difficulty: p.choice("difficulty", &DifficultyFilter::ALL)?,
         tag: p.value("tag").map(str::to_owned),
         view: match (p.value("list"), p.has("inbox")) {
             (Some(id), _) => TaskView::List(id.to_owned()),

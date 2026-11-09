@@ -282,6 +282,7 @@ fn a_failed_v5_migration_rolls_back_and_keeps_the_v4_database_usable() {
              ALTER TABLE tasks DROP COLUMN removed_at;
              CREATE TABLE progress_fts(collision INTEGER);
              DROP TABLE IF EXISTS audit_entries; DROP TABLE IF EXISTS bulk_requests; DROP TABLE IF EXISTS retired_revisions;
+             DROP INDEX tasks_status_difficulty_order; ALTER TABLE tasks DROP COLUMN difficulty;
              DROP INDEX lists_manual_order; ALTER TABLE lists DROP COLUMN position;
              CREATE INDEX lists_created_order ON lists(created_at DESC, id DESC);
              PRAGMA user_version=4;",
@@ -306,10 +307,10 @@ fn a_failed_v5_migration_rolls_back_and_keeps_the_v4_database_usable() {
     }
     let store = store_at(&db);
     assert_eq!(search(&store, "preserved"), vec!["Preserved Task"]);
-    assert_eq!(
-        store.get_task(&created.id).unwrap().unwrap().revision,
-        created.revision
-    );
+    let upgraded = store.get_task(&created.id).unwrap().unwrap();
+    assert_eq!(upgraded.revision, created.revision);
+    // The v17 step gives the upgraded Task No Difficulty.
+    assert_eq!(upgraded.difficulty, None);
 }
 
 #[test]

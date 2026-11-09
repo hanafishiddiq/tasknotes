@@ -220,7 +220,7 @@ Neutral grays carry everything; a single yellow, split by theme into fill and te
 
 **The Split Accent Rule.** In light appearance the accent has three jobs with three values: fills and rings use the ochre accent, accent-colored text uses the darker ochre text, and anything placed on a yellow fill uses near-black accent ink. Never set small text in the fill value.
 
-**The Plain Text Status Rule.** Priority, deadline and tag metadata are colored text with an icon or `#` prefix, never filled badges. Priority always shows its icon and its label together; color is a second channel, not the only one.
+**The Plain Text Status Rule.** Priority, deadline and tag metadata are colored text with an icon or `#` prefix, never filled badges. Priority always shows its icon and its label together; color is a second channel, not the only one. Difficulty is never colored: it shows signal bars (one per level, Very easy to Very hard) with its label, so it is not read as a Priority, and a Task with No Difficulty shows no pill.
 
 ## Typography
 
@@ -291,7 +291,7 @@ A Notes list cell.
 The selected row opens a page underneath it, indented to the 38px content edge: a tertiary timestamp line, the 20px editable title, a 14px borderless description, then property capsules, the progress editor and progress history. Fields are borderless and blend into the page; Save actions appear only when there is something to save.
 
 ### Property Capsules
-- **Style:** 13px-radius capsules on field gray, 12px secondary text, a 13px leading icon (status ring, priority icon, folder, calendar, tag) and a bare select or input with no native chrome.
+- **Style:** 13px-radius capsules on field gray, 12px secondary text, a 13px leading icon (status ring, priority icon, difficulty signal bars, folder, calendar, tag; No Difficulty takes a neutral dashed square, never Very easy's bars) and a bare select or input with no native chrome.
 - **Focus:** the whole capsule takes the focus outline.
 
 ### Inputs / Fields
@@ -338,7 +338,7 @@ A quiet list, styled like the progress history: a Label Strong heading ("Notes" 
 - **Do** keep the canvas, sidebar, hover and field grays as the only surface steps, separated by 1px hairlines.
 - **Do** reserve Notes yellow for folder icons, status rings, tags, progress fill, focus, the selected row and the single primary action.
 - **Do** use the darker accent-text value for any yellow text in light appearance and accent ink on any yellow fill.
-- **Do** show priority as icon plus label, deadlines as words ("Overdue", "Due today", "Due Oct 22"), tags as `#name`.
+- **Do** show priority and difficulty as icon plus label, deadlines as words ("Overdue", "Due today", "Due Oct 22"), tags as `#name`.
 - **Do** build list hierarchy with bold titles and the three text grays at 13px, with tabular numerals for counts and percentages.
 - **Do** design every new surface in both appearances, starting from dark.
 - **Do** keep motion to 120ms background fades, a 120ms fade-in of an opening Task page or the new Task toast, a 240ms progress fill and the 240ms fade of the new Task flash, and drop them under Reduce Motion.

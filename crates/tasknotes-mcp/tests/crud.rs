@@ -391,3 +391,97 @@ fn lists_and_folders_reorder_with_the_same_rules_as_the_window() {
         ["Synthetic Home", "Synthetic Work"]
     );
 }
+
+/// Ticket 09: an AI client reads, sets, clears, filters and sorts by
+/// Difficulty; `difficulty` is `null` for No Difficulty.
+#[test]
+fn difficulty_is_set_cleared_filtered_and_sorted_through_mcp() {
+    let data = Data::trusted();
+    let mut s = data.server();
+    let schema = s
+        .tools()
+        .into_iter()
+        .find(|tool| tool["name"] == "task_change")
+        .unwrap()["inputSchema"]["properties"]["difficulty"]
+        .clone();
+    assert_eq!(schema["type"], json!(["string", "null"]), "{schema}");
+    assert_eq!(
+        schema["enum"],
+        json!(["very_easy", "easy", "medium", "hard", "very_hard", null])
+    );
+    let list = s
+        .tools()
+        .into_iter()
+        .find(|tool| tool["name"] == "task_list")
+        .unwrap();
+    let filter = list["inputSchema"]["properties"]["difficulty"].clone();
+    assert_eq!(
+        filter["enum"],
+        json!(["very_easy", "easy", "medium", "hard", "very_hard", "none"]),
+        "{filter}"
+    );
+    assert!(
+        list["description"]
+            .as_str()
+            .unwrap()
+            .contains("difficulty \"none\""),
+        "{list}"
+    );
+
+    let plain = s.ok("task_create", json!({"title": "Synthetic plain"}));
+    assert!(plain["item"]["difficulty"].is_null());
+    let easy = s.ok("task_create", json!({"title": "Synthetic easy"}));
+    let hard = s.ok("task_create", json!({"title": "Synthetic hard"}));
+    let hard = s.ok(
+        "task_change",
+        json!({"id": id(&hard), "revision": rev(&hard), "difficulty": "very_hard"}),
+    );
+    assert_eq!(hard["item"]["difficulty"], "very_hard");
+    s.ok(
+        "task_change",
+        json!({"id": id(&easy), "revision": rev(&easy), "difficulty": "easy"}),
+    );
+
+    let titles = |s: &mut common::Server, args: Value| -> Vec<String> {
+        s.ok("task_list", args)["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t["title"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    assert_eq!(
+        titles(&mut s, json!({"sort": "difficulty"})),
+        ["Synthetic hard", "Synthetic easy", "Synthetic plain"]
+    );
+    assert_eq!(
+        titles(&mut s, json!({"difficulty": "easy"})),
+        ["Synthetic easy"]
+    );
+    assert_eq!(
+        titles(&mut s, json!({"difficulty": "none"})),
+        ["Synthetic plain"]
+    );
+    s.refused(
+        "task_list",
+        json!({"difficulty": "brutal"}),
+        "invalid_input",
+    );
+
+    // A priority change leaves the Difficulty alone; null clears it.
+    let kept = s.ok(
+        "task_change",
+        json!({"id": id(&hard), "revision": rev(&hard), "priority": "high"}),
+    );
+    assert_eq!(kept["item"]["difficulty"], "very_hard");
+    let cleared = s.ok(
+        "task_change",
+        json!({"id": id(&kept), "revision": rev(&kept), "difficulty": null}),
+    );
+    assert!(cleared["item"]["difficulty"].is_null());
+    s.refused(
+        "task_change",
+        json!({"id": id(&cleared), "revision": rev(&cleared), "difficulty": "brutal"}),
+        "invalid_input",
+    );
+}

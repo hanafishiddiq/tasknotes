@@ -51,7 +51,7 @@ function outside() {
 function task(n: number, fields: Partial<Task> = {}): Task {
   return {
     id: `task-${n}`, title: `Synthetic task ${n}`, description: "", status: "ready",
-    priority: "medium", progress: 0, nextStep: "", revision: 1, createdAt: 100 + n,
+    priority: "medium", difficulty: null, progress: 0, nextStep: "", revision: 1, createdAt: 100 + n,
     updatedAt: 100 + n, listId: null, dueDate: null, tags: [], ...fields,
   };
 }

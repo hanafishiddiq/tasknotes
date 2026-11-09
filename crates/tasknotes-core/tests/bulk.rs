@@ -422,6 +422,7 @@ fn bulk_status_changes_follow_the_same_rules_as_change_task() {
     let bulk = tasks(&w.ai, 2);
     for pair in [&one, &bulk] {
         w.ai.change_task(ChangeTask {
+            difficulty: None,
             id: pair[1].id.clone(),
             expected_revision: 1,
             status: None,
@@ -433,6 +434,7 @@ fn bulk_status_changes_follow_the_same_rules_as_change_task() {
     for status in [WorkStatus::Completed, WorkStatus::InProgress] {
         for task in &one {
             w.ai.change_task(ChangeTask {
+                difficulty: None,
                 id: task.id.clone(),
                 expected_revision: task_now(&w, &task.id).revision,
                 status: Some(status),
@@ -467,6 +469,7 @@ fn bulk_status_changes_follow_the_same_rules_as_change_task() {
     for status in [WorkStatus::Ready, WorkStatus::InProgress] {
         let single =
             w.ai.change_task(ChangeTask {
+                difficulty: None,
                 id: one[1].id.clone(),
                 expected_revision: task_now(&w, &one[1].id).revision,
                 status: Some(status),

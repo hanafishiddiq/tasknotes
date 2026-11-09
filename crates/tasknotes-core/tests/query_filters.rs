@@ -38,6 +38,7 @@ fn make(
     } else {
         store
             .change_task(ChangeTask {
+                difficulty: None,
                 id: created.id,
                 expected_revision: created.revision,
                 status: None,

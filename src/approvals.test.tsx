@@ -19,7 +19,7 @@ let pending: PendingBulkRequest[];
 
 const base: Task = {
   id: "task-1", title: "Synthetic draft", description: "",
-  status: "ready", priority: "medium", progress: 0, nextStep: "", revision: 1,
+  status: "ready", priority: "medium", difficulty: null, progress: 0, nextStep: "", revision: 1,
   createdAt: 100, updatedAt: 100, listId: null, dueDate: null, tags: [],
 };
 

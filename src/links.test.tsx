@@ -12,7 +12,7 @@ const invokeMock = vi.mocked(invoke);
 interface Link { id: string; taskId: string; noteId: string; linkedAt: number; unlinkedAt: number | null }
 
 const BASE_TASK: Task = {
-  id: "", title: "", description: "", status: "ready", priority: "medium", progress: 0,
+  id: "", title: "", description: "", status: "ready", priority: "medium", difficulty: null, progress: 0,
   nextStep: "", revision: 1, createdAt: 100, updatedAt: 100, listId: null, dueDate: null, tags: [],
 };
 

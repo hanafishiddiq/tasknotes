@@ -153,6 +153,8 @@ pub fn task(task: &Task) -> Value {
         "description": task.description,
         "status": to_value(&task.status),
         "priority": to_value(&task.priority),
+        // `null` for No Difficulty.
+        "difficulty": to_value(&task.difficulty),
         "progress": task.progress,
         "next_step": task.next_step,
         "list_id": task.list_id,

@@ -491,6 +491,7 @@ fn tag_and_due_metadata_survive_title_edit_progress_change_and_list_move() {
     assert_eq!(edited.tags, vec!["Work"]);
     let progressed = store
         .change_task(ChangeTask {
+            difficulty: None,
             id: created.id.clone(),
             expected_revision: edited.revision,
             progress: Some(45),
@@ -882,6 +883,7 @@ fn opening_a_v7_database_merges_tags_that_now_fold_alike() {
          DROP TABLE note_folders;
          DROP INDEX tasks_removed_order; DROP INDEX lists_removed_order;
          DROP TABLE IF EXISTS audit_entries; DROP TABLE IF EXISTS bulk_requests; DROP TABLE IF EXISTS retired_revisions;
+         DROP INDEX tasks_status_difficulty_order; ALTER TABLE tasks DROP COLUMN difficulty;
          DROP INDEX lists_manual_order; ALTER TABLE lists DROP COLUMN position;
              CREATE INDEX lists_created_order ON lists(created_at DESC, id DESC);
              PRAGMA user_version = 7;",
@@ -909,4 +911,14 @@ fn opening_a_v7_database_merges_tags_that_now_fold_alike() {
         ..Default::default()
     };
     assert_eq!(store.query_tasks(&query, 10, None).unwrap().items.len(), 3);
+    // The upgrade through v17 leaves every Task with No Difficulty (NULL).
+    let with_difficulty: i64 = rusqlite::Connection::open(&db)
+        .unwrap()
+        .query_row(
+            "SELECT count(*) FROM tasks WHERE difficulty IS NOT NULL",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(with_difficulty, 0);
 }

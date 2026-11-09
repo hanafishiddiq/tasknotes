@@ -570,6 +570,7 @@ impl TaskStore {
             BulkAction::SetTaskStatus { status } => {
                 let before = self.get_task_in(tx, &id)?;
                 let change = ChangeTask {
+                    difficulty: None,
                     id: id.clone(),
                     expected_revision,
                     status: Some(*status),

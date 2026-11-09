@@ -388,3 +388,110 @@ fn cli_changes_and_refusals_appear_in_the_audit_log_without_task_text() {
         1
     );
 }
+
+/// Ticket 09: Difficulty is read, set, cleared, filtered and sorted through
+/// the CLI; the envelope carries `difficulty`, `null` for No Difficulty.
+#[test]
+fn difficulty_is_set_cleared_filtered_and_sorted_through_the_cli() {
+    let cli = Cli::trusted();
+    let plain = create(&cli, "Synthetic plain");
+    assert!(plain["difficulty"].is_null());
+    assert!(plain.as_object().unwrap().contains_key("difficulty"));
+    let easy = create(&cli, "Synthetic easy");
+    let hard = create(&cli, "Synthetic hard");
+
+    let changed = cli.ok(&[
+        "task",
+        "change",
+        &id(&hard),
+        "--revision",
+        "1",
+        "--difficulty",
+        "very_hard",
+    ])["item"]
+        .clone();
+    assert_eq!(changed["difficulty"], "very_hard");
+    assert_eq!(changed["revision"], 2);
+    cli.ok(&[
+        "task",
+        "change",
+        &id(&easy),
+        "--revision",
+        "1",
+        "--difficulty",
+        "easy",
+    ]);
+
+    let titles = |args: &[&str]| -> Vec<String> {
+        let mut full = vec!["task", "list"];
+        full.extend_from_slice(args);
+        cli.ok(&full)["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t["title"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    assert_eq!(
+        titles(&["--sort", "difficulty"]),
+        ["Synthetic hard", "Synthetic easy", "Synthetic plain"]
+    );
+    assert_eq!(titles(&["--difficulty", "easy"]), ["Synthetic easy"]);
+    assert_eq!(titles(&["--difficulty", "none"]), ["Synthetic plain"]);
+
+    let cleared = cli.ok(&[
+        "task",
+        "change",
+        &id(&hard),
+        "--revision",
+        "2",
+        "--difficulty",
+        "none",
+    ])["item"]
+        .clone();
+    assert!(cleared["difficulty"].is_null());
+    assert_eq!(cleared["revision"], 3);
+
+    let wrong = cli.run(&[
+        "task",
+        "change",
+        &id(&hard),
+        "--revision",
+        "3",
+        "--difficulty",
+        "brutal",
+    ]);
+    assert_eq!(error_code(&wrong, 2), "invalid_input");
+    assert!(
+        wrong.json["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("--difficulty must be one of: very_easy, easy, medium, hard, very_hard"),
+        "{}",
+        wrong.json
+    );
+    let wrong_filter = cli.run(&["task", "list", "--difficulty", "brutal"]);
+    assert_eq!(error_code(&wrong_filter, 2), "invalid_input");
+    assert!(
+        wrong_filter.json["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("very_easy, easy, medium, hard, very_hard, none"),
+        "{}",
+        wrong_filter.json
+    );
+    // The usage text names `none` for both the change and the filter.
+    let usage = cli.run(&["task", "bogus"]);
+    assert_eq!(error_code(&usage, 2), "invalid_input");
+    let usage = usage.json["error"]["message"].as_str().unwrap().to_owned();
+    assert!(
+        usage.contains(
+            "task change ID --revision N [--status S] [--priority P] [--difficulty D|none]"
+        ),
+        "{usage}"
+    );
+    assert!(
+        usage.contains("task list [--status S] [--priority P] [--difficulty D|none]"),
+        "{usage}"
+    );
+}

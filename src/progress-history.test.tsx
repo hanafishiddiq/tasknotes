@@ -19,7 +19,7 @@ const firstTask: Task = {
   title: "Review release",
   description: "Document test results",
   status: "in_progress",
-  priority: "high",
+  priority: "high", difficulty: null,
   progress: 25,
   nextStep: "Review initial QA",
   listId: null,

@@ -8,11 +8,13 @@ use std::sync::Arc;
 use rmcp::model::{JsonObject, Tool, ToolAnnotations};
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tasknotes_cli::contract::{self, CliError};
 use tasknotes_core::removed::SetRemoved;
-use tasknotes_core::tasks::{Priority, SortMode, Task, TaskStore, WorkStatus};
+use tasknotes_core::tasks::{
+    Difficulty, DifficultyFilter, Priority, SortMode, Task, TaskStore, WorkStatus,
+};
 
 /// What a tool runs against.
 pub struct Context<'a> {
@@ -131,6 +133,24 @@ pub(crate) fn priority_schema(_: &mut SchemaGenerator) -> Schema {
     names_schema(&Priority::ALL)
 }
 
+/// For a filter: a level's name, or `none` for only the Tasks with No
+/// Difficulty; leaving it out is Any Difficulty.
+pub(crate) fn difficulty_filter_schema(_: &mut SchemaGenerator) -> Schema {
+    names_schema(&DifficultyFilter::ALL)
+}
+
+/// For a change: a name sets the Difficulty, `null` clears it to No
+/// Difficulty, and leaving it out keeps it.
+pub(crate) fn nullable_difficulty_schema(_: &mut SchemaGenerator) -> Schema {
+    let mut names: Vec<Value> = Difficulty::ALL.iter().map(contract::to_value).collect();
+    names.push(Value::Null);
+    json_schema!({
+        "type": ["string", "null"],
+        "enum": names,
+        "description": "A name sets the Difficulty; null clears it to No Difficulty; leave out to keep it."
+    })
+}
+
 pub(crate) fn sort_schema(_: &mut SchemaGenerator) -> Schema {
     names_schema(&SortMode::ALL)
 }
@@ -143,9 +163,7 @@ pub(crate) fn nullable_date_schema(_: &mut SchemaGenerator) -> Schema {
 }
 
 /// Tells a field that is absent (`None`) from one that is `null` (`Some(None)`).
-pub(crate) fn present<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Option<String>>, D::Error> {
-    Option::<String>::deserialize(d).map(Some)
-}
+pub(crate) use tasknotes_core::tasks::present;
 
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

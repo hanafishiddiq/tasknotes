@@ -5,9 +5,9 @@ use serde::Deserialize;
 use serde_json::Value;
 use tasknotes_cli::contract::{self, CliError};
 use tasknotes_core::tasks::{
-    ChangeTask, CreateList, CreateTask, MoveTask, PatchTask, PatchTaskDetails, Priority,
-    RecordProgress, RenameList, ReorderList, SetListRemoved, SortMode, TaskError, TaskQuery,
-    TaskScope, TaskView, WorkStatus,
+    ChangeTask, CreateList, CreateTask, Difficulty, DifficultyFilter, MoveTask, PatchTask,
+    PatchTaskDetails, Priority, RecordProgress, RenameList, ReorderList, SetListRemoved, SortMode,
+    TaskError, TaskQuery, TaskScope, TaskView, WorkStatus,
 };
 
 use crate::tools::*;
@@ -17,7 +17,7 @@ pub fn tools() -> Vec<ToolDef> {
         tool(
             "task_list",
             Kind::Read,
-            "List or search active Tasks (or Removed ones), In Progress → Ready → Completed, in pages with an opaque next_cursor.",
+            "List or search active Tasks (or Removed ones), In Progress → Ready → Completed, in pages with an opaque next_cursor. Filter by difficulty with a level, or difficulty \"none\" for only Tasks with No Difficulty; leave it out for any. Sort by priority (default), newest or difficulty (Very Hard first, No Difficulty last).",
             task_list,
         ),
         tool(
@@ -29,7 +29,7 @@ pub fn tools() -> Vec<ToolDef> {
         tool(
             "task_create",
             Kind::Write,
-            "Create a Task (Ready, 0%, Medium priority) in Inbox or an active List.",
+            "Create a Task (Ready, 0%, Medium priority, No Difficulty) in Inbox or an active List.",
             task_create,
         ),
         tool(
@@ -41,7 +41,7 @@ pub fn tools() -> Vec<ToolDef> {
         tool(
             "task_change",
             Kind::Write,
-            "Change a Task's work status, priority and/or progress percentage under the core's transition rules.",
+            "Change a Task's work status, priority, Difficulty and/or progress percentage under the core's transition rules; difficulty null clears it to No Difficulty.",
             task_change,
         ),
         tool(
@@ -197,6 +197,9 @@ struct TaskListArgs {
     #[schemars(schema_with = "priority_schema")]
     priority: Option<Priority>,
     #[serde(default)]
+    #[schemars(schema_with = "difficulty_filter_schema")]
+    difficulty: Option<DifficultyFilter>,
+    #[serde(default)]
     tag: Option<String>,
     /// Only Tasks in this List.
     #[serde(default)]
@@ -226,6 +229,7 @@ fn task_list(c: &Context, a: TaskListArgs) -> Result<Value, CliError> {
         text: a.text.unwrap_or_default(),
         status: a.status,
         priority: a.priority,
+        difficulty: a.difficulty,
         tag: a.tag,
         view: match (a.list_id, a.inbox) {
             (Some(id), _) => TaskView::List(id),
@@ -304,6 +308,9 @@ struct TaskChangeArgs {
     /// 0–100.
     #[serde(default)]
     progress: Option<u8>,
+    #[serde(default, deserialize_with = "present")]
+    #[schemars(schema_with = "nullable_difficulty_schema")]
+    difficulty: Option<Option<Difficulty>>,
 }
 
 fn task_change(c: &Context, a: TaskChangeArgs) -> Result<Value, CliError> {
@@ -313,6 +320,7 @@ fn task_change(c: &Context, a: TaskChangeArgs) -> Result<Value, CliError> {
         status: a.status,
         priority: a.priority,
         progress: a.progress,
+        difficulty: a.difficulty,
     })?))
 }
 

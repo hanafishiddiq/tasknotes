@@ -8,7 +8,9 @@ import {
   type SortMode, type TaskChange, type ProgressDraft, type TaskFilters, type WorkStatus,
   type Priority, type TaskListPage,
 } from "./lib/task-api";
-import { PRIORITY_ORDER, PRIORITY_VIEW, STATUS_ORDER, STATUS_VIEW } from "./lib/task-visuals";
+import {
+  DIFFICULTY_ORDER, DIFFICULTY_VIEW, PRIORITY_ORDER, PRIORITY_VIEW, STATUS_ORDER, STATUS_VIEW,
+} from "./lib/task-visuals";
 import TaskRow from "./components/TaskRow";
 import TaskSidebar from "./components/TaskSidebar";
 import SidebarResizer from "./components/SidebarResizer";
@@ -54,7 +56,8 @@ const SEARCH_DELAY_MS = 250;
 
 function sameFilters(a: TaskFilters, b: TaskFilters): boolean {
   return a.text.trim() === b.text.trim() && a.tag.trim() === b.tag.trim() &&
-    a.status === b.status && a.priority === b.priority && a.taskId === b.taskId;
+    a.status === b.status && a.priority === b.priority && a.difficulty === b.difficulty &&
+    a.taskId === b.taskId;
 }
 
 interface TaskQueryNow {
@@ -1056,6 +1059,7 @@ export default function App() {
               onChange={(event) => changeSort(event.target.value as SortMode)}
             >
               <option value="priority">Highest priority</option>
+              <option value="difficulty">Hardest first</option>
               <option value="newest">Newest first</option>
             </select>
           </label>
@@ -1093,6 +1097,19 @@ export default function App() {
                   {[...PRIORITY_ORDER].reverse().map((priority) => (
                     <option key={priority} value={priority}>{PRIORITY_VIEW[priority].label}</option>
                   ))}
+                </select>
+              </label>
+              <label className={`property filter-chip ${filters.difficulty ? "filter-chip--active" : ""}`}>
+                <select aria-label="Filter by difficulty" value={filters.difficulty}
+                  onChange={(event) => applyFilters({
+                    ...currentQuery.current.filters,
+                    difficulty: event.target.value as TaskFilters["difficulty"],
+                  })}>
+                  <option value="">Any difficulty</option>
+                  {[...DIFFICULTY_ORDER].reverse().map((difficulty) => (
+                    <option key={difficulty} value={difficulty}>{DIFFICULTY_VIEW[difficulty].label}</option>
+                  ))}
+                  <option value="none">No difficulty</option>
                 </select>
               </label>
               <label className={`property filter-chip filter-chip--tag ${filters.tag ? "filter-chip--active" : ""}`}>
