@@ -18,7 +18,7 @@ vi.mock("./lib/sound/rain", () => ({
 }));
 
 const base: Task = {
-  id: "task-1", title: "Synthetic plan", description: "", status: "ready", priority: "medium", difficulty: null,
+  id: "task-1", title: "Synthetic plan", description: "", status: "ready", priority: "medium", difficulty: null, wontDo: false,
   progress: 0, nextStep: "", listId: null, dueDate: null, tags: [], revision: 1, createdAt: 100, updatedAt: 100,
 };
 let saved: Task[];

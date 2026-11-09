@@ -23,6 +23,8 @@ import {
   DIFFICULTY_ORDER,
   DIFFICULTY_VIEW,
   NO_DIFFICULTY_ICON,
+  WONT_DO_ICON,
+  WONT_DO_LABEL,
 } from "../lib/task-visuals";
 
 const dateFormatter = new Intl.DateTimeFormat("en", {
@@ -158,6 +160,10 @@ export default function TaskRow({
   // Older replies may lack the field; treat that as No Difficulty.
   const difficulty = task.difficulty ?? null;
   const DifficultyIcon = difficulty ? DIFFICULTY_VIEW[difficulty].icon : NO_DIFFICULTY_ICON;
+  // Older replies may lack the field; treat that as not Won't Do.
+  const wontDo = task.wontDo === true;
+  // A Won't Do Task's check is its own, so the finished tick never shows on it.
+  const checkKind = wontDo ? "wont-do" : task.status;
   const hiddenTags = (task.tags ?? []).slice(2);
   const titleField = useRef<HTMLTextAreaElement>(null);
   const due = deadlineStatus(task.dueDate, today, task.status);
@@ -256,12 +262,14 @@ export default function TaskRow({
 
   return (
     <article
-      className={`task-card task-card--${task.status} ${expanded ? "task-card--expanded" : ""}`}
+      className={`task-card task-card--${task.status} ${wontDo ? "task-card--wont-do" : ""} ${expanded ? "task-card--expanded" : ""}`}
       aria-label={task.title}
     >
       <div className="task-row">
-        <span className={`task-check task-check--${task.status}`} aria-hidden="true">
-          {task.status === "completed" && <Check size={11} strokeWidth={3} />}
+        <span className={`task-check task-check--${checkKind}`} aria-hidden="true">
+          {wontDo
+            ? <WONT_DO_ICON size={11} strokeWidth={3} />
+            : task.status === "completed" && <Check size={11} strokeWidth={3} />}
         </span>
         <button
           className="task-open"
@@ -285,6 +293,7 @@ export default function TaskRow({
           <span className={`status-pill status-pill--${task.status} sr-only`}>
             {STATUS_VIEW[task.status].label}
           </span>
+          {wontDo && <span className="wont-do-label">{WONT_DO_LABEL}</span>}
           <span className={`priority-pill priority-pill--${task.priority}`}>
             <PriorityIcon size={13} strokeWidth={2} aria-hidden="true" />
             {PRIORITY_VIEW[task.priority].label}
@@ -400,25 +409,31 @@ export default function TaskRow({
           <div className="task-properties" role="group" aria-label="Task status and priority">
             <label className="property" htmlFor={`status-${task.id}`}>
               <span className="sr-only">Work status</span>
-              <span className={`task-check task-check--${task.status} task-check--small`} aria-hidden="true" />
+              <span className={`task-check task-check--${checkKind} task-check--small`} aria-hidden="true" />
               <select
                 id={`status-${task.id}`}
                 aria-label="Work status"
-                value={task.status}
+                value={wontDo ? "wont_do" : task.status}
                 disabled={!canChangeSelectors}
-                onChange={(event) =>
-                  void onChange({ status: event.target.value as WorkStatus }, task.revision)
-                }
+                onChange={(event) => {
+                  const value = event.target.value as WorkStatus | "wont_do";
+                  void onChange(value === "wont_do" ? { wontDo: true } : { status: value }, task.revision);
+                }}
               >
                 {STATUS_ORDER.map((status) => (
                   <option
                     key={status}
                     value={status}
-                    disabled={status === "ready" && task.status !== "ready"}
+                    // Ready is for work not yet started, which a Won't Do Task at 0% still is.
+                    disabled={status === "ready" && task.status !== "ready" && !(wontDo && task.progress === 0)}
                   >
                     {STATUS_VIEW[status].label}
                   </option>
                 ))}
+                {/* A finished Task is reopened first; the core refuses it too. */}
+                <option value="wont_do" disabled={task.status === "completed" && !wontDo}>
+                  {WONT_DO_LABEL}
+                </option>
               </select>
             </label>
             <label className="property" htmlFor={`priority-${task.id}`}>

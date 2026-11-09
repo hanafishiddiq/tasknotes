@@ -1,7 +1,7 @@
 import {
   ArrowDown, ArrowUp, CheckCircle2, ChevronsDown, ChevronsUp,
   Circle, LoaderCircle, Minus, Signal, SignalHigh, SignalLow, SignalMedium, SignalZero,
-  SquareDashed, type LucideIcon,
+  SquareDashed, X, type LucideIcon,
 } from "lucide-react";
 import type { Difficulty, Priority, WorkStatus } from "./task-api";
 
@@ -30,3 +30,7 @@ export const DIFFICULTY_VIEW: Record<Difficulty, { label: string; icon: LucideIc
 export const DIFFICULTY_ORDER: Difficulty[] = ["very_easy", "easy", "medium", "hard", "very_hard"];
 /** No Difficulty: an empty marker, so it never reads as Very easy's single bar. */
 export const NO_DIFFICULTY_ICON: LucideIcon = SquareDashed;
+/** Won't Do is a kind of Completed (ADR 0008), offered beside the three work statuses. */
+export const WONT_DO_LABEL = "Won't do";
+/** A cross in the neutral ring, never the Completed tick. */
+export const WONT_DO_ICON: LucideIcon = X;

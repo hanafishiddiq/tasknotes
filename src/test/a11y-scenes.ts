@@ -71,7 +71,7 @@ export const SCENES: Record<string, Scene> = {
     given: () => {
       world.tasks = everyRowKind();
       world.history = [{
-        sequence: 1, id: "h", taskId: "a", previousStatus: "ready", status: "in_progress", previousProgress: 0,
+        sequence: 1, id: "h", taskId: "a", previousStatus: "ready", status: "in_progress", previousProgress: 0, previousWontDo: false, wontDo: false,
         progress: 40, note: "Synthetic history note", nextStep: "Synthetic next", createdAt: FIXTURE_NOW,
       }];
       world.notesOfTask = [{ linkId: "lk", noteId: "n", title: "Synthetic linked note", updatedAt: FIXTURE_NOW }];

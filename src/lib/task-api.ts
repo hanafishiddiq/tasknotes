@@ -35,6 +35,8 @@ export interface Task {
   priority: Priority;
   difficulty: Difficulty | null;
   progress: number;
+  /** A Completed Task set aside rather than finished (ADR 0008); keeps its progress. */
+  wontDo: boolean;
   nextStep: string;
   listId: string | null;
   dueDate: string | null;
@@ -65,6 +67,8 @@ export type TaskChange = {
   /** `null` clears it to No Difficulty. */
   difficulty?: Difficulty | null;
   progress?: number;
+  /** `true` marks it Won't Do; `false` clears it and reopens the Task. */
+  wontDo?: boolean;
 };
 
 export type ChangeTaskInput = TaskChange & {
@@ -92,6 +96,8 @@ export interface ProgressEntry {
   status: WorkStatus;
   previousProgress: number;
   progress: number;
+  previousWontDo: boolean;
+  wontDo: boolean;
   note: string;
   nextStep: string;
   createdAt: number;
@@ -105,7 +111,8 @@ export interface ProgressHistoryPage {
 /** Search text and filters applied on top of the sidebar view. Empty means Any. */
 export interface TaskFilters {
   text: string;
-  status: WorkStatus | "";
+  /** "wont_do" keeps only Won't Do Tasks, which are Completed. */
+  status: WorkStatus | "wont_do" | "";
   priority: Priority | "";
   /** "" is Any difficulty (no filter); "none" keeps only Tasks with No Difficulty. */
   difficulty: Difficulty | "none" | "";
@@ -127,7 +134,8 @@ function queryArgs(view: TaskView, filters: TaskFilters) {
   return {
     ...(view.kind === "all" ? {} : { view }),
     ...(text ? { text } : {}),
-    ...(filters.status ? { status: filters.status } : {}),
+    ...(filters.status === "wont_do" ? { wontDo: true }
+      : filters.status ? { status: filters.status } : {}),
     ...(filters.priority ? { priority: filters.priority } : {}),
     ...(filters.difficulty ? { difficulty: filters.difficulty } : {}),
     ...(tag ? { tag } : {}),

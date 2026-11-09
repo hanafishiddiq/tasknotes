@@ -1268,6 +1268,13 @@ kbd {
   font-weight: 600;
   color: var(--text-2);
 }
+/* Set aside rather than finished: struck through, beside a plain "Won't do" label. */
+.task-card--wont-do .task-row-title {
+  text-decoration: line-through;
+}
+.wont-do-label {
+  white-space: nowrap;
+}
 .task-row-subtitle {
   display: flex;
   align-items: center;
