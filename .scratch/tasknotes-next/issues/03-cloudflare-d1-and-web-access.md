@@ -18,3 +18,7 @@ The owner wants the database to move to Cloudflare D1, so Tasknotes also opens f
 - How does the owner's existing local data move across, and can that be reversed?
 
 Not part of Tasknotes v1. Run `/grill-with-docs` before writing a spec.
+
+## Comments
+
+**2026-11-09 — owner decision (Han):** deferred; not part of batch 2 while Tasknotes stays local.

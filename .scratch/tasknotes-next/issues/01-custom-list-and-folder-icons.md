@@ -1,18 +1,28 @@
-# Custom icons and colours for Lists and Note Folders
+# 01: Icons and colours for Lists and Note Folders
 
-**Status:** needs-triage
-**Blocked by:** None
+**What to build:** Let the owner give each List and Note Folder an icon and a colour (spec stories 15).
+
+**Blocked by:** 04 (manual sidebar order, PR #24), 11 — Sidebar hover, width and action icons
+
+**Status:** ready-for-agent
+
 **Implementation:** not started
 
-## What the owner asked for (2026-10-31)
+## Acceptance criteria
 
-The owner wants to choose an icon and a colour for a List or Note Folder, from as many icons as practical.
+- [ ] Each List and Note Folder can have one icon and one of 12 colours; both optional, default unchanged look.
+- [ ] The 12 colours meet AA contrast as icon colour on the sidebar in light and dark themes.
+- [ ] The picker offers the app's Lucide icons with a search box; choosing is keyboard accessible.
+- [ ] Emoji already in names are not changed or stripped.
+- [ ] CLI and MCP can read and set icon and colour with revision checks; exports include them.
 
-## Questions to settle first
+## Delivery guardrails
 
-- Does this apply to Lists, Note Folders, or both? The owner mentioned folders, especially Lists.
-- A fixed palette or any colour? Every choice still has to pass the AA contrast checks in both themes.
-- Which icon set, how many icons, and is a search box needed once there are many?
-- Do CLI and MCP read and change them too? Desktop, CLI and MCP share one set of write operations.
+- Read `../spec.md`, `GLOSSARY.md`, `AGENTS.md` and the ADRs it names before changing behavior.
+- Own branch and worktree, Draft PR, `/tdd`, then `/code-review`; no merge to `main` without the owner's confirmation.
+- Business rules live in the shared core; the UI, CLI and MCP call them.
+- Synthetic fixtures only; never touch the owner's real store.
 
-Not part of Tasknotes v1. Run `/grill-with-docs` before writing a spec.
+## Comments
+
+**2026-11-09 — owner decision (Han):** in batch 2, folded together with the sidebar work. Lists and Note Folders both, fixed palette of 12, Lucide with search, CLI/MCP included, emoji names untouched.
