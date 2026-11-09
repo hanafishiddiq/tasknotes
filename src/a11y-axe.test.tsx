@@ -26,6 +26,15 @@ const KNOWN: Record<string, string[]> = {
   "Notes: a checklist Note": ["aria-allowed-role", "list"],
 };
 
+/**
+ * The sidebar's edge is a focusable role="separator", the ARIA window-splitter
+ * pattern. Axe's opt-in focus-order-semantics rule counts separator as a
+ * structure role, so it reports this one node in every scene where the shell is
+ * not inert. Only that exact finding is set aside, and those scenes must still
+ * show it, so the exception cannot go stale.
+ */
+const SPLITTER = "focus-order-semantics (minor): .sidebar-resizer";
+
 beforeAll(async () => {
   adoptIndexHtml();
   await import("./components/NotesWorkspace");
@@ -50,8 +59,13 @@ describe.each(["dark", "light"] as const)("axe in the %s appearance", (theme) =>
 
     const found = await runAxe();
     expect(found.crashed, "axe rules that threw, so tested nothing").toEqual([]);
-    const rules = [...found.violations, ...found.incomplete].sort();
-    expect({ rules, details: found.details }).toEqual({ rules: KNOWN[name] ?? [], details: expect.anything() });
+    // Behind the open palette the shell is inert, so axe passes the edge by.
+    if (!document.querySelector(".sidebar-resizer")?.closest("[inert]")) expect(found.details).toContain(SPLITTER);
+    const details = found.details.filter((detail: string) => detail !== SPLITTER);
+    const rules = [...found.violations, ...found.incomplete]
+      .filter((rule) => rule !== "focus-order-semantics" || details.some((detail: string) => detail.startsWith(`${rule} `)))
+      .sort();
+    expect({ rules, details }).toEqual({ rules: KNOWN[name] ?? [], details: expect.anything() });
   });
 });
 
