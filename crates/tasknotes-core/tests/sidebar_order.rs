@@ -94,6 +94,8 @@ fn back_to_v15(db: &Path) {
          ALTER TABLE tasks DROP COLUMN wont_do_from; ALTER TABLE tasks DROP COLUMN wont_do; ALTER TABLE progress_entries DROP COLUMN previous_wont_do;
          ALTER TABLE progress_entries DROP COLUMN wont_do;
          DROP INDEX lists_manual_order;
+         DROP INDEX lists_parent;
+         ALTER TABLE lists DROP COLUMN parent_id;
          DROP INDEX note_folders_manual_order;
          ALTER TABLE lists DROP COLUMN position;
          ALTER TABLE note_folders DROP COLUMN position;

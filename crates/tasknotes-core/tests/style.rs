@@ -436,7 +436,10 @@ fn emoji_names_stay_as_typed_and_a_rename_keeps_the_look() {
 fn back_to_v18(db: &Path) {
     let conn = Connection::open(db).unwrap();
     conn.execute_batch(
-        "ALTER TABLE lists DROP COLUMN icon;
+        "DROP INDEX lists_parent; DROP INDEX lists_manual_order;
+         ALTER TABLE lists DROP COLUMN parent_id;
+         CREATE INDEX lists_manual_order ON lists(position, id);
+         ALTER TABLE lists DROP COLUMN icon;
          ALTER TABLE lists DROP COLUMN color;
          ALTER TABLE note_folders DROP COLUMN icon;
          ALTER TABLE note_folders DROP COLUMN color;
@@ -480,7 +483,7 @@ fn upgrading_from_v18_gives_everything_the_default_look_and_changes_nothing_else
 
     let store = store_at(&db);
 
-    assert_eq!(SCHEMA_VERSION, 19);
+    const { assert!(SCHEMA_VERSION >= 19) };
     let read = current_list(&store, &a.id);
     assert_eq!((read.style.icon, read.style.color), (None, None));
     let read = store.get_note_folder(&f.id).unwrap().unwrap();

@@ -11,8 +11,8 @@ use uuid::Uuid;
 
 use crate::audit::{AuditAction, Interface};
 pub use crate::organization::{
-    CreateList, List, ListPage, MoveTask, PatchTaskDetails, RenameList, ReorderList,
-    SetListRemoved, TaskView, UpdateTaskDetails,
+    CreateList, CreateSubList, List, ListPage, ListParent, MoveList, MoveTask, PatchTaskDetails,
+    PlaceList, RenameList, ReorderList, SetListRemoved, TaskView, UpdateTaskDetails,
 };
 pub use crate::search::{TaskQuery, TaskScope};
 
@@ -46,6 +46,10 @@ pub enum TaskError {
     InvalidListPage,
     #[error("Invalid List page cursor")]
     InvalidListCursor,
+    #[error("Lists can be nested at most 5 levels deep")]
+    ListTooDeep,
+    #[error("A List can't be moved into itself or a List inside it")]
+    ListCycle,
     #[error("Use at most 16 distinct Tags, each 1–40 characters without control characters")]
     InvalidTags,
     #[error("Deadline must be a real local calendar date in YYYY-MM-DD format")]
@@ -229,6 +233,8 @@ impl TaskError {
             | InvalidNoteFolderName
             | NoteFolderTooDeep
             | NoteFolderCycle
+            | ListTooDeep
+            | ListCycle
             | InvalidStyleIcon
             | InvalidStyleColor
             | InvalidBulkSelection => "invalid_input",
@@ -862,7 +868,7 @@ const WONT_DO_FROM_COLUMN: usize = 15;
 pub(crate) const COLUMN_COUNT: usize = 16;
 
 /// The database schema this core reads and writes.
-pub const SCHEMA_VERSION: i64 = 19;
+pub const SCHEMA_VERSION: i64 = 21;
 
 /// How long a write waits for another process (the CLI, MCP) holding the database lock.
 pub const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -1086,6 +1092,11 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), TaskError> {
     if version < 19 {
         let migration = connection.transaction()?;
         crate::style::migrate_v19(&migration)?;
+        migration.commit()?;
+    }
+    if version < 21 {
+        let migration = connection.transaction()?;
+        crate::organization::migrate_v21(&migration)?;
         migration.commit()?;
     }
     Ok(())

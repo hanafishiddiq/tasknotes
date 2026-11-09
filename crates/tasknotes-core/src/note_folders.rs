@@ -10,12 +10,11 @@ use crate::manual_order::{self, Siblings};
 use crate::removed::SetRemoved;
 use crate::style::Style;
 use crate::tasks::{TaskError, TaskStore, current_millis};
+use crate::tree::{Tree, WALK_LIMIT};
 
-/// A top-level folder is level 1.
-pub const MAX_FOLDER_DEPTH: i64 = 5;
+/// A top-level folder is level 1; the same limit as Lists (`tree`).
+pub const MAX_FOLDER_DEPTH: i64 = crate::tree::MAX_DEPTH;
 const MAX_NAME_CHARS: usize = 100;
-/// Recursion guard for walks over a damaged tree; far above any valid depth.
-const WALK_LIMIT: i64 = 64;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -206,39 +205,6 @@ pub(crate) fn folder_holds_anything(conn: &Connection, id: &str) -> Result<bool,
     )?)
 }
 
-/// The folder's own level plus every ancestor: a top-level folder is 1.
-/// The walk also lists the ancestors, which is how a cycle is detected.
-fn ancestors(conn: &Connection, id: &str) -> Result<Vec<String>, TaskError> {
-    let mut stmt = conn.prepare(
-        "WITH RECURSIVE up(id, parent_id, level) AS (
-            SELECT id, parent_id, 1 FROM note_folders WHERE id = ?1
-            UNION ALL
-            SELECT f.id, f.parent_id, up.level + 1
-              FROM note_folders f JOIN up ON f.id = up.parent_id
-             WHERE up.level < ?2
-         ) SELECT id FROM up",
-    )?;
-    let ids = stmt
-        .query_map(params![id, WALK_LIMIT], |row| row.get(0))?
-        .collect::<rusqlite::Result<Vec<String>>>()?;
-    Ok(ids)
-}
-
-/// Levels in the subtree rooted at `id`, the folder itself counting as 1.
-fn subtree_height(conn: &Connection, id: &str) -> Result<i64, TaskError> {
-    Ok(conn.query_row(
-        "WITH RECURSIVE down(id, level) AS (
-            SELECT id, 1 FROM note_folders WHERE id = ?1
-            UNION ALL
-            SELECT f.id, down.level + 1
-              FROM note_folders f JOIN down ON coalesce(f.parent_id, '') = down.id
-             WHERE down.level < ?2
-         ) SELECT max(level) FROM down",
-        params![id, WALK_LIMIT],
-        |row| row.get(0),
-    )?)
-}
-
 fn require_unique_name(
     conn: &Connection,
     parent_id: Option<&str>,
@@ -293,13 +259,7 @@ fn require_destination(
 ) -> Result<(), TaskError> {
     if let Some(parent) = parent_id {
         require_folder(conn, parent)?;
-        let path = ancestors(conn, parent)?;
-        if path.contains(&folder.id) {
-            return Err(TaskError::NoteFolderCycle);
-        }
-        if path.len() as i64 + subtree_height(conn, &folder.id)? > MAX_FOLDER_DEPTH {
-            return Err(TaskError::NoteFolderTooDeep);
-        }
+        Tree::NoteFolders.require_fits_under(conn, &folder.id, parent)?;
     }
     require_unique_name(conn, parent_id, &name_fold(&folder.name), Some(&folder.id))
 }
@@ -343,19 +303,12 @@ impl TaskStore {
         let tx = self.begin_write(&mut conn)?;
         if let Some(parent) = input.parent_id.as_deref() {
             require_folder(&tx, parent)?;
-            if ancestors(&tx, parent)?.len() as i64 >= MAX_FOLDER_DEPTH {
-                return Err(TaskError::NoteFolderTooDeep);
-            }
+            Tree::NoteFolders.require_room_under(&tx, parent)?;
         }
         require_unique_name(&tx, input.parent_id.as_deref(), &fold, None)?;
         let now = current_millis()?;
         let id = Uuid::new_v4().to_string();
-        let position = manual_order::bottom(
-            &tx,
-            Siblings::Folders {
-                parent_id: input.parent_id.as_deref(),
-            },
-        )?;
+        let position = manual_order::bottom(&tx, Siblings::folders(input.parent_id.as_deref()))?;
         tx.execute(
             "INSERT INTO note_folders(id, parent_id, name, name_fold, revision, created_at, updated_at, position)
              VALUES (?1, ?2, ?3, ?4, 1, ?5, ?5, ?6)",
@@ -424,12 +377,7 @@ impl TaskStore {
             return Err(TaskError::NoteFolderUnchanged);
         }
         require_destination(&tx, &old, input.parent_id.as_deref())?;
-        let position = manual_order::bottom(
-            &tx,
-            Siblings::Folders {
-                parent_id: input.parent_id.as_deref(),
-            },
-        )?;
+        let position = manual_order::bottom(&tx, Siblings::folders(input.parent_id.as_deref()))?;
         tx.execute(
             "UPDATE note_folders SET position = ?1 WHERE id = ?2",
             params![position, old.id],
@@ -484,7 +432,7 @@ impl TaskStore {
             require_destination(&tx, &old, parent_id)?;
         }
         let after_id = input.after_id.as_deref();
-        if !manual_order::place(&tx, Siblings::Folders { parent_id }, &old.id, after_id)? {
+        if !manual_order::place(&tx, Siblings::folders(parent_id), &old.id, after_id)? {
             return Err(TaskError::NoteFolderUnchanged);
         }
         let placed = write_folder(&tx, &old, parent_id, &old.name)?;

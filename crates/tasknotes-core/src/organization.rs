@@ -7,25 +7,96 @@ use crate::audit::AuditAction;
 use crate::manual_order::{self, Siblings};
 use crate::style::Style;
 use crate::tasks::{COLUMNS, Task, TaskError, TaskStore, current_millis, read_task};
+use crate::tree::{Tree, WALK_LIMIT};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct List {
     pub id: String,
+    /// The List it sits inside, or None at the top level (ADR 0009).
+    #[serde(default)]
+    pub parent_id: Option<String>,
     pub name: String,
     pub revision: i64,
     pub created_at: i64,
     pub updated_at: i64,
     pub removed: bool,
+    /// Whether a List that is not in Removed sits inside it, so the sidebar
+    /// can expand it.
+    #[serde(default)]
+    pub has_children: bool,
     /// Its icon and colour; serialised as top-level `icon` and `color`.
     #[serde(flatten)]
     pub style: Style,
 }
 
+/// A new List at the top level.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateList {
     pub name: String,
+}
+
+/// A new Sub-List: an empty List inside another (ADR 0009).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateSubList {
+    pub name: String,
+    pub parent_id: String,
+}
+
+/// Moves a List, with the Lists inside it, under another List or to the top
+/// level, at the bottom there. Its Tasks stay its own.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MoveList {
+    pub id: String,
+    pub expected_revision: i64,
+    /// None is the top level.
+    #[serde(default)]
+    pub parent_id: Option<String>,
+}
+
+/// Puts a List under a parent, directly after a sibling there or first
+/// without one, in one step (ADR-0007, ADR 0009): what a sidebar drop does.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaceList {
+    pub id: String,
+    pub expected_revision: i64,
+    /// None is the top level.
+    #[serde(default)]
+    pub parent_id: Option<String>,
+    #[serde(default)]
+    pub after_id: Option<String>,
+}
+
+/// Which parent a placed List ends up under.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ListParent {
+    /// The parent it has when the write happens.
+    #[default]
+    Current,
+    /// The top level.
+    Top,
+    /// Inside this List.
+    List(String),
+}
+
+impl ListParent {
+    /// A parent named as an interface does: a List id, or None for the top.
+    pub fn named(parent_id: Option<String>) -> Self {
+        parent_id.map_or(Self::Top, Self::List)
+    }
+
+    fn resolve<'a>(&'a self, current: Option<&'a str>) -> Option<&'a str> {
+        match self {
+            Self::Current => current,
+            Self::Top => None,
+            Self::List(id) => Some(id),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -36,7 +107,8 @@ pub struct RenameList {
     pub name: String,
 }
 
-/// Puts a List directly after another, or first without one (ADR-0007).
+/// Puts a List directly after a sibling, or first without one, under the
+/// parent it has (ADR-0007).
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReorderList {
@@ -250,10 +322,40 @@ pub(crate) fn hydrate_tags(
     Ok(())
 }
 
-/// Whether any Task, in Removed or not, belongs to the List.
-pub(crate) fn list_holds_tasks(conn: &rusqlite::Connection, id: &str) -> Result<bool, TaskError> {
+/// Schema v21 (ADR 0009): a List may sit inside another. Every existing
+/// List stays at the top level, in the order it had, and keeps its Tasks.
+/// Forward-only and self-contained: it touches only `lists`.
+pub(crate) fn migrate_v21(migration: &rusqlite::Transaction) -> Result<(), TaskError> {
+    migration.execute_batch(
+        "ALTER TABLE lists ADD COLUMN parent_id TEXT
+           REFERENCES lists(id) ON DELETE RESTRICT
+           CHECK (parent_id IS NULL OR parent_id <> id);
+         DROP INDEX IF EXISTS lists_manual_order;
+         CREATE INDEX lists_manual_order ON lists(coalesce(parent_id, ''), position, id);
+         CREATE INDEX lists_parent ON lists(parent_id) WHERE parent_id IS NOT NULL;
+         PRAGMA user_version = 21;",
+    )?;
+    Ok(())
+}
+
+/// Whether anything sits in the List: a Task or a List, in Removed or not.
+/// Through an AI interface such a List needs approval to remove.
+pub(crate) fn list_holds_anything(
+    conn: &rusqlite::Connection,
+    id: &str,
+) -> Result<bool, TaskError> {
     Ok(conn.query_row(
-        "SELECT EXISTS(SELECT 1 FROM tasks WHERE list_id = ?1)",
+        "SELECT EXISTS(SELECT 1 FROM tasks WHERE list_id = ?1)
+             OR EXISTS(SELECT 1 FROM lists WHERE parent_id = ?1)",
+        params![id],
+        |row| row.get(0),
+    )?)
+}
+
+/// Whether the List is hidden: in Removed itself or inside a Removed List.
+pub(crate) fn list_hidden(conn: &rusqlite::Connection, id: &str) -> Result<bool, TaskError> {
+    Ok(conn.query_row(
+        concat!("SELECT ?1 IN (", hidden_lists!(), ")"),
         params![id],
         |row| row.get(0),
     )?)
@@ -262,7 +364,7 @@ pub(crate) fn list_holds_tasks(conn: &rusqlite::Connection, id: &str) -> Result<
 /// The List as stored, or `ListNotFound`.
 pub(crate) fn get_list(conn: &rusqlite::Connection, id: &str) -> Result<List, TaskError> {
     conn.query_row(
-        &format!("SELECT {LIST_COLUMNS} FROM lists WHERE id=?1"),
+        &format!("SELECT {LIST_COLUMNS} FROM lists l WHERE l.id=?1"),
         params![id],
         read_list,
     )
@@ -270,23 +372,59 @@ pub(crate) fn get_list(conn: &rusqlite::Connection, id: &str) -> Result<List, Ta
     .ok_or(TaskError::ListNotFound)
 }
 
-/// Verify ownership inside the same transaction as the Task mutation.
+/// Verify ownership inside the same transaction as the Task mutation: the
+/// List exists and neither it nor a List around it is in Removed.
 pub(crate) fn require_active_list(conn: &rusqlite::Connection, id: &str) -> Result<(), TaskError> {
     if Uuid::parse_str(id).is_err() {
         return Err(TaskError::ListNotFound);
     }
-    let removed: Option<Option<i64>> = conn
-        .query_row(
-            "SELECT removed_at FROM lists WHERE id=?1",
-            params![id],
-            |row| row.get(0),
-        )
-        .optional()?;
-    match removed {
-        None => Err(TaskError::ListNotFound),
-        Some(Some(_)) => Err(TaskError::ListRemoved),
-        Some(None) => Ok(()),
+    get_list(conn, id)?;
+    if list_hidden(conn, id)? {
+        return Err(TaskError::ListRemoved);
     }
+    Ok(())
+}
+
+/// The List as stored, provided nobody changed it since `expected_revision`
+/// and it is shown: not in Removed and not inside a Removed List.
+fn current_list(
+    conn: &rusqlite::Connection,
+    id: &str,
+    expected_revision: i64,
+) -> Result<List, TaskError> {
+    let list = get_list(conn, id)?;
+    if list.revision != expected_revision {
+        return Err(TaskError::RevisionConflict);
+    }
+    if list_hidden(conn, id)? {
+        return Err(TaskError::ListRemoved);
+    }
+    Ok(list)
+}
+
+/// Whether `list` may live under `parent_id`: the parent is shown, and the
+/// shared tree rule holds (no cycle, five levels at most).
+fn require_list_destination(
+    conn: &rusqlite::Connection,
+    list: &List,
+    parent_id: Option<&str>,
+) -> Result<(), TaskError> {
+    if let Some(parent) = parent_id {
+        require_active_list(conn, parent)?;
+        Tree::Lists.require_fits_under(conn, &list.id, parent)?;
+    }
+    Ok(())
+}
+
+/// Bumps the List's revision after a write to it, and reads it back.
+fn bump_list(conn: &rusqlite::Connection, old: &List) -> Result<List, TaskError> {
+    let now = current_millis()?;
+    conn.execute(
+        "UPDATE lists SET revision=revision+1,updated_at=max(updated_at+1,?1)
+         WHERE id=?2 AND revision=?3",
+        params![now, old.id, old.revision],
+    )?;
+    get_list(conn, &old.id)
 }
 
 fn list_name(value: &str) -> Result<&str, TaskError> {
@@ -297,22 +435,30 @@ fn list_name(value: &str) -> Result<&str, TaskError> {
     Ok(name)
 }
 
-/// What every read of a List selects, in `read_list`'s order.
-const LIST_COLUMNS: &str = "id,name,revision,created_at,updated_at,removed_at,icon,color";
-/// Where the first column a query selects after `LIST_COLUMNS` sits.
-const FIRST_EXTRA_LIST_COLUMN: usize = 8;
+/// What every read of a List selects, in `read_list`'s order, from `lists l`.
+const LIST_COLUMNS: &str = "l.id,l.name,l.revision,l.created_at,l.updated_at,l.removed_at,
+    l.icon,l.color,l.parent_id,
+    EXISTS(SELECT 1 FROM lists c WHERE c.parent_id = l.id AND c.removed_at IS NULL)";
 
 fn read_list(row: &rusqlite::Row<'_>) -> rusqlite::Result<List> {
     Ok(List {
         id: row.get(0)?,
+        parent_id: row.get(8)?,
         name: row.get(1)?,
         revision: row.get(2)?,
         created_at: row.get(3)?,
         updated_at: row.get(4)?,
         removed: row.get::<_, Option<i64>>(5)?.is_some(),
+        has_children: row.get(9)?,
         style: Style::read(row, 6)?,
     })
 }
+
+/// Where a List sorts in the tree as `list_lists` reads it: each level's
+/// position and id, from the top level down, so a List comes right after
+/// its parent and before the parent's next sibling. Fixed-width parts keep
+/// text order the same as (position, id) order on every level.
+const TREE_KEY: &str = "printf('%020d', position) || id";
 
 impl TaskStore {
     /// Edit only the named details; the caller's revision is still checked.
@@ -451,31 +597,33 @@ impl TaskStore {
     }
 
     pub fn create_list(&self, input: CreateList) -> Result<List, TaskError> {
-        let name = list_name(&input.name)?;
+        self.create_list_under(&input.name, None)
+    }
+
+    /// A new, empty List inside `parent_id`, at the bottom there. Refused when
+    /// the parent is hidden by Removed or already sits five levels deep.
+    pub fn create_sub_list(&self, input: CreateSubList) -> Result<List, TaskError> {
+        self.create_list_under(&input.name, Some(&input.parent_id))
+    }
+
+    fn create_list_under(&self, name: &str, parent_id: Option<&str>) -> Result<List, TaskError> {
+        let name = list_name(name)?;
         let mut conn = self.connect()?;
         let tx = self.begin_write(&mut conn)?;
-        if tx.query_row(
-            "SELECT EXISTS(SELECT 1 FROM lists WHERE name = ?1 COLLATE NOCASE AND removed_at IS NULL)",
-            params![name], |r| r.get::<_, bool>(0)
-        )? {
-            return Err(TaskError::ListNameConflict);
+        if let Some(parent) = parent_id {
+            require_active_list(&tx, parent)?;
+            Tree::Lists.require_room_under(&tx, parent)?;
         }
+        require_unique_list_name(&tx, name, None)?;
         let now = current_millis()?;
-        let position = manual_order::bottom(&tx, Siblings::Lists)?;
-        let list = List {
-            id: Uuid::new_v4().to_string(),
-            name: name.to_owned(),
-            revision: 1,
-            created_at: now,
-            updated_at: now,
-            removed: false,
-            style: Style::default(),
-        };
+        let position = manual_order::bottom(&tx, Siblings::lists(parent_id))?;
+        let id = Uuid::new_v4().to_string();
         tx.execute(
-            "INSERT INTO lists(id, name, revision, created_at, updated_at, removed_at, position)
-             VALUES (?1, ?2, 1, ?3, ?3, NULL, ?4)",
-            params![list.id, list.name, list.created_at, position],
+            "INSERT INTO lists(id, parent_id, name, revision, created_at, updated_at, removed_at, position)
+             VALUES (?1, ?2, ?3, 1, ?4, ?4, NULL, ?5)",
+            params![id, parent_id, name, now, position],
         )?;
+        let list = get_list(&tx, &id)?;
         self.audit_applied(&tx, AuditAction::ListCreate, &list.id, list.revision)?;
         tx.commit()?;
         Ok(list)
@@ -491,76 +639,125 @@ impl TaskStore {
         let name = list_name(&input.name)?;
         let mut conn = self.connect()?;
         let tx = self.begin_write(&mut conn)?;
-        let old = tx
-            .query_row(
-                &format!("SELECT {LIST_COLUMNS} FROM lists WHERE id=?1"),
-                params![input.id],
-                read_list,
-            )
-            .optional()?
-            .ok_or(TaskError::ListNotFound)?;
-        if old.revision != input.expected_revision {
-            return Err(TaskError::RevisionConflict);
-        }
-        if old.removed {
-            return Err(TaskError::ListRemoved);
-        }
+        let old = current_list(&tx, &input.id, input.expected_revision)?;
         if old.name == name {
             return Err(TaskError::ListUnchanged);
         }
-        if tx.query_row(
-            "SELECT EXISTS(SELECT 1 FROM lists WHERE name=?1 COLLATE NOCASE AND id != ?2 AND removed_at IS NULL)",
-            params![name, input.id], |r| r.get::<_, bool>(0),
-        )? { return Err(TaskError::ListNameConflict); }
-        let now = current_millis()?;
-        let updated = tx.query_row(
-            &format!(
-                "UPDATE lists SET name=?1,revision=revision+1,updated_at=max(updated_at+1,?2)
-             WHERE id=?3 AND revision=?4
-             RETURNING {LIST_COLUMNS}"
-            ),
-            params![name, now, input.id, input.expected_revision],
-            read_list,
+        require_unique_list_name(&tx, name, Some(&old.id))?;
+        tx.execute(
+            "UPDATE lists SET name=?1 WHERE id=?2",
+            params![name, old.id],
         )?;
+        let updated = bump_list(&tx, &old)?;
         self.audit_applied(&tx, AuditAction::ListRename, &updated.id, updated.revision)?;
         tx.commit()?;
         Ok(updated)
     }
 
+    /// Puts a List after a sibling, or first, among the Lists that share its
+    /// parent. Its parent does not change.
     pub fn reorder_list(&self, input: ReorderList) -> Result<List, TaskError> {
-        self.audited(AuditAction::ListReorder, input, |input| {
-            self.reorder_list_inner(input)
+        let ReorderList {
+            id,
+            expected_revision,
+            after_id,
+        } = input;
+        let mut action = AuditAction::ListReorder;
+        self.place_list_inner(
+            &id,
+            expected_revision,
+            &ListParent::Current,
+            after_id.as_deref(),
+            &mut action,
+        )
+        .map_err(|error| self.refused(action, &id, Some(expected_revision), error))
+    }
+
+    /// Puts a List, with the Lists inside it, exactly where the person dropped
+    /// it. Recorded as `list.move` when that is another parent than the List
+    /// has as the write finds it, else as `list.reorder`.
+    pub fn place_list(&self, input: PlaceList) -> Result<List, TaskError> {
+        let parent = ListParent::named(input.parent_id);
+        let mut action = AuditAction::ListReorder;
+        self.place_list_inner(
+            &input.id,
+            input.expected_revision,
+            &parent,
+            input.after_id.as_deref(),
+            &mut action,
+        )
+        .map_err(|error| self.refused(action, &input.id, Some(input.expected_revision), error))
+    }
+
+    /// Sets `action` from the List as the transaction reads it, before any
+    /// check can refuse the write.
+    fn place_list_inner(
+        &self,
+        id: &str,
+        expected_revision: i64,
+        parent: &ListParent,
+        after_id: Option<&str>,
+        action: &mut AuditAction,
+    ) -> Result<List, TaskError> {
+        let mut conn = self.connect()?;
+        let tx = self.begin_write(&mut conn)?;
+        let stored = get_list(&tx, id).ok();
+        if let Some(stored) = &stored
+            && parent.resolve(stored.parent_id.as_deref()) != stored.parent_id.as_deref()
+        {
+            *action = AuditAction::ListMove;
+        }
+        let old = current_list(&tx, id, expected_revision)?;
+        let parent_id = parent.resolve(old.parent_id.as_deref());
+        if parent_id != old.parent_id.as_deref() {
+            require_list_destination(&tx, &old, parent_id)?;
+        }
+        if !manual_order::place(&tx, Siblings::lists(parent_id), &old.id, after_id)? {
+            return Err(TaskError::ListUnchanged);
+        }
+        tx.execute(
+            "UPDATE lists SET parent_id=?1 WHERE id=?2",
+            params![parent_id, old.id],
+        )?;
+        let placed = bump_list(&tx, &old)?;
+        self.audit_applied(&tx, *action, &placed.id, placed.revision)?;
+        tx.commit()?;
+        Ok(placed)
+    }
+
+    /// Moves a List, with the Lists inside it, under another List or to the
+    /// top level, at the bottom there. Refused when it would land inside
+    /// itself or anything would sit deeper than five levels.
+    pub fn move_list(&self, input: MoveList) -> Result<List, TaskError> {
+        self.audited(AuditAction::ListMove, input, |input| {
+            self.move_list_inner(input)
         })
     }
 
-    fn reorder_list_inner(&self, input: ReorderList) -> Result<List, TaskError> {
+    fn move_list_inner(&self, input: MoveList) -> Result<List, TaskError> {
         let mut conn = self.connect()?;
         let tx = self.begin_write(&mut conn)?;
-        let old = get_list(&tx, &input.id)?;
-        if old.revision != input.expected_revision {
-            return Err(TaskError::RevisionConflict);
-        }
-        if old.removed {
-            return Err(TaskError::ListRemoved);
-        }
-        if !manual_order::place(&tx, Siblings::Lists, &old.id, input.after_id.as_deref())? {
+        let old = current_list(&tx, &input.id, input.expected_revision)?;
+        let parent_id = input.parent_id.as_deref();
+        if old.parent_id.as_deref() == parent_id {
             return Err(TaskError::ListUnchanged);
         }
-        let now = current_millis()?;
-        let updated = tx.query_row(
-            &format!(
-                "UPDATE lists SET revision=revision+1,updated_at=max(updated_at+1,?1)
-             WHERE id=?2 AND revision=?3
-             RETURNING {LIST_COLUMNS}"
-            ),
-            params![now, input.id, input.expected_revision],
-            read_list,
+        require_list_destination(&tx, &old, parent_id)?;
+        let position = manual_order::bottom(&tx, Siblings::lists(parent_id))?;
+        tx.execute(
+            "UPDATE lists SET parent_id=?1, position=?2 WHERE id=?3",
+            params![parent_id, position, old.id],
         )?;
-        self.audit_applied(&tx, AuditAction::ListReorder, &updated.id, updated.revision)?;
+        let moved = bump_list(&tx, &old)?;
+        self.audit_applied(&tx, AuditAction::ListMove, &moved.id, moved.revision)?;
         tx.commit()?;
-        Ok(updated)
+        Ok(moved)
     }
 
+    /// Removes or restores a List. The Lists and Tasks inside it are hidden
+    /// with it but keep their own disposition (ADR 0002), so restoring it
+    /// leaves anything Removed on its own in Removed. A List inside a Removed
+    /// List cannot be removed or restored on its own.
     pub fn set_list_removed(&self, input: SetListRemoved) -> Result<List, TaskError> {
         let action = if input.removed {
             AuditAction::ListRemove
@@ -582,9 +779,9 @@ impl TaskStore {
         let removing = input.removed;
         let changed = self.set_list_removed_in(&tx, input, action)?;
         // Owner decision B: through an AI interface, a List that holds any
-        // Task waits for the person's approval (`bulk`). Checked after the
-        // ordinary refusals; dropping `tx` rolls the change back.
-        if removing && self.needs_approval_to_empty() && list_holds_tasks(&tx, &changed.id)? {
+        // Task or List waits for the person's approval (`bulk`). Checked
+        // after the ordinary refusals; dropping `tx` rolls the change back.
+        if removing && self.needs_approval_to_empty() && list_holds_anything(&tx, &changed.id)? {
             return Err(TaskError::NeedsApproval);
         }
         tx.commit()?;
@@ -599,35 +796,29 @@ impl TaskStore {
         input: SetListRemoved,
         action: AuditAction,
     ) -> Result<List, TaskError> {
-        let old = tx
-            .query_row(
-                &format!("SELECT {LIST_COLUMNS} FROM lists WHERE id=?1"),
-                params![input.id],
-                read_list,
-            )
-            .optional()?
-            .ok_or(TaskError::ListNotFound)?;
+        let old = get_list(tx, &input.id)?;
         if old.revision != input.expected_revision {
             return Err(TaskError::RevisionConflict);
         }
         if old.removed == input.removed {
             return Err(TaskError::ListUnchanged);
         }
-        if !input.removed && tx.query_row(
-            "SELECT EXISTS(SELECT 1 FROM lists WHERE name=?1 COLLATE NOCASE AND id!=?2 AND removed_at IS NULL)",
-            params![old.name,old.id], |r| r.get::<_, bool>(0),
-        )? { return Err(TaskError::ListNameConflict); }
+        // Inside a Removed List this one is hidden with it; that List comes
+        // first, whether restoring or removing this one on its own.
+        if let Some(parent) = old.parent_id.as_deref()
+            && list_hidden(tx, parent)?
+        {
+            return Err(TaskError::ListRemoved);
+        }
+        if !input.removed {
+            require_unique_list_name(tx, &old.name, Some(&old.id))?;
+        }
         let now = current_millis()?;
-        let removed_at = input.removed.then_some(now);
-        let changed = tx.query_row(
-            &format!(
-                "UPDATE lists SET removed_at=?1,revision=revision+1,updated_at=max(updated_at+1,?2)
-             WHERE id=?3 AND revision=?4
-             RETURNING {LIST_COLUMNS}"
-            ),
-            params![removed_at, now, input.id, input.expected_revision],
-            read_list,
+        tx.execute(
+            "UPDATE lists SET removed_at=?1 WHERE id=?2",
+            params![input.removed.then_some(now), old.id],
         )?;
+        let changed = bump_list(tx, &old)?;
         self.audit_applied(tx, action, &changed.id, changed.revision)?;
         Ok(changed)
     }
@@ -639,6 +830,10 @@ impl TaskStore {
         self.interface() != crate::audit::Interface::Desktop
     }
 
+    /// One bounded page of the List tree, parents before the Lists inside
+    /// them and siblings in manual order, each naming its `parent_id`.
+    /// Without `include_removed`, a List in Removed is left out with every
+    /// List inside it.
     pub fn list_lists(
         &self,
         limit: u32,
@@ -648,55 +843,72 @@ impl TaskStore {
         if !(1..=100).contains(&limit) {
             return Err(TaskError::InvalidListPage);
         }
-        let (after_position, after_id) = match cursor {
-            None => (None, None),
+        let scope = if include_removed { "all" } else { "active" };
+        let after = match cursor {
+            None => None,
             Some(raw) => {
                 let bits: Vec<_> = raw.split('|').collect();
-                if bits.len() != 4
-                    || bits[0] != "v3"
-                    || bits[3] != if include_removed { "all" } else { "active" }
-                    || Uuid::parse_str(bits[2]).is_err()
+                if bits.len() != 3
+                    || bits[0] != "v4"
+                    || bits[2] != scope
+                    || bits[1].is_empty()
+                    || !bits[1].bytes().all(|b| b.is_ascii_hexdigit() || b == b'-')
                 {
                     return Err(TaskError::InvalidListCursor);
                 }
-                let position = bits[1]
-                    .parse::<i64>()
-                    .map_err(|_| TaskError::InvalidListCursor)?;
-                (Some(position), Some(bits[2].to_owned()))
+                Some(bits[1].to_owned())
             }
         };
         let conn = self.connect()?;
         let mut stmt = conn.prepare(&format!(
-            "SELECT {LIST_COLUMNS},position FROM lists
-             WHERE (?1 OR removed_at IS NULL)
-               AND (?2 IS NULL OR (position, id) > (?2, ?3))
-             ORDER BY position,id LIMIT ?4"
+            "WITH RECURSIVE tree(id, key, level) AS (
+                SELECT id, {TREE_KEY}, 1 FROM lists
+                 WHERE parent_id IS NULL AND (?1 OR removed_at IS NULL)
+                UNION ALL
+                SELECT c.id, tree.key || printf('%020d', c.position) || c.id, tree.level + 1
+                  FROM lists c JOIN tree ON c.parent_id = tree.id
+                 WHERE (?1 OR c.removed_at IS NULL) AND tree.level < ?4
+             )
+             SELECT {LIST_COLUMNS}, tree.key FROM tree JOIN lists l ON l.id = tree.id
+             WHERE ?2 IS NULL OR tree.key > ?2
+             ORDER BY tree.key LIMIT ?3"
         ))?;
         let mut rows = stmt.query(params![
             include_removed,
-            after_position,
-            after_id,
-            i64::from(limit) + 1
+            after,
+            i64::from(limit) + 1,
+            WALK_LIMIT
         ])?;
         let mut items = Vec::new();
-        let mut positions = Vec::new();
+        let mut keys = Vec::new();
         while let Some(row) = rows.next()? {
             items.push(read_list(row)?);
-            positions.push(row.get::<_, i64>(FIRST_EXTRA_LIST_COLUMN)?);
+            keys.push(row.get::<_, String>(10)?);
         }
         let next_cursor = if items.len() > limit as usize {
             items.pop();
-            items.last().map(|l| {
-                format!(
-                    "v3|{}|{}|{}",
-                    positions[items.len() - 1],
-                    l.id,
-                    if include_removed { "all" } else { "active" },
-                )
-            })
+            Some(format!("v4|{}|{scope}", keys[items.len() - 1]))
         } else {
             None
         };
         Ok(ListPage { items, next_cursor })
     }
+}
+
+/// List names stay unique, ignoring case, among every List not in Removed,
+/// wherever it sits in the tree: the same rule Lists had before they nested.
+fn require_unique_list_name(
+    conn: &rusqlite::Connection,
+    name: &str,
+    except: Option<&str>,
+) -> Result<(), TaskError> {
+    if conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM lists WHERE name = ?1 COLLATE NOCASE
+           AND id IS NOT coalesce(?2, '') AND removed_at IS NULL)",
+        params![name, except],
+        |r| r.get::<_, bool>(0),
+    )? {
+        return Err(TaskError::ListNameConflict);
+    }
+    Ok(())
 }

@@ -81,6 +81,7 @@ actions! {
     ListCreate => "list.create",
     ListRename => "list.rename",
     ListReorder => "list.reorder",
+    ListMove => "list.move",
     ListStyle => "list.style",
     ListRemove => "list.remove",
     ListRestore => "list.restore",
@@ -116,7 +117,8 @@ impl AuditAction {
         Some(match self {
             TaskCreate | TaskUpdate | TaskChange | TaskProgress | TaskDetails | TaskMove
             | TaskRemove | TaskRestore => "tasks",
-            ListCreate | ListRename | ListReorder | ListStyle | ListRemove | ListRestore => "lists",
+            ListCreate | ListRename | ListReorder | ListMove | ListStyle | ListRemove
+            | ListRestore => "lists",
             NoteCreate | NoteUpdate | NoteMove | NotePin | NoteRemove | NoteRestore
             | NotePrivacy => "notes",
             FolderCreate | FolderRename | FolderMove | FolderReorder | FolderStyle
@@ -325,6 +327,7 @@ revisioned!(
     crate::organization::MoveTask,
     crate::organization::RenameList,
     crate::organization::ReorderList,
+    crate::organization::MoveList,
     crate::organization::SetListRemoved,
     crate::removed::SetRemoved,
     crate::notes::UpdateNote,

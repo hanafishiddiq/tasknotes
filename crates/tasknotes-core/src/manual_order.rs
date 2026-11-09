@@ -1,20 +1,19 @@
 //! Manual order of Lists and Note Folders (ADR-0007): where one sits among
-//! its siblings, the same rule for both. Siblings keep the order of their
+//! its siblings, the same rule for both trees (ADR 0009). Siblings keep the order of their
 //! `position`, the id settling ties; a List or Folder in Removed keeps its
 //! place, so restoring it brings it back there.
 
 use rusqlite::{Connection, Transaction, params};
 
 use crate::tasks::TaskError;
+use crate::tree::Tree;
 
-/// The rows that are ordered against each other.
+/// The rows that are ordered against each other: the children of one List
+/// or folder, or the top level of either tree.
 #[derive(Clone, Copy)]
-pub(crate) enum Siblings<'a> {
-    Lists,
-    /// The children of one folder, or the top level.
-    Folders {
-        parent_id: Option<&'a str>,
-    },
+pub(crate) struct Siblings<'a> {
+    tree: Tree,
+    parent_id: Option<&'a str>,
 }
 
 /// One sibling as stored.
@@ -25,38 +24,41 @@ struct Sibling {
     active: bool,
 }
 
-impl Siblings<'_> {
-    const fn table(self) -> &'static str {
-        match self {
-            Self::Lists => "lists",
-            Self::Folders { .. } => "note_folders",
+impl<'a> Siblings<'a> {
+    pub(crate) const fn lists(parent_id: Option<&'a str>) -> Self {
+        Self {
+            tree: Tree::Lists,
+            parent_id,
         }
+    }
+
+    pub(crate) const fn folders(parent_id: Option<&'a str>) -> Self {
+        Self {
+            tree: Tree::NoteFolders,
+            parent_id,
+        }
+    }
+
+    const fn table(self) -> &'static str {
+        self.tree.table()
     }
 
     /// Every sibling, in order, Removed ones in their places.
     fn rows(self, conn: &Connection) -> Result<Vec<Sibling>, TaskError> {
-        let read = |row: &rusqlite::Row<'_>| {
-            Ok(Sibling {
-                id: row.get(0)?,
-                position: row.get(1)?,
-                active: row.get(2)?,
-            })
-        };
-        let rows = match self {
-            Self::Lists => conn
-                .prepare(
-                    "SELECT id, position, removed_at IS NULL FROM lists ORDER BY position, id",
-                )?
-                .query_map([], read)?
-                .collect::<rusqlite::Result<_>>()?,
-            Self::Folders { parent_id } => conn
-                .prepare(
-                    "SELECT id, position, removed_at IS NULL FROM note_folders
-                     WHERE coalesce(parent_id, '') = coalesce(?1, '') ORDER BY position, id",
-                )?
-                .query_map(params![parent_id], read)?
-                .collect::<rusqlite::Result<_>>()?,
-        };
+        let rows = conn
+            .prepare(&format!(
+                "SELECT id, position, removed_at IS NULL FROM {}
+                 WHERE coalesce(parent_id, '') = coalesce(?1, '') ORDER BY position, id",
+                self.table()
+            ))?
+            .query_map(params![self.parent_id], |row| {
+                Ok(Sibling {
+                    id: row.get(0)?,
+                    position: row.get(1)?,
+                    active: row.get(2)?,
+                })
+            })?
+            .collect::<rusqlite::Result<_>>()?;
         Ok(rows)
     }
 }
