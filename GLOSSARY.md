@@ -8,10 +8,14 @@ Language shared by the task manager, notes editor, desktop UI, and AI integratio
 A unit of work with a title, optional description, work status, priority, and progress.
 
 **List**:
-An organizational collection of tasks. A task can be kept in the default Inbox when no other list is chosen.
+An organizational collection of tasks. A task can be kept in the default Inbox when no other list is chosen. A List can contain other Lists, at most five levels deep; a List shows only its own Tasks, never those of the Lists inside it.
+
+**Sub-List**:
+A List placed inside another List, used only to group Lists; it shares nothing with the List around it.
+_Avoid_: Child task, subtask.
 
 **Inbox**:
-The default list for tasks that have not been organized into another list.
+The default list for tasks that have not been organized into another list. Inbox always stays at the top level and never contains other Lists.
 
 **Ready**:
 A Task that has not started in its present work cycle.
@@ -21,7 +25,11 @@ _Avoid_: Paused, Pending.
 A Task that has been started but is not yet Completed, including when temporarily inactive.
 
 **Completed**:
-A task marked finished; its progress is 100%.
+A task marked finished; its progress is 100%, unless it is Won't Do.
+
+**Won't Do**:
+A Completed Task that was set aside rather than finished; it keeps the progress it had and can be reopened like any Completed Task.
+_Avoid_: Cancelled, Abandoned, a fourth status.
 
 **Removed**:
 A reversible, non-destructive disposition of a task, note, list or Note Folder, separate from a task's work status. Removing a list or folder hides what is inside it without changing their own disposition; Removed items are never purged automatically.
@@ -29,6 +37,14 @@ _Avoid_: Deleted, Permanently Deleted.
 
 **Priority**:
 One of five urgency/importance levels: Very Low, Low, Medium, High, Very High.
+
+**Difficulty**:
+An optional estimate of how hard a Task is: Very Easy, Easy, Medium, Hard or Very Hard; a Task without one has No Difficulty.
+_Avoid_: Effort, complexity.
+
+**Custom Order**:
+The order a person gives the Tasks of one List by dragging them within a work-status group; each List keeps its own, and it never moves a Task to another group.
+_Avoid_: Manual sort, position.
 
 **Progress**:
 A task's 0–100% completion indicator, accompanied by progress notes and a next step.
@@ -41,6 +57,13 @@ A note-level privacy control that prevents access to that note via AI-facing int
 
 **Progress Entry**:
 An immutable dated record of a Task's progress update or work-status transition.
+
+**Pomodoro Session**:
+One timed stretch of focus, optionally for one Task, followed by a break the person starts. Only a session that reaches its end counts toward focus time; a stopped one is kept as Stopped.
+
+**Overtime**:
+Focus time a person keeps counting after a Pomodoro Session's planned end by choosing to keep focusing; it is added to that session.
+_Avoid_: Extension, snooze.
 
 **Next Step**:
 The next intended action recorded against a Task to help a person or AI resume work.
