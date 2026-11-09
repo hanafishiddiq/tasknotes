@@ -101,7 +101,10 @@ export default function NoteFolderTree({ folders, currentId, disabled, onOpen, o
       if (drop.edge === "into") void moveInto(folder, target);
       // Just below an open folder's row is its first subfolder's place.
       else if (drop.edge === "after" && target.hasChildren && folders.isExpanded(target.id)) void placeFolder(folder, target.id, null);
-      else void placeFolder(folder, target.parentId, anchorFor(siblingIds(target.parentId), dragged, target.id, drop.edge));
+      else {
+        const anchor = anchorFor(siblingIds(target.parentId), dragged, target.id, drop.edge);
+        if (anchor !== undefined) void placeFolder(folder, target.parentId, anchor);
+      }
     },
   });
 

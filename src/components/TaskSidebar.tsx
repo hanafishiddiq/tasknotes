@@ -99,7 +99,8 @@ export default function TaskSidebar({
       const list = activeLists.find((item) => item.id === dragged);
       if (!list || drop.edge === "into") return;
       const others = listIds.filter((id) => id !== dragged);
-      void placeList(list, drop.id === null ? others[others.length - 1] ?? null : anchorFor(listIds, dragged, drop.id, drop.edge));
+      const anchor = drop.id === null ? others[others.length - 1] ?? null : anchorFor(listIds, dragged, drop.id, drop.edge);
+      if (anchor !== undefined) void placeList(list, anchor);
     },
   });
 

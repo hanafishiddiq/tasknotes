@@ -149,11 +149,13 @@ export function useRowDrag(options: RowDragOptions) {
 /**
  * The sibling a row should sit directly after to land before or after
  * `targetId`, or null for first. The core takes this anchor, so pages the
- * sidebar has not loaded do not matter.
+ * sidebar has not loaded do not matter. Undefined when `targetId` is not
+ * among the loaded siblings: the view is out of step, so nothing moves.
  */
-export function anchorFor(siblings: string[], dragged: string, targetId: string, edge: "before" | "after"): string | null {
+export function anchorFor(siblings: string[], dragged: string, targetId: string, edge: "before" | "after"): string | null | undefined {
   const others = siblings.filter((id) => id !== dragged);
   const at = others.indexOf(targetId);
+  if (at < 0) return undefined;
   if (edge === "after") return targetId;
   return at > 0 ? others[at - 1] : null;
 }
