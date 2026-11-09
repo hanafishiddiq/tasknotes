@@ -284,7 +284,7 @@ Quiet until needed; only the primary button carries color.
 A Notes list cell.
 - **Structure:** 18px status ring, then a bold single-line title over a gray second line ("60%" in primary text, then the Next Step or description preview), metadata right-aligned at 12px capped at 45% width.
 - **Status ring:** Ready is a tertiary-gray outline; In Progress is an accent outline with a 6px accent dot; Completed is a filled accent disc with an ink check. Won't Do (a Completed Task set aside, ADR 0008) keeps the tertiary-gray outline with a cross inside, never the accent disc or the check.
-- **Won't Do:** in the Completed group, its title is struck through in the completed secondary gray and the metadata starts with a plain-text "Won't do" label (no fill, no color of its own). The status capsule offers "Won't do" after Completed; it is disabled on a finished Task, and Ready stays available to a Won't Do Task at 0%. The progress history names the entry "Won't do".
+- **Won't Do:** in the Completed group, its title is struck through in the completed secondary gray and the metadata starts with a plain-text "Won't do · 40%" label carrying the progress it kept (no fill, no color of its own). The status capsule offers "Won't do" after Completed; it is disabled on a finished Task with the reason "Reopen it first: a finished Task can't be set aside" (title and aria-description), and Ready stays available only to a Won't Do Task that was set aside before it started. The progress history names the entry "Won't do".
 - **Separators:** 1px hairline inset from 38px to 10px from the right, hidden next to a hovered or expanded row.
 - **Selected:** the row fills with the selection color and every child, including the ring, switches to the selection text color.
 
