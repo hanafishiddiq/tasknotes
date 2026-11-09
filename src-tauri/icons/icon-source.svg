@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024"><defs>
+    <linearGradient id="base" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#303033"/>
+      <stop offset="1" stop-color="#17171a"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffe24a"/>
+      <stop offset="1" stop-color="#f7c600"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.10"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.015"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.22"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0.03"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.06"/>
+    </linearGradient>
+    
+    
+  </defs>
+<rect width="1024" height="1024" fill="url(#base)"/>
+<path d="M0 0 H1024 V410 C820 503 204 503 0 410 Z" fill="url(#sheen)"/>
+<g transform="translate(512 512) scale(1.2427184466019416) translate(-512 -512)">
+<circle cx="512" cy="512" r="231" fill="none" stroke="url(#mark)" stroke-width="66"/>
+<path d="M405 520 L479 594 L627 429" fill="none" stroke="url(#mark)" stroke-width="66" stroke-linecap="round" stroke-linejoin="round"/>
+</g></svg>
