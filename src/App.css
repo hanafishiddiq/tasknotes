@@ -559,6 +559,90 @@ button.folder-disclosure:hover:not(:disabled) {
   min-height: 16px;
 }
 
+/* Pomodoro: a compact block at the foot of the sidebar, above Settings. Flat,
+   no lift; the time is tabular and the one primary answer is yellow. */
+.pomodoro {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 8px;
+  padding: 8px 8px 10px;
+  border-top: 1px solid var(--sep);
+  border-bottom: 1px solid var(--sep);
+  font-size: 13px;
+  color: var(--text);
+}
+.pomodoro-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 24px;
+}
+.pomodoro-head svg {
+  flex: none;
+  color: var(--accent);
+}
+.pomodoro-name {
+  font-weight: 700;
+}
+.pomodoro-time {
+  margin-left: auto;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.pomodoro[data-phase="overtime"] .pomodoro-time {
+  color: var(--accent-text);
+}
+.pomodoro-status {
+  margin: 0;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-2);
+}
+.pomodoro-start {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pomodoro-start select {
+  min-width: 0;
+  height: 26px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--field);
+}
+.pomodoro-start select:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.pomodoro-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.pomodoro-tip {
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--sep);
+}
+.pomodoro-tip p {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.pomodoro-error {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--red);
+}
+
 /* Main column */
 .main-view {
   position: relative;
@@ -976,6 +1060,50 @@ button.folder-disclosure:hover:not(:disabled) {
   font-variant-numeric: tabular-nums;
   text-align: right;
   color: var(--text-2);
+}
+.settings-pomodoro {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+}
+.settings-pomodoro-row {
+  display: grid;
+  grid-template-columns: 140px 72px auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: var(--text);
+}
+.settings-pomodoro-row:hover {
+  background: var(--hover);
+}
+.settings-pomodoro-row input {
+  height: 26px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  background: var(--field);
+}
+.settings-pomodoro-row input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.settings-pomodoro-unit {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.settings-pomodoro > .button {
+  margin: 6px 0 0 10px;
+}
+.settings-pomodoro .settings-hint--error {
+  color: var(--red);
 }
 .settings-shortcuts {
   margin: 0;

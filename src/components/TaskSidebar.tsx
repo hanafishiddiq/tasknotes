@@ -32,6 +32,8 @@ interface TaskSidebarProps {
    * App.css positions it against the shell, so it does not scroll with the sidebar.
    */
   resizer?: ReactNode;
+  /** The Pomodoro control, at the foot above Settings. */
+  pomodoro?: ReactNode;
   lists: TaskList[];
   listError: string | null;
   /** Tasks on the current page, or null when the count is not known. */
@@ -54,7 +56,7 @@ interface TaskSidebarProps {
 }
 
 export default function TaskSidebar({
-  view, notesActive, removedActive, onOpenRemoved, pendingApprovals, approvalsActive, onOpenApprovals, settingsActive, onOpenSettings, allNotesCurrent, noteFolders, resizer, lists, listError, shownCount, hasMoreTasks, hasMoreLists, busy,
+  view, notesActive, removedActive, onOpenRemoved, pendingApprovals, approvalsActive, onOpenApprovals, settingsActive, onOpenSettings, allNotesCurrent, noteFolders, resizer, pomodoro, lists, listError, shownCount, hasMoreTasks, hasMoreLists, busy,
   theme, onToggleTheme, onNavigate, onOpenNotes, onCreateList, onRenameList, onReorderList, onStyleList, onRemoveList,
   onLoadMoreLists,
 }: TaskSidebarProps) {
@@ -295,6 +297,7 @@ export default function TaskSidebar({
       </nav>
 
       <div className="sidebar-spacer" />
+      {pomodoro}
       <button type="button" className="folder folder--quiet" disabled={busy}
         aria-label="Settings" aria-current={settingsActive ? "page" : undefined} onClick={onOpenSettings}>
         <Settings size={16} aria-hidden="true" /><span className="folder-name">Settings</span>
