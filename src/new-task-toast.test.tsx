@@ -250,6 +250,9 @@ describe("the new Task toast in the Task view", () => {
     expect(within(row).getByRole("region", { name: "Task details" })).toBeInTheDocument();
     expect(screen.getByRole("status", { name: "Added Task" })).toHaveTextContent("Showing the Task you just added");
     expect(screen.queryByRole("article", { name: "Alpha" })).toBeNull();
+    // One banner: the Task is no longer hidden, so the filter notice goes.
+    expect(screen.queryByRole("status", { name: "Task hidden by filters" })).toBeNull();
+    expect(document.querySelectorAll(".notice-banner")).toHaveLength(1);
   });
 });
 

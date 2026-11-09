@@ -310,6 +310,9 @@ export default function App() {
     }
     setPendingLinkedTask(null);
     setShownAlone(reason);
+    // Its banner is the only one: applyFilters clears the filter notice only when a
+    // filter changes, and this view must never show both.
+    setCreatedHidden(false);
     navigate({ kind: "all" });
     setSearchDraft("");
     setTagDraft("");
