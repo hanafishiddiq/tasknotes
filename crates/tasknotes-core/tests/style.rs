@@ -316,6 +316,70 @@ fn a_note_folder_takes_an_icon_and_a_colour_with_the_same_rules() {
 }
 
 #[test]
+fn restoring_a_removed_list_or_note_folder_keeps_its_style() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("t.db"));
+    let made = list(&store, "Synthetic list");
+    let styled = store
+        .set_list_style(both(&made.id, made.revision, Some("star"), Some("teal")))
+        .unwrap();
+    let removed = store
+        .set_list_removed(SetListRemoved {
+            id: made.id.clone(),
+            expected_revision: styled.revision,
+            removed: true,
+        })
+        .unwrap();
+    assert_eq!(
+        (removed.icon.as_deref(), removed.color.as_deref()),
+        (Some("star"), Some("teal"))
+    );
+    let restored = store
+        .set_list_removed(SetListRemoved {
+            id: made.id.clone(),
+            expected_revision: removed.revision,
+            removed: false,
+        })
+        .unwrap();
+    assert!(!restored.removed);
+    assert_eq!(
+        (restored.icon.as_deref(), restored.color.as_deref()),
+        (Some("star"), Some("teal"))
+    );
+    assert_eq!(current_list(&store, &made.id), restored);
+
+    let made = folder(&store, "Synthetic folder");
+    let styled = store
+        .set_note_folder_style(both(
+            &made.id,
+            made.revision,
+            Some("chef-hat"),
+            Some("pink"),
+        ))
+        .unwrap();
+    let removed = store
+        .set_note_folder_removed(SetRemoved {
+            id: made.id.clone(),
+            expected_revision: styled.revision,
+            removed: true,
+        })
+        .unwrap();
+    let restored = store
+        .set_note_folder_removed(SetRemoved {
+            id: made.id.clone(),
+            expected_revision: removed.revision,
+            removed: false,
+        })
+        .unwrap();
+    assert!(!restored.removed);
+    assert_eq!(
+        (restored.icon.as_deref(), restored.color.as_deref()),
+        (Some("chef-hat"), Some("pink"))
+    );
+    assert_eq!(store.get_note_folder(&made.id).unwrap().unwrap(), restored);
+}
+
+#[test]
 fn emoji_names_stay_as_typed_and_a_rename_keeps_the_look() {
     let dir = tempfile::tempdir().unwrap();
     let store = store_at(&dir.path().join("t.db"));
@@ -384,6 +448,14 @@ fn upgrading_from_v17_gives_everything_the_default_look_and_changes_nothing_else
     let store = store_at(&db);
     let a = list(&store, "Synthetic list");
     let f = folder(&store, "Synthetic folder");
+    // Styled, then rolled back to v17, which has nowhere to keep a Style.
+    store
+        .set_list_style(both(&a.id, a.revision, Some("star"), Some("red")))
+        .unwrap();
+    store
+        .set_note_folder_style(both(&f.id, f.revision, Some("book"), Some("blue")))
+        .unwrap();
+    list(&store, "Synthetic plain list");
     drop(store);
     back_to_v17(&db);
     let (lists_before, folders_before) = (stamps(&db, "lists"), stamps(&db, "note_folders"));
@@ -400,6 +472,19 @@ fn upgrading_from_v17_gives_everything_the_default_look_and_changes_nothing_else
         .pragma_query_value(None, "user_version", |row| row.get(0))
         .unwrap();
     assert_eq!(version, SCHEMA_VERSION);
+    // Every older row, styled before the rollback or never, is NULL in both columns.
+    let conn = Connection::open(&db).unwrap();
+    for table in ["lists", "note_folders"] {
+        let (rows, styled): (i64, i64) = conn
+            .query_row(
+                &format!("SELECT count(*), count(icon) + count(color) FROM {table}"),
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert!(rows > 0, "{table}");
+        assert_eq!(styled, 0, "{table}");
+    }
     assert_eq!(stamps(&db, "lists"), lists_before);
     assert_eq!(stamps(&db, "note_folders"), folders_before);
 }

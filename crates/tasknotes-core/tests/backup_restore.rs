@@ -979,7 +979,16 @@ fn a_backup_from_an_older_schema_is_upgraded_on_restore() {
         let store = fx.desktop();
         task(&store, "Synthetic task from the older schema");
         for name in ["Synthetic older List", "Synthetic newer List"] {
-            store.create_list(CreateList { name: name.into() }).unwrap();
+            let made = store.create_list(CreateList { name: name.into() }).unwrap();
+            // Styled now, but the older schema below has no Style columns.
+            store
+                .set_list_style(tasknotes_core::style::SetStyle {
+                    id: made.id,
+                    expected_revision: made.revision,
+                    icon: Some(Some("star".into())),
+                    color: Some(Some("red".into())),
+                })
+                .unwrap();
             std::thread::sleep(std::time::Duration::from_millis(3));
         }
         let backup = store.create_backup().unwrap().backup;
@@ -1002,14 +1011,13 @@ fn a_backup_from_an_older_schema_is_upgraded_on_restore() {
         store.restore_backup(&backup.id).unwrap();
         assert_eq!(titles(&store), ["Synthetic task from the older schema"]);
         // Lists come back in the order that schema showed them: newest first.
-        let lists: Vec<String> = store
-            .list_lists(10, None, false)
-            .unwrap()
-            .items
-            .into_iter()
-            .map(|list| list.name)
-            .collect();
+        let restored = store.list_lists(10, None, false).unwrap().items;
+        let lists: Vec<&str> = restored.iter().map(|list| list.name.as_str()).collect();
         assert_eq!(lists, ["Synthetic newer List", "Synthetic older List"]);
+        // A schema before v19 held no Style: every List comes back with the default look.
+        for list in &restored {
+            assert_eq!((&list.icon, &list.color), (&None, &None), "{}", list.name);
+        }
         task(&store, "Synthetic task after the upgrade");
     }
 }
