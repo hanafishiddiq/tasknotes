@@ -6,8 +6,8 @@ use serde_json::Value;
 use tasknotes_cli::contract::{self, CliError};
 use tasknotes_core::tasks::{
     ChangeTask, CreateList, CreateTask, MoveTask, PatchTask, PatchTaskDetails, Priority,
-    RecordProgress, RenameList, SetListRemoved, SortMode, TaskError, TaskQuery, TaskScope,
-    TaskView, WorkStatus,
+    RecordProgress, RenameList, ReorderList, SetListRemoved, SortMode, TaskError, TaskQuery,
+    TaskScope, TaskView, WorkStatus,
 };
 
 use crate::tools::*;
@@ -105,7 +105,7 @@ pub fn tools() -> Vec<ToolDef> {
         tool(
             "list_list",
             Kind::Read,
-            "List the Lists, newest first.",
+            "List the Lists, in the person's manual order.",
             |c, a: ListPage| {
                 let page =
                     c.store
@@ -135,6 +135,19 @@ pub fn tools() -> Vec<ToolDef> {
                     id: a.id,
                     expected_revision: revision(a.revision)?,
                     name: a.name,
+                })?))
+            },
+        ),
+        tool(
+            "list_reorder",
+            Kind::Write,
+            "Put a List directly after another List in the person's manual order, or first.",
+            |c, a: Reorder| {
+                let after_id = a.after()?;
+                item(contract::list(&c.store.reorder_list(ReorderList {
+                    expected_revision: revision(a.revision)?,
+                    id: a.id,
+                    after_id,
                 })?))
             },
         ),

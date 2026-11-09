@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::audit::AuditAction;
+use crate::manual_order::{self, Siblings};
 use crate::removed::SetRemoved;
 use crate::tasks::{TaskError, TaskStore, current_millis};
 
@@ -53,6 +54,63 @@ pub struct MoveNoteFolder {
     pub expected_revision: i64,
     /// None moves the folder to the top level.
     pub parent_id: Option<String>,
+}
+
+/// Puts a folder under a parent, directly after a sibling there or first
+/// without one, in one step (ADR-0007).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaceNoteFolder {
+    pub id: String,
+    pub expected_revision: i64,
+    /// None is the top level.
+    #[serde(default)]
+    pub parent_id: Option<String>,
+    #[serde(default)]
+    pub after_id: Option<String>,
+}
+
+/// Puts a folder directly after a sibling, or first, under the parent an
+/// interface names, or under the one it has when the write happens if it
+/// names none. The one entry point for the CLI and MCP (ADR-0007).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReorderNoteFolder {
+    pub id: String,
+    pub expected_revision: i64,
+    #[serde(default)]
+    pub after_id: Option<String>,
+    #[serde(default)]
+    pub parent: FolderParent,
+}
+
+/// Which parent a placed folder ends up under.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FolderParent {
+    /// The parent it has when the write happens.
+    #[default]
+    Current,
+    /// The top level.
+    Top,
+    /// Under this folder.
+    Folder(String),
+}
+
+impl FolderParent {
+    /// A parent named as an interface does: a folder id, or None for the top.
+    pub fn named(parent_id: Option<String>) -> Self {
+        parent_id.map_or(Self::Top, Self::Folder)
+    }
+
+    /// The parent id this resolves to for a folder now under `current`.
+    fn resolve<'a>(&'a self, current: Option<&'a str>) -> Option<&'a str> {
+        match self {
+            Self::Current => current,
+            Self::Top => None,
+            Self::Folder(id) => Some(id),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -218,6 +276,27 @@ fn current_folder(
     Ok(folder)
 }
 
+/// Whether `folder` may live under `parent_id`: the parent is shown, the
+/// folder would not become its own ancestor or sit below level 5, and no
+/// active sibling there has its name.
+fn require_destination(
+    conn: &Connection,
+    folder: &NoteFolder,
+    parent_id: Option<&str>,
+) -> Result<(), TaskError> {
+    if let Some(parent) = parent_id {
+        require_folder(conn, parent)?;
+        let path = ancestors(conn, parent)?;
+        if path.contains(&folder.id) {
+            return Err(TaskError::NoteFolderCycle);
+        }
+        if path.len() as i64 + subtree_height(conn, &folder.id)? > MAX_FOLDER_DEPTH {
+            return Err(TaskError::NoteFolderTooDeep);
+        }
+    }
+    require_unique_name(conn, parent_id, &name_fold(&folder.name), Some(&folder.id))
+}
+
 fn write_folder(
     conn: &Connection,
     old: &NoteFolder,
@@ -234,13 +313,16 @@ fn write_folder(
     get_folder(conn, &old.id)?.ok_or(TaskError::NoteFolderNotFound)
 }
 
-fn parse_cursor(value: &str, parent_key: &str) -> Result<(String, String), TaskError> {
+fn parse_cursor(value: &str, parent_key: &str) -> Result<(i64, String), TaskError> {
     let mut fields = value.splitn(4, '|');
     match (fields.next(), fields.next(), fields.next(), fields.next()) {
-        (Some("f1"), Some(parent), Some(id), Some(fold))
+        (Some("f2"), Some(parent), Some(position), Some(id))
             if parent == parent_key && Uuid::parse_str(id).is_ok() =>
         {
-            Ok((fold.to_owned(), id.to_owned()))
+            let position = position
+                .parse()
+                .map_err(|_| TaskError::InvalidNoteFolderCursor)?;
+            Ok((position, id.to_owned()))
         }
         _ => Err(TaskError::InvalidNoteFolderCursor),
     }
@@ -261,10 +343,16 @@ impl TaskStore {
         require_unique_name(&tx, input.parent_id.as_deref(), &fold, None)?;
         let now = current_millis()?;
         let id = Uuid::new_v4().to_string();
+        let position = manual_order::bottom(
+            &tx,
+            Siblings::Folders {
+                parent_id: input.parent_id.as_deref(),
+            },
+        )?;
         tx.execute(
-            "INSERT INTO note_folders(id, parent_id, name, name_fold, revision, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, 1, ?5, ?5)",
-            params![id, input.parent_id, name, fold, now],
+            "INSERT INTO note_folders(id, parent_id, name, name_fold, revision, created_at, updated_at, position)
+             VALUES (?1, ?2, ?3, ?4, 1, ?5, ?5, ?6)",
+            params![id, input.parent_id, name, fold, now, position],
         )?;
         let created = get_folder(&tx, &id)?.ok_or(TaskError::NoteFolderNotFound)?;
         self.audit_applied(
@@ -328,21 +416,16 @@ impl TaskStore {
         if old.parent_id == input.parent_id {
             return Err(TaskError::NoteFolderUnchanged);
         }
-        if let Some(parent) = input.parent_id.as_deref() {
-            require_folder(&tx, parent)?;
-            let path = ancestors(&tx, parent)?;
-            if path.contains(&old.id) {
-                return Err(TaskError::NoteFolderCycle);
-            }
-            if path.len() as i64 + subtree_height(&tx, &old.id)? > MAX_FOLDER_DEPTH {
-                return Err(TaskError::NoteFolderTooDeep);
-            }
-        }
-        require_unique_name(
+        require_destination(&tx, &old, input.parent_id.as_deref())?;
+        let position = manual_order::bottom(
             &tx,
-            input.parent_id.as_deref(),
-            &name_fold(&old.name),
-            Some(&old.id),
+            Siblings::Folders {
+                parent_id: input.parent_id.as_deref(),
+            },
+        )?;
+        tx.execute(
+            "UPDATE note_folders SET position = ?1 WHERE id = ?2",
+            params![position, old.id],
         )?;
         let moved = write_folder(&tx, &old, input.parent_id.as_deref(), &old.name)?;
         self.audit_applied(&tx, AuditAction::FolderMove, &moved.id, moved.revision)?;
@@ -350,8 +433,61 @@ impl TaskStore {
         Ok(moved)
     }
 
+    /// Puts a folder, with its subfolders and Notes, exactly where the person
+    /// dropped it. A new parent takes every rule `move_note_folder` has.
+    pub fn place_note_folder(&self, input: PlaceNoteFolder) -> Result<NoteFolder, TaskError> {
+        self.reorder_note_folder(ReorderNoteFolder {
+            id: input.id,
+            expected_revision: input.expected_revision,
+            after_id: input.after_id,
+            parent: FolderParent::named(input.parent_id),
+        })
+    }
+
+    /// Puts a folder after a sibling, or first, under the parent `input`
+    /// names. Recorded as `folder.move` when that is another parent than the
+    /// folder has as the write finds it, else as `folder.reorder`; a refusal
+    /// is recorded the same way, or as a reorder when the folder is gone.
+    pub fn reorder_note_folder(&self, input: ReorderNoteFolder) -> Result<NoteFolder, TaskError> {
+        #[cfg(test)]
+        crate::privacy::between_reads();
+        let mut action = AuditAction::FolderReorder;
+        self.place_inner(&input, &mut action)
+            .map_err(|error| self.refused(action, &input.id, Some(input.expected_revision), error))
+    }
+
+    /// Sets `action` from the folder as the transaction reads it, before any
+    /// check can refuse the write.
+    fn place_inner(
+        &self,
+        input: &ReorderNoteFolder,
+        action: &mut AuditAction,
+    ) -> Result<NoteFolder, TaskError> {
+        let mut conn = self.connect()?;
+        let tx = self.begin_write(&mut conn)?;
+        let leaves_parent = get_folder(&tx, &input.id)?.is_some_and(|stored| {
+            input.parent.resolve(stored.parent_id.as_deref()) != stored.parent_id.as_deref()
+        });
+        if leaves_parent {
+            *action = AuditAction::FolderMove;
+        }
+        let old = current_folder(&tx, &input.id, input.expected_revision)?;
+        let parent_id = input.parent.resolve(old.parent_id.as_deref());
+        if parent_id != old.parent_id.as_deref() {
+            require_destination(&tx, &old, parent_id)?;
+        }
+        let after_id = input.after_id.as_deref();
+        if !manual_order::place(&tx, Siblings::Folders { parent_id }, &old.id, after_id)? {
+            return Err(TaskError::NoteFolderUnchanged);
+        }
+        let placed = write_folder(&tx, &old, parent_id, &old.name)?;
+        self.audit_applied(&tx, *action, &placed.id, placed.revision)?;
+        tx.commit()?;
+        Ok(placed)
+    }
+
     /// One bounded page of a folder's direct subfolders (or the top level),
-    /// sorted by name ignoring case.
+    /// in manual order.
     pub fn list_note_folders(
         &self,
         parent_id: Option<&str>,
@@ -363,29 +499,29 @@ impl TaskStore {
         }
         let parent_key = parent_id.unwrap_or("");
         let after = cursor.map(|c| parse_cursor(c, parent_key)).transpose()?;
-        let (fold, id) = after.unzip();
+        let (position, id) = after.unzip();
         let conn = self.connect()?;
         if let Some(parent) = parent_id {
             require_folder(&conn, parent)?;
         }
         let mut stmt = conn.prepare(&format!(
-            "SELECT {FOLDER_COLUMNS}, f.name_fold FROM note_folders f
+            "SELECT {FOLDER_COLUMNS}, f.position FROM note_folders f
              WHERE coalesce(f.parent_id, '') = ?1 AND f.removed_at IS NULL
-               AND (?2 IS NULL OR (f.name_fold, f.id) > (?2, ?3))
-             ORDER BY f.name_fold, f.id LIMIT ?4"
+               AND (?2 IS NULL OR (f.position, f.id) > (?2, ?3))
+             ORDER BY f.position, f.id LIMIT ?4"
         ))?;
-        let mut rows = stmt.query(params![parent_key, fold, id, i64::from(limit) + 1])?;
+        let mut rows = stmt.query(params![parent_key, position, id, i64::from(limit) + 1])?;
         let mut items = Vec::new();
-        let mut folds = Vec::new();
+        let mut positions = Vec::new();
         while let Some(row) = rows.next()? {
             items.push(read_folder(row)?);
-            folds.push(row.get::<_, String>(8)?);
+            positions.push(row.get::<_, i64>(8)?);
         }
         let next_cursor = if items.len() > limit as usize {
             items.pop();
             items
                 .last()
-                .map(|last| format!("f1|{parent_key}|{}|{}", last.id, folds[items.len() - 1]))
+                .map(|last| format!("f2|{parent_key}|{}|{}", positions[items.len() - 1], last.id))
         } else {
             None
         };
@@ -513,5 +649,63 @@ impl TaskStore {
         let changed = get_folder(tx, &old.id)?.ok_or(TaskError::NoteFolderNotFound)?;
         self.audit_applied(tx, action, &changed.id, changed.revision)?;
         Ok(changed)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::audit::Interface;
+
+    /// Review finding (2026-11-09): whether a placement was a move or a
+    /// reorder was decided from a read before the write, so another writer
+    /// moving the folder in between left the history naming the wrong one.
+    #[test]
+    fn a_placement_is_recorded_from_the_folder_as_the_write_finds_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("place-race.db");
+        let desktop = TaskStore::open(&db).unwrap();
+        let ai = TaskStore::open_as(&db, Interface::Cli).unwrap();
+        let folder = |name: &str, parent_id: Option<String>| {
+            desktop
+                .create_note_folder(CreateNoteFolder {
+                    name: name.into(),
+                    parent_id,
+                })
+                .unwrap()
+        };
+        let work = folder("Work", None);
+        let home = folder("Home", None);
+        let moving = folder("Moving", Some(work.id.clone()));
+        let (id, home_id) = (moving.id.clone(), home.id.clone());
+        crate::privacy::set_between_reads(move || {
+            desktop
+                .move_note_folder(MoveNoteFolder {
+                    id,
+                    expected_revision: moving.revision,
+                    parent_id: Some(home_id),
+                })
+                .unwrap();
+        });
+
+        let stale = ai.place_note_folder(PlaceNoteFolder {
+            id: moving.id.clone(),
+            expected_revision: moving.revision,
+            parent_id: Some(home.id.clone()),
+            after_id: None,
+        });
+
+        assert!(matches!(stale, Err(TaskError::NoteFolderRevisionConflict)));
+        let entries = ai.list_audit_entries(Some(&moving.id), 10, None).unwrap();
+        let refused = entries
+            .items
+            .iter()
+            .find(|entry| entry.interface == Interface::Cli)
+            .expect("the refusal is recorded");
+        assert_eq!(
+            refused.action.as_str(),
+            "folder.reorder",
+            "the folder already sat under Home when the write ran"
+        );
     }
 }

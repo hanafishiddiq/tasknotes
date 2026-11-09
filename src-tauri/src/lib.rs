@@ -1,7 +1,7 @@
 use tasknotes_core::bulk::{BulkRequest, PendingBulkRequest};
 use tasknotes_core::links::{LinkPage, LinkedNote, LinkedTask, NoteLink};
 use tasknotes_core::note_folders::{
-    CreateNoteFolder, MoveNoteFolder, NoteFolder, NoteFolderPage, RenameNoteFolder,
+    CreateNoteFolder, MoveNoteFolder, NoteFolder, NoteFolderPage, PlaceNoteFolder, RenameNoteFolder,
 };
 use tasknotes_core::notes::{
     CreateNote, MoveNote, Note, NotePage, NoteQuery, NoteScope, SetNotePinned, UpdateNote,
@@ -10,8 +10,8 @@ use tasknotes_core::privacy::SetNoteExcludeFromAi;
 use tasknotes_core::removed::{RemovedPage, SetRemoved};
 use tasknotes_core::tasks::{
     ChangeTask, CreateList, CreateTask, List, ListPage, MoveTask, Priority, ProgressSequencePage,
-    RecordProgress, RenameList, SetListRemoved, SortMode, Task, TaskPage, TaskQuery, TaskStore,
-    TaskView, UpdateTask, UpdateTaskDetails, WorkStatus,
+    RecordProgress, RenameList, ReorderList, SetListRemoved, SortMode, Task, TaskPage, TaskQuery,
+    TaskStore, TaskView, UpdateTask, UpdateTaskDetails, WorkStatus,
 };
 use tauri::{Manager, State};
 
@@ -119,6 +119,11 @@ fn create_list(store: State<'_, TaskStore>, input: CreateList) -> Result<List, S
 #[tauri::command]
 fn rename_list(store: State<'_, TaskStore>, input: RenameList) -> Result<List, String> {
     store.rename_list(input).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn reorder_list(store: State<'_, TaskStore>, input: ReorderList) -> Result<List, String> {
+    store.reorder_list(input).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -232,6 +237,16 @@ fn move_note_folder(
 ) -> Result<NoteFolder, String> {
     store
         .move_note_folder(input)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn place_note_folder(
+    store: State<'_, TaskStore>,
+    input: PlaceNoteFolder,
+) -> Result<NoteFolder, String> {
+    store
+        .place_note_folder(input)
         .map_err(|error| error.to_string())
 }
 
@@ -403,6 +418,7 @@ pub fn run() {
             list_lists,
             create_list,
             rename_list,
+            reorder_list,
             set_list_removed,
             move_task,
             update_task_details,
@@ -416,6 +432,7 @@ pub fn run() {
             list_note_folders,
             create_note_folder,
             rename_note_folder,
+            place_note_folder,
             move_note_folder,
             link_note,
             unlink_note,

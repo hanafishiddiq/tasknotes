@@ -4,7 +4,9 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::Value;
 use tasknotes_cli::contract::{self, CliError};
-use tasknotes_core::note_folders::{CreateNoteFolder, MoveNoteFolder, RenameNoteFolder};
+use tasknotes_core::note_folders::{
+    CreateNoteFolder, MoveNoteFolder, RenameNoteFolder, ReorderNoteFolder,
+};
 use tasknotes_core::notes::{CreateNote, MoveNote, NoteQuery, NoteScope, UpdateNote};
 use tasknotes_core::tasks::TaskError;
 
@@ -167,6 +169,12 @@ pub fn tools() -> Vec<ToolDef> {
             Kind::Write,
             "Move a Note Folder into another folder, or to the top level.",
             folder_move,
+        ),
+        tool(
+            "folder_reorder",
+            Kind::Write,
+            "Put a Note Folder directly after a sibling in the person's manual order, or first; give parent_id or top: true to place it under another parent at the same time.",
+            folder_reorder,
         ),
         tool(
             "folder_remove",
@@ -347,6 +355,37 @@ fn folder_move(c: &Context, a: FolderMoveArgs) -> Result<Value, CliError> {
             parent_id,
         })?,
     )
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct FolderReorderArgs {
+    id: String,
+    revision: i64,
+    /// Put it directly after this sibling; give this or first.
+    #[serde(default)]
+    after_id: Option<String>,
+    /// Put it first among its siblings; give this or after_id.
+    #[serde(default)]
+    first: bool,
+    /// Place it under this folder; leave out to stay under its parent.
+    #[serde(default)]
+    parent_id: Option<String>,
+    /// Place it at the top level; leave out to stay under its parent.
+    #[serde(default)]
+    top: bool,
+}
+
+fn folder_reorder(c: &Context, a: FolderReorderArgs) -> Result<Value, CliError> {
+    let after_id = contract::destination(a.after_id, a.first, ("after_id", "first: true"))?;
+    let parent = contract::folder_parent(a.parent_id, a.top, ("parent_id", "top: true"))?;
+    let placed = c.store.reorder_note_folder(ReorderNoteFolder {
+        expected_revision: revision(a.revision)?,
+        id: a.id,
+        after_id,
+        parent,
+    })?;
+    folder(c, placed)
 }
 
 #[derive(Deserialize, JsonSchema)]

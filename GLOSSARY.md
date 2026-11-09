@@ -55,6 +55,10 @@ _Avoid_: Folder alone where a Task List could be meant.
 **Pinned**:
 A Note kept above the other Notes in every Note list it appears in. Pinning, like moving a Note to another Note Folder, changes where it is shown, not what it says.
 
+**Manual Order**:
+The order a person gives Lists, and a folder's subfolders, by moving them. It is not a sort; a new one lands at the bottom.
+_Avoid_: Sort order, Rank.
+
 **Audit Entry**:
 An immutable dated record that an official Tasknotes interface made or attempted a consequential change.
 

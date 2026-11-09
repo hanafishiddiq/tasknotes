@@ -81,7 +81,10 @@ fn a_v10_database_keeps_its_notes_visible_to_ai_after_gaining_the_flag() {
          ALTER TABLE audit_entries DROP COLUMN requested_by;
          DROP TABLE retired_revisions;
          DROP TABLE bulk_requests;
-         PRAGMA user_version = 10;",
+         DROP INDEX lists_manual_order; ALTER TABLE lists DROP COLUMN position;
+             CREATE INDEX lists_created_order ON lists(created_at DESC, id DESC);
+             DROP INDEX note_folders_manual_order; ALTER TABLE note_folders DROP COLUMN position;
+             PRAGMA user_version = 10;",
     )
     .unwrap();
     drop(conn);

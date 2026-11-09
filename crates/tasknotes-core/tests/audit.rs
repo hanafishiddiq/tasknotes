@@ -316,6 +316,9 @@ fn v9_database(db: &Path) -> String {
              DROP TABLE retired_revisions;
              DROP TABLE bulk_requests;
              ALTER TABLE notes DROP COLUMN exclude_from_ai;
+             DROP INDEX lists_manual_order; ALTER TABLE lists DROP COLUMN position;
+             CREATE INDEX lists_created_order ON lists(created_at DESC, id DESC);
+             DROP INDEX note_folders_manual_order; ALTER TABLE note_folders DROP COLUMN position;
              PRAGMA user_version = 9;",
         )
         .unwrap();

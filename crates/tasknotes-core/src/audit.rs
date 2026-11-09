@@ -80,6 +80,7 @@ actions! {
     TaskRestore => "task.restore",
     ListCreate => "list.create",
     ListRename => "list.rename",
+    ListReorder => "list.reorder",
     ListRemove => "list.remove",
     ListRestore => "list.restore",
     NoteCreate => "note.create",
@@ -92,6 +93,7 @@ actions! {
     FolderCreate => "folder.create",
     FolderRename => "folder.rename",
     FolderMove => "folder.move",
+    FolderReorder => "folder.reorder",
     FolderRemove => "folder.remove",
     FolderRestore => "folder.restore",
     LinkCreate => "link.create",
@@ -112,12 +114,11 @@ impl AuditAction {
         Some(match self {
             TaskCreate | TaskUpdate | TaskChange | TaskProgress | TaskDetails | TaskMove
             | TaskRemove | TaskRestore => "tasks",
-            ListCreate | ListRename | ListRemove | ListRestore => "lists",
+            ListCreate | ListRename | ListReorder | ListRemove | ListRestore => "lists",
             NoteCreate | NoteUpdate | NoteMove | NotePin | NoteRemove | NoteRestore
             | NotePrivacy => "notes",
-            FolderCreate | FolderRename | FolderMove | FolderRemove | FolderRestore => {
-                "note_folders"
-            }
+            FolderCreate | FolderRename | FolderMove | FolderReorder | FolderRemove
+            | FolderRestore => "note_folders",
             LinkCreate | LinkRemove | LinkRestore => "task_note_links",
             BulkRequest | BulkApprove | BulkDecline => "bulk_requests",
             BackupRestore => return None,
@@ -310,6 +311,7 @@ revisioned!(
     crate::organization::UpdateTaskDetails,
     crate::organization::MoveTask,
     crate::organization::RenameList,
+    crate::organization::ReorderList,
     crate::organization::SetListRemoved,
     crate::removed::SetRemoved,
     crate::notes::UpdateNote,
@@ -388,31 +390,42 @@ impl TaskStore {
             let (id, revision) = input.target();
             (id.to_owned(), revision)
         };
-        match change(input) {
-            Err(error) if meaningful_rejection(&error) => {
-                let entry = NewAuditEntry {
-                    action,
-                    entity_id: &entity_id,
-                    outcome: AuditOutcome::Rejected,
-                    error_code: Some(error.code()),
-                    revision,
-                };
-                // Through `begin_write` like every write, so a refusal racing
-                // a restore is either in the live data before the restore
-                // fences writers (and carried into the restored data) or
-                // refused, never written into data that is being replaced.
-                let recorded = self.connect().and_then(|mut conn| {
-                    let tx = self.begin_write(&mut conn)?;
-                    insert_rejection(&tx, self.recorder(), &entry)?;
-                    tx.commit()?;
-                    Ok(())
-                });
-                match recorded {
-                    Ok(()) => Err(error),
-                    Err(_) => Err(TaskError::AuditUnrecorded(Box::new(error))),
-                }
-            }
-            result => result,
+        change(input).map_err(|error| self.refused(action, &entity_id, revision, error))
+    }
+
+    /// Records a refused change, when the refusal means something, and
+    /// returns the error to give the caller (see `audited`). For a change
+    /// that only knows its action once inside its transaction.
+    pub(crate) fn refused(
+        &self,
+        action: AuditAction,
+        entity_id: &str,
+        revision: Option<i64>,
+        error: TaskError,
+    ) -> TaskError {
+        if !meaningful_rejection(&error) {
+            return error;
+        }
+        let entry = NewAuditEntry {
+            action,
+            entity_id,
+            outcome: AuditOutcome::Rejected,
+            error_code: Some(error.code()),
+            revision,
+        };
+        // Through `begin_write` like every write, so a refusal racing
+        // a restore is either in the live data before the restore
+        // fences writers (and carried into the restored data) or
+        // refused, never written into data that is being replaced.
+        let recorded = self.connect().and_then(|mut conn| {
+            let tx = self.begin_write(&mut conn)?;
+            insert_rejection(&tx, self.recorder(), &entry)?;
+            tx.commit()?;
+            Ok(())
+        });
+        match recorded {
+            Ok(()) => error,
+            Err(_) => TaskError::AuditUnrecorded(Box::new(error)),
         }
     }
 

@@ -10,6 +10,7 @@ use tasknotes_core::calendar::TimeZone;
 use tasknotes_core::notes::CreateNote;
 use tasknotes_core::privacy::SetNoteExcludeFromAi;
 use tasknotes_core::removed::SetRemoved;
+use tasknotes_core::tasks::CreateList;
 use tasknotes_core::tasks::{CreateTask, RecordProgress, Task, TaskError, TaskStore, UpdateTask};
 
 const DAY_MS: i64 = 86_400_000;
@@ -977,6 +978,10 @@ fn a_backup_from_an_older_schema_is_upgraded_on_restore() {
         let fx = Fixture::new();
         let store = fx.desktop();
         task(&store, "Synthetic task from the older schema");
+        for name in ["Synthetic older List", "Synthetic newer List"] {
+            store.create_list(CreateList { name: name.into() }).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(3));
+        }
         let backup = store.create_backup().unwrap().backup;
         rusqlite::Connection::open(snapshot_path(&fx, &backup))
             .unwrap()
@@ -984,6 +989,9 @@ fn a_backup_from_an_older_schema_is_upgraded_on_restore() {
                 "DROP TABLE retired_revisions;
                  DROP TABLE bulk_requests;
                  ALTER TABLE audit_entries DROP COLUMN requested_by;
+                 DROP INDEX lists_manual_order; ALTER TABLE lists DROP COLUMN position;
+                 CREATE INDEX lists_created_order ON lists(created_at DESC, id DESC);
+                 DROP INDEX note_folders_manual_order; ALTER TABLE note_folders DROP COLUMN position;
                  {older}
                  PRAGMA user_version = {version};"
             ))
@@ -992,6 +1000,15 @@ fn a_backup_from_an_older_schema_is_upgraded_on_restore() {
         task(&store, "Synthetic later task");
         store.restore_backup(&backup.id).unwrap();
         assert_eq!(titles(&store), ["Synthetic task from the older schema"]);
+        // Lists come back in the order that schema showed them: newest first.
+        let lists: Vec<String> = store
+            .list_lists(10, None, false)
+            .unwrap()
+            .items
+            .into_iter()
+            .map(|list| list.name)
+            .collect();
+        assert_eq!(lists, ["Synthetic newer List", "Synthetic older List"]);
         task(&store, "Synthetic task after the upgrade");
     }
 }

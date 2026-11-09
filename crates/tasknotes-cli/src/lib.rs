@@ -18,8 +18,8 @@ use tasknotes_core::audit::Interface;
 use tasknotes_core::removed::SetRemoved;
 use tasknotes_core::tasks::{
     ChangeTask, CreateList, CreateTask, List, MoveTask, PatchTask, PatchTaskDetails, Priority,
-    RecordProgress, RenameList, SetListRemoved, SortMode, Task, TaskError, TaskQuery, TaskScope,
-    TaskStore, TaskView, WorkStatus,
+    RecordProgress, RenameList, ReorderList, SetListRemoved, SortMode, Task, TaskError, TaskQuery,
+    TaskScope, TaskStore, TaskView, WorkStatus,
 };
 
 use access::Environment;
@@ -155,6 +155,8 @@ fn dispatch(
 
 pub(crate) const USAGE: &str = "Usage: tasknotes [--data-dir DIR] \
     <task|list|note|folder|link|removed|audit|bulk|backup|export|access> <command> [id] [--options]; \
+    list reorder ID --revision N (--after ID | --first); \
+    folder reorder ID --revision N (--after ID | --first) [--parent ID | --top]; \
     bulk preview --action A --id ID... | bulk status REQUEST_ID (approved only in the app); \
     access grant|revoke [--mcp]";
 
@@ -344,6 +346,26 @@ fn list_command(store: &TaskStore, verb: &str, words: &[String]) -> Result<Value
                 id: p.id().to_owned(),
                 expected_revision: p.revision()?,
                 name: p.required("name")?.to_owned(),
+            })?)
+        }
+        "reorder" => {
+            let p = parse(
+                words,
+                &Spec {
+                    values: &["revision", "after"],
+                    repeated: &[],
+                    switches: &["first"],
+                    positionals: 1,
+                },
+            )?;
+            item(store.reorder_list(ReorderList {
+                id: p.id().to_owned(),
+                expected_revision: p.revision()?,
+                after_id: contract::destination(
+                    p.value("after").map(str::to_owned),
+                    p.has("first"),
+                    ("--after ID", "--first"),
+                )?,
             })?)
         }
         "remove" | "restore" => {

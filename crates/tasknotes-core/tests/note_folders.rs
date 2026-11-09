@@ -61,6 +61,8 @@ fn v6_database(db: &Path) {
              INSERT INTO notes VALUES ('00000000-0000-4000-8000-0000000000aa',
                '# Packing list\n\nPassport and tickets', 'Packing list', 3, 10, 20);
              DROP TABLE IF EXISTS audit_entries; DROP TABLE IF EXISTS bulk_requests; DROP TABLE IF EXISTS retired_revisions;
+             DROP INDEX lists_manual_order; ALTER TABLE lists DROP COLUMN position;
+             CREATE INDEX lists_created_order ON lists(created_at DESC, id DESC);
              PRAGMA user_version = 6;",
         )
         .unwrap();
@@ -149,9 +151,9 @@ fn folders_nest_and_the_tree_survives_reopening_the_store() {
     folder(&store, "Archive", Some(&work));
 
     let reopened = store_at(&db);
-    // Siblings sort by name, case-insensitively.
-    assert_eq!(names(&reopened, None), vec!["Home", "Work"]);
-    assert_eq!(names(&reopened, Some(&work)), vec!["Archive", "Meetings"]);
+    // Siblings stay in their manual order; a new one lands at the bottom.
+    assert_eq!(names(&reopened, None), vec!["Work", "Home"]);
+    assert_eq!(names(&reopened, Some(&work)), vec!["Meetings", "Archive"]);
     assert_eq!(names(&reopened, Some(&meetings)), vec!["2026"]);
 
     let top = reopened.list_note_folders(None, 100, None).unwrap().items;
@@ -259,7 +261,7 @@ fn folder_pages_are_bounded_and_never_repeat_or_skip() {
         .into_iter()
         .map(|f| f.name)
         .collect();
-    assert_eq!(all, vec!["Alpha", "Bravo", "charlie", "delta", "echo"]);
+    assert_eq!(all, vec!["delta", "Alpha", "charlie", "Bravo", "echo"]);
     assert!(third.next_cursor.is_none());
 
     assert!(matches!(
@@ -316,9 +318,9 @@ fn a_folder_cannot_move_into_itself_or_any_of_its_subfolders() {
     // Moving a subfolder up, or to the top level, is fine.
     let moved = move_to(&store, &alpha, Some(&work)).unwrap();
     assert_eq!(moved.parent_id.as_deref(), Some(work.id.as_str()));
-    assert_eq!(names(&store, Some(&work)), vec!["Alpha", "Projects"]);
+    assert_eq!(names(&store, Some(&work)), vec!["Projects", "Alpha"]);
     move_to(&store, &projects, None).unwrap();
-    assert_eq!(names(&store, None), vec!["Projects", "Work"]);
+    assert_eq!(names(&store, None), vec!["Work", "Projects"]);
 }
 
 #[test]
@@ -400,7 +402,7 @@ fn moving_or_renaming_respects_names_at_the_destination_and_the_revision() {
     // Now named differently, it may join Home.
     let moved = move_to(&store, &work_notes, Some(&home)).unwrap();
     assert_eq!(moved.revision, 3);
-    assert_eq!(names(&store, Some(&home)), vec!["Meeting notes", "notes"]);
+    assert_eq!(names(&store, Some(&home)), vec!["notes", "Meeting notes"]);
 
     // Changing only the case of its own name is not a clash.
     let recased = store

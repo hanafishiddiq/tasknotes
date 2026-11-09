@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 use crate::audit::AuditAction;
+use crate::manual_order::{self, Siblings};
 use crate::tasks::{COLUMNS, Task, TaskError, TaskStore, current_millis, read_task};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -29,6 +30,16 @@ pub struct RenameList {
     pub id: String,
     pub expected_revision: i64,
     pub name: String,
+}
+
+/// Puts a List directly after another, or first without one (ADR-0007).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReorderList {
+    pub id: String,
+    pub expected_revision: i64,
+    #[serde(default)]
+    pub after_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -440,6 +451,7 @@ impl TaskStore {
             return Err(TaskError::ListNameConflict);
         }
         let now = current_millis()?;
+        let position = manual_order::bottom(&tx, Siblings::Lists)?;
         let list = List {
             id: Uuid::new_v4().to_string(),
             name: name.to_owned(),
@@ -449,9 +461,9 @@ impl TaskStore {
             removed: false,
         };
         tx.execute(
-            "INSERT INTO lists(id, name, revision, created_at, updated_at, removed_at)
-             VALUES (?1, ?2, 1, ?3, ?3, NULL)",
-            params![list.id, list.name, list.created_at],
+            "INSERT INTO lists(id, name, revision, created_at, updated_at, removed_at, position)
+             VALUES (?1, ?2, 1, ?3, ?3, NULL, ?4)",
+            params![list.id, list.name, list.created_at, position],
         )?;
         self.audit_applied(&tx, AuditAction::ListCreate, &list.id, list.revision)?;
         tx.commit()?;
@@ -498,6 +510,38 @@ impl TaskStore {
             read_list,
         )?;
         self.audit_applied(&tx, AuditAction::ListRename, &updated.id, updated.revision)?;
+        tx.commit()?;
+        Ok(updated)
+    }
+
+    pub fn reorder_list(&self, input: ReorderList) -> Result<List, TaskError> {
+        self.audited(AuditAction::ListReorder, input, |input| {
+            self.reorder_list_inner(input)
+        })
+    }
+
+    fn reorder_list_inner(&self, input: ReorderList) -> Result<List, TaskError> {
+        let mut conn = self.connect()?;
+        let tx = self.begin_write(&mut conn)?;
+        let old = get_list(&tx, &input.id)?;
+        if old.revision != input.expected_revision {
+            return Err(TaskError::RevisionConflict);
+        }
+        if old.removed {
+            return Err(TaskError::ListRemoved);
+        }
+        if !manual_order::place(&tx, Siblings::Lists, &old.id, input.after_id.as_deref())? {
+            return Err(TaskError::ListUnchanged);
+        }
+        let now = current_millis()?;
+        let updated = tx.query_row(
+            "UPDATE lists SET revision=revision+1,updated_at=max(updated_at+1,?1)
+             WHERE id=?2 AND revision=?3
+             RETURNING id,name,revision,created_at,updated_at,removed_at",
+            params![now, input.id, input.expected_revision],
+            read_list,
+        )?;
+        self.audit_applied(&tx, AuditAction::ListReorder, &updated.id, updated.revision)?;
         tx.commit()?;
         Ok(updated)
     }
@@ -587,49 +631,48 @@ impl TaskStore {
         if !(1..=100).contains(&limit) {
             return Err(TaskError::InvalidListPage);
         }
-        let (after_time, after_id) = match cursor {
+        let (after_position, after_id) = match cursor {
             None => (None, None),
             Some(raw) => {
                 let bits: Vec<_> = raw.split('|').collect();
                 if bits.len() != 4
-                    || bits[0] != "v2"
+                    || bits[0] != "v3"
                     || bits[3] != if include_removed { "all" } else { "active" }
                     || Uuid::parse_str(bits[2]).is_err()
                 {
                     return Err(TaskError::InvalidListCursor);
                 }
-                let timestamp = bits[1]
+                let position = bits[1]
                     .parse::<i64>()
                     .map_err(|_| TaskError::InvalidListCursor)?;
-                if timestamp < 0 {
-                    return Err(TaskError::InvalidListCursor);
-                }
-                (Some(timestamp), Some(bits[2].to_owned()))
+                (Some(position), Some(bits[2].to_owned()))
             }
         };
         let conn = self.connect()?;
         let mut stmt = conn.prepare(
-            "SELECT id,name,revision,created_at,updated_at,removed_at FROM lists
+            "SELECT id,name,revision,created_at,updated_at,removed_at,position FROM lists
              WHERE (?1 OR removed_at IS NULL)
-               AND (?2 IS NULL OR created_at < ?2 OR (created_at=?2 AND id < ?3))
-             ORDER BY created_at DESC,id DESC LIMIT ?4",
+               AND (?2 IS NULL OR (position, id) > (?2, ?3))
+             ORDER BY position,id LIMIT ?4",
         )?;
         let mut rows = stmt.query(params![
             include_removed,
-            after_time,
+            after_position,
             after_id,
             i64::from(limit) + 1
         ])?;
         let mut items = Vec::new();
+        let mut positions = Vec::new();
         while let Some(row) = rows.next()? {
             items.push(read_list(row)?);
+            positions.push(row.get::<_, i64>(6)?);
         }
         let next_cursor = if items.len() > limit as usize {
             items.pop();
             items.last().map(|l| {
                 format!(
-                    "v2|{}|{}|{}",
-                    l.created_at,
+                    "v3|{}|{}|{}",
+                    positions[items.len() - 1],
                     l.id,
                     if include_removed { "all" } else { "active" },
                 )
