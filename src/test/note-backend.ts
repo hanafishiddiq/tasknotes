@@ -40,7 +40,9 @@ export class NoteBackend {
   private write(fields: Omit<Note, "createdAt" | "updatedAt" | "removed">, touch = true): Note {
     const previous = this.notes.get(fields.id);
     const stamp = touch || !previous ? ++this.clock : previous.updatedAt;
-    const note = { ...fields, createdAt: previous?.createdAt ?? stamp, updatedAt: stamp, removed: false };
+    const note = {
+      ...fields, createdAt: previous?.createdAt ?? stamp, updatedAt: stamp, removed: this.removedAt.has(fields.id),
+    };
     this.notes.set(note.id, note);
     return note;
   }
@@ -170,7 +172,9 @@ export class NoteBackend {
       }
       if (input.removed) this.removedAt.set(input.id, ++this.clock);
       else this.removedAt.delete(input.id);
-      const next = { ...current, revision: current.revision + 1 };
+      const next = isNote
+        ? { ...current, revision: current.revision + 1, removed: input.removed }
+        : { ...current, revision: current.revision + 1 };
       if (isNote) this.notes.set(next.id, next as Note);
       else this.folders.set(next.id, next as NoteFolder);
       return isNote ? next : this.withChildren(next as NoteFolder);

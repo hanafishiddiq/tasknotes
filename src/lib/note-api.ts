@@ -11,7 +11,10 @@ export interface Note {
   /** null when the Note is not in a folder. */
   folderId: string | null;
   pinned: boolean;
-  /** In Removed. Only a Note read by its id can say so; lists leave it out. */
+  /**
+   * In Removed. Every whole Note the core sends says so; only `get` can return
+   * one in Removed. Lists send `NoteSummary`, which has no such field.
+   */
   removed: boolean;
   /** Exclude from AI: AI interfaces (CLI, MCP) treat the Note as missing. */
   excludeFromAi: boolean;
