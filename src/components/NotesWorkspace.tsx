@@ -394,32 +394,35 @@ export default function NotesWorkspace({
   }
 
   /**
-   * After a change made elsewhere: the open Note follows what is stored, as long
-   * as nothing is typed there. Unsaved text stays, and its autosave finds the
-   * conflict. With the cursor in the editor it waits for the cursor to leave.
+   * After a change made elsewhere: the open Note follows what is stored. Where
+   * it lives, its pin and Exclude from AI follow at once; its text only while
+   * nothing is typed there. Unsaved text stays, and its autosave finds the
+   * conflict. With the cursor in the editor the text waits for the cursor to leave.
    */
   async function followOpenNote() {
     followOnLeave.current = false;
     const { id } = saved.current;
+    if (id === null) return;
     const untouched = () =>
       saved.current.id === id && !dirty.current && !conflicted.current && !inFlight.current;
-    if (id === null || !untouched()) return;
     const latest = await noteApi.get(id);
-    if (!untouched()) return;
+    if (saved.current.id !== id) return;
     if (!latest || latest.removed) {
       // Removed elsewhere: as when it is removed here, the next Note opens.
+      if (!untouched()) return;
       const next = await firstOf((await listPage(null)).items);
       if (untouched()) show(next);
       return;
     }
-    if (latest.markdown === saved.current.markdown) {
-      saved.current = savedFrom(latest);
-      setPlacement({ folderId: latest.folderId, pinned: latest.pinned, excludeFromAi: latest.excludeFromAi });
-    } else if (editorRef.current?.holdsCursor()) {
-      followOnLeave.current = true;
-    } else {
-      show(savedFrom(latest));
-    }
+    // The revision stays: it is what lets a save of older text find the conflict.
+    saved.current = {
+      ...saved.current, folderId: latest.folderId, pinned: latest.pinned, excludeFromAi: latest.excludeFromAi,
+    };
+    setPlacement({ folderId: latest.folderId, pinned: latest.pinned, excludeFromAi: latest.excludeFromAi });
+    if (!untouched()) return;
+    if (latest.markdown === saved.current.markdown) saved.current = savedFrom(latest);
+    else if (editorRef.current?.holdsCursor()) followOnLeave.current = true;
+    else show(savedFrom(latest));
   }
 
   /** Pins, moves or excludes the open Note from AI. None of these changes its text or revision. */

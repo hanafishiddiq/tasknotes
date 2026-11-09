@@ -628,6 +628,27 @@ describe("Notes changed outside the window", () => {
     expect(screen.queryByRole("button", { name: "Load latest" })).not.toBeInTheDocument();
   });
 
+  it("shows where the Note lives, its pin and Exclude from AI at once, while its text waits for the cursor", async () => {
+    const open = notes.seed("Old text", "Old text");
+    const imported = notes.folder("Imported folder");
+    await openNotes();
+    await screen.findByText("Old text", { selector: ".note-content *" });
+    const editor = document.querySelector<HTMLElement>(".note-content")!;
+    act(() => editor.focus());
+
+    notes.notes.set(open.id, {
+      ...open, markdown: "Newer text", title: "Newer text", revision: 2,
+      folderId: imported.id, pinned: true, excludeFromAi: true,
+    });
+    outside();
+    await focusWindow();
+
+    expect(await screen.findByRole("button", { name: "Unpin note" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Exclude from AI" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("combobox", { name: "Folder" })).toHaveValue(imported.id);
+    expect(editor).toHaveTextContent("Old text");
+  });
+
   it("follows when the window is elsewhere, even with the cursor still in the editor", async () => {
     const open = notes.seed("Old text", "Old text");
     await openNotes();
