@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -144,6 +144,24 @@ describe("⌘↵ saves the open edit group", () => {
     await user.type(description, "{Enter}line");
     expect(description).toHaveValue("Plain words\nline");
     noSaves();
+  });
+
+  it.each([
+    ["⌘↵", "Edit title"],
+    ["Return", "Edit title"],
+    ["⌘↵", "Edit description"],
+    ["⌘↵", "Progress note"],
+    ["⌘↵", "Tags"],
+  ])("does not let %s in %s save while an input method is composing", async (press, name) => {
+    const user = userEvent.setup();
+    render(<Row />);
+    const field = screen.getByRole("textbox", { name });
+    await user.type(field, "x");
+    fireEvent.keyDown(field, { key: "Enter", metaKey: press === "⌘↵", isComposing: true });
+    noSaves();
+    // The same press once composition ends does save: the guard, not the event, held it back.
+    fireEvent.keyDown(field, { key: "Enter", metaKey: true });
+    expect([onSave, onRecordProgress, onUpdateDetails].some((save) => save.mock.calls.length === 1)).toBe(true);
   });
 
   it("keeps plain Return as a newline in the progress note", async () => {

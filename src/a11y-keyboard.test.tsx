@@ -425,6 +425,29 @@ describe("focus when an open Task closes itself", () => {
     const row = await screen.findByRole("button", { name: "Open Synthetic task a two" });
     await waitFor(() => expect(row).toHaveFocus());
   });
+
+  it("goes back to the row after ⌘↵ saves the description", async () => {
+    world.tasks = [fixtureTask("a")];
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open Synthetic task a" }));
+    await user.type(screen.getByRole("textbox", { name: "Edit description" }), " more{Meta>}{Enter}{/Meta}");
+    const row = await screen.findByRole("button", { name: "Open Synthetic task a" });
+    await waitFor(() => expect(row).toHaveAttribute("aria-expanded", "false"));
+    await waitFor(() => expect(row).toHaveFocus());
+  });
+
+  it("goes back to the row after the Save changes button saves", async () => {
+    world.tasks = [fixtureTask("a")];
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open Synthetic task a" }));
+    await user.type(screen.getByRole("textbox", { name: "Edit description" }), " more");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    const row = await screen.findByRole("button", { name: "Open Synthetic task a" });
+    await waitFor(() => expect(row).toHaveAttribute("aria-expanded", "false"));
+    await waitFor(() => expect(row).toHaveFocus());
+  });
 });
 
 describe("Tab in the Note text", () => {
