@@ -82,6 +82,10 @@ A Note kept above the other Notes in every Note list it appears in. Pinning, lik
 The order a person gives Lists, and a folder's subfolders, by moving them. It is not a sort; a new one lands at the bottom.
 _Avoid_: Sort order, Rank.
 
+**Style**:
+The optional icon and colour of a List or Note Folder: one Lucide icon from Tasknotes' curated set and one of twelve named colours. Without either, it keeps the default look (folder icon in the accent). Emoji in a name are part of the name, never a Style.
+_Avoid_: Appearance (that is the light or dark theme), Theme, Label colour.
+
 **Audit Entry**:
 An immutable dated record that an official Tasknotes interface made or attempted a consequential change.
 

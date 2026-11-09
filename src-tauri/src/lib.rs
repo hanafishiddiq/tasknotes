@@ -9,6 +9,7 @@ use tasknotes_core::notes::{
 };
 use tasknotes_core::privacy::SetNoteExcludeFromAi;
 use tasknotes_core::removed::{RemovedPage, SetRemoved};
+use tasknotes_core::style::SetStyle;
 use tasknotes_core::tasks::{
     ChangeTask, CreateList, CreateTask, DifficultyFilter, List, ListPage, MoveTask, Priority,
     ProgressSequencePage, RecordProgress, RenameList, ReorderList, SetListRemoved, SortMode, Task,
@@ -128,6 +129,23 @@ fn rename_list(store: State<'_, TaskStore>, input: RenameList) -> Result<List, S
 #[tauri::command]
 fn reorder_list(store: State<'_, TaskStore>, input: ReorderList) -> Result<List, String> {
     store.reorder_list(input).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn set_list_style(store: State<'_, TaskStore>, input: SetStyle) -> Result<List, String> {
+    store
+        .set_list_style(input)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn set_note_folder_style(
+    store: State<'_, TaskStore>,
+    input: SetStyle,
+) -> Result<NoteFolder, String> {
+    store
+        .set_note_folder_style(input)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -433,6 +451,7 @@ pub fn run() {
             create_list,
             rename_list,
             reorder_list,
+            set_list_style,
             set_list_removed,
             move_task,
             update_task_details,
@@ -447,6 +466,7 @@ pub fn run() {
             create_note_folder,
             rename_note_folder,
             place_note_folder,
+            set_note_folder_style,
             move_note_folder,
             link_note,
             unlink_note,

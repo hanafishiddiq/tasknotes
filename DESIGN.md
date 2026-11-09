@@ -204,6 +204,9 @@ Neutral grays carry everything; a single yellow, split by theme into fill and te
 - **Caution Orange** (`caution-orange`; light `light-caution-orange`): High and Very High priority, "Due today", and the metadata guard hint under the editor.
 - **Alert Red** (`alert-red`; light `light-alert-red`): "Overdue", error banners and inline errors.
 
+### Style colours
+Twelve named colours a person may give a List's or Note Folder's sidebar icon (`--style-<key>` in App.css; keys from `crates/tasknotes-core/src/style.json`): red, orange, yellow, green, mint, teal, cyan, blue, indigo, purple, pink, brown, after Apple's system colours. Each theme has its own value, at least 3:1 (WCAG AA for a graphical object) on the sidebar, sidebar hover yellow and folder-selected gray, and 4.5:1 on the plain sidebar; `src/style-picker.test.tsx` checks every pair. They colour only that icon (and the picker's swatches and preview), never text or fills.
+
 ### Neutral
 - **Ink Gray Canvas** (`ink-gray-canvas`; light **Paper** `light-paper-canvas`): the main content background and `theme-color`.
 - **Graphite Sidebar** (`graphite-sidebar`; light `light-sidebar`): the folder sidebar, one step lighter than the canvas in dark, one step grayer in light.
@@ -216,7 +219,7 @@ Neutral grays carry everything; a single yellow, split by theme into fill and te
 - **Focus Ring** (`focus-ring`; light `light-focus-ring`): translucent yellow for every `:focus-visible` outline.
 
 ### Named Rules
-**The One Voice Rule.** Yellow is the only hue that appears without a state reason. It marks folders, status, tags, progress, the selected row and the one primary button. Never use it for decoration, headings or borders.
+**The One Voice Rule.** Yellow is the only hue that appears without a state reason. It marks folders, status, tags, progress, the selected row and the one primary button. Never use it for decoration, headings or borders. The one exception is a Style the person chose: a List's or Note Folder's sidebar icon may take one of twelve Style colours (owner decision 2026-11-09); the app never colours anything else with them.
 
 **The Split Accent Rule.** In light appearance the accent has three jobs with three values: fills and rings use the ochre accent, accent-colored text uses the darker ochre text, and anything placed on a yellow fill uses near-black accent ink. Never set small text in the fill value.
 
@@ -258,7 +261,7 @@ Flat. Depth comes only from tonal steps: canvas, then sidebar, then hover, then 
 
 ## Shapes
 
-Gently rounded rectangles at small radii, sized to their control: 5px for tiny icon actions and the progress number, 6px for buttons, folders and the focus outline, 7px for task rows, 8px for the capture row and banners, 13px capsules for editor properties, and true circles for status rings. Borders are rare; the only structural lines are the 1px sidebar edge, toolbar underline, inset row separators and the Next Step underline. Icons are Lucide outlines at 13-18px, inheriting text color except folder icons, which take the accent.
+Gently rounded rectangles at small radii, sized to their control: 5px for tiny icon actions and the progress number, 6px for buttons, folders and the focus outline, 7px for task rows, 8px for the capture row and banners, 13px capsules for editor properties, and true circles for status rings. Borders are rare; the only structural lines are the 1px sidebar edge, toolbar underline, inset row separators and the Next Step underline. Icons are Lucide outlines at 13-18px, inheriting text color except folder icons, which take the accent (or a List's or Note Folder's Style colour).
 
 The app icon is a Notes-yellow status ring and check on graphite, with a slight gloss. `src-tauri/icons/icon-source.svg` is an opaque square on purpose: macOS 27 cuts such an icon to its own shape, but sets one with transparent margins small on a gray plate. Regenerate with `pnpm tauri icon src-tauri/icons/icon-source.svg`, then delete the `android` and `ios` folders and `64x64.png` it adds. The menu bar uses `tray.png`, a black template image from `tray-source.svg` (`-p 44`), so macOS can color it for the bar.
 
@@ -275,9 +278,10 @@ Quiet until needed; only the primary button carries color.
 
 ### Sidebar Folders
 - **Style:** 28px rows, 8px inset, Lucide icon (17px) in the accent, name truncating, tabular count in tertiary gray pushed right.
-- **States:** hover (and keyboard focus within a row) is sidebar hover yellow, except on disabled entries; current page is folder-selected gray, also while hovered; a row that is a drop target during drag-reorder is folder-selected gray, its action fill included. Row actions (22px icon buttons: rename and remove on a List; new subfolder, rename, move and remove on a Note Folder) appear only on row hover or keyboard focus.
+- **States:** hover (and keyboard focus within a row) is sidebar hover yellow, except on disabled entries; current page is folder-selected gray, also while hovered; a row that is a drop target during drag-reorder is folder-selected gray, its action fill included. Row actions (22px icon buttons: icon and colour, rename and remove on a List; icon and colour, new subfolder, rename, move and remove on a Note Folder) appear only on row hover or keyboard focus.
 - **Action overlay:** the actions sit over the end of the row on an opaque fill matching the row (hover yellow; folder-selected gray on the current row or a drop target; the sidebar colour on a disabled row), squared on the left and rounded with the row on the right. The name keeps its full width and simply runs under them; no gutter is reserved, so nothing reflows on hover and icons never overlap visible text. Quiet folders (removed-lists toggle, appearance toggle) use secondary gray for both icon and text.
 - **New List:** an inline field styled as a folder row with a plus icon; its confirm action appears on focus.
+- **Style:** a List or Note Folder with a Style shows its chosen Lucide icon (from a curated set of about 250) in its Style colour in place of the folder icon; either part left unset keeps the default (folder icon, accent). The first row action (palette icon) opens the picker inline under the row, on the sidebar fill with a hairline border and 8px radius; nothing floats. Top to bottom: a preview of the row, a "Colour" radio group of 24px cells, 7 to a row ("No colour", a hollow ring, then the twelve 16px swatches; the chosen one sits on folder-selected gray with a 2px primary-text ring), a field-gray "Search icons" field, an "Icon" radio group of 24px cells, 8 to a row and scrolling past six rows ("Default icon", then the icons in secondary gray or the chosen colour; a search keeps names where each typed word starts a word of the name), then small Save (primary) and Cancel buttons. Each group is one tab stop; the arrow keys move and choose across and down its grid, Home and End jump to its ends, Down in the search field enters the icons, Escape cancels. Both choices are a draft until Save writes them at once.
 - **Manual order:** Lists and Note Folders move by dragging the row. Nothing lifts: the dragged row stays in place dimmed to 45% and the pointer shows a grabbing hand. A 2px accent line shows where it lands, indented to the level it would join, and the folder-selected gray on a folder means inside it. Escape cancels. Alt with the arrow keys does the same from the keyboard.
 
 ### Task Row (signature)

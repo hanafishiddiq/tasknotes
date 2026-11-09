@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { errorMessage } from "./error-message";
 import { noteApi, type NoteFolder } from "./note-api";
 import { removedApi } from "./removed-api";
+import type { Style } from "./style";
 
 /** Which folders are open in the sidebar; a view preference kept per window, like the theme. */
 export const EXPANDED_FOLDERS_KEY = "tasknotes.noteFolders.expanded";
@@ -159,6 +160,7 @@ export function useNoteFolders(enabled: boolean) {
   const rename = (folder: NoteFolder, name: string) => write(() => noteApi.renameFolder(folder, name));
   const move = (folder: NoteFolder, parentId: string | null) =>
     write(() => noteApi.moveFolder(folder, parentId), parentId);
+  const style = (folder: NoteFolder, look: Style) => write(() => noteApi.styleFolder(folder, look));
   const place = (folder: NoteFolder, parentId: string | null, afterId: string | null) =>
     write(() => noteApi.placeFolder(folder, parentId, afterId), parentId);
 
@@ -197,7 +199,7 @@ export function useNoteFolders(enabled: boolean) {
     remove,
     level: (parentId: string | null): Level | undefined => levels[key(parentId)],
     isExpanded: (id: string) => expanded.has(id),
-    byId, options, error, busy, toggle, loadMore, create, rename, move, place,
+    byId, options, error, busy, toggle, loadMore, create, rename, move, place, style,
     dismissError: () => setError(null),
   };
 }
