@@ -639,3 +639,79 @@ fn wont_do_is_set_cleared_and_filtered_through_mcp() {
     assert_eq!(reopened["item"]["status"], "in_progress");
     assert_eq!(reopened["item"]["progress"], 30);
 }
+
+#[test]
+fn tasks_read_and_move_in_custom_order_with_a_revision_check() {
+    let data = Data::trusted();
+    let mut s = data.server();
+    let list = s.ok("list_create", json!({"name": "Synthetic Work"}));
+    let l = id(&list);
+    let one = s.ok("task_create", json!({"title": "One", "list_id": l}));
+    let two = s.ok("task_create", json!({"title": "Two", "list_id": l}));
+    let three = s.ok("task_create", json!({"title": "Three", "list_id": l}));
+    let titles = |page: Value| -> Vec<String> {
+        page["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| item["title"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    let custom = json!({"list_id": l, "sort": "custom"});
+    assert_eq!(
+        titles(s.ok("task_list", custom.clone())),
+        ["Three", "Two", "One"]
+    );
+
+    let moved = s.ok(
+        "task_reorder",
+        json!({"id": id(&three), "revision": rev(&three), "after_id": id(&one)}),
+    );
+    assert_eq!(rev(&moved), rev(&three) + 1);
+    assert_eq!(
+        titles(s.ok("task_list", custom.clone())),
+        ["Two", "One", "Three"]
+    );
+    s.ok(
+        "task_reorder",
+        json!({"id": id(&one), "revision": rev(&one), "first": true}),
+    );
+    assert_eq!(
+        titles(s.ok("task_list", custom.clone())),
+        ["One", "Two", "Three"]
+    );
+    // Out of date: the revision it read, or an anchor in another group.
+    s.refused(
+        "task_reorder",
+        json!({"id": id(&three), "revision": rev(&three), "first": true}),
+        "revision_conflict",
+    );
+    let started = s.ok(
+        "task_change",
+        json!({"id": id(&two), "revision": rev(&two), "status": "in_progress"}),
+    );
+    s.refused(
+        "task_reorder",
+        json!({"id": id(&one), "revision": rev(&one) + 1, "after_id": id(&started)}),
+        "revision_conflict",
+    );
+    assert_eq!(
+        data.desktop().get_task(&id(&one)).unwrap().unwrap().status,
+        tasknotes_core::tasks::WorkStatus::Ready
+    );
+    s.refused(
+        "task_reorder",
+        json!({"id": id(&one), "revision": rev(&one) + 1, "after_id": id(&two), "first": true}),
+        "invalid_input",
+    );
+    s.refused("task_list", json!({"sort": "custom"}), "invalid_input");
+    // One Task at a time: an applied move is an Audit Entry, not a Bulk Change.
+    let audit = s.ok("audit_list", json!({"entity_id": id(&three)}));
+    assert!(
+        audit["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entry| entry["action"] == "task.reorder" && entry["outcome"] == "applied")
+    );
+}

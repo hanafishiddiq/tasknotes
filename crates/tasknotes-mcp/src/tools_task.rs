@@ -6,8 +6,8 @@ use serde_json::Value;
 use tasknotes_cli::contract::{self, CliError};
 use tasknotes_core::tasks::{
     ChangeTask, CreateList, CreateTask, Difficulty, DifficultyFilter, MoveTask, PatchTask,
-    PatchTaskDetails, Priority, RecordProgress, RenameList, ReorderList, SetListRemoved, SortMode,
-    TaskError, TaskQuery, TaskScope, TaskView, WorkStatus,
+    PatchTaskDetails, Priority, RecordProgress, RenameList, ReorderList, ReorderTask,
+    SetListRemoved, SortMode, TaskError, TaskQuery, TaskScope, TaskView, WorkStatus,
 };
 
 use crate::tools::*;
@@ -17,7 +17,7 @@ pub fn tools() -> Vec<ToolDef> {
         tool(
             "task_list",
             Kind::Read,
-            "List or search active Tasks (or Removed ones), In Progress → Ready → Completed, in pages with an opaque next_cursor. Filter by difficulty with a level, or difficulty \"none\" for only Tasks with No Difficulty; leave it out for any. Sort by priority (default), newest or difficulty (Very Hard first, No Difficulty last). wont_do true keeps only Won't Do Tasks (in the Completed group), false only the others.",
+            "List or search active Tasks (or Removed ones), In Progress → Ready → Completed, in pages with an opaque next_cursor. Filter by difficulty with a level, or difficulty \"none\" for only Tasks with No Difficulty; leave it out for any. Sort by priority (default), newest, difficulty (Very Hard first, No Difficulty last) or custom: the person's Custom Order of one List, which needs list_id or inbox. wont_do true keeps only Won't Do Tasks (in the Completed group), false only the others.",
             task_list,
         ),
         tool(
@@ -61,6 +61,21 @@ pub fn tools() -> Vec<ToolDef> {
             Kind::Write,
             "Move a Task to an active List, or to Inbox.",
             task_move,
+        ),
+        tool(
+            "task_reorder",
+            Kind::Write,
+            "Put a Task directly after another Task of the same work-status group and List in that List's Custom Order (task_list sort custom), or first in its group. Never changes its status or the List's sort.",
+            |c, a: Reorder| {
+                let after_id = a.after()?;
+                item(task(c.store.reorder_task(ReorderTask {
+                    expected_revision: revision(a.revision)?,
+                    id: a.id,
+                    after_id,
+                    before_id: None,
+                    shown_sort: None,
+                })?))
+            },
         ),
         tool(
             "task_remove",

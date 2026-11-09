@@ -591,3 +591,97 @@ fn wont_do_is_set_cleared_and_filtered_through_the_cli() {
     let usage = usage.json["error"]["message"].as_str().unwrap().to_owned();
     assert!(usage.contains("[--wont-do true|false]"), "{usage}");
 }
+
+fn titles(page: &Value) -> Vec<String> {
+    page["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| item["title"].as_str().unwrap().to_owned())
+        .collect()
+}
+
+#[test]
+fn custom_order_lists_one_list_and_moves_a_task_after_another_with_a_revision() {
+    let cli = Cli::trusted();
+    let list = cli.ok(&["list", "create", "--name", "Synthetic Work"])["item"].clone();
+    let list_id = list["id"].as_str().unwrap();
+    let make = |title: &str| {
+        cli.ok(&["task", "create", "--title", title, "--list", list_id])["item"].clone()
+    };
+    let one = make("One");
+    let two = make("Two");
+    let three = make("Three");
+    let custom = || cli.ok(&["task", "list", "--list", list_id, "--sort", "custom"]);
+    assert_eq!(titles(&custom()), ["Three", "Two", "One"]);
+
+    let moved = cli.ok(&[
+        "task",
+        "reorder",
+        three["id"].as_str().unwrap(),
+        "--revision",
+        "1",
+        "--after",
+        one["id"].as_str().unwrap(),
+    ]);
+    assert_eq!(moved["item"]["revision"], 2);
+    assert_eq!(titles(&custom()), ["Two", "One", "Three"]);
+    cli.ok(&[
+        "task",
+        "reorder",
+        one["id"].as_str().unwrap(),
+        "--revision",
+        "1",
+        "--first",
+    ]);
+    assert_eq!(titles(&custom()), ["One", "Two", "Three"]);
+
+    // The revision it read is out of date now.
+    let stale = cli.run(&[
+        "task",
+        "reorder",
+        three["id"].as_str().unwrap(),
+        "--revision",
+        "1",
+        "--first",
+    ]);
+    assert_eq!(error_code(&stale, 4), "revision_conflict");
+    // An anchor in another work-status group is out of date too.
+    cli.ok(&[
+        "task",
+        "change",
+        two["id"].as_str().unwrap(),
+        "--revision",
+        "1",
+        "--status",
+        "in_progress",
+    ]);
+    let across = cli.run(&[
+        "task",
+        "reorder",
+        one["id"].as_str().unwrap(),
+        "--revision",
+        "2",
+        "--after",
+        two["id"].as_str().unwrap(),
+    ]);
+    assert_eq!(error_code(&across, 4), "revision_conflict");
+    let both = cli.run(&[
+        "task",
+        "reorder",
+        one["id"].as_str().unwrap(),
+        "--revision",
+        "2",
+        "--after",
+        two["id"].as_str().unwrap(),
+        "--first",
+    ]);
+    assert_eq!(error_code(&both, 2), "invalid_input");
+    // Custom Order belongs to one List or Inbox.
+    let everywhere = cli.run(&["task", "list", "--sort", "custom"]);
+    assert_eq!(error_code(&everywhere, 2), "invalid_input");
+    assert_eq!(
+        titles(&cli.ok(&["task", "list", "--inbox", "--sort", "custom"])),
+        Vec::<String>::new()
+    );
+}

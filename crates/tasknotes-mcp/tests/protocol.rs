@@ -87,11 +87,12 @@ fn a_trusted_client_completes_the_handshake_and_lists_the_tools() {
             "task_notes",
             "task_progress",
             "task_remove",
+            "task_reorder",
             "task_restore",
             "task_update",
         ]
     );
-    assert_eq!(tools.len(), 45);
+    assert_eq!(tools.len(), 46);
     for tool in &tools {
         assert_eq!(tool["inputSchema"]["type"], "object", "{tool}");
         assert!(tool["inputSchema"].get("oneOf").is_none(), "{tool}");

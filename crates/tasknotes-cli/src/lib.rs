@@ -19,8 +19,9 @@ use tasknotes_core::removed::SetRemoved;
 use tasknotes_core::style::{self, SetStyle};
 use tasknotes_core::tasks::{
     ChangeTask, CreateList, CreateTask, Difficulty, DifficultyFilter, List, MoveTask, PatchTask,
-    PatchTaskDetails, Priority, RecordProgress, RenameList, ReorderList, SetListRemoved, SortMode,
-    Task, TaskError, TaskQuery, TaskScope, TaskStore, TaskView, WorkStatus,
+    PatchTaskDetails, Priority, RecordProgress, RenameList, ReorderList, ReorderTask,
+    SetListRemoved, SortMode, Task, TaskError, TaskQuery, TaskScope, TaskStore, TaskView,
+    WorkStatus,
 };
 
 use access::Environment;
@@ -159,7 +160,8 @@ fn dispatch(
 pub(crate) const USAGE: &str = "Usage: tasknotes [--data-dir DIR] \
     <task|list|note|folder|link|removed|audit|bulk|style|backup|export|access> <command> [id] [--options]; \
     task change ID --revision N [--status S] [--priority P] [--difficulty D|none] [--progress N] [--wont-do true|false]; \
-    task list [--status S] [--priority P] [--difficulty D|none] [--wont-do true|false] [--tag T] [--sort priority|newest|difficulty]; \
+    task list [--status S] [--priority P] [--difficulty D|none] [--wont-do true|false] [--tag T] [--sort priority|newest|difficulty|custom (with --list ID or --inbox)]; \
+    task reorder ID --revision N (--after ID | --first) (within its work-status group of its List's Custom Order); \
     list reorder ID --revision N (--after ID | --first); \
     list|folder style ID --revision N [--icon NAME|none] [--color NAME|none]; style options; \
     folder reorder ID --revision N (--after ID | --first) [--parent ID | --top]; \
@@ -191,6 +193,7 @@ fn task_command(store: &TaskStore, verb: &str, words: &[String]) -> Result<Value
         "progress" => task_progress(store, words)?,
         "details" => task_details(store, words)?,
         "move" => task_move(store, words)?,
+        "reorder" => task_reorder(store, words)?,
         "remove" | "restore" => {
             let p = parse(words, &flags(&["revision"], 1))?;
             store.set_task_removed(SetRemoved {
@@ -342,6 +345,32 @@ fn task_move(store: &TaskStore, words: &[String]) -> Result<Task, CliError> {
         id: p.id().to_owned(),
         expected_revision: p.revision()?,
         list_id,
+    })?)
+}
+
+/// Puts a Task directly after another of its work-status group in its
+/// List's Custom Order, or first (ADR 0010). The List's sort is the
+/// person's and stays as it is.
+fn task_reorder(store: &TaskStore, words: &[String]) -> Result<Task, CliError> {
+    let p = parse(
+        words,
+        &Spec {
+            values: &["revision", "after"],
+            repeated: &[],
+            switches: &["first"],
+            positionals: 1,
+        },
+    )?;
+    Ok(store.reorder_task(ReorderTask {
+        id: p.id().to_owned(),
+        expected_revision: p.revision()?,
+        after_id: contract::destination(
+            p.value("after").map(str::to_owned),
+            p.has("first"),
+            ("--after ID", "--first"),
+        )?,
+        before_id: None,
+        shown_sort: None,
     })?)
 }
 
