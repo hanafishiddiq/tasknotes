@@ -2,7 +2,9 @@ import { invoke } from "./invoke";
 
 export type WorkStatus = "ready" | "in_progress" | "completed";
 export type Priority = "very_low" | "low" | "medium" | "high" | "very_high";
-export type SortMode = "priority" | "newest";
+/** Optional: a Task without one has No Difficulty (`null`). */
+export type Difficulty = "very_easy" | "easy" | "medium" | "hard" | "very_hard";
+export type SortMode = "priority" | "newest" | "difficulty";
 export type TaskView = { kind: "all" } | { kind: "inbox" } | { kind: "list"; listId: string };
 
 export interface TaskList {
@@ -31,6 +33,7 @@ export interface Task {
   description: string;
   status: WorkStatus;
   priority: Priority;
+  difficulty: Difficulty | null;
   progress: number;
   nextStep: string;
   listId: string | null;
@@ -59,6 +62,8 @@ export interface TaskEdit extends TaskDraft {
 export type TaskChange = {
   status?: WorkStatus;
   priority?: Priority;
+  /** `null` clears it to No Difficulty. */
+  difficulty?: Difficulty | null;
   progress?: number;
 };
 
@@ -102,12 +107,15 @@ export interface TaskFilters {
   text: string;
   status: WorkStatus | "";
   priority: Priority | "";
+  difficulty: Difficulty | "";
   tag: string;
   /** Show only this Task, as when it is opened from a Note it is linked to. */
   taskId?: string;
 }
 
-export const NO_FILTERS: TaskFilters = { text: "", status: "", priority: "", tag: "" };
+export const NO_FILTERS: TaskFilters = {
+  text: "", status: "", priority: "", difficulty: "", tag: "",
+};
 
 export const TASK_PAGE_SIZE = 50;
 export const HISTORY_PAGE_SIZE = 10;
@@ -120,6 +128,7 @@ function queryArgs(view: TaskView, filters: TaskFilters) {
     ...(text ? { text } : {}),
     ...(filters.status ? { status: filters.status } : {}),
     ...(filters.priority ? { priority: filters.priority } : {}),
+    ...(filters.difficulty ? { difficulty: filters.difficulty } : {}),
     ...(tag ? { tag } : {}),
     ...(filters.taskId ? { taskId: filters.taskId } : {}),
   };

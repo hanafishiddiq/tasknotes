@@ -1,12 +1,13 @@
 import {
   useLayoutEffect, useRef, type ButtonHTMLAttributes, type FormEvent, type KeyboardEvent,
 } from "react";
-import { CalendarDays, Check, Folder, LoaderCircle, Tag, Trash2 } from "lucide-react";
+import { CalendarDays, Check, Folder, LoaderCircle, SignalZero, Tag, Trash2 } from "lucide-react";
 import type {
   Task,
   TaskList,
   WorkStatus,
   Priority,
+  Difficulty,
   TaskChange,
   ProgressDraft,
 } from "../lib/task-api";
@@ -19,6 +20,8 @@ import {
   STATUS_VIEW,
   PRIORITY_ORDER,
   PRIORITY_VIEW,
+  DIFFICULTY_ORDER,
+  DIFFICULTY_VIEW,
 } from "../lib/task-visuals";
 
 const dateFormatter = new Intl.DateTimeFormat("en", {
@@ -151,6 +154,9 @@ export default function TaskRow({
   const baseRevision = edits?.baseRevision ?? task.revision;
   const changedElsewhere = edits !== undefined && edits.baseRevision !== task.revision;
   const PriorityIcon = PRIORITY_VIEW[task.priority].icon;
+  // Older replies may lack the field; treat that as No Difficulty.
+  const difficulty = task.difficulty ?? null;
+  const DifficultyIcon = difficulty ? DIFFICULTY_VIEW[difficulty].icon : SignalZero;
   const hiddenTags = (task.tags ?? []).slice(2);
   const titleField = useRef<HTMLTextAreaElement>(null);
   const due = deadlineStatus(task.dueDate, today, task.status);
@@ -282,6 +288,13 @@ export default function TaskRow({
             <PriorityIcon size={13} strokeWidth={2} aria-hidden="true" />
             {PRIORITY_VIEW[task.priority].label}
           </span>
+          {difficulty && (
+            <span className={`difficulty-pill difficulty-pill--${difficulty}`}>
+              <DifficultyIcon size={13} strokeWidth={2} aria-hidden="true" />
+              <span className="sr-only">Difficulty </span>
+              {DIFFICULTY_VIEW[difficulty].label}
+            </span>
+          )}
           {due === "overdue" && <span className="deadline-pill deadline-pill--overdue">Overdue</span>}
           {due === "today" && <span className="deadline-pill deadline-pill--today">Due today</span>}
           {due === "upcoming" && task.dueDate && (
@@ -422,6 +435,29 @@ export default function TaskRow({
                 {PRIORITY_ORDER.map((priority) => (
                   <option key={priority} value={priority}>
                     {PRIORITY_VIEW[priority].label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="property" htmlFor={`difficulty-${task.id}`}>
+              <span className="sr-only">Difficulty</span>
+              <DifficultyIcon size={13} strokeWidth={2} aria-hidden="true" />
+              <select
+                id={`difficulty-${task.id}`}
+                aria-label="Difficulty"
+                value={difficulty ?? ""}
+                disabled={!canChangeSelectors}
+                onChange={(event) =>
+                  void onChange(
+                    { difficulty: (event.target.value || null) as Difficulty | null },
+                    task.revision,
+                  )
+                }
+              >
+                <option value="">No difficulty</option>
+                {DIFFICULTY_ORDER.map((level) => (
+                  <option key={level} value={level}>
+                    {DIFFICULTY_VIEW[level].label}
                   </option>
                 ))}
               </select>

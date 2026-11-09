@@ -21,7 +21,7 @@ let refreshGate: Promise<void> | undefined;
 
 function task(n: number): Task & { removedAt: number | null } {
   return {
-    id: `task-${n}`, title: `T${n}`, description: "", status: "ready", priority: "medium",
+    id: `task-${n}`, title: `T${n}`, description: "", status: "ready", priority: "medium", difficulty: null,
     progress: 0, nextStep: "", revision: 1, createdAt: 100 + n, updatedAt: 100 + n,
     listId: null, dueDate: null, tags: [], removedAt: null,
   };

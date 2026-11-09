@@ -12,7 +12,7 @@ export const FIXTURE_NOW = Date.UTC(2026, 9, 26, 9, 15);
 
 export function fixtureTask(id: string, fields: Partial<Task> = {}): Task {
   return {
-    id, title: `Synthetic task ${id}`, description: "", status: "ready", priority: "medium",
+    id, title: `Synthetic task ${id}`, description: "", status: "ready", priority: "medium", difficulty: null,
     progress: 0, nextStep: "", revision: 1, createdAt: FIXTURE_NOW, updatedAt: FIXTURE_NOW,
     listId: null, dueDate: null, tags: [], ...fields,
   };
@@ -22,12 +22,12 @@ export function fixtureList(id: string, name: string): TaskList {
   return { id, name, revision: 1, createdAt: FIXTURE_NOW, updatedAt: FIXTURE_NOW, removed: false };
 }
 
-/** Every look a closed row can take: all statuses, priorities, deadlines and tag counts. */
+/** Every look a closed row can take: all statuses, priorities, difficulties, deadlines and tag counts. */
 export function everyRowKind(): Task[] {
   return [
     fixtureTask("a", { title: "Synthetic draft", status: "in_progress", progress: 40, nextStep: "Write the outline", priority: "very_high", dueDate: "2020-01-01", tags: ["alpha", "beta", "gamma", "delta"] }),
-    fixtureTask("b", { title: "Synthetic review", status: "in_progress", progress: 10, description: "Longer context", priority: "high", dueDate: "2999-01-01", tags: ["alpha"] }),
-    fixtureTask("c", { title: "Synthetic errand", priority: "low" }),
+    fixtureTask("b", { title: "Synthetic review", status: "in_progress", progress: 10, description: "Longer context", priority: "high", difficulty: "very_hard", dueDate: "2999-01-01", tags: ["alpha"] }),
+    fixtureTask("c", { title: "Synthetic errand", priority: "low", difficulty: "very_easy" }),
     fixtureTask("d", { title: "Synthetic filing", priority: "very_low" }),
     fixtureTask("e", { title: "Synthetic archive", status: "completed", progress: 100 }),
   ];

@@ -10,9 +10,9 @@ use tasknotes_core::notes::{
 use tasknotes_core::privacy::SetNoteExcludeFromAi;
 use tasknotes_core::removed::{RemovedPage, SetRemoved};
 use tasknotes_core::tasks::{
-    ChangeTask, CreateList, CreateTask, List, ListPage, MoveTask, Priority, ProgressSequencePage,
-    RecordProgress, RenameList, ReorderList, SetListRemoved, SortMode, Task, TaskPage, TaskQuery,
-    TaskStore, TaskView, UpdateTask, UpdateTaskDetails, WorkStatus,
+    ChangeTask, CreateList, CreateTask, Difficulty, List, ListPage, MoveTask, Priority,
+    ProgressSequencePage, RecordProgress, RenameList, ReorderList, SetListRemoved, SortMode, Task,
+    TaskPage, TaskQuery, TaskStore, TaskView, UpdateTask, UpdateTaskDetails, WorkStatus,
 };
 use tauri::{Manager, State};
 
@@ -42,6 +42,7 @@ fn list_tasks(
     text: Option<String>,
     status: Option<WorkStatus>,
     priority: Option<Priority>,
+    difficulty: Option<Difficulty>,
     tag: Option<String>,
     task_id: Option<String>,
 ) -> Result<TaskPage, String> {
@@ -49,6 +50,7 @@ fn list_tasks(
         text: text.unwrap_or_default(),
         status,
         priority,
+        difficulty,
         tag,
         view: view.unwrap_or_default(),
         sort: sort.unwrap_or_default(),

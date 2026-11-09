@@ -1265,6 +1265,13 @@ kbd {
 .priority-pill--very_high {
   color: var(--orange);
 }
+/* Difficulty is never colored: its signal-bar icon and label tell it apart from Priority. */
+.difficulty-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
 .deadline-pill {
   white-space: nowrap;
 }

@@ -66,7 +66,7 @@ beforeEach(() => {
         const stamp = ++clock;
         const created: Task = {
           id: `task-${stamp}`, title: body.input.title, description: body.input.description ?? "",
-          status: "ready", priority: "medium", progress: 0, nextStep: "", revision: 1,
+          status: "ready", priority: "medium", difficulty: null, progress: 0, nextStep: "", revision: 1,
           createdAt: stamp, updatedAt: stamp, listId: null, dueDate: null, tags: [],
         };
         tasks.push(created);

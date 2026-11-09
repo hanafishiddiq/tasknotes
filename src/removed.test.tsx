@@ -22,7 +22,7 @@ let clock: number;
 
 const base: Task = {
   id: "task-1", title: "Prepare launch", description: "",
-  status: "in_progress", priority: "medium", progress: 30, nextStep: "", revision: 1,
+  status: "in_progress", priority: "medium", difficulty: null, progress: 30, nextStep: "", revision: 1,
   createdAt: 100, updatedAt: 100, listId: null, dueDate: null, tags: [],
 };
 

@@ -12,7 +12,7 @@ const base: Task = {
   title: "Ready plan",
   description: "",
   status: "ready",
-  priority: "medium",
+  priority: "medium", difficulty: null,
   progress: 0,
   nextStep: "",
   listId: null,
