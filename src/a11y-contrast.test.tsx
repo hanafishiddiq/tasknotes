@@ -19,7 +19,7 @@ const AA_LARGE = 3;
 const AA_NON_TEXT = 3;
 
 /** Where things sit. All but the active filter chip are tokens used as fills. */
-type Surface = "bg" | "sidebar" | "hover" | "side-selected" | "field" | "row-selected" | "accent" | "filter-chip";
+type Surface = "bg" | "sidebar" | "hover" | "side-hover" | "side-selected" | "field" | "row-selected" | "accent" | "filter-chip";
 
 interface Placement {
   on: Surface[];
@@ -40,10 +40,10 @@ const TEXT: Record<string, Placement> = {
   ".task-toast": { on: ["hover"] },
   ".task-toast-action": { on: ["hover"] },
   ".sidebar-heading": { on: ["sidebar"] },
-  ".folder": { on: ["sidebar", "hover", "side-selected"] },
+  ".folder": { on: ["sidebar", "side-hover", "side-selected"] },
   ".folder-count": { on: ["sidebar", "hover"] },
   '.folder[aria-current="page"] .folder-count': { on: ["side-selected"] },
-  ".folder--quiet": { on: ["sidebar", "hover", "side-selected"] },
+  ".folder--quiet": { on: ["sidebar", "side-hover", "side-selected"] },
   ".folder-form input": { on: ["sidebar", "hover"] },
   ".folder-form input::placeholder": { on: ["sidebar", "hover"] },
   ".sidebar-error": { on: ["sidebar"] },
@@ -186,7 +186,7 @@ const TEXT: Record<string, Placement> = {
 
 /** Marks that carry meaning without words: 3:1. Each is one rule's property. */
 const INDICATORS: { selector: string; property: string; means: string; place: Placement }[] = [
-  { selector: ":focus-visible", property: "outline", means: "focus ring", place: { on: ["bg", "sidebar", "hover", "side-selected", "field", "row-selected"] } },
+  { selector: ":focus-visible", property: "outline", means: "focus ring", place: { on: ["bg", "sidebar", "hover", "side-hover", "side-selected", "field", "row-selected"] } },
   { selector: ".palette-field:focus-within", property: "border-bottom-color", means: "focus underline", place: { on: ["sidebar"] } },
   { selector: ".next-step-input:focus", property: "border-bottom-color", means: "focus underline", place: { on: ["bg"] } },
   { selector: ".task-check", property: "border", means: "Ready ring", place: { on: ["bg", "hover", "field"] } },
@@ -208,8 +208,8 @@ const INDICATORS: { selector: string; property: string; means: string; place: Pl
   { selector: ".icon-button", property: "color", means: "icon-only button", place: { on: ["bg"] } },
   { selector: ".icon-button:hover:not(:disabled)", property: "color", means: "icon-only button", place: { on: ["hover"] } },
   { selector: '.note-toolbar .icon-button[aria-pressed="true"]', property: "color", means: "pressed icon button", place: { on: ["bg"] } },
-  { selector: ".folder-action", property: "color", means: "row icon button", place: { on: ["sidebar", "hover", "side-selected"] } },
-  { selector: ".folder-action:hover:not(:disabled)", property: "color", means: "row icon button", place: { on: ["hover"] } },
+  { selector: ".folder-action", property: "color", means: "row icon button", place: { on: ["sidebar", "side-hover", "side-selected"] } },
+  { selector: ".folder-action:hover:not(:disabled)", property: "color", means: "row icon button", place: { on: ["hover", "side-hover", "side-selected"] } },
   { selector: ".folder-disclosure", property: "color", means: "folder disclosure arrow", place: { on: ["sidebar"] } },
   { selector: "button.folder-disclosure:hover:not(:disabled)", property: "color", means: "folder disclosure arrow", place: { on: ["sidebar"] } },
   { selector: ".linked-unlink", property: "color", means: "unlink button", place: { on: ["bg", "hover"] } },
@@ -250,6 +250,8 @@ const DECORATIVE_LINES = [
   ".undo-bar", ".task-toast", ".sidebar", ".toolbar", ".settings-shortcut", ".settings-backup", ".palette", ".palette-field",
   ".removed-item", ".approval", ".task-slot + .task-slot .task-card::before", ".history-entry", ".linked-item",
   ".note-list-pane", ".next-step-input", ".note-quote",
+  // The sidebar's resize edge lights up under the pointer; its separator role and focus ring carry the meaning.
+  ".sidebar-resizer:hover::after", "body.sidebar-resizing .sidebar-resizer::after",
 ];
 
 /** These repeat the ring on a wrapper, so they are the same colour on the same surfaces. */
@@ -380,7 +382,7 @@ describe("the contrast check itself", () => {
   it("uses no fill it does not check text against", () => {
     const tokensAsFills = new Set(rules.filter((rule) => rule.media === null)
       .flatMap((rule) => [...(declared(rule, "background") ?? "").matchAll(/^var\(--([\w-]+)\)$/g)].map((match) => match[1])));
-    expect([...tokensAsFills].sort()).toEqual(["accent", "bg", "field", "hover", "row-selected", "row-selected-text", "selection", "sep", "side-selected", "sidebar"]);
+    expect([...tokensAsFills].sort()).toEqual(["accent", "bg", "field", "hover", "row-selected", "row-selected-text", "selection", "sep", "side-hover", "side-selected", "sidebar"]);
   });
 
 });

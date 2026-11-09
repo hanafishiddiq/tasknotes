@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import {
   ArrowDownWideNarrow, CheckCircle2, LoaderCircle, LockKeyhole, NotebookText, Search, SearchX, SquarePen,
   Tag,
@@ -11,6 +11,8 @@ import {
 import { PRIORITY_ORDER, PRIORITY_VIEW, STATUS_ORDER, STATUS_VIEW } from "./lib/task-visuals";
 import TaskRow from "./components/TaskRow";
 import TaskSidebar from "./components/TaskSidebar";
+import SidebarResizer from "./components/SidebarResizer";
+import { useSidebarWidth } from "./lib/use-sidebar-width";
 import VirtualTaskList from "./components/VirtualTaskList";
 import NewTaskToast from "./components/NewTaskToast";
 import { useLocalCalendarDay } from "./lib/use-local-calendar-day";
@@ -155,6 +157,7 @@ export default function App() {
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
   const appearance = useTheme();
+  const sidebar = useSidebarWidth();
   const sound = useSound();
   // A Task view change in flight: moving elsewhere waits until it settles.
   const busy = busyList || creating || Boolean(savingId) || loadingMore;
@@ -999,7 +1002,8 @@ export default function App() {
   const countKnown = !(loadError && filtering);
 
   return (
-    <div className="app-shell" inert={paletteOpen}>
+    <div className="app-shell" inert={paletteOpen}
+      style={{ "--sidebar-width": `${sidebar.width}px` } as CSSProperties}>
       <TaskSidebar
         view={view} notesActive={workspace !== "tasks"} onOpenNotes={() => openNotes()}
         removedActive={workspace === "removed"} onOpenRemoved={openRemoved}
@@ -1022,6 +1026,7 @@ export default function App() {
         onReorderList={reorderList}
         onRemoveList={(list) => setListRemoved(list, true)}
         onLoadMoreLists={loadMoreLists}
+        resizer={<SidebarResizer width={sidebar.width} onResize={sidebar.setWidth} />}
       />
 
       <main className="main-view" hidden={workspace !== "tasks"}>

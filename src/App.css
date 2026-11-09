@@ -2,6 +2,7 @@
   --bg: #1e1e1e;
   --sidebar: #282828;
   --hover: #2c2c2c;
+  --side-hover: #4c4424;
   --side-selected: #444444;
   --row-selected: #67551a;
   --row-selected-text: #ffffff;
@@ -31,6 +32,7 @@
   --bg: #ffffff;
   --sidebar: #f0f0ef;
   --hover: #f4f4f3;
+  --side-hover: #fbeca0;
   --side-selected: #dcdcdb;
   --row-selected: #ffe27a;
   --row-selected-text: #1d1d1f;
@@ -108,7 +110,8 @@ textarea:disabled {
 /* Shell */
 .app-shell {
   display: grid;
-  grid-template-columns: 210px minmax(0, 1fr);
+  position: relative;
+  grid-template-columns: var(--sidebar-width, 260px) minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) auto;
   height: 100vh;
 }
@@ -119,6 +122,37 @@ textarea:disabled {
 .app-shell > :not(.sidebar):not(.undo-bar) {
   grid-column: 2;
   grid-row: 1;
+}
+/*
+ * The sidebar's right edge: a thin grab strip over its border, drawn only while used.
+ * Placed against the shell, not the sidebar, so it neither scrolls nor clips with the sidebar's rows.
+ */
+.sidebar-resizer {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--sidebar-width, 260px) - 4px);
+  width: 7px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.sidebar-resizer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+}
+.sidebar-resizer:hover::after,
+body.sidebar-resizing .sidebar-resizer::after {
+  border-left: 1px solid var(--focus);
+}
+body.sidebar-resizing,
+body.sidebar-resizing * {
+  cursor: col-resize !important;
+  user-select: none;
+  -webkit-user-select: none;
 }
 /* Undo sits in the window's last row, flat and in flow: nothing floats. */
 .undo-bar {
@@ -178,8 +212,8 @@ textarea:disabled {
   flex: none;
   color: var(--accent);
 }
-.folder:hover:not(:disabled) {
-  background: var(--hover);
+.folder:hover:not(:disabled):not([aria-current="page"]) {
+  background: var(--side-hover);
 }
 .folder[aria-current="page"] {
   background: var(--side-selected);
@@ -214,16 +248,27 @@ textarea:disabled {
   display: flex;
   align-items: center;
 }
-.folder-row:hover .folder,
-.folder-row:focus-within .folder {
-  padding-right: 52px;
+/* Hovering anywhere on a row, its icons included, fills it; the current place keeps its own fill. */
+.folder-row:hover .folder:not([aria-current="page"]),
+.folder-row:focus-within .folder:not([aria-current="page"]) {
+  background: var(--side-hover);
 }
+/* The icons cover the end of a long name on the row's own opaque fill: no gutter, no overlap. */
 .folder-actions {
   position: absolute;
-  right: 4px;
+  top: 3px;
+  right: 0;
+  bottom: 3px;
   display: flex;
+  align-items: center;
   gap: 2px;
+  padding: 0 4px 0 6px;
+  border-radius: 0 6px 6px 0;
+  background: var(--side-hover);
   opacity: 0;
+}
+.folder[aria-current="page"] + .folder-actions {
+  background: var(--side-selected);
 }
 .folder-row:hover .folder-actions,
 .folder-actions:focus-within {
@@ -321,7 +366,8 @@ textarea:disabled {
 .folder-row[data-drop-edge="after"]::before {
   bottom: -1px;
 }
-.folder-row[data-drop-edge="into"] .folder {
+.folder-row[data-drop-edge="into"] .folder,
+.folder-row[data-drop-edge="into"]:hover .folder:not([aria-current="page"]) {
   background: var(--side-selected);
 }
 .folder-tree[data-drop-end] {
@@ -347,10 +393,6 @@ body.row-dragging * {
 }
 .folder-tree .folder-row .folder {
   padding-left: 4px;
-}
-.folder-tree .folder-row:hover .folder,
-.folder-tree .folder-row:focus-within .folder {
-  padding-right: 76px;
 }
 .folder-disclosure {
   display: grid;
@@ -2115,6 +2157,7 @@ kbd {
     flex-direction: row;
     gap: 4px;
   }
+  .sidebar-resizer,
   .sidebar-heading,
   .sidebar-spacer,
   .folder-count,
