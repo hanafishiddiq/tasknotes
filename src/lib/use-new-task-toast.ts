@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /** How long the toast stays before it fades, not counting time held under the pointer or focus. */
 export const TOAST_MS = 6000;
@@ -20,16 +20,21 @@ export interface NewTaskToastState {
   leaving: boolean;
   /** The Task flashing yellow after the toast opened it. */
   flashId: string | null;
-  /** The latest Task the toast opened, for the list to scroll to once. */
-  reveal: { taskId: string; seq: number } | null;
+  /** The Task the toast just opened, for the list to scroll to on its next try only. */
+  reveal: { taskId: string } | null;
   /** A Task was just created in this window: point the toast at it. */
   added(taskId: string): void;
   /** The pointer or keyboard focus is on the toast (true) or left it (false). */
   hold(reason: HoldReason, held: boolean): void;
   /** Closes the toast and flashes its Task; returns that Task, for the view to open. */
   open(): string | null;
-  /** The list scrolled to `reveal`: it is never replayed, so the list does not move by itself. */
-  revealed(): void;
+  /** The view now shows this Task: the list scrolls to it once, if it is there. */
+  revealTask(taskId: string): void;
+  /**
+   * Drops `reveal`, hit or miss, and on any change of view: it is never replayed,
+   * so the list does not move by itself. Stable across renders.
+   */
+  clearReveal(): void;
 }
 
 /**
@@ -39,7 +44,7 @@ export interface NewTaskToastState {
 export function useNewTaskToast(): NewTaskToastState {
   const [shown, setShown] = useState<{ taskId: string; seq: number; leaving: boolean } | null>(null);
   const [flashId, setFlashId] = useState<string | null>(null);
-  const [reveal, setReveal] = useState<{ taskId: string; seq: number } | null>(null);
+  const [reveal, setReveal] = useState<{ taskId: string } | null>(null);
   const current = useRef(shown);
   current.current = shown;
   const seq = useRef(0);
@@ -101,13 +106,13 @@ export function useNewTaskToast(): NewTaskToastState {
     clearTimeout(flashTimer.current);
     setFlashId(taskId);
     flashTimer.current = setTimeout(() => setFlashId(null), FLASH_MS);
-    seq.current += 1;
-    setReveal({ taskId, seq: seq.current });
     return taskId;
   }
 
+  const clearReveal = useCallback(() => setReveal(null), []);
+
   return {
     taskId: shown?.taskId ?? null, seq: shown?.seq ?? 0, leaving: shown?.leaving ?? false,
-    flashId, reveal, added, hold, open, revealed: () => setReveal(null),
+    flashId, reveal, added, hold, open, revealTask: (taskId) => setReveal({ taskId }), clearReveal,
   };
 }

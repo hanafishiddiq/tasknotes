@@ -17,6 +17,8 @@ const TOAST = "Task added · Click to edit";
 /** Synthetic fixtures only, behind the Tauri seam. */
 let tasks: Task[];
 let created: number;
+/** Tasks moved to Removed: the store hides them from every list. */
+let removed: Set<string>;
 
 function task(n: number, fields: Partial<Task> = {}): Task {
   return {
@@ -29,6 +31,7 @@ function task(n: number, fields: Partial<Task> = {}): Task {
 beforeEach(() => {
   tasks = [];
   created = 0;
+  removed = new Set();
   window.localStorage.clear();
   call.mockReset();
   call.mockImplementation(async (command, args) => {
@@ -39,6 +42,7 @@ beforeEach(() => {
         // In Progress first, as the core orders them; new Tasks are Ready, so they land below.
         const items = [...tasks]
           .sort((a, b) => Number(b.status === "in_progress") - Number(a.status === "in_progress"))
+          .filter((item) => !removed.has(item.id))
           .filter((item) => !body.taskId || item.id === body.taskId)
           .filter((item) => !body.text || item.title.toLowerCase().includes(String(body.text).toLowerCase()));
         return { items: items.slice(0, body.limit ?? 50), nextCursor: null };
@@ -48,6 +52,13 @@ beforeEach(() => {
         const made = task(1000 + created, { title: body.input.title.trim(), description: body.input.description });
         tasks.push(made);
         return made;
+      }
+      case "set_task_removed": {
+        const found = tasks.find((item) => item.id === body.input.id)!;
+        if (body.input.removed) removed.add(found.id);
+        else removed.delete(found.id);
+        found.revision += 1;
+        return { ...found, removed: body.input.removed };
       }
       case "list_progress_entries":
       case "list_task_notes":
@@ -238,6 +249,61 @@ describe("the new Task toast in the Task view", () => {
     expect(within(row).getByRole("region", { name: "Task details" })).toBeInTheDocument();
     expect(screen.getByRole("status", { name: "Added Task" })).toHaveTextContent("Showing the Task you just added");
     expect(screen.queryByRole("article", { name: "Alpha" })).toBeNull();
+  });
+});
+
+/** Records every scroll the list asks for, and gives the scroll area room as a real window has. */
+function watchScrolls() {
+  const scrollTo = vi.fn(function (this: HTMLElement, options?: ScrollToOptions | number) {
+    if (typeof options === "object" && options.top !== undefined) this.scrollTop = options.top;
+  });
+  const original = HTMLElement.prototype.scrollTo;
+  HTMLElement.prototype.scrollTo = scrollTo as unknown as typeof original;
+  return {
+    scrollTo,
+    roomy() {
+      const area = document.querySelector<HTMLElement>(".main-scroll")!;
+      Object.defineProperty(area, "scrollHeight", { configurable: true, value: 5000 });
+      Object.defineProperty(area, "clientHeight", { configurable: true, value: 500 });
+      return area;
+    },
+    /** Scrolls asked for since `from` that would move the list down. */
+    movedSince(from: number) {
+      return scrollTo.mock.calls.slice(from)
+        .filter(([options]) => typeof options === "object" && (options.top ?? 0) > 0);
+    },
+    restore() { HTMLElement.prototype.scrollTo = original; },
+  };
+}
+
+describe("the list never moves by itself after the toast", () => {
+  it("a Task removed before the toast is clicked is not scrolled to when Undo brings it back", async () => {
+    tasks = Array.from({ length: 30 }, (_, i) => task(i + 1, { status: "in_progress" }));
+    const scrolls = watchScrolls();
+    try {
+      const user = userEvent.setup();
+      render(<App />);
+      await screen.findByRole("article", { name: "Synthetic task 1" });
+      await addTask(user, "Short lived");
+      const area = scrolls.roomy();
+      await user.click(screen.getByRole("button", { name: "Open Short lived" }));
+      await user.click(screen.getByRole("button", { name: "Move to Removed" }));
+      await screen.findByRole("status", { name: "Moved to Removed" });
+      await waitFor(() => expect(screen.queryByRole("article", { name: "Short lived" })).toBeNull());
+
+      const toast = screen.queryByRole("button", { name: TOAST });
+      if (toast) await user.click(toast);
+      area.scrollTop = 0;
+      const before = scrolls.scrollTo.mock.calls.length;
+      (document.activeElement as HTMLElement | null)?.blur();
+      await user.keyboard("{Meta>}z{/Meta}");
+      await screen.findByRole("article", { name: "Short lived" });
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+      expect(scrolls.movedSince(before)).toEqual([]);
+      expect(area.scrollTop).toBe(0);
+    } finally {
+      scrolls.restore();
+    }
   });
 });
 

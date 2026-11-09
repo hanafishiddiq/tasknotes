@@ -108,8 +108,9 @@ export default function App() {
   const [noteHits, setNoteHits] = useState<NotePage | null>(null);
   const [noteHitsFailed, setNoteHitsFailed] = useState(false);
   const [notesRequest, setNotesRequest] = useState<NotesRequest | null>(null);
-  // A linked Task asked for while the Task view was busy.
-  const [pendingLinkedTask, setPendingLinkedTask] = useState<string | null>(null);
+  // A Task asked to show alone while the Task view was busy, and why.
+  const [pendingLinkedTask, setPendingLinkedTask] =
+    useState<{ taskId: string; reason: "linked" | "added" } | null>(null);
   // Why one Task shows alone: opened from a Note, or from the new Task toast.
   const [shownAlone, setShownAlone] = useState<"linked" | "added">("linked");
   const [lists, setLists] = useState<TaskList[]>([]);
@@ -256,9 +257,17 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (pendingLinkedTask && !busy) openLinkedTask(pendingLinkedTask);
+    if (pendingLinkedTask && !busy) openLinkedTask(pendingLinkedTask.taskId, pendingLinkedTask.reason);
     // openLinkedTask reads the same busy flag listed here.
   }, [pendingLinkedTask, busy]);
+
+  // A scroll the toast asked for gets one try. A view that finished loading without
+  // its Task (moved to Removed, say) has no list to try it, so drop it here, or a
+  // later Undo or refresh would move the list by itself.
+  const { reveal, clearReveal } = newTaskToast;
+  useEffect(() => {
+    if (reveal && !loading && !tasks.some((task) => task.id === reveal.taskId)) clearReveal();
+  }, [reveal, loading, tasks, clearReveal]);
 
   useEffect(() => {
     if (!focusRequest || workspace !== "tasks") return;
@@ -277,6 +286,7 @@ export default function App() {
 
   function openNotes(scope: NoteScope = ALL_NOTES) {
     undo.hideNotice();
+    newTaskToast.clearReveal();
     setNotesOpened(true);
     setWorkspace("notes");
     setNoteScope(scope);
@@ -290,47 +300,51 @@ export default function App() {
     openNotes(ALL_NOTES);
   }
 
-  /**
-   * Shows one Task, expanded, as when it is opened from a Note it is linked to.
-   * Without a reason, the one already given stands (a deferred open).
-   */
-  function openLinkedTask(taskId: string, reason?: "linked" | "added") {
-    if (reason) setShownAlone(reason);
+  /** Shows one Task, expanded, as when it is opened from a Note it is linked to. */
+  function openLinkedTask(taskId: string, reason: "linked" | "added") {
     if (busy) {
       // Opened once the Task view has finished its current change.
-      setPendingLinkedTask(taskId);
+      setPendingLinkedTask({ taskId, reason });
       setWorkspace("tasks");
       return;
     }
     setPendingLinkedTask(null);
+    setShownAlone(reason);
     navigate({ kind: "all" });
     setSearchDraft("");
     setTagDraft("");
     applyFilters({ ...NO_FILTERS, taskId });
     setExpandedId(taskId);
+    // After navigate and applyFilters, which drop any earlier scroll request.
+    if (reason === "added") newTaskToast.revealTask(taskId);
   }
 
   /** The new Task toast was clicked: open the Task where it is, or on its own when this view hides it. */
   function openNewTask(taskId: string) {
-    if (workspace === "tasks" && tasks.some((task) => task.id === taskId)) setExpandedId(taskId);
-    else openLinkedTask(taskId, "added");
+    if (workspace === "tasks" && tasks.some((task) => task.id === taskId)) {
+      setExpandedId(taskId);
+      newTaskToast.revealTask(taskId);
+    } else openLinkedTask(taskId, "added");
   }
 
   function openSettings() {
     if (busy) return;
     undo.hideNotice();
+    newTaskToast.clearReveal();
     setWorkspace("settings");
   }
 
   function openRemoved() {
     if (busy) return;
     undo.hideNotice();
+    newTaskToast.clearReveal();
     setWorkspace("removed");
   }
 
   function openApprovals() {
     if (busy) return;
     undo.hideNotice();
+    newTaskToast.clearReveal();
     void approvals.refresh();
     setWorkspace("approvals");
   }
@@ -396,6 +410,7 @@ export default function App() {
     if (busy) return;
     setWorkspace("tasks");
     undo.hideNotice();
+    newTaskToast.clearReveal();
     if (next.kind === view.kind &&
         (next.kind !== "list" || (view.kind === "list" && next.listId === view.listId))) return;
     setTasks([]);
@@ -817,6 +832,7 @@ export default function App() {
 
   function changeSort(nextSort: SortMode) {
     if (sort === nextSort) return;
+    newTaskToast.clearReveal();
     currentQuery.current = { ...currentQuery.current, sort: nextSort };
     requestGeneration.current += 1;
     setError(null);
@@ -831,6 +847,7 @@ export default function App() {
   function applyFilters(next: TaskFilters) {
     if (sameFilters(next, currentQuery.current.filters)) return;
     setCreatedHidden(false);
+    newTaskToast.clearReveal();
     currentQuery.current = { ...currentQuery.current, filters: next };
     requestGeneration.current += 1;
     setError(null);
@@ -1232,7 +1249,7 @@ export default function App() {
                     onCollapse={() => setExpandedId(null)}
                     flashId={newTaskToast.flashId}
                     reveal={newTaskToast.reveal}
-                    onRevealed={newTaskToast.revealed}
+                    onRevealed={newTaskToast.clearReveal}
                     renderTask={(task) => (
                       <TaskRow
                         task={task}

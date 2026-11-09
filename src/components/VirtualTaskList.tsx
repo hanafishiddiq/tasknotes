@@ -29,7 +29,10 @@ interface VirtualTaskListProps {
   onCollapse: () => void;
   /** A Task flashing yellow for a moment (opened from the new Task toast). */
   flashId?: string | null;
-  /** A Task to scroll to and focus once, when the person asked for it; then `onRevealed`. */
+  /**
+   * A Task to scroll to and focus, when the person asked for it. One try only: hit or
+   * miss, `onRevealed` drops it, so a Task arriving later never moves the list.
+   */
   reveal?: { taskId: string } | null;
   onRevealed?: () => void;
 }
@@ -172,17 +175,19 @@ export default function VirtualTaskList({
     focusTask(next);
   }
 
-  // Asked for from the new Task toast, so moving the list is the person's doing. It
-  // waits for the Task to arrive (a view that is still loading), then is let go.
+  // Asked for from the new Task toast, so moving the list is the person's doing. A
+  // view still loading has no list yet; the first list it shows gets the one try.
+  // `virtualizer` keeps one instance; `onRevealed` must be stable, or this reruns each render.
   useLayoutEffect(() => {
     if (!reveal) return;
     const index = items.findIndex((item) => item.kind === "task" && item.task.id === reveal.taskId);
-    if (index < 0) return;
-    // Always instant, as in focusTask; the top of the open Task lands at the top of the view.
-    virtualizer.scrollToIndex(index, { align: "start", behavior: "auto" });
-    setFocusTarget(reveal.taskId);
+    if (index >= 0) {
+      // Always instant, as in focusTask; the top of the open Task lands at the top of the view.
+      virtualizer.scrollToIndex(index, { align: "start", behavior: "auto" });
+      setFocusTarget(reveal.taskId);
+    }
     onRevealed?.();
-  }, [reveal, items]);
+  }, [reveal, items, virtualizer, onRevealed]);
 
   // An open Task that closed itself (a save, or a click, which gives a button no focus
   // in WebKit) leaves focus on the page: its row gets focus instead. Focus only, no
