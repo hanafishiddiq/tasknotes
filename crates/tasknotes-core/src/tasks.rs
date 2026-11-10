@@ -176,7 +176,7 @@ pub enum TaskError {
     #[error(
         "Pomodoro history dates must be real calendar dates written YYYY-MM-DD, the first on or before the last"
     )]
-    InvalidHistoryRange,
+    InvalidPomodoroRange,
     #[error("Bulk Change request not found")]
     BulkRequestNotFound,
     #[error("This request has already been decided")]
@@ -262,7 +262,7 @@ impl TaskError {
             | InvalidBulkSelection
             | InvalidPomodoroDurations
             | InvalidPomodoroSession
-            | InvalidHistoryRange => "invalid_input",
+            | InvalidPomodoroRange => "invalid_input",
             InvalidCursor
             | InvalidHistoryCursor
             | InvalidRemovedCursor

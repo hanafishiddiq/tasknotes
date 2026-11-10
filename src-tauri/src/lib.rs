@@ -432,18 +432,16 @@ fn count_pending_bulk_requests(store: State<'_, TaskStore>) -> Result<i64, Strin
         .map_err(|error| error.to_string())
 }
 
-/// The Pomodoro daily history on this Mac's local days, newest first.
+/// The whole Pomodoro daily history on this Mac's local days, newest first.
 #[tauri::command]
 fn pomodoro_history(
     store: State<'_, TaskStore>,
-    from: Option<String>,
-    to: Option<String>,
     limit: u32,
     cursor: Option<String>,
 ) -> Result<PomodoroHistoryPage, String> {
     let range = HistoryRange {
-        from,
-        to,
+        from: None,
+        to: None,
         zone: TimeZone::Local,
     };
     store

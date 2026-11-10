@@ -106,19 +106,18 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 #[serde(rename_all = "camelCase")]
 struct Changed {
     view: PomodoroView,
-    /// A Task that gained a Pomodoro Progress Entry.
-    task_changed: Option<String>,
-    /// A session was stored just now, so the history has a new entry.
-    session_stored: bool,
+    #[serde(flatten)]
+    stored: Stored,
 }
 
 /// What storing a step's ended sessions did, for the page.
-#[derive(Default)]
+#[derive(Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct Stored {
     /// A Task that gained a Pomodoro Progress Entry.
     task_changed: Option<String>,
-    /// At least one session was stored.
-    any: bool,
+    /// At least one session was stored, so the history has a new entry.
+    session_stored: bool,
 }
 
 /// At launch, after the shell settings are read: the notifications' buttons,
@@ -198,7 +197,7 @@ fn run<R: Runtime>(
     shell.shared.wake();
     let changed = step.changed;
     let stored = perform(app, step);
-    if changed || stored.any {
+    if changed || stored.session_stored {
         publish(app, stored)
     } else {
         shell.lock().view(shell.now())
@@ -224,7 +223,7 @@ fn perform<R: Runtime>(app: &AppHandle<R>, step: Step) -> Stored {
     let mut stored = Stored::default();
     for session in step.record {
         let result = record(app, session.clone());
-        stored.any |= result.is_ok();
+        stored.session_stored |= result.is_ok();
         stored.task_changed = shell.lock().saved(session, result).or(stored.task_changed);
     }
     stored
@@ -247,8 +246,7 @@ fn publish<R: Runtime>(app: &AppHandle<R>, stored: Stored) -> PomodoroView {
         CHANGED,
         Changed {
             view: view.clone(),
-            task_changed: stored.task_changed,
-            session_stored: stored.any,
+            stored,
         },
     );
     view
@@ -471,14 +469,13 @@ mod tests {
         let sent = |stored: Stored| {
             serde_json::to_value(Changed {
                 view: view.clone(),
-                task_changed: stored.task_changed,
-                session_stored: stored.any,
+                stored,
             })
             .unwrap()
         };
         let stored = sent(Stored {
             task_changed: Some("task-1".into()),
-            any: true,
+            session_stored: true,
         });
         assert_eq!(stored["sessionStored"], true);
         assert_eq!(stored["taskChanged"], "task-1");

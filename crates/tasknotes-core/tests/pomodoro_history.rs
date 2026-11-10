@@ -84,8 +84,8 @@ fn a_day_counts_its_finished_sessions_and_their_planned_plus_counted_overtime() 
         .iter()
         .map(|s| {
             (
-                s.started_at,
-                s.outcome,
+                s.session.started_at,
+                s.session.outcome,
                 s.planned_minutes,
                 s.overtime_minutes,
             )
@@ -298,7 +298,13 @@ fn each_session_names_its_task_no_task_or_a_task_in_removed() {
     let tasks: Vec<_> = page.items[0]
         .sessions
         .iter()
-        .map(|s| (s.task_id.clone(), s.task_title.as_deref(), s.task_removed))
+        .map(|s| {
+            (
+                s.session.task_id.clone(),
+                s.task_title.as_deref(),
+                s.task_removed,
+            )
+        })
         .collect();
     assert_eq!(
         tasks,
@@ -364,7 +370,7 @@ fn a_day_of_only_stopped_sessions_is_listed_with_nothing_counted() {
         ),
         (0, 0, 1)
     );
-    assert_eq!(day.sessions[0].outcome, SessionOutcome::Stopped);
+    assert_eq!(day.sessions[0].session.outcome, SessionOutcome::Stopped);
     assert_eq!(day.sessions[0].planned_minutes, 50);
 }
 
@@ -397,7 +403,7 @@ fn impossible_dates_sizes_and_cursors_are_refused() {
             .pomodoro_history(&range(from, to), 10, None)
             .unwrap_err();
         assert!(
-            matches!(error, TaskError::InvalidHistoryRange),
+            matches!(error, TaskError::InvalidPomodoroRange),
             "{from}..{to}"
         );
         assert_eq!(error.code(), "invalid_input");

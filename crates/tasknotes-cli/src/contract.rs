@@ -229,7 +229,8 @@ pub fn pomodoro_day(day: &PomodoroDay) -> Value {
 
 /// A session in the history. `task_title` is null without a Task or while
 /// it is in Removed (`task_removed`); a session holds no Note text.
-pub fn history_session(session: &HistorySession) -> Value {
+pub fn history_session(entry: &HistorySession) -> Value {
+    let session = &entry.session;
     json!({
         "id": session.id,
         "started_at": session.started_at,
@@ -237,11 +238,11 @@ pub fn history_session(session: &HistorySession) -> Value {
         "outcome": to_value(&session.outcome),
         "planned_seconds": session.planned_seconds,
         "overtime_seconds": session.overtime_seconds,
-        "planned_minutes": session.planned_minutes,
-        "overtime_minutes": session.overtime_minutes,
+        "planned_minutes": entry.planned_minutes,
+        "overtime_minutes": entry.overtime_minutes,
         "task_id": session.task_id,
-        "task_title": session.task_title,
-        "task_removed": session.task_removed,
+        "task_title": entry.task_title,
+        "task_removed": entry.task_removed,
     })
 }
 

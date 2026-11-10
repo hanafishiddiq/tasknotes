@@ -104,7 +104,7 @@ export const pomodoroApi = {
   state: () => invoke<PomodoroView>("pomodoro_state"),
   /** The daily history, newest day first; `cursor` continues after an earlier page. */
   history: (cursor: string | null = null) => invoke<PomodoroHistoryPage>(
-    "pomodoro_history", { from: null, to: null, limit: HISTORY_PAGE_DAYS, cursor },
+    "pomodoro_history", { limit: HISTORY_PAGE_DAYS, cursor },
   ),
   command: (command: PomodoroCommand) => invoke<PomodoroView>("pomodoro_command", { command }),
   setDurations: (durations: PomodoroDurations) =>

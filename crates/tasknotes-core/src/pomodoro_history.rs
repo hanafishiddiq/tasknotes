@@ -20,7 +20,7 @@ use rusqlite::params;
 use serde::Serialize;
 
 use crate::calendar::{DAY_MS, TimeZone, format_date, parse_date};
-use crate::pomodoro::{SessionOutcome, whole_minutes};
+use crate::pomodoro::{PomodoroSession, SessionOutcome, read_session, whole_minutes};
 use crate::tasks::{TaskError, TaskStore};
 
 /// Which days to read: `from` and `to` are local dates (`YYYY-MM-DD`),
@@ -59,23 +59,18 @@ pub struct PomodoroDay {
     pub sessions: Vec<HistorySession>,
 }
 
-/// A stored session as the history shows it.
+/// A stored session as the history shows it: the session, its shown
+/// minutes and its Task's title.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HistorySession {
-    pub id: String,
-    pub started_at: i64,
-    pub ended_at: i64,
-    pub outcome: SessionOutcome,
-    pub planned_seconds: i64,
-    pub overtime_seconds: i64,
+    #[serde(flatten)]
+    pub session: PomodoroSession,
     /// The planned length in whole minutes, as shown ("25").
     pub planned_minutes: i64,
     /// The counted Overtime in whole minutes ("7" in "25 + 7 min"); zero
     /// for a Stopped session.
     pub overtime_minutes: i64,
-    /// The Task the session was for; `None` for a session without one.
-    pub task_id: Option<String>,
     /// The Task's title while it is shown; `None` without a Task or while
     /// it is in Removed (`task_removed`).
     pub task_title: Option<String>,
@@ -88,7 +83,8 @@ const MAX_DAYS_PER_PAGE: u32 = 100;
 const CURSOR_PREFIX: &str = "p1|";
 
 /// Every session in a range of start times, newest first, with its Task's
-/// title only while that Task is shown.
+/// title only while that Task is shown. The first seven columns are
+/// `read_session`'s.
 const HISTORY_SQL: &str = concat!(
     "SELECT s.id, s.task_id, s.started_at, s.planned_seconds, s.overtime_seconds,
             s.outcome, s.ended_at, t.title,
@@ -114,12 +110,12 @@ impl TaskStore {
         }
         let date = |text: &Option<String>| {
             text.as_deref()
-                .map(|text| parse_date(text).ok_or(TaskError::InvalidHistoryRange))
+                .map(|text| parse_date(text).ok_or(TaskError::InvalidPomodoroRange))
                 .transpose()
         };
         let (from, to) = (date(&range.from)?, date(&range.to)?);
         if from.zip(to).is_some_and(|(from, to)| from > to) {
-            return Err(TaskError::InvalidHistoryRange);
+            return Err(TaskError::InvalidPomodoroRange);
         }
         let before = cursor
             .map(|raw| {
@@ -198,25 +194,14 @@ impl TaskStore {
 }
 
 fn read_history_session(row: &rusqlite::Row<'_>) -> rusqlite::Result<HistorySession> {
-    let outcome: String = row.get(5)?;
-    let outcome = SessionOutcome::from_sql(&outcome)
-        .ok_or_else(|| crate::tasks::invalid_db_text(5, outcome))?;
-    let task_id: Option<String> = row.get(1)?;
+    let session = read_session(row)?;
     let shown: bool = row.get(8)?;
-    let planned_seconds: i64 = row.get(3)?;
-    let overtime_seconds: i64 = row.get(4)?;
     Ok(HistorySession {
-        id: row.get(0)?,
-        started_at: row.get(2)?,
-        ended_at: row.get(6)?,
-        outcome,
-        planned_seconds,
-        overtime_seconds,
-        planned_minutes: whole_minutes(planned_seconds),
-        overtime_minutes: whole_minutes(overtime_seconds),
+        planned_minutes: whole_minutes(session.planned_seconds),
+        overtime_minutes: whole_minutes(session.overtime_seconds),
         task_title: if shown { row.get(7)? } else { None },
-        task_removed: task_id.is_some() && !shown,
-        task_id,
+        task_removed: session.task_id.is_some() && !shown,
+        session,
     })
 }
 
@@ -225,17 +210,17 @@ fn summarize(day: i64, sessions: Vec<HistorySession>) -> PomodoroDay {
     let finished = || {
         sessions
             .iter()
-            .filter(|session| session.outcome == SessionOutcome::Finished)
+            .filter(|entry| entry.session.outcome == SessionOutcome::Finished)
     };
     PomodoroDay {
         date: format_date(day),
         finished_sessions: finished().count() as i64,
         focus_minutes: finished()
-            .map(|session| session.planned_minutes + session.overtime_minutes)
+            .map(|entry| entry.planned_minutes + entry.overtime_minutes)
             .sum(),
         stopped_sessions: sessions
             .iter()
-            .filter(|session| session.outcome == SessionOutcome::Stopped)
+            .filter(|entry| entry.session.outcome == SessionOutcome::Stopped)
             .count() as i64,
         sessions,
     }

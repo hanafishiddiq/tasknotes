@@ -129,7 +129,7 @@ impl SessionOutcome {
         }
     }
 
-    pub(crate) fn from_sql(value: &str) -> Option<Self> {
+    fn from_sql(value: &str) -> Option<Self> {
         match value {
             "finished" => Some(Self::Finished),
             "stopped" => Some(Self::Stopped),
@@ -178,7 +178,7 @@ pub struct RecordedSession {
 
 /// Seconds as the whole minutes a session shows, rounded to the nearest
 /// (half a minute rounds up): the Progress Entry and the history agree.
-pub fn whole_minutes(seconds: i64) -> i64 {
+pub(crate) fn whole_minutes(seconds: i64) -> i64 {
     (seconds + 30).div_euclid(60)
 }
 
@@ -243,7 +243,7 @@ const SESSION_COLUMNS: &str =
 /// The most sessions one listing returns; a day holds far fewer.
 const MAX_LISTED: i64 = 1000;
 
-fn read_session(row: &rusqlite::Row<'_>) -> rusqlite::Result<PomodoroSession> {
+pub(crate) fn read_session(row: &rusqlite::Row<'_>) -> rusqlite::Result<PomodoroSession> {
     let outcome: String = row.get(5)?;
     Ok(PomodoroSession {
         id: row.get(0)?,
