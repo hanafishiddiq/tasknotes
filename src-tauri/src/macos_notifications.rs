@@ -6,8 +6,10 @@
 //! The two paths differ, and that is known: the plugin (2.8.0, through
 //! `notify-rust` without its `preview-macos-un` feature) posts with the
 //! deprecated `NSUserNotificationCenter`, so withdrawing goes through that
-//! center too; the style is read from `UNUserNotificationCenter`, which
-//! answers for the same per-app entry in System Settings › Notifications.
+//! center too; the style is read from `UNUserNotificationCenter`. Both should
+//! answer for the app's one entry in System Settings › Notifications; that the
+//! read matches what the posted notifications do is still to be checked on
+//! the Mac (Ticket 02, open native check).
 
 /// Whether notifications stay on screen until the person acts on them
 /// ("Persistent", the Alerts style). `None` when it cannot be read: outside a
