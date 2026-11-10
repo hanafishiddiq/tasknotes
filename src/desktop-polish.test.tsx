@@ -153,7 +153,8 @@ describe("Navigation and empty states", () => {
     render(<App />);
     expect(await screen.findByRole("heading", { name: "All tasks" })).toBeVisible();
     expect(screen.getByRole("button", { name: "All tasks" })).toHaveAttribute("aria-current", "page");
-    expect(screen.getByText("Your list is clear")).toBeVisible();
+    // The first page waits for the sort each view remembers (ADR 0010).
+    expect(await screen.findByText("Your list is clear")).toBeVisible();
 
     for (const [place, heading] of [["Inbox", "Inbox"], ["Errands", "Errands"]] as const) {
       await user.click(screen.getByRole("button", { name: place }));

@@ -10,6 +10,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::audit::{AuditAction, Interface};
+pub use crate::custom_order::{ReorderTask, ViewSort};
 pub use crate::organization::{
     CreateList, List, ListPage, MoveTask, PatchTaskDetails, RenameList, ReorderList,
     SetListRemoved, TaskView, UpdateTaskDetails,
@@ -149,6 +150,12 @@ pub enum TaskError {
     NeedsApproval,
     #[error("The sidebar changed while this was moving; reload and try again")]
     OrderAnchorChanged,
+    #[error("The Tasks around this one changed while it was moving; reload and try again")]
+    TaskOrderAnchorChanged,
+    #[error("Custom Order belongs to one List: choose a List or Inbox")]
+    CustomOrderNeedsOneList,
+    #[error("Name at most one Task to place this one after or before")]
+    InvalidTaskPlace,
     #[error("Unknown icon: choose one of Tasknotes' icon names (style options)")]
     InvalidStyleIcon,
     #[error("Unknown colour: choose one of Tasknotes' twelve colour names (style options)")]
@@ -231,6 +238,8 @@ impl TaskError {
             | NoteFolderCycle
             | InvalidStyleIcon
             | InvalidStyleColor
+            | CustomOrderNeedsOneList
+            | InvalidTaskPlace
             | InvalidBulkSelection => "invalid_input",
             InvalidCursor
             | InvalidHistoryCursor
@@ -245,7 +254,8 @@ impl TaskError {
             RevisionConflict
             | NoteRevisionConflict
             | NoteFolderRevisionConflict
-            | OrderAnchorChanged => "revision_conflict",
+            | OrderAnchorChanged
+            | TaskOrderAnchorChanged => "revision_conflict",
             TaskRemoved | TaskListRemoved | ListRemoved | NoteRemoved | NoteFolderRemoved => {
                 "removed"
             }
@@ -540,17 +550,25 @@ pub enum SortMode {
     Newest,
     /// Very Hard first, No Difficulty last, within each work-status group.
     Difficulty,
+    /// The person's Custom Order of one List (ADR 0010); only for a query
+    /// of one List or Inbox.
+    Custom,
 }
 
 impl SortMode {
-    pub const ALL: [Self; 3] = [Self::Priority, Self::Newest, Self::Difficulty];
+    pub const ALL: [Self; 4] = [Self::Priority, Self::Newest, Self::Difficulty, Self::Custom];
 
     pub(crate) fn as_cursor(self) -> &'static str {
         match self {
             Self::Priority => "priority",
             Self::Newest => "newest",
             Self::Difficulty => "difficulty",
+            Self::Custom => "custom",
         }
+    }
+
+    pub(crate) fn from_sql(value: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|sort| sort.as_cursor() == value)
     }
 }
 
@@ -862,7 +880,7 @@ const WONT_DO_FROM_COLUMN: usize = 15;
 pub(crate) const COLUMN_COUNT: usize = 16;
 
 /// The database schema this core reads and writes.
-pub const SCHEMA_VERSION: i64 = 19;
+pub const SCHEMA_VERSION: i64 = 20;
 
 /// How long a write waits for another process (the CLI, MCP) holding the database lock.
 pub const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -1088,6 +1106,11 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), TaskError> {
         crate::style::migrate_v19(&migration)?;
         migration.commit()?;
     }
+    if version < 20 {
+        let migration = connection.transaction()?;
+        crate::custom_order::migrate_v20(&migration)?;
+        migration.commit()?;
+    }
     Ok(())
 }
 
@@ -1271,6 +1294,7 @@ impl TaskStore {
         if let Some(id) = list_id {
             crate::organization::require_active_list(&tx, id)?;
         }
+        let position = crate::custom_order::top(&tx, list_id)?;
         let task = Task {
             id: Uuid::new_v4().to_string(),
             title,
@@ -1293,8 +1317,8 @@ impl TaskStore {
         tx.execute(
             "INSERT INTO tasks
              (id, title, description, status, priority, progress, revision, created_at,
-              updated_at, next_step, list_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+              updated_at, next_step, list_id, position)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 task.id,
                 task.title,
@@ -1307,6 +1331,7 @@ impl TaskStore {
                 task.updated_at,
                 task.next_step,
                 task.list_id,
+                position,
             ],
         )?;
         self.audit_applied(&tx, AuditAction::TaskCreate, &task.id, task.revision)?;
