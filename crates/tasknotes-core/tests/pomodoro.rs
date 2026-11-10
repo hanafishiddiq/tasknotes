@@ -172,18 +172,37 @@ fn a_session_for_a_task_in_removed_is_kept_without_a_progress_entry() {
 }
 
 #[test]
-fn a_session_for_an_unknown_task_is_refused_and_nothing_is_stored() {
+fn a_session_whose_task_is_gone_after_a_restore_is_kept_without_it() {
     let dir = tempfile::tempdir().unwrap();
     let store = store_at(&dir.path().join("t.db"));
-    let error = store
-        .record_pomodoro_session(finished(Some("no-such-task"), 0))
-        .unwrap_err();
-    assert!(matches!(error, TaskError::NotFound));
-    assert!(
-        store
-            .list_pomodoro_sessions(0, i64::MAX)
-            .unwrap()
-            .is_empty()
+    let backup = store.create_backup().unwrap().backup;
+    // The focus was for a Task made after the backup the person then restored.
+    let created = task(&store, "Made after the backup");
+    store.restore_backup(&backup.id).unwrap();
+    assert!(store.get_task(&created.id).unwrap().is_none());
+
+    let recorded = store
+        .record_pomodoro_session(finished(Some(&created.id), 120))
+        .unwrap();
+    assert_eq!(recorded.session.task_id, None);
+    assert!(recorded.task.is_none());
+    let sessions = store.list_pomodoro_sessions(0, i64::MAX).unwrap();
+    assert_eq!(sessions, vec![recorded.session]);
+    assert_eq!(sessions[0].overtime_seconds, 120);
+    assert_eq!(sessions[0].outcome, SessionOutcome::Finished);
+}
+
+#[test]
+fn a_session_for_an_unknown_task_is_kept_without_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("t.db"));
+    let recorded = store
+        .record_pomodoro_session(stopped(Some("no-such-task")))
+        .unwrap();
+    assert_eq!(recorded.session.task_id, None);
+    assert_eq!(
+        store.list_pomodoro_sessions(0, i64::MAX).unwrap(),
+        vec![recorded.session]
     );
 }
 

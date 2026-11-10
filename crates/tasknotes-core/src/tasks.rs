@@ -154,7 +154,10 @@ pub enum TaskError {
     #[error("Unknown colour: choose one of Tasknotes' twelve colour names (style options)")]
     InvalidStyleColor,
     #[error(
-        "Pomodoro lengths: focus 1–180 minutes, breaks 1–60 minutes, a long break after 1–12 sessions"
+        "Pomodoro lengths: focus 1–{focus} minutes, breaks 1–{breaks} minutes, a long break after 1–{sessions} sessions",
+        focus = crate::pomodoro::MAX_FOCUS_MINUTES,
+        breaks = crate::pomodoro::MAX_BREAK_MINUTES,
+        sessions = crate::pomodoro::MAX_SESSIONS_BEFORE_LONG_BREAK
     )]
     InvalidPomodoroDurations,
     #[error("This Pomodoro Session cannot be stored: its times or outcome do not fit together")]
