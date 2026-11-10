@@ -105,7 +105,7 @@ pub fn tools() -> Vec<ToolDef> {
         tool(
             "list_list",
             Kind::Read,
-            "List the Lists as a tree: each List right after the List it sits in (parent_id, null at the top level), siblings in the person's manual order. A List shows only its own Tasks.",
+            "List the Lists as a tree: each List right after the List it sits in (parent_id, null at the top level), siblings in the person's manual order. A List shows only its own Tasks. Names are unique only among siblings, so two Lists in different parents may share one: always refer to a List by its id.",
             |c, a: ListPage| {
                 let page =
                     c.store
@@ -119,7 +119,7 @@ pub fn tools() -> Vec<ToolDef> {
         tool(
             "list_create",
             Kind::Write,
-            "Create a List at the top level, or an empty one inside another List with parent_id (at most five levels deep).",
+            "Create a List at the top level, or an empty one inside another List with parent_id (at most five levels deep). Its name must differ, ignoring case, from the Lists beside it.",
             |c, a: ListCreate| {
                 item(contract::list(&match a.parent_id {
                     None => c.store.create_list(CreateList { name: a.name })?,
@@ -133,7 +133,7 @@ pub fn tools() -> Vec<ToolDef> {
         tool(
             "list_move",
             Kind::Write,
-            "Move a List, with the Lists inside it, into another List or to the top level, at the bottom there. Its Tasks stay its own; refused when it would land inside itself or below five levels.",
+            "Move a List, with the Lists inside it, into another List or to the top level, at the bottom there. Its Tasks stay its own; refused when it would land inside itself, below five levels, or beside a List of the same name.",
             |c, a: ListMoveArgs| {
                 let parent_id =
                     contract::destination(a.parent_id, a.top, ("parent_id", "top: true"))?;

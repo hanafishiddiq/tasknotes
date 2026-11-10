@@ -437,7 +437,7 @@ fn back_to_v18(db: &Path) {
     let conn = Connection::open(db).unwrap();
     conn.execute_batch(
         "DROP INDEX lists_parent; DROP INDEX lists_manual_order;
-         ALTER TABLE lists DROP COLUMN parent_id;
+         DROP INDEX lists_sibling_name; ALTER TABLE lists DROP COLUMN parent_id;
          CREATE INDEX lists_manual_order ON lists(position, id);
          ALTER TABLE lists DROP COLUMN icon;
          ALTER TABLE lists DROP COLUMN color;

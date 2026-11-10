@@ -298,26 +298,85 @@ fn inbox_stays_on_top_and_holds_no_lists() {
     assert_eq!(titles(&w.desktop, TaskView::Inbox), ["Synthetic unsorted"]);
 }
 
+/// Owner decision Q33 (2026-11-10): like Note Folders, a List's name is
+/// unique, ignoring case, only among the Lists that share its parent; the
+/// top-level Lists are siblings of each other.
 #[test]
-fn names_stay_unique_among_all_lists_wherever_they_sit() {
+fn names_are_unique_among_siblings_ignoring_case() {
     let w = world();
-    let work = top(&w.desktop, "Work");
-    let home = top(&w.desktop, "Home");
-    let reports = sub(&w.desktop, "Reports", &work).unwrap();
-    assert!(matches!(
-        sub(&w.desktop, "reports", &home),
-        Err(TaskError::ListNameConflict)
-    ));
-    assert!(matches!(
-        w.desktop.rename_list(RenameList {
-            id: home.id.clone(),
-            expected_revision: home.revision,
-            name: "REPORTS".into(),
+    let it = top(&w.desktop, "Adamaja IT");
+    let personal = top(&w.desktop, "Personal");
+    let reports = sub(&w.desktop, "Reports", &it).unwrap();
+    let own = sub(&w.desktop, "reports", &personal).unwrap();
+    // A top-level List may share a name with a List inside another.
+    let top_reports = top(&w.desktop, "Reports");
+    assert_eq!(
+        shape(&w.desktop),
+        [
+            "Adamaja IT",
+            "Reports<Adamaja IT",
+            "Personal",
+            "reports<Personal",
+            "Reports"
+        ]
+    );
+
+    // Among siblings the name is taken, whatever its case.
+    for refused in [
+        sub(&w.desktop, "REPORTS", &it),
+        w.desktop.create_list(CreateList {
+            name: "personal".into(),
         }),
+        w.desktop.rename_list(RenameList {
+            id: personal.id.clone(),
+            expected_revision: personal.revision,
+            name: "ADAMAJA it".into(),
+        }),
+    ] {
+        let error = refused.unwrap_err();
+        assert!(matches!(error, TaskError::ListNameConflict), "{error:?}");
+        assert_eq!(error.code(), "name_conflict");
+        assert_eq!(
+            error.to_string(),
+            "A List with this name already exists here"
+        );
+    }
+
+    // A move or a drop into a parent that has a sibling of that name is refused.
+    assert!(matches!(
+        move_to(&w.desktop, &own, Some(&it)),
         Err(TaskError::ListNameConflict)
     ));
-    // A move never changes a name, so it never conflicts.
-    move_to(&w.desktop, &reports, Some(&home)).unwrap();
+    assert!(matches!(
+        place(&w.desktop, &own, Some(&it), Some(&reports)),
+        Err(TaskError::ListNameConflict)
+    ));
+    // The top level already has a Reports.
+    assert!(matches!(
+        move_to(&w.desktop, &reports, None),
+        Err(TaskError::ListNameConflict)
+    ));
+    assert_eq!(
+        now(&w.desktop, &own).parent_id.as_deref(),
+        Some(personal.id.as_str())
+    );
+
+    // A List in Removed holds no name; restoring it needs its own back.
+    remove(&w.desktop, &top_reports, true).unwrap();
+    move_to(&w.desktop, &reports, None).unwrap();
+    assert!(matches!(
+        remove(&w.desktop, &top_reports, false),
+        Err(TaskError::ListNameConflict)
+    ));
+    // Renaming among other siblings is free, and moving then fits.
+    w.desktop
+        .rename_list(RenameList {
+            id: own.id.clone(),
+            expected_revision: now(&w.desktop, &own).revision,
+            name: "Reports".into(),
+        })
+        .unwrap();
+    move_to(&w.desktop, &own, Some(&it)).unwrap();
 }
 
 #[test]
@@ -573,13 +632,16 @@ fn exports_keep_the_nesting() {
     assert!(reports_file.contains("Synthetic weekly report"));
 }
 
-/// Puts a database back as schema v19 left it: Lists had no parent.
+/// Puts a database back as schema v19 left it: Lists had no parent, and
+/// their names were unique among all Lists not in Removed.
 fn back_to_v19(db: &Path) {
     Connection::open(db)
         .unwrap()
         .execute_batch(
             "DROP INDEX lists_parent; DROP INDEX lists_manual_order;
-             ALTER TABLE lists DROP COLUMN parent_id;
+             DROP INDEX lists_sibling_name; ALTER TABLE lists DROP COLUMN parent_id;
+             CREATE UNIQUE INDEX lists_active_name ON lists(name COLLATE NOCASE)
+               WHERE removed_at IS NULL;
              CREATE INDEX lists_manual_order ON lists(position, id);
              PRAGMA user_version = 19;",
         )
@@ -617,4 +679,13 @@ fn upgrading_keeps_every_list_at_the_top_in_its_order_with_its_tasks() {
         ["Synthetic in Bravo"]
     );
     sub(&store, "Alpha child", &a).unwrap();
+    // Names that were unique among all Lists stay valid; from now on only
+    // siblings must differ, so a List inside Alpha may be called Bravo.
+    sub(&store, "Bravo", &a).unwrap();
+    assert!(matches!(
+        store.create_list(CreateList {
+            name: "alpha".into()
+        }),
+        Err(TaskError::ListNameConflict)
+    ));
 }

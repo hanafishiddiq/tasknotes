@@ -34,7 +34,7 @@ pub struct TaskStore {
 pub enum TaskError {
     #[error("List name cannot be empty or exceed 100 characters")]
     InvalidListName,
-    #[error("A List with this name already exists")]
+    #[error("A List with this name already exists here")]
     ListNameConflict,
     #[error("List not found")]
     ListNotFound,

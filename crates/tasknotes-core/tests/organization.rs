@@ -885,7 +885,7 @@ fn opening_a_v7_database_merges_tags_that_now_fold_alike() {
          DROP INDEX tasks_status_difficulty_order; ALTER TABLE tasks DROP COLUMN difficulty; ALTER TABLE lists DROP COLUMN icon; ALTER TABLE lists DROP COLUMN color;
          ALTER TABLE tasks DROP COLUMN wont_do_from; ALTER TABLE tasks DROP COLUMN wont_do; ALTER TABLE progress_entries DROP COLUMN previous_wont_do;
          ALTER TABLE progress_entries DROP COLUMN wont_do;
-         DROP INDEX lists_manual_order; DROP INDEX lists_parent; ALTER TABLE lists DROP COLUMN parent_id; ALTER TABLE lists DROP COLUMN position;
+         DROP INDEX lists_manual_order; DROP INDEX lists_parent; DROP INDEX lists_sibling_name; ALTER TABLE lists DROP COLUMN parent_id; ALTER TABLE lists DROP COLUMN position;
              CREATE INDEX lists_created_order ON lists(created_at DESC, id DESC);
              PRAGMA user_version = 7;",
         second.id, both.id

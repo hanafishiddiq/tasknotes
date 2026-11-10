@@ -182,3 +182,76 @@ fn removing_a_list_that_holds_a_list_needs_approval_through_the_cli() {
     );
     assert_eq!(shape(&cli), ["Work", "Reports<Work"], "nothing changed");
 }
+
+/// Owner decision Q33: names are unique among siblings only, as for Note
+/// Folders, and the CLI names a List by id, so two Lists called Reports in
+/// different parents never make a command ambiguous.
+#[test]
+fn list_names_are_unique_among_siblings_and_lists_are_named_by_id() {
+    let cli = Cli::trusted();
+    let it = cli.ok(&["list", "create", "--name", "Adamaja IT"])["item"].clone();
+    let personal = cli.ok(&["list", "create", "--name", "Personal"])["item"].clone();
+    let reports =
+        cli.ok(&["list", "create", "--name", "Reports", "--parent", &id(&it)])["item"].clone();
+    let other = cli.ok(&[
+        "list",
+        "create",
+        "--name",
+        "Reports",
+        "--parent",
+        &id(&personal),
+    ])["item"]
+        .clone();
+    assert_eq!(
+        shape(&cli),
+        [
+            "Adamaja IT",
+            "Reports<Adamaja IT",
+            "Personal",
+            "Reports<Personal"
+        ]
+    );
+
+    let refused = cli.run(&["list", "create", "--name", "reports", "--parent", &id(&it)]);
+    assert_eq!(refused.json["error"]["code"], "name_conflict");
+    assert_eq!(
+        refused.json["error"]["message"],
+        "A List with this name already exists here"
+    );
+    assert_eq!(
+        code(
+            &cli,
+            &[
+                "list",
+                "move",
+                &id(&other),
+                "--revision",
+                &rev(&other),
+                "--parent",
+                &id(&it)
+            ]
+        ),
+        "name_conflict",
+        "a move into a parent that has a Reports is refused"
+    );
+
+    // `--list` takes the id: each Reports gets its own Task.
+    let task = cli.ok(&[
+        "task",
+        "create",
+        "--title",
+        "Synthetic report",
+        "--list",
+        &id(&reports),
+    ])["item"]
+        .clone();
+    assert_eq!(task["list_id"], id(&reports).as_str());
+    assert_eq!(
+        code(
+            &cli,
+            &["task", "create", "--title", "By name", "--list", "Reports"]
+        ),
+        "not_found",
+        "a name is never taken for an id"
+    );
+}

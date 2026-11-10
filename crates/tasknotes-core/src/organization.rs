@@ -324,12 +324,17 @@ pub(crate) fn hydrate_tags(
 
 /// Schema v21 (ADR 0009): a List may sit inside another. Every existing
 /// List stays at the top level, in the order it had, and keeps its Tasks.
-/// Forward-only and self-contained: it touches only `lists`.
+/// Names become unique among siblings only (owner decision Q33); names that
+/// were unique among all Lists stay valid, so no row changes. Forward-only
+/// and self-contained: it touches only `lists`.
 pub(crate) fn migrate_v21(migration: &rusqlite::Transaction) -> Result<(), TaskError> {
     migration.execute_batch(
         "ALTER TABLE lists ADD COLUMN parent_id TEXT
            REFERENCES lists(id) ON DELETE RESTRICT
            CHECK (parent_id IS NULL OR parent_id <> id);
+         DROP INDEX IF EXISTS lists_active_name;
+         CREATE UNIQUE INDEX lists_sibling_name
+           ON lists(coalesce(parent_id, ''), name COLLATE NOCASE) WHERE removed_at IS NULL;
          DROP INDEX IF EXISTS lists_manual_order;
          CREATE INDEX lists_manual_order ON lists(coalesce(parent_id, ''), position, id);
          CREATE INDEX lists_parent ON lists(parent_id) WHERE parent_id IS NOT NULL;
@@ -402,8 +407,9 @@ fn current_list(
     Ok(list)
 }
 
-/// Whether `list` may live under `parent_id`: the parent is shown, and the
-/// shared tree rule holds (no cycle, five levels at most).
+/// Whether `list` may live under `parent_id`: the parent is shown, the
+/// shared tree rule holds (no cycle, five levels at most), and no sibling
+/// there not in Removed has its name.
 fn require_list_destination(
     conn: &rusqlite::Connection,
     list: &List,
@@ -413,7 +419,7 @@ fn require_list_destination(
         require_active_list(conn, parent)?;
         Tree::Lists.require_fits_under(conn, &list.id, parent)?;
     }
-    Ok(())
+    require_unique_list_name(conn, parent_id, &list.name, Some(&list.id))
 }
 
 /// Bumps the List's revision after a write to it, and reads it back.
@@ -614,7 +620,7 @@ impl TaskStore {
             require_active_list(&tx, parent)?;
             Tree::Lists.require_room_under(&tx, parent)?;
         }
-        require_unique_list_name(&tx, name, None)?;
+        require_unique_list_name(&tx, parent_id, name, None)?;
         let now = current_millis()?;
         let position = manual_order::bottom(&tx, Siblings::lists(parent_id))?;
         let id = Uuid::new_v4().to_string();
@@ -643,7 +649,7 @@ impl TaskStore {
         if old.name == name {
             return Err(TaskError::ListUnchanged);
         }
-        require_unique_list_name(&tx, name, Some(&old.id))?;
+        require_unique_list_name(&tx, old.parent_id.as_deref(), name, Some(&old.id))?;
         tx.execute(
             "UPDATE lists SET name=?1 WHERE id=?2",
             params![name, old.id],
@@ -811,7 +817,7 @@ impl TaskStore {
             return Err(TaskError::ListRemoved);
         }
         if !input.removed {
-            require_unique_list_name(tx, &old.name, Some(&old.id))?;
+            require_unique_list_name(tx, old.parent_id.as_deref(), &old.name, Some(&old.id))?;
         }
         let now = current_millis()?;
         tx.execute(
@@ -895,17 +901,21 @@ impl TaskStore {
     }
 }
 
-/// List names stay unique, ignoring case, among every List not in Removed,
-/// wherever it sits in the tree: the same rule Lists had before they nested.
+/// A List's name is unique, ignoring case, among the Lists not in Removed
+/// that share its parent, as with Note Folders (owner decision Q33): the
+/// top-level Lists are siblings of each other, and "Work › Reports" and
+/// "Home › Reports" may both exist. The same rule for every interface.
 fn require_unique_list_name(
     conn: &rusqlite::Connection,
+    parent_id: Option<&str>,
     name: &str,
     except: Option<&str>,
 ) -> Result<(), TaskError> {
     if conn.query_row(
-        "SELECT EXISTS(SELECT 1 FROM lists WHERE name = ?1 COLLATE NOCASE
-           AND id IS NOT coalesce(?2, '') AND removed_at IS NULL)",
-        params![name, except],
+        "SELECT EXISTS(SELECT 1 FROM lists
+           WHERE coalesce(parent_id, '') = coalesce(?1, '') AND name = ?2 COLLATE NOCASE
+             AND id IS NOT coalesce(?3, '') AND removed_at IS NULL)",
+        params![parent_id, name, except],
         |r| r.get::<_, bool>(0),
     )? {
         return Err(TaskError::ListNameConflict);

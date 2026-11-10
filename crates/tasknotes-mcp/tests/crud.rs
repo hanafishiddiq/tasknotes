@@ -725,3 +725,52 @@ fn lists_nest_move_and_read_as_a_tree() {
         id(&inner)
     );
 }
+
+/// Owner decision Q33: List names are unique among siblings only, and every
+/// tool names a List by id, so two Lists called Reports never make a call
+/// ambiguous.
+#[test]
+fn list_names_are_unique_among_siblings_and_tools_name_lists_by_id() {
+    let data = Data::trusted();
+    let mut s = data.server();
+    let it = s.ok("list_create", json!({"name": "Adamaja IT"}));
+    let personal = s.ok("list_create", json!({"name": "Personal"}));
+    let reports = s.ok(
+        "list_create",
+        json!({"name": "Reports", "parent_id": id(&it)}),
+    );
+    let other = s.ok(
+        "list_create",
+        json!({"name": "Reports", "parent_id": id(&personal)}),
+    );
+    let refused = s.refused(
+        "list_create",
+        json!({"name": "REPORTS", "parent_id": id(&it)}),
+        "name_conflict",
+    );
+    assert_eq!(
+        refused["message"],
+        "A List with this name already exists here"
+    );
+    s.refused(
+        "list_move",
+        json!({"id": id(&other), "revision": rev(&other), "parent_id": id(&it)}),
+        "name_conflict",
+    );
+    s.refused(
+        "list_rename",
+        json!({"id": id(&personal), "revision": rev(&personal), "name": "adamaja it"}),
+        "name_conflict",
+    );
+
+    let task = s.ok(
+        "task_create",
+        json!({"title": "Synthetic report", "list_id": id(&reports)}),
+    );
+    assert_eq!(task["item"]["list_id"], id(&reports));
+    s.refused(
+        "task_create",
+        json!({"title": "By name", "list_id": "Reports"}),
+        "not_found",
+    );
+}
