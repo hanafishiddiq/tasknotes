@@ -238,3 +238,62 @@ fn history_shows_task_titles_but_never_note_text() {
         assert!(!out.contains(leak), "leaked {leak:?}: {out}");
     }
 }
+
+/// UTC-5, with daylight saving (UTC-4) that ends on 2026-11-01 at 00:30,
+/// when the clock goes back to 23:30 of 10-31: for that hour the local date
+/// is a day earlier than a moment before it.
+const FALL_BACK_TZ: &str = "XST5XDT,M3.2.0,M11.1.0/0:30";
+
+#[test]
+fn days_follow_daylight_saving_even_when_the_clock_goes_back_past_midnight() {
+    let cli = Cli::trusted();
+    let desktop = TaskStore::open(&cli.db()).unwrap();
+    for started_at in [
+        1_793_458_800_000, // 10-31 11:00 daylight time
+        1_793_506_500_000, // 11-01 00:15 daylight time
+        1_793_508_300_000, // 10-31 23:45 standard time, after the change
+        1_793_541_600_000, // 11-01 09:00 standard time
+    ] {
+        desktop
+            .record_pomodoro_session(session(None, started_at, 0))
+            .unwrap();
+    }
+    let days = |page: &Value| -> Vec<(Value, Vec<Value>)> {
+        page["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|day| {
+                let starts = day["sessions"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|s| s["started_at"].clone())
+                    .collect();
+                (day["date"].clone(), starts)
+            })
+            .collect()
+    };
+    let nov_1 = (
+        json!("2026-11-01"),
+        vec![json!(1_793_541_600_000_i64), json!(1_793_506_500_000_i64)],
+    );
+    let oct_31 = (
+        json!("2026-10-31"),
+        vec![json!(1_793_508_300_000_i64), json!(1_793_458_800_000_i64)],
+    );
+    let all = ok_in(&cli, FALL_BACK_TZ, &["pomodoro", "history"]);
+    assert_eq!(days(&all), vec![nov_1.clone(), oct_31.clone()]);
+
+    // One day a page: the 00:15 session is found past the 23:45 one.
+    let first = ok_in(&cli, FALL_BACK_TZ, &["pomodoro", "history", "--limit", "1"]);
+    assert_eq!(days(&first), vec![nov_1]);
+    let cursor = first["next_cursor"].as_str().unwrap().to_owned();
+    let second = ok_in(
+        &cli,
+        FALL_BACK_TZ,
+        &["pomodoro", "history", "--limit", "1", "--cursor", &cursor],
+    );
+    assert_eq!(days(&second), vec![oct_31]);
+    assert_eq!(second["next_cursor"], Value::Null);
+}
