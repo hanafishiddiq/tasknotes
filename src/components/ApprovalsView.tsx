@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, ClipboardCheck, Folder, LoaderCircle, NotebookText, SquareCheck, X } from "lucide-react";
+import { Check, ClipboardCheck, Folder, ListChecks, LoaderCircle, NotebookText, SquareCheck, X } from "lucide-react";
 import { errorMessage } from "../lib/error-message";
 import { approvalApi, type ApprovalLine, type PendingBulkRequest } from "../lib/approval-api";
 import { STATUS_VIEW, WONT_DO_LABEL } from "../lib/task-visuals";
@@ -8,6 +8,7 @@ const ICON: Record<ApprovalLine["kind"], typeof Folder> = {
   task: SquareCheck,
   note: NotebookText,
   folder: Folder,
+  list: ListChecks,
 };
 
 const ASKED_AT = new Intl.DateTimeFormat(undefined, {
@@ -25,7 +26,7 @@ function plural(n: number, one: string, many: string): string {
 }
 
 /** One plain sentence saying what approving would do. */
-export function describeRequest({ request, target, total }: PendingBulkRequest): string {
+export function describeRequest({ request, target, total, items }: PendingBulkRequest): string {
   const n = request.count ?? total;
   const tasks = plural(n, "Task", "Tasks");
   const notes = plural(n, "Note", "Notes");
@@ -37,8 +38,12 @@ export function describeRequest({ request, target, total }: PendingBulkRequest):
       return `Mark ${tasks} ${request.action.wont_do ? WONT_DO_LABEL : STATUS_VIEW[request.action.status].label}`;
     case "remove_notes": return `Move ${notes} to Removed`;
     case "restore_notes": return `Restore ${notes} from Removed`;
-    case "remove_list":
-      return `Move the List “${target ?? "List"}” and ${plural(total, "Task", "Tasks")} in it to Removed`;
+    case "remove_list": {
+      // The core lists Sub-Lists before Tasks, so any shows among the first lines.
+      const inside = items.some((line) => line.kind === "list")
+        ? plural(total, "item", "items") : plural(total, "Task", "Tasks");
+      return `Move the List “${target ?? "List"}” and ${inside} in it to Removed`;
+    }
     case "remove_folder":
       return `Move the folder “${target ?? "Folder"}” and ${plural(total, "item", "items")} in it to Removed`;
   }

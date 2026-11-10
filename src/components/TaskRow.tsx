@@ -7,7 +7,6 @@ import {
   statusChoiceOf,
   type StatusChoice,
   type Task,
-  type TaskList,
   type Priority,
   type Difficulty,
   type TaskChange,
@@ -16,6 +15,7 @@ import {
 import TaskProgressHistory from "./TaskProgressHistory";
 import TaskLinkedNotes from "./TaskLinkedNotes";
 import { deadlineStatus } from "../lib/deadlines";
+import type { ListOption } from "../lib/list-tree";
 import type { EditableFields, UnsavedTaskEdits } from "../lib/use-task-drafts";
 import {
   STATUS_CHOICES,
@@ -58,7 +58,8 @@ interface TaskRowProps {
   onSave: (title: string, description: string, expectedRevision: number) => Promise<void>;
   onChange: (change: TaskChange, expectedRevision: number) => Promise<void>;
   onRecordProgress: (update: ProgressDraft, expectedRevision: number) => Promise<void>;
-  lists: TaskList[];
+  /** The Lists a Task can move to, each labelled by its path. */
+  lists: ListOption[];
   today: string;
   onMove: (listId: string | null) => Promise<void>;
   onUpdateDetails: (tags: string[], dueDate: string | null, expectedRevision: number) => Promise<void>;
@@ -70,6 +71,8 @@ interface TaskRowProps {
   /** What was typed and not saved, kept above the row so it outlives it. */
   edits: UnsavedTaskEdits | undefined;
   onEdits: (edits: UnsavedTaskEdits | undefined) => void;
+  /** Alt+Up/Down (and a drag) move it within its group of the List's Custom Order. */
+  reorderable?: boolean;
 }
 
 /** ⌘↵, with Ctrl+Return as a quiet alias (as in use-shortcuts.ts): save the edit group the key was pressed in. */
@@ -151,6 +154,7 @@ export default function TaskRow({
   shown,
   edits,
   onEdits,
+  reorderable = false,
 }: TaskRowProps) {
   const saved = savedFields(task);
   const typed = edits?.fields ?? {};
@@ -260,7 +264,7 @@ export default function TaskRow({
   }
 
   const listName = task.listId
-    ? lists.find((list) => list.id === task.listId)?.name ?? "List not loaded"
+    ? lists.find((list) => list.id === task.listId)?.label ?? "List not loaded"
     : "Inbox";
   const preview = task.nextStep
     ? `Next: ${task.nextStep}`
@@ -283,6 +287,7 @@ export default function TaskRow({
           onClick={onToggle}
           aria-label={`${expanded ? "Close" : "Open"} ${task.title}`}
           aria-expanded={expanded}
+          aria-keyshortcuts={reorderable ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
         >
           <span className="task-row-title">{task.title}</span>
           <span className="task-row-subtitle">
@@ -501,7 +506,7 @@ export default function TaskRow({
                   <option value={task.listId} disabled>Current List (not loaded)</option>
                 )}
                 {lists.map((list) => (
-                  <option value={list.id} key={list.id}>{list.name}</option>
+                  <option value={list.id} key={list.id}>{list.label}</option>
                 ))}
               </select>
             </label>

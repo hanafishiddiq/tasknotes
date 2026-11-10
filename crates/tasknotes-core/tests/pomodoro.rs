@@ -9,7 +9,8 @@ use tasknotes_core::audit::{AuditAction, Interface};
 use tasknotes_core::pomodoro::{EndedSession, SessionOutcome};
 use tasknotes_core::removed::SetRemoved;
 use tasknotes_core::tasks::{
-    ChangeTask, CreateTask, SCHEMA_VERSION, Task, TaskError, TaskStore, WorkStatus,
+    ChangeTask, CreateList, CreateSubList, CreateTask, SCHEMA_VERSION, SetListRemoved, Task,
+    TaskError, TaskStore, WorkStatus,
 };
 
 const MINUTE: i64 = 60_000;
@@ -171,6 +172,66 @@ fn a_session_for_a_task_in_removed_is_kept_without_a_progress_entry() {
     );
 }
 
+/// Ticket 12 meets Ticket 02: the focus was for a Task in a sub-List whose
+/// parent List went to Removed during the session. The Task is hidden by
+/// Removed, so the session keeps its Task id and adds no Progress Entry.
+#[test]
+fn a_session_for_a_task_in_a_sub_list_of_a_removed_list_is_kept_without_a_progress_entry() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("t.db"));
+    let parent = store
+        .create_list(CreateList {
+            name: "Synthetic parent".into(),
+        })
+        .unwrap();
+    let child = store
+        .create_sub_list(CreateSubList {
+            name: "Synthetic child".into(),
+            parent_id: parent.id.clone(),
+        })
+        .unwrap();
+    let created = store
+        .create_task_in_list(
+            CreateTask {
+                title: "Nested focus".into(),
+                description: String::new(),
+            },
+            Some(&child.id),
+        )
+        .unwrap();
+    let parent_now = store
+        .list_lists(10, None, false)
+        .unwrap()
+        .items
+        .into_iter()
+        .find(|list| list.id == parent.id)
+        .unwrap();
+    store
+        .set_list_removed(SetListRemoved {
+            id: parent.id.clone(),
+            expected_revision: parent_now.revision,
+            removed: true,
+        })
+        .unwrap();
+
+    let recorded = store
+        .record_pomodoro_session(finished(Some(&created.id), 0))
+        .unwrap();
+    assert_eq!(
+        recorded.session.task_id.as_deref(),
+        Some(created.id.as_str())
+    );
+    assert_eq!(recorded.task.unwrap().revision, created.revision);
+    assert!(
+        store
+            .list_progress_entries(&created.id, 10, None)
+            .unwrap()
+            .items
+            .is_empty()
+    );
+    assert_eq!(store.list_pomodoro_sessions(0, i64::MAX).unwrap().len(), 1);
+}
+
 #[test]
 fn a_session_whose_task_is_gone_after_a_restore_is_kept_without_it() {
     let dir = tempfile::tempdir().unwrap();
@@ -319,10 +380,18 @@ fn a_v19_database_gains_the_session_table_and_keeps_its_tasks() {
     let created = task(&store, "Before the upgrade");
     drop(store);
     {
-        // Back to v19, as a database from before Ticket 02 has it.
+        // Back to v19, as a database from before Tickets 13, 12 and 02 has
+        // it: no Custom Order (v20), no nested Lists (v21), no sessions (v22).
         let db = Connection::open(&path).unwrap();
         db.execute_batch(
             "DROP TABLE pomodoro_sessions;
+             DROP INDEX lists_parent; DROP INDEX lists_manual_order;
+             DROP INDEX lists_sibling_name; ALTER TABLE lists DROP COLUMN parent_id;
+             CREATE UNIQUE INDEX lists_active_name ON lists(name COLLATE NOCASE)
+               WHERE removed_at IS NULL;
+             CREATE INDEX lists_manual_order ON lists(position, id);
+             DROP INDEX tasks_custom_order; ALTER TABLE tasks DROP COLUMN position;
+             DROP TABLE view_sorts;
              PRAGMA user_version = 19;",
         )
         .unwrap();

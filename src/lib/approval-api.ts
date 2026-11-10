@@ -23,7 +23,7 @@ export interface BulkRequest {
 }
 
 export interface ApprovalLine {
-  kind: "task" | "note" | "folder";
+  kind: "task" | "note" | "folder" | "list";
   id: string;
   title: string;
   excludedFromAi: boolean;

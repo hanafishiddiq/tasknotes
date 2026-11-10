@@ -264,7 +264,11 @@ describe("sidebar row actions", () => {
     // The stylesheet gives `.folder-actions` the row's opaque fill, and the current
     // row's fill to the container right after a current `.folder`.
     expect(list.nextElementSibling).toHaveClass("folder-actions");
-    expect(list.nextElementSibling).toContainElement(screen.getByRole("button", { name: "Rename A List with a name far too long to fit" }));
+    for (const action of ["Icon and colour for", "New List inside", "Rename", "Remove"]) {
+      expect(list.nextElementSibling).toContainElement(
+        screen.getByRole("button", { name: `${action} A List with a name far too long to fit` }),
+      );
+    }
 
     fireEvent.click(screen.getByRole("button", { name: "All notes" }));
     const folder = await screen.findByRole("button", { name: "Content" });

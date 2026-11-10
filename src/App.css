@@ -663,11 +663,18 @@ button.folder-disclosure:hover:not(:disabled) {
  * the two never overlap. Flat like everything else (no shadow, no slide); it sits
  * over the rows rather than in the layout, so it never moves the list.
  */
-.toast-region {
+.toast-stack {
   position: absolute;
   right: 20px;
   bottom: 16px;
   z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  pointer-events: none;
+}
+.toast-region {
   pointer-events: none;
 }
 .task-toast {
@@ -688,6 +695,11 @@ button.folder-disclosure:hover:not(:disabled) {
 }
 .task-toast--leaving {
   opacity: 0;
+}
+/* A brief notice (why a Task cannot move here) above the toast: nothing to click. */
+.task-toast--notice {
+  margin: 0;
+  pointer-events: none;
 }
 .toolbar {
   display: flex;
@@ -2515,4 +2527,30 @@ kbd {
   .spin {
     animation: none;
   }
+}
+
+/* Custom Order (ADR 0010): a Task row being dragged within its group, and where it would land. */
+.task-slot[data-drag-row] {
+  position: relative;
+}
+.task-slot[data-dragging] {
+  opacity: 0.45;
+}
+.task-slot[data-drop-edge="before"]::after,
+.task-slot[data-drop-edge="after"]::after {
+  content: "";
+  position: absolute;
+  right: 10px;
+  left: 10px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  pointer-events: none;
+  z-index: 1;
+}
+.task-slot[data-drop-edge="before"]::after {
+  top: -1px;
+}
+.task-slot[data-drop-edge="after"]::after {
+  bottom: -1px;
 }

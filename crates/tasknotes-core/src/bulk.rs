@@ -229,6 +229,7 @@ pub enum ApprovalKind {
     Task,
     Note,
     Folder,
+    List,
 }
 
 /// One thing a pending request would change, as the person sees it.
@@ -810,14 +811,32 @@ fn approval_lines(
             }
             (None, lines)
         }
-        Subject::Container if plan.action == BulkAction::RemoveList => (
-            name("SELECT name FROM lists WHERE id = ?1")?,
-            many(
-                "SELECT id, title, 0 FROM tasks WHERE list_id = ?1
-                 ORDER BY created_at DESC, id DESC",
+        Subject::Container if plan.action == BulkAction::RemoveList => {
+            // What removing it would hide, as the person sees it: a List or
+            // Task already in Removed, or inside a List in Removed, is hidden
+            // already and not counted.
+            let below = "WITH RECURSIVE below(id) AS (
+                    SELECT ?1 UNION
+                    SELECT l.id FROM lists l JOIN below b ON l.parent_id = b.id
+                     WHERE l.removed_at IS NULL
+                 )";
+            let mut lines = many(
+                &format!(
+                    "{below} SELECT id, name, 0 FROM lists
+                     WHERE id IN (SELECT id FROM below) AND id <> ?1 ORDER BY name"
+                ),
+                ApprovalKind::List,
+            )?;
+            lines.extend(many(
+                &format!(
+                    "{below} SELECT id, title, 0 FROM tasks
+                     WHERE list_id IN (SELECT id FROM below) AND removed_at IS NULL
+                     ORDER BY created_at DESC, id DESC"
+                ),
                 ApprovalKind::Task,
-            )?,
-        ),
+            )?);
+            (name("SELECT name FROM lists WHERE id = ?1")?, lines)
+        }
         Subject::Container => {
             let below = "WITH RECURSIVE below(id) AS (
                     SELECT ?1 UNION

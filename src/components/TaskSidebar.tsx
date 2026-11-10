@@ -1,12 +1,16 @@
-import { Fragment, useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import {
-  Check, ClipboardCheck, Inbox, ListChecks, Moon, NotebookText, Palette, Pencil,
-  Plus, Settings, Sun, Trash2, X,
+  Fragment, useEffect, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type ReactNode,
+} from "react";
+import {
+  Check, ChevronDown, ChevronRight, ClipboardCheck, Inbox, ListChecks, ListPlus, Moon, NotebookText, Palette,
+  Pencil, Plus, Settings, Sun, Trash2, X,
 } from "lucide-react";
 import StyleIcon from "./StyleIcon";
 import StylePicker from "./StylePicker";
 import type { Style } from "../lib/style";
 import type { TaskList, TaskView } from "../lib/task-api";
+import { readExpanded, writeExpanded } from "../lib/expanded";
+import { MAX_LIST_DEPTH, listTree, parentOf } from "../lib/list-tree";
 import { alreadyThere, anchorFor, useRowDrag, type RowDrop } from "../lib/use-row-drag";
 import type { Theme } from "../lib/use-theme";
 
@@ -46,9 +50,15 @@ interface TaskSidebarProps {
   onNavigate: (view: TaskView) => void;
   onOpenNotes: () => void;
   onCreateList: (name: string) => Promise<boolean>;
+  /** Makes an empty List inside `parent`, at the bottom there; the new List, or null when refused. */
+  onCreateSubList: (parent: TaskList, name: string) => Promise<TaskList | null>;
   onRenameList: (list: TaskList, name: string) => Promise<boolean>;
-  /** Puts the List directly after another, or first when `afterId` is null; false when refused. */
+  /** Puts the List directly after a sibling, or first when `afterId` is null; false when refused. */
   onReorderList: (list: TaskList, afterId: string | null) => Promise<boolean>;
+  /** Puts the List under another parent (null: the top level), after `afterId` there or first; false when refused. */
+  onPlaceList: (list: TaskList, parentId: string | null, afterId: string | null) => Promise<boolean>;
+  /** Moves the List into another, at the bottom there; false when refused. */
+  onMoveList: (list: TaskList, parentId: string) => Promise<boolean>;
   /** Sets the List's icon and colour; false when refused. */
   onStyleList: (list: TaskList, style: Style) => Promise<boolean>;
   onRemoveList: (list: TaskList) => Promise<void>;
@@ -57,7 +67,9 @@ interface TaskSidebarProps {
 
 export default function TaskSidebar({
   view, notesActive, removedActive, onOpenRemoved, pendingApprovals, approvalsActive, onOpenApprovals, settingsActive, onOpenSettings, allNotesCurrent, noteFolders, resizer, pomodoro, lists, listError, shownCount, hasMoreTasks, hasMoreLists, busy,
-  theme, onToggleTheme, onNavigate, onOpenNotes, onCreateList, onRenameList, onReorderList, onStyleList, onRemoveList,
+  theme, onToggleTheme, onNavigate, onOpenNotes, onCreateList, onCreateSubList, onRenameList, onReorderList,
+  onPlaceList, onMoveList,
+  onStyleList, onRemoveList,
   onLoadMoreLists,
 }: TaskSidebarProps) {
   const [name, setName] = useState("");
@@ -98,62 +110,156 @@ export default function TaskSidebar({
     return saved;
   }
 
-  const activeLists = lists.filter((list) => !list.removed);
-  const listIds = activeLists.map((list) => list.id);
+  const tree = listTree(lists);
+  // Lists start collapsed, as Note Folders do; the open ones are remembered.
+  const [expanded, setExpanded] = useState<Set<string>>(() => readExpanded(EXPANDED_LISTS_KEY));
+  const isOpen = (id: string) => expanded.has(id);
+  function setOpen(id: string, open: boolean) {
+    setExpanded((before) => {
+      if (open === before.has(id)) return before;
+      const next = new Set(before);
+      if (open) next.add(id);
+      else next.delete(id);
+      writeExpanded(EXPANDED_LISTS_KEY, next);
+      return next;
+    });
+  }
+  /** Opens or closes a List; its Lists may be on the next page, which opening then loads. */
+  function toggle(id: string) {
+    const open = !isOpen(id);
+    setOpen(id, open);
+    if (open && tree.children(id).length === 0 && hasMoreLists) void onLoadMoreLists();
+  }
+  // A List shows while every List around it is open.
+  const rows = tree.shown.filter((list) => tree.up(list.id).slice(1).every((around) => isOpen(around.id)));
+  const rowIds = rows.map((list) => list.id);
   const [moved, setMoved] = useState("");
-  // The List a keyboard move carries: moving its row in the page would drop focus.
+  // The List a keyboard move carries, or one just made: its row would drop or lack focus.
   const refocus = useRef<string | null>(null);
+  // The List a new List is being named inside, and that name.
+  const [creatingIn, setCreatingIn] = useState<string | null>(null);
+  const [subName, setSubName] = useState("");
 
   useEffect(() => {
     if (!refocus.current) return;
     listsNav.current?.querySelector<HTMLElement>(`[data-list-id="${CSS.escape(refocus.current)}"]`)?.focus();
     refocus.current = null;
-  }, [lists]);
+  }, [lists, expanded, creatingIn]);
 
   // One move at a time: a second would name the revision the first is replacing.
   const moving = useRef(false);
 
-  async function placeList(list: TaskList, afterId: string | null) {
-    if (busy || moving.current || alreadyThere(listIds, list.id, afterId)) return;
+  /** Puts the List there: a reorder among its siblings, or a placement under another parent. */
+  async function placeList(list: TaskList, parentId: string | null, afterId: string | null) {
+    const sameParent = parentOf(list) === parentId;
+    if (busy || moving.current || (sameParent && alreadyThere(tree.children(parentId), list.id, afterId))) return;
     moving.current = true;
-    const after = afterId && activeLists.find((item) => item.id === afterId)?.name;
-    const placed = await onReorderList(list, afterId);
+    const after = afterId && tree.byId.get(afterId)?.name;
+    const parent = parentId && tree.byId.get(parentId)?.name;
+    // Open where it lands in the same render as the move, so its row, and focus, show at once.
+    if (parentId) setOpen(parentId, true);
+    const placed = sameParent ? await onReorderList(list, afterId) : await onPlaceList(list, parentId, afterId);
     moving.current = false;
-    if (placed) setMoved(after ? `${list.name} moved after ${after}` : `${list.name} moved to the top`);
-    else refocus.current = null;
+    if (placed) {
+      setMoved(after ? `${list.name} moved after ${after}` : parent ? `${list.name} moved to the top of ${parent}` : `${list.name} moved to the top`);
+    } else refocus.current = null;
+  }
+
+  async function moveInto(list: TaskList, parent: TaskList) {
+    if (parentOf(list) === parent.id) {
+      const others = tree.children(parent.id).filter((id) => id !== list.id);
+      return placeList(list, parent.id, others[others.length - 1] ?? null);
+    }
+    if (busy || moving.current) return;
+    moving.current = true;
+    setOpen(parent.id, true);
+    const placed = await onMoveList(list, parent.id);
+    moving.current = false;
+    if (placed) {
+      setMoved(`${list.name} moved into ${parent.name}`);
+    } else refocus.current = null;
   }
 
   const drag = useRowDrag({
     container: listsNav,
-    canNest: false,
-    canTarget: (dragged, id) => dragged !== id,
+    canNest: true,
+    // Nothing lands inside itself.
+    canTarget: (dragged, id) => !tree.within(dragged, id),
     onDrop(dragged: string, drop: RowDrop) {
-      const list = activeLists.find((item) => item.id === dragged);
-      if (!list || drop.edge === "into") return;
-      const others = listIds.filter((id) => id !== dragged);
-      const anchor = drop.id === null ? others[others.length - 1] ?? null : anchorFor(listIds, dragged, drop.id, drop.edge);
-      if (anchor !== undefined) void placeList(list, anchor);
+      const list = tree.byId.get(dragged);
+      if (!list) return;
+      if (drop.id === null) {
+        const top = tree.children(null).filter((id) => id !== dragged);
+        void placeList(list, null, top[top.length - 1] ?? null);
+        return;
+      }
+      const target = tree.byId.get(drop.id);
+      if (!target) return;
+      if (drop.edge === "into") void moveInto(list, target);
+      // Just below an open List's row is its first child's place.
+      else if (drop.edge === "after" && tree.children(target.id).length > 0 && isOpen(target.id)) {
+        void placeList(list, target.id, null);
+      } else {
+        const anchor = anchorFor(tree.children(parentOf(target)), dragged, target.id, drop.edge);
+        if (anchor !== undefined) void placeList(list, parentOf(target), anchor);
+      }
     },
   });
 
+  /**
+   * Alt with the arrows moves the List itself, as with Note Folders: Up and
+   * Down among its siblings, Right into the List above it, Left out to just
+   * after the List it is in.
+   */
   function moveWithKeys(event: KeyboardEvent, list: TaskList) {
-    if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
+    if (!event.altKey || !["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) return;
     event.preventDefault();
-    const at = listIds.indexOf(list.id);
-    if (busy || moving.current || (event.key === "ArrowUp" ? at === 0 : at === listIds.length - 1)) return;
+    if (busy || moving.current) return;
+    const parentId = parentOf(list);
+    const ids = tree.children(parentId);
+    const at = ids.indexOf(list.id);
     refocus.current = list.id;
-    void placeList(list, event.key === "ArrowUp" ? listIds[at - 2] ?? null : listIds[at + 1]);
+    if (event.key === "ArrowUp" && at > 0) void placeList(list, parentId, ids[at - 2] ?? null);
+    else if (event.key === "ArrowDown" && at >= 0 && at < ids.length - 1) void placeList(list, parentId, ids[at + 1]);
+    else if (event.key === "ArrowRight" && at > 0) void moveInto(list, tree.byId.get(ids[at - 1])!);
+    else if (event.key === "ArrowLeft" && parentId) {
+      const parent = tree.byId.get(parentId);
+      if (parent) void placeList(list, parentOf(parent), parent.id);
+      else refocus.current = null;
+    } else refocus.current = null;
   }
 
   const dropEdge = (id: string) => {
     if (drag.drop?.id === id) return drag.drop.edge;
-    return drag.drop?.edge === "end" && id === listIds[listIds.length - 1] ? "after" : undefined;
+    return drag.drop?.edge === "end" && id === rowIds[rowIds.length - 1] ? "after" : undefined;
   };
 
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy || !name.trim()) return;
     if (await onCreateList(name)) setName("");
+  }
+
+  function startSubList(list: TaskList) {
+    setCreatingIn(list.id);
+    setSubName("");
+  }
+
+  /** Back to the row action that opened the field. */
+  function cancelSubList(parentId: string) {
+    setCreatingIn(null);
+    listsNav.current?.querySelector<HTMLElement>(`[data-new-list-in="${CSS.escape(parentId)}"]`)?.focus();
+  }
+
+  async function createSubList(event: FormEvent<HTMLFormElement>, parent: TaskList) {
+    event.preventDefault();
+    if (busy || !subName.trim()) return;
+    const created = await onCreateSubList(parent, subName);
+    if (!created) return;
+    // The new List's row takes focus once its parent shows open.
+    refocus.current = created.id;
+    setCreatingIn(null);
+    setOpen(parent.id, true);
   }
 
   async function rename(event: FormEvent<HTMLFormElement>, list: TaskList) {
@@ -215,10 +321,25 @@ export default function TaskSidebar({
       <span className="sr-only" aria-live="polite">{moved}</span>
       {listError && <p className="sidebar-error" role="status">{listError}</p>}
       <nav ref={listsNav} aria-label="Lists" className="sidebar-nav">
-        {activeLists.map((list) => (
+        {rows.map((list) => {
+          const depth = tree.depth(list.id);
+          const hasChildren = tree.hasChildren(list.id);
+          const open = hasChildren && isOpen(list.id);
+          const edge = dropEdge(list.id);
+          // A line just below an open List's row belongs to the Lists inside it.
+          const dropDepth = edge === "after" && open ? depth + 1 : depth;
+          return (
           <Fragment key={list.id}>
           <div className="folder-row" data-drag-row={list.id}
-            data-dragging={drag.dragging === list.id || undefined} data-drop-edge={dropEdge(list.id)}>
+            data-dragging={drag.dragging === list.id || undefined} data-drop-edge={edge}
+            style={depth > 0 || edge ? { paddingLeft: depth * 14, "--drop-indent": `${dropDepth * 14}px` } as CSSProperties : undefined}>
+            {hasChildren && (
+              <button type="button" className="folder-disclosure" disabled={busy}
+                aria-label={`${open ? "Collapse" : "Expand"} ${list.name}`} aria-expanded={open}
+                onClick={() => toggle(list.id)}>
+                {open ? <ChevronDown size={13} aria-hidden="true" /> : <ChevronRight size={13} aria-hidden="true" />}
+              </button>
+            )}
             {renaming === list.id ? (
               <form className="folder-form" onSubmit={(event) => void rename(event, list)}>
                 <StyleIcon icon={list.icon} color={list.color} />
@@ -238,7 +359,7 @@ export default function TaskSidebar({
                   aria-label={list.name}
                   data-list-id={list.id}
                   aria-current={isCurrent({ kind: "list", listId: list.id }) ? "page" : undefined}
-                  aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
+                  aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown Alt+ArrowLeft Alt+ArrowRight"
                   className="folder"
                   onMouseDown={(event) => drag.start(event, list.id)}
                   onKeyDown={(event) => moveWithKeys(event, list)}
@@ -252,6 +373,13 @@ export default function TaskSidebar({
                     onClick={() => setStyling(styling === list.id ? null : list.id)}>
                     <Palette size={13} />
                   </button>
+                  {depth + 1 < MAX_LIST_DEPTH && (
+                    <button type="button" className="folder-action" disabled={busy}
+                      aria-label={`New List inside ${list.name}`} data-new-list-in={list.id}
+                      onClick={() => startSubList(list)}>
+                      <ListPlus size={13} />
+                    </button>
+                  )}
                   <button type="button" className="folder-action" disabled={busy}
                     aria-label={`Rename ${list.name}`}
                     onClick={() => { setRenaming(list.id); setRenameDraft(list.name); }}>
@@ -265,12 +393,24 @@ export default function TaskSidebar({
               </>
             )}
           </div>
+          {creatingIn === list.id && (
+            <form className="folder-form folder-form--nested" style={{ marginLeft: (depth + 1) * 14 }}
+              onSubmit={(event) => void createSubList(event, list)}>
+              <Plus size={16} aria-hidden="true" />
+              <input aria-label={`New List name in ${list.name}`} placeholder="New List" autoFocus
+                maxLength={100} value={subName} disabled={busy} onChange={(event) => setSubName(event.target.value)}
+                onKeyDown={(event) => { if (event.key === "Escape") cancelSubList(list.id); }} />
+              <button type="button" className="folder-action" aria-label="Cancel new List"
+                onClick={() => cancelSubList(list.id)}><X size={14} /></button>
+            </form>
+          )}
           {styling === list.id && (
             <StylePicker name={list.name} style={{ icon: list.icon ?? null, color: list.color ?? null }}
               busy={busy} onSave={(style) => saveStyle(list, style)} onCancel={closeStyle} />
           )}
           </Fragment>
-        ))}
+          );
+        })}
         {hasMoreLists && (
           <button className="sidebar-link" type="button" disabled={busy}
             onClick={() => void onLoadMoreLists()}>Load more lists</button>
@@ -311,3 +451,6 @@ export default function TaskSidebar({
     </aside>
   );
 }
+
+/** Which Lists the person opened, kept as Note Folders keep theirs (`EXPANDED_FOLDERS_KEY`). */
+export const EXPANDED_LISTS_KEY = "tasknotes.lists.expanded";
