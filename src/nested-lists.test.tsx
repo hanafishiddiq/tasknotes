@@ -67,6 +67,12 @@ beforeEach(() => {
         return { items: all.slice(at, end), nextCursor: end < all.length ? String(end) : null };
       }
       case "list_tasks": return { items: [], nextCursor: null };
+      case "create_sub_list": {
+        if (refuse) throw refuse;
+        const made = list(input.name, input.parentId);
+        lists.push(made);
+        return { ...made };
+      }
       case "quit_ready": return null;
       case "reorder_list":
       case "place_list": {
@@ -164,6 +170,47 @@ describe("Lists inside Lists", () => {
       .toEqual([null, "2"]);
   });
 
+  it("creates a List inside another from its row, by pointer or keyboard, at the bottom there", async () => {
+    const user = userEvent.setup();
+    await shown();
+    await user.click(within(listsNav()).getByRole("button", { name: "New List inside Work" }));
+    await user.type(within(listsNav()).getByRole("textbox", { name: "New List name in Work" }), "Drafts{Enter}");
+    await eventually(() => expect(calls("create_sub_list")).toEqual([{ name: "Drafts", parentId: "list-Work" }]));
+    await eventually(() => expect(shownTree()).toEqual(["Work", "  Reports", "    Weekly", "  Drafts", "Home", "Garden"]));
+    // The new List is the one showing, as after making a top-level List.
+    expect(listRow("Drafts")).toHaveAttribute("aria-current", "page");
+
+    // A closed List opens to show what was made inside it.
+    const garden = within(listsNav()).getByRole("button", { name: "New List inside Garden" });
+    garden.focus();
+    await user.keyboard("{Enter}");
+    const field = within(listsNav()).getByRole("textbox", { name: "New List name in Garden" });
+    expect(field).toHaveFocus();
+    await user.keyboard("Escape test{Escape}");
+    expect(within(listsNav()).queryByRole("textbox", { name: "New List name in Garden" })).toBeNull();
+    expect(garden).toHaveFocus();
+    await user.keyboard("{Enter}");
+    await user.keyboard("Beds{Enter}");
+    await eventually(() => expect(shownTree()).toEqual(
+      ["Work", "  Reports", "    Weekly", "  Drafts", "Home", "Garden", "  Beds"],
+    ));
+  });
+
+  it("offers no List inside a List five levels deep, and shows the core's refusal", async () => {
+    lists = [list("L1"), list("L2", "list-L1"), list("L3", "list-L2"), list("L4", "list-L3"), list("L5", "list-L4")];
+    window.localStorage.setItem(EXPANDED, JSON.stringify(["list-L1", "list-L2", "list-L3", "list-L4"]));
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("button", { name: "L5" });
+    expect(within(listsNav()).queryByRole("button", { name: "New List inside L5" })).toBeNull();
+
+    refuse = "A List with this name already exists here";
+    await user.click(within(listsNav()).getByRole("button", { name: "New List inside L4" }));
+    await user.type(within(listsNav()).getByRole("textbox", { name: "New List name in L4" }), "l5{Enter}");
+    expect(await screen.findByRole("alert")).toHaveTextContent("A List with this name already exists here");
+    expect(within(listsNav()).getByRole("textbox", { name: "New List name in L4" })).toHaveValue("l5");
+  });
+
 
   it("drops a List into another and out to the top level again", async () => {
     await shown();
@@ -245,7 +292,7 @@ describe("Lists inside Lists", () => {
     expect(shownTree()).toEqual(["Home", "  Garden"]);
     const row = listRow("Garden").closest<HTMLElement>("[data-drag-row]")!;
     expect(row.querySelector("svg")).not.toBeNull();
-    for (const action of ["Icon and colour for Garden", "Rename Garden", "Remove Garden"]) {
+    for (const action of ["Icon and colour for Garden", "New List inside Garden", "Rename Garden", "Remove Garden"]) {
       expect(within(row).getByRole("button", { name: action })).toBeInTheDocument();
     }
   });

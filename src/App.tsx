@@ -8,7 +8,7 @@ import {
   type SortMode, type TaskChange, type ProgressDraft, type TaskFilters,
   type Priority, type TaskListPage,
 } from "./lib/task-api";
-import { listTree, moveSubtree, parentOf } from "./lib/list-tree";
+import { addList, listTree, moveSubtree, parentOf } from "./lib/list-tree";
 import {
   DIFFICULTY_ORDER, DIFFICULTY_VIEW, PRIORITY_ORDER, PRIORITY_VIEW, STATUS_CHOICES,
   statusChoiceLabel,
@@ -539,12 +539,19 @@ export default function App() {
   }
 
   async function createList(name: string): Promise<boolean> {
-    if (busyList) return false;
+    return (await createListIn(null, name)) !== null;
+  }
+
+  /** A new List at the top level or, with `parent`, inside it; it becomes the one showing. Null when refused. */
+  async function createListIn(parent: TaskList | null, name: string): Promise<TaskList | null> {
+    if (busyList) return null;
     setBusyList(true);
     setError(null);
     try {
-      const created = await taskApi.createList(name);
-      setLists((before) => [...before, created]);
+      const created = parent
+        ? await taskApi.createSubList({ name, parentId: parent.id })
+        : await taskApi.createList(name);
+      setLists((before) => addList(before, created));
       // This is a successful mutation, not a user navigation. busyList is still true.
       setTasks([]);
       setNextCursor(null);
@@ -559,11 +566,11 @@ export default function App() {
         setError("List created, but the sidebar could not refresh: " + errorMessage(reason));
       }
       // At the bottom it may be past the first page; the List just made stays in view.
-      setLists((shown) => shown.some((item) => item.id === created.id) ? shown : [...shown, created]);
-      return true;
+      setLists((shown) => shown.some((item) => item.id === created.id) ? shown : addList(shown, created));
+      return created;
     } catch (reason) {
       setError(errorMessage(reason));
-      return false;
+      return null;
     } finally {
       setBusyList(false);
     }
@@ -1065,7 +1072,7 @@ export default function App() {
         hasMoreLists={Boolean(listCursor)} busy={busy}
         theme={appearance.theme} onToggleTheme={appearance.toggle}
         settingsActive={workspace === "settings"} onOpenSettings={openSettings}
-        onNavigate={navigate} onCreateList={createList} onRenameList={renameList}
+        onNavigate={navigate} onCreateList={createList} onCreateSubList={createListIn} onRenameList={renameList}
         onReorderList={reorderList} onPlaceList={placeList} onMoveList={moveList} onStyleList={styleList}
         onRemoveList={(list) => setListRemoved(list, true)}
         onLoadMoreLists={loadMoreLists}

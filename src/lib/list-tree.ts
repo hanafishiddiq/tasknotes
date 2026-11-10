@@ -13,6 +13,9 @@ export const parentOf = (list: TaskList): string | null => list.parentId ?? null
 /** Far above the five levels the core allows: a damaged tree never loops. */
 const WALK_LIMIT = 64;
 
+/** The core's limit: a List five levels deep holds no Lists. */
+export const MAX_LIST_DEPTH = 5;
+
 export interface ListTree {
   byId: Map<string, TaskList>;
   /** Lists a person sees: not in Removed, nor inside a List in Removed. */
@@ -95,4 +98,11 @@ export function moveSubtree(all: TaskList[], id: string, parentId: string | null
     at = parent + 1;
   }
   return [...rest.slice(0, at), ...block, ...rest.slice(at)];
+}
+
+/** The page order with `created` at the bottom of the Lists beside it, as the core puts a new List. */
+export function addList(all: TaskList[], created: TaskList): TaskList[] {
+  const parentId = parentOf(created);
+  const siblings = listTree(all).children(parentId);
+  return moveSubtree([...all, created], created.id, parentId, siblings[siblings.length - 1] ?? null);
 }

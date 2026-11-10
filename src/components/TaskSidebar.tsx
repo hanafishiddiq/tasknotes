@@ -2,15 +2,15 @@ import {
   Fragment, useEffect, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type ReactNode,
 } from "react";
 import {
-  Check, ChevronDown, ChevronRight, ClipboardCheck, Inbox, ListChecks, Moon, NotebookText, Palette, Pencil,
-  Plus, Settings, Sun, Trash2, X,
+  Check, ChevronDown, ChevronRight, ClipboardCheck, Inbox, ListChecks, ListPlus, Moon, NotebookText, Palette,
+  Pencil, Plus, Settings, Sun, Trash2, X,
 } from "lucide-react";
 import StyleIcon from "./StyleIcon";
 import StylePicker from "./StylePicker";
 import type { Style } from "../lib/style";
 import type { TaskList, TaskView } from "../lib/task-api";
 import { readExpanded, writeExpanded } from "../lib/expanded";
-import { listTree, parentOf } from "../lib/list-tree";
+import { MAX_LIST_DEPTH, listTree, parentOf } from "../lib/list-tree";
 import { alreadyThere, anchorFor, useRowDrag, type RowDrop } from "../lib/use-row-drag";
 import type { Theme } from "../lib/use-theme";
 
@@ -48,6 +48,8 @@ interface TaskSidebarProps {
   onNavigate: (view: TaskView) => void;
   onOpenNotes: () => void;
   onCreateList: (name: string) => Promise<boolean>;
+  /** Makes an empty List inside `parent`, at the bottom there; the new List, or null when refused. */
+  onCreateSubList: (parent: TaskList, name: string) => Promise<TaskList | null>;
   onRenameList: (list: TaskList, name: string) => Promise<boolean>;
   /** Puts the List directly after a sibling, or first when `afterId` is null; false when refused. */
   onReorderList: (list: TaskList, afterId: string | null) => Promise<boolean>;
@@ -63,7 +65,8 @@ interface TaskSidebarProps {
 
 export default function TaskSidebar({
   view, notesActive, removedActive, onOpenRemoved, pendingApprovals, approvalsActive, onOpenApprovals, settingsActive, onOpenSettings, allNotesCurrent, noteFolders, resizer, lists, listError, shownCount, hasMoreTasks, hasMoreLists, busy,
-  theme, onToggleTheme, onNavigate, onOpenNotes, onCreateList, onRenameList, onReorderList, onPlaceList, onMoveList,
+  theme, onToggleTheme, onNavigate, onOpenNotes, onCreateList, onCreateSubList, onRenameList, onReorderList,
+  onPlaceList, onMoveList,
   onStyleList, onRemoveList,
   onLoadMoreLists,
 }: TaskSidebarProps) {
@@ -129,14 +132,17 @@ export default function TaskSidebar({
   const rows = tree.shown.filter((list) => tree.up(list.id).slice(1).every((around) => isOpen(around.id)));
   const rowIds = rows.map((list) => list.id);
   const [moved, setMoved] = useState("");
-  // The List a keyboard move carries: moving its row in the page would drop focus.
+  // The List a keyboard move carries, or one just made: its row would drop or lack focus.
   const refocus = useRef<string | null>(null);
+  // The List a new List is being named inside, and that name.
+  const [creatingIn, setCreatingIn] = useState<string | null>(null);
+  const [subName, setSubName] = useState("");
 
   useEffect(() => {
     if (!refocus.current) return;
     listsNav.current?.querySelector<HTMLElement>(`[data-list-id="${CSS.escape(refocus.current)}"]`)?.focus();
     refocus.current = null;
-  }, [lists, expanded]);
+  }, [lists, expanded, creatingIn]);
 
   // One move at a time: a second would name the revision the first is replacing.
   const moving = useRef(false);
@@ -230,6 +236,28 @@ export default function TaskSidebar({
     event.preventDefault();
     if (busy || !name.trim()) return;
     if (await onCreateList(name)) setName("");
+  }
+
+  function startSubList(list: TaskList) {
+    setCreatingIn(list.id);
+    setSubName("");
+  }
+
+  /** Back to the row action that opened the field. */
+  function cancelSubList(parentId: string) {
+    setCreatingIn(null);
+    listsNav.current?.querySelector<HTMLElement>(`[data-new-list-in="${CSS.escape(parentId)}"]`)?.focus();
+  }
+
+  async function createSubList(event: FormEvent<HTMLFormElement>, parent: TaskList) {
+    event.preventDefault();
+    if (busy || !subName.trim()) return;
+    const created = await onCreateSubList(parent, subName);
+    if (!created) return;
+    // The new List's row takes focus once its parent shows open.
+    refocus.current = created.id;
+    setCreatingIn(null);
+    setOpen(parent.id, true);
   }
 
   async function rename(event: FormEvent<HTMLFormElement>, list: TaskList) {
@@ -343,6 +371,13 @@ export default function TaskSidebar({
                     onClick={() => setStyling(styling === list.id ? null : list.id)}>
                     <Palette size={13} />
                   </button>
+                  {depth + 1 < MAX_LIST_DEPTH && (
+                    <button type="button" className="folder-action" disabled={busy}
+                      aria-label={`New List inside ${list.name}`} data-new-list-in={list.id}
+                      onClick={() => startSubList(list)}>
+                      <ListPlus size={13} />
+                    </button>
+                  )}
                   <button type="button" className="folder-action" disabled={busy}
                     aria-label={`Rename ${list.name}`}
                     onClick={() => { setRenaming(list.id); setRenameDraft(list.name); }}>
@@ -356,6 +391,17 @@ export default function TaskSidebar({
               </>
             )}
           </div>
+          {creatingIn === list.id && (
+            <form className="folder-form folder-form--nested" style={{ marginLeft: (depth + 1) * 14 }}
+              onSubmit={(event) => void createSubList(event, list)}>
+              <Plus size={16} aria-hidden="true" />
+              <input aria-label={`New List name in ${list.name}`} placeholder="New List" autoFocus
+                maxLength={100} value={subName} disabled={busy} onChange={(event) => setSubName(event.target.value)}
+                onKeyDown={(event) => { if (event.key === "Escape") cancelSubList(list.id); }} />
+              <button type="button" className="folder-action" aria-label="Cancel new List"
+                onClick={() => cancelSubList(list.id)}><X size={14} /></button>
+            </form>
+          )}
           {styling === list.id && (
             <StylePicker name={list.name} style={{ icon: list.icon ?? null, color: list.color ?? null }}
               busy={busy} onSave={(style) => saveStyle(list, style)} onCancel={closeStyle} />

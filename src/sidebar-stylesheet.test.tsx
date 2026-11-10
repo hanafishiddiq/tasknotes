@@ -76,6 +76,19 @@ describe("sidebar action icons", () => {
     expect(value('.folder[aria-current="page"] + .folder-actions', "background")).toBe("var(--side-selected)");
   });
 
+  it("fit a List row's four actions at the 210 px minimum, clear of its icon four levels deep", () => {
+    const px = (selector: string, property: string, at = 0) =>
+      Number.parseFloat(String(value(selector, property)).split(" ")[at]);
+    const actions = 4 * px(".folder-action", "width") + 3 * px(".folder-actions", "gap")
+      + px(".folder-actions", "padding", 1) + px(".folder-actions", "padding", 3);
+    // 210 px less the sidebar's side padding and its border.
+    const row = 210 - 2 * px(".sidebar", "padding", 1) - 1;
+    // A List at level 4, the deepest that can hold another: indent, disclosure, padding, 17 px icon.
+    const icon = 3 * 14 + px(".folder-disclosure", "width") + px(".folder", "padding", 1) + 17;
+    expect(actions).toBe(104);
+    expect(icon).toBeLessThanOrEqual(row - actions);
+  });
+
   it("do not reserve a gutter on hover, so a long name never reflows under them", () => {
     const reserving = outside.filter((rule) => declared(rule, "padding-right") !== null &&
       selectorsOf(rule).some((selector) => /\.folder-row:(hover|focus-within) \.folder$/.test(selector)));

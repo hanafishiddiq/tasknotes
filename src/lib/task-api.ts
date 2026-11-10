@@ -212,6 +212,11 @@ export const taskApi = {
     return invoke("create_list", { input: { name } });
   },
 
+  /** An empty List inside `parentId`, at the bottom there (ADR 0009). */
+  createSubList(input: { name: string; parentId: string }): Promise<TaskList> {
+    return invoke("create_sub_list", { input });
+  },
+
   renameList(input: ListMutation & { name: string }): Promise<TaskList> {
     return invoke("rename_list", { input });
   },

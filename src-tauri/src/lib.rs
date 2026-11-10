@@ -11,8 +11,8 @@ use tasknotes_core::privacy::SetNoteExcludeFromAi;
 use tasknotes_core::removed::{RemovedPage, SetRemoved};
 use tasknotes_core::style::SetStyle;
 use tasknotes_core::tasks::{
-    ChangeTask, CreateList, CreateTask, DifficultyFilter, List, ListPage, MoveList, MoveTask,
-    PlaceList, Priority, ProgressSequencePage, RecordProgress, RenameList, ReorderList,
+    ChangeTask, CreateList, CreateSubList, CreateTask, DifficultyFilter, List, ListPage, MoveList,
+    MoveTask, PlaceList, Priority, ProgressSequencePage, RecordProgress, RenameList, ReorderList,
     SetListRemoved, SortMode, Task, TaskPage, TaskQuery, TaskStore, TaskView, UpdateTask,
     UpdateTaskDetails, WorkStatus,
 };
@@ -123,6 +123,15 @@ fn list_lists(
 #[tauri::command]
 fn create_list(store: State<'_, TaskStore>, input: CreateList) -> Result<List, String> {
     store.create_list(input).map_err(|error| error.to_string())
+}
+
+/// An empty List inside another, at the bottom there (ADR 0009): the row's
+/// "New List inside", as `list create --parent` and MCP `list_create`.
+#[tauri::command]
+fn create_sub_list(store: State<'_, TaskStore>, input: CreateSubList) -> Result<List, String> {
+    store
+        .create_sub_list(input)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -466,6 +475,7 @@ pub fn run() {
             list_progress_entries,
             list_lists,
             create_list,
+            create_sub_list,
             rename_list,
             reorder_list,
             place_list,
