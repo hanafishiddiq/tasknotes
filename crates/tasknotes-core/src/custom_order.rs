@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::audit::AuditAction;
 use crate::manual_order::{self, Siblings};
-use crate::search::{DIFFICULTY_RANK, PRIORITY_RANK, STATUS_RANK};
+use crate::search::{self, STATUS_RANK};
 use crate::tasks::{
     COLUMNS, SortMode, Task, TaskError, TaskStore, TaskView, current_millis, read_task,
 };
@@ -101,21 +101,21 @@ fn store_sort(tx: &Transaction, view: &TaskView, sort: SortMode) -> Result<(), T
     Ok(())
 }
 
-/// Sets the List's Custom Order to the order `sort` shows, every Task of it
-/// (Removed ones too, which keep a place) in one sequence from 1.
+/// Sets the List's Custom Order to the order `sort` lists it in, every Task
+/// of it (Removed ones too, which keep a place) in one sequence from 1.
+/// Only positions that change are written; no revision changes.
 fn seed(tx: &Transaction, list_id: Option<&str>, sort: SortMode) -> Result<(), TaskError> {
-    let order = match sort {
-        SortMode::Priority => format!("{PRIORITY_RANK} DESC, created_at DESC, id DESC"),
-        SortMode::Difficulty => format!("{DIFFICULTY_RANK} DESC, created_at DESC, id DESC"),
-        SortMode::Newest => "created_at DESC, id DESC".to_owned(),
-        SortMode::Custom => return Ok(()),
-    };
+    if sort == SortMode::Custom {
+        return Ok(());
+    }
     tx.execute(
         &format!(
             "UPDATE tasks SET position = ordered.place FROM (
-                 SELECT id, row_number() OVER (ORDER BY {STATUS_RANK} ASC, {order}) AS place
-                 FROM tasks WHERE list_id IS ?1
-             ) AS ordered WHERE tasks.id = ordered.id AND tasks.position <> ordered.place"
+                 SELECT id, row_number() OVER (ORDER BY {}) AS place
+                 FROM ({})
+             ) AS ordered WHERE tasks.id = ordered.id AND tasks.position <> ordered.place",
+            search::order_by(sort),
+            search::ranked(sort, "id, created_at", "list_id IS ?1"),
         ),
         params![list_id],
     )?;

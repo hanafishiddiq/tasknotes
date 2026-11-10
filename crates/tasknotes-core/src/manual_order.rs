@@ -29,9 +29,11 @@ pub(crate) enum Siblings<'a> {
 struct Sibling {
     id: String,
     position: i64,
-    /// What a person sees among these siblings: not in Removed (and for a
-    /// Task, in the moving Task's group).
-    active: bool,
+    /// One a move may be placed beside, and whose order a person sees:
+    /// not in Removed and, for a Task, in the moving Task's work-status
+    /// group. Only these can be an anchor, and only their order changing
+    /// counts as a move.
+    anchorable: bool,
 }
 
 impl Siblings<'_> {
@@ -67,7 +69,7 @@ impl Siblings<'_> {
             Ok(Sibling {
                 id: row.get(0)?,
                 position: row.get(1)?,
-                active: row.get(2)?,
+                anchorable: row.get(2)?,
             })
         };
         let rows = match self {
@@ -125,8 +127,8 @@ pub(crate) fn bottom(conn: &Connection, siblings: Siblings) -> Result<i64, TaskE
     Ok(last + 1)
 }
 
-/// The anchor that puts `id` directly before the active sibling
-/// `before_id`: the active sibling before it, or `None` (first).
+/// The anchor that puts `id` directly before the anchorable sibling
+/// `before_id`: the anchorable sibling before it, or `None` (first).
 pub(crate) fn after_for_before(
     conn: &Connection,
     siblings: Siblings,
@@ -136,7 +138,7 @@ pub(crate) fn after_for_before(
     let rows = siblings.rows(conn)?;
     let shown: Vec<&Sibling> = rows
         .iter()
-        .filter(|row| row.active && row.id != id)
+        .filter(|row| row.anchorable && row.id != id)
         .collect();
     let at = shown
         .iter()
@@ -145,7 +147,7 @@ pub(crate) fn after_for_before(
     Ok(at.checked_sub(1).map(|before| shown[before].id.clone()))
 }
 
-/// Puts `id` directly after the active sibling `after_id`, or first among
+/// Puts `id` directly after the anchorable sibling `after_id`, or first among
 /// all siblings without one. `id` need not be among `siblings` yet: a folder
 /// moving in from another parent. Only positions change, so a neighbour's
 /// open edit never conflicts with something moving past it. Returns whether
@@ -170,23 +172,23 @@ pub(crate) fn place(
         Some(anchor) => {
             order
                 .iter()
-                .position(|row| row.active && row.id == anchor)
+                .position(|row| row.anchorable && row.id == anchor)
                 .ok_or(siblings.anchor_changed())?
                 + 1
         }
     };
-    let shown = |row: &&&Sibling| row.active;
-    let active_before = rows
+    let shown = |row: &&&Sibling| row.anchorable;
+    let shown_before = rows
         .iter()
-        .filter(|row| row.active)
+        .filter(|row| row.anchorable)
         .map(|row| row.id.as_str());
-    let active_after = order[..at]
+    let shown_after = order[..at]
         .iter()
         .filter(shown)
         .map(|row| row.id.as_str())
         .chain([id])
         .chain(order[at..].iter().filter(shown).map(|row| row.id.as_str()));
-    if active_before.eq(active_after) {
+    if shown_before.eq(shown_after) {
         return Ok(false);
     }
     let mut update = tx.prepare(&format!(

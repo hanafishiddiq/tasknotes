@@ -41,13 +41,48 @@ const MAX_SEARCH_WORDS: usize = 16;
 
 pub(crate) const STATUS_RANK: &str =
     "CASE status WHEN 'in_progress' THEN 0 WHEN 'ready' THEN 1 ELSE 2 END";
-pub(crate) const PRIORITY_RANK: &str = "CASE priority WHEN 'very_high' THEN 5 WHEN 'high' THEN 4 WHEN 'medium' THEN 3 WHEN 'low' THEN 2 ELSE 1 END";
+const PRIORITY_RANK: &str = "CASE priority WHEN 'very_high' THEN 5 WHEN 'high' THEN 4 WHEN 'medium' THEN 3 WHEN 'low' THEN 2 ELSE 1 END";
 /// Must match the v17 index expression and `Difficulty::rank`; the tests
 /// below check both.
-pub(crate) const DIFFICULTY_RANK: &str =
+const DIFFICULTY_RANK: &str =
     "CASE difficulty WHEN 'very_hard' THEN 5 WHEN 'hard' THEN 4 WHEN 'medium' THEN 3
                WHEN 'easy' THEN 2 WHEN 'very_easy' THEN 1 ELSE 0 END";
 const TOKENIZER: &str = "tokenize='unicode61 remove_diacritics 2'";
+
+/// The value a sort ranks each Task by, read as `sort_rank`.
+const fn rank_expr(sort: SortMode) -> &'static str {
+    match sort {
+        SortMode::Priority => PRIORITY_RANK,
+        SortMode::Difficulty => DIFFICULTY_RANK,
+        SortMode::Newest => "0",
+        SortMode::Custom => "position",
+    }
+}
+
+/// Rows of `tasks` matching `filter`, each with `columns`, its `status_rank`
+/// and its `sort_rank` under `sort`: what `order_by` sorts. A page of Tasks
+/// and the start of a Custom Order from the order on screen both read this,
+/// so the two cannot drift apart.
+pub(crate) fn ranked(sort: SortMode, columns: &str, filter: &str) -> String {
+    format!(
+        "SELECT {columns}, {STATUS_RANK} AS status_rank, {} AS sort_rank FROM tasks WHERE {filter}",
+        rank_expr(sort)
+    )
+}
+
+/// How `sort` orders `ranked` rows: In Progress → Ready → Completed first,
+/// then the sort, then the newest, the id settling ties. Newest has no
+/// `sort_rank` key: a constant one makes SQLite build a temporary B-tree
+/// instead of reading the index.
+pub(crate) const fn order_by(sort: SortMode) -> &'static str {
+    match sort {
+        SortMode::Newest => "status_rank ASC, created_at DESC, id DESC",
+        SortMode::Custom => "status_rank ASC, sort_rank ASC, id ASC",
+        SortMode::Priority | SortMode::Difficulty => {
+            "status_rank ASC, sort_rank DESC, created_at DESC, id DESC"
+        }
+    }
+}
 
 /// Schema v5: the Task Removed disposition plus FTS5 indexes kept in sync by
 /// triggers, so every writer of this SQLite file maintains them.
@@ -320,17 +355,6 @@ fn page_sql(
         ));
     }
 
-    let rank_expr = match sort {
-        SortMode::Priority => PRIORITY_RANK,
-        SortMode::Difficulty => DIFFICULTY_RANK,
-        SortMode::Newest => "0",
-        SortMode::Custom => "position",
-    };
-    let order = match sort {
-        SortMode::Newest => "created_at DESC, id DESC",
-        SortMode::Custom => "sort_rank ASC, id ASC",
-        SortMode::Priority | SortMode::Difficulty => "sort_rank DESC, created_at DESC, id DESC",
-    };
     let cursor_filter = match after {
         None => "1".to_owned(),
         Some(after) => {
@@ -363,18 +387,14 @@ fn page_sql(
         }
     };
     let page_size = bind(Value::Integer(i64::from(limit) + 1));
-    // Do not add a constant sort_rank sort key in Newest mode: doing so
-    // forces SQLite to build a temporary B-tree instead of using the index.
     let sql = format!(
-        "WITH ranked AS (
-            SELECT {COLUMNS}, {STATUS_RANK} AS status_rank, {rank_expr} AS sort_rank
-            FROM tasks WHERE {}
-         )
+        "WITH ranked AS ({})
          SELECT {COLUMNS}, sort_rank FROM ranked
          WHERE {cursor_filter}
-         ORDER BY status_rank ASC, {order}
+         ORDER BY {}
          LIMIT {page_size}",
-        filters.join(" AND ")
+        ranked(sort, COLUMNS, &filters.join(" AND ")),
+        order_by(sort)
     );
     (sql, values)
 }
