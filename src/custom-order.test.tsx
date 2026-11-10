@@ -22,8 +22,25 @@ type Stored = Task & { position: number };
 let tasks: Stored[];
 let lists: TaskList[];
 let sorts: Record<string, SortMode>;
+// Views whose List has a Custom Order of its own (the core's `custom_kept`).
+let kept: Set<string>;
 let calls: { command: string; body: Record<string, any> }[];
 let backend: NoteBackend;
+// The last change another process (the CLI, an MCP client) made.
+let outsideLatest: number;
+// The next call of a command waits for this before it answers (or fails).
+let holds: Map<string, Promise<void>>;
+
+/** Holds the next call of `command` until the test releases it, or refuses it. */
+function hold(command: string) {
+  let release = () => {};
+  let refuse: (reason: string) => void = () => {};
+  holds.set(command, new Promise<void>((resolve, reject) => { release = resolve; refuse = reject; }));
+  return {
+    release: () => act(async () => release()),
+    refuse: (reason: string) => act(async () => refuse(reason)),
+  };
+}
 
 const eventually = (assertion: () => void) => waitFor(assertion, { timeout: 3000 });
 
@@ -55,12 +72,17 @@ function listed(body: Record<string, any>): Task[] {
   return shown.sort((a, b) => GROUP[a.status] - GROUP[b.status] || second(a, b)).map(strip);
 }
 
+/** As the core does: the List's Custom Order becomes the order `sort` lists it in. */
+function seed(view: TaskView, sort: SortMode) {
+  listed({ view, sort }).forEach((item, index) => { tasks.find((one) => one.id === item.id)!.position = index; });
+}
+
 /** The core's move: the Task is placed among its group, seeded from the sort on screen. */
 function reorder(input: Record<string, any>): Task {
   const moving = tasks.find((item) => item.id === input.id)!;
   if (moving.revision !== input.expectedRevision) throw "Revision conflict: the Task has changed; reload before saving";
   const view: TaskView = moving.listId ? { kind: "list", listId: moving.listId } : { kind: "inbox" };
-  const order = listed({ view, sort: input.shownSort }).map((item) => item.id);
+  const order = listed({ view, sort: input.shownSort ?? "custom" }).map((item) => item.id);
   const anchor = input.beforeId ?? input.afterId;
   const anchorTask = tasks.find((item) => item.id === anchor);
   if (anchor && anchorTask?.status !== moving.status) {
@@ -72,8 +94,17 @@ function reorder(input: Record<string, any>): Task {
   others.splice(at, 0, moving.id);
   others.forEach((id, index) => { tasks.find((item) => item.id === id)!.position = index; });
   moving.revision += 1;
-  if (input.shownSort !== "custom") sorts[key(view)] = "custom";
+  // From any interface, a move switches its List to Custom (Q37).
+  sorts[key(view)] = "custom";
+  kept.add(key(view));
   return strip(moving);
+}
+
+/** Choosing a sort; Custom for a List without one of its own starts from the order on screen (Q35). */
+function setViewSort({ view, sort }: { view: TaskView; sort: SortMode }) {
+  if (sort === "custom" && !kept.has(key(view))) seed(view, sorts[key(view)] ?? "priority");
+  if (sort === "custom") kept.add(key(view));
+  sorts[key(view)] = sort;
 }
 
 beforeAll(() => import("./components/NotesWorkspace"));
@@ -90,19 +121,28 @@ beforeEach(() => {
     task("Inbox task", null, 0),
   ];
   sorts = { "list:list-Work": "custom", "list:list-Home": "difficulty" };
+  kept = new Set(["list:list-Work"]);
   calls = [];
+  outsideLatest = 0;
+  holds = new Map();
   backend = new NoteBackend();
   invokeMock.mockReset();
   invokeMock.mockImplementation(async (command, args) => {
     const body = (args ?? {}) as Record<string, any>;
     calls.push({ command, body });
+    const held = holds.get(command);
+    if (held) {
+      holds.delete(command);
+      await held;
+    }
     switch (command) {
+      case "outside_changes": return { latest: outsideLatest, changed: body.seen != null && outsideLatest > body.seen };
       case "list_lists": return { items: lists.map((item) => ({ ...item })), nextCursor: null };
       case "list_tasks": return { items: listed(body), nextCursor: null };
       case "view_sorts": return Object.entries(sorts).map(([view, sort]) => ({
         view: view.startsWith("list:") ? { kind: "list", listId: view.slice(5) } : { kind: view }, sort,
       }));
-      case "set_view_sort": sorts[key(body.input.view)] = body.input.sort; return null;
+      case "set_view_sort": setViewSort(body.input); return null;
       case "reorder_task": return reorder(body.input);
       case "change_task": {
         const changing = tasks.find((item) => item.id === body.input.id)!;
@@ -282,6 +322,80 @@ describe("Custom Order", () => {
     await user.type(screen.getByRole("textbox", { name: "Filter by tag" }), "synthetic");
     await eventually(() => expect(lastListed()?.tag).toBe("synthetic"));
     await eventually(() => expect(document.querySelector(".task-slot[data-drag-row]")).toBeNull());
+  });
+
+  it("opens a view by the sort it remembers, never by Priority first", async () => {
+    sorts.all = "newest";
+    const sortsAnswer = hold("view_sorts");
+    render(<App />);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    // No page is asked for before the core says how this view is sorted.
+    expect(calls.some((call) => call.command === "list_tasks")).toBe(false);
+    await sortsAnswer.release();
+    await screen.findAllByRole("article");
+    expect(sortSelect().value).toBe("newest");
+    const pages = calls.filter((call) => call.command === "list_tasks");
+    expect(pages.length).toBeGreaterThan(0);
+    expect(pages.every((call) => call.body.sort === "newest")).toBe(true);
+    // Newest first; by Priority, Two (High) would lead the Ready Tasks.
+    expect(titles()).toEqual(["Doing", "Three", "Two", "One", "Home task", "Inbox task"]);
+  });
+
+  it("still opens, by Priority, when the remembered sorts cannot be read", async () => {
+    const sortsAnswer = hold("view_sorts");
+    render(<App />);
+    await sortsAnswer.refuse("The database is busy");
+    await screen.findAllByRole("article");
+    expect(sortSelect().value).toBe("priority");
+  });
+
+  it("starts Custom from the order on screen when chosen without a drag", async () => {
+    sorts["list:list-Work"] = "priority";
+    kept.clear();
+    const user = await showList("Work");
+    expect(titles()).toEqual(["Doing", "Two", "Three", "One"]);
+
+    const choice = hold("set_view_sort");
+    await user.selectOptions(sortSelect(), "custom");
+    // The page in Custom is asked for only once the core has started it.
+    expect(calls.filter((call) => call.command === "list_tasks").some((call) => call.body.sort === "custom")).toBe(false);
+    await choice.release();
+    await eventually(() => expect(lastListed()?.sort).toBe("custom"));
+    expect(sortSelect().value).toBe("custom");
+    expect(titles()).toEqual(["Doing", "Two", "Three", "One"]);
+    expect(calls.find((call) => call.command === "set_view_sort")?.body.input)
+      .toEqual({ view: { kind: "list", listId: "list-Work" }, sort: "custom" });
+  });
+
+  it("keeps the sort it had when Custom cannot be started", async () => {
+    sorts["list:list-Work"] = "priority";
+    kept.clear();
+    const user = await showList("Work");
+    const choice = hold("set_view_sort");
+    await user.selectOptions(sortSelect(), "custom");
+    await choice.refuse("The database is busy");
+    expect(await screen.findByText(/Could not switch to Custom order: The database is busy/)).toBeInTheDocument();
+    expect(sortSelect().value).toBe("priority");
+    expect(sortSelect()).not.toBeDisabled();
+    expect(titles()).toEqual(["Doing", "Two", "Three", "One"]);
+  });
+
+  it("shows the order an AI made when its move switches the List to Custom", async () => {
+    sorts["list:list-Work"] = "priority";
+    kept.clear();
+    await showList("Work");
+    expect(titles()).toEqual(["Doing", "Two", "Three", "One"]);
+
+    // Through the CLI or MCP: One goes first among Ready in the Custom Order.
+    reorder({ id: "One", expectedRevision: 1, afterId: null });
+    outsideLatest += 1;
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await eventually(() => expect(sortSelect().value).toBe("custom"));
+    await eventually(() => expect(titles()).toEqual(["Doing", "One", "Two", "Three"]));
+    expect(reorders()).toEqual([]);
   });
 
   it("shows the core's order again when it refuses a move", async () => {

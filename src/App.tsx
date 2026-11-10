@@ -141,6 +141,12 @@ export default function App() {
   const [listError, setListError] = useState<string | null>(null);
   // The sort each view remembers, kept by the core; a view not in it opens by Priority.
   const [viewSorts, setViewSorts] = useState<Readonly<Record<string, SortMode>>>({});
+  // The first page waits for those, so a view never shows by Priority and then
+  // reshuffles: the list never moves by itself (PR #21).
+  const [sortsKnown, setSortsKnown] = useState(false);
+  // The query the first page was read for along with the sorts: learning them
+  // re-runs the page effect, which must not ask for that page again.
+  const firstPageRead = useRef<unknown[] | null>(null);
   const sort = sortOf(viewSorts, view);
   const [filters, setFilters] = useState<TaskFilters>(NO_FILTERS);
   const [searchDraft, setSearchDraft] = useState("");
@@ -203,11 +209,40 @@ export default function App() {
   }, [keptWithoutEdits, busy, loading]);
 
   useEffect(() => {
+    const read = firstPageRead.current;
+    firstPageRead.current = null;
+    if (read && [loadAttempt, sort, view, filters].every((part, at) => part === read[at])) return;
     currentQuery.current = { sort, view, filters };
     const generation = ++requestGeneration.current;
     let active = true;
-    taskApi
-      .list(null, sort, view, filters)
+    // At launch the sort each view remembers is read first, and lands in the same
+    // render as the page, so the view opens in it and nothing reshuffles. When the
+    // sorts cannot be read, every view opens by Priority rather than not at all.
+    const firstPage = async () => {
+      if (sortsKnown) return taskApi.list(null, sort, view, filters);
+      const remembered = await taskApi.viewSorts().catch(() => ({}));
+      const sorts = { ...remembered, ...viewSorts };
+      const shownSort = sortOf(sorts, view);
+      const learn = () => {
+        if (!active) return;
+        // Only a page about to show stands for the query; otherwise the re-run reads it.
+        if (generation === requestGeneration.current && shownSort !== sort) {
+          firstPageRead.current = [loadAttempt, shownSort, view, filters];
+        }
+        currentQuery.current = { sort: shownSort, view, filters };
+        setViewSorts(sorts);
+        setSortsKnown(true);
+      };
+      try {
+        const page = await taskApi.list(null, shownSort, view, filters);
+        learn();
+        return page;
+      } catch (reason) {
+        learn();
+        throw reason;
+      }
+    };
+    firstPage()
       .then((page) => {
         if (!active || generation !== requestGeneration.current) return;
         setTasks(page.items);
@@ -227,6 +262,7 @@ export default function App() {
         if (active && generation === requestGeneration.current) setLoading(false);
       });
     return () => { active = false; };
+    // sortsKnown and viewSorts are read once, for the first page.
   }, [loadAttempt, sort, view, filters]);
 
   useEffect(() => {
@@ -260,16 +296,6 @@ export default function App() {
     return () => { active = false; };
     // Asked again when Notes change, so what another process added is found too.
   }, [filters.text, notesRefresh]);
-
-  useEffect(() => {
-    let active = true;
-    // Until these arrive every view opens by Priority; a view that remembers
-    // another sort then asks again, before the person can have done anything.
-    taskApi.viewSorts().then((sorts) => {
-      if (active) setViewSorts((chosen) => ({ ...sorts, ...chosen }));
-    }).catch(() => undefined);
-    return () => { active = false; };
-  }, []);
 
   useEffect(() => {
     let active = true;
@@ -509,7 +535,24 @@ export default function App() {
     const superseded = () =>
       read !== outsideRead.current || generation !== requestGeneration.current || cursor !== currentPage.current;
     try {
-      const listPage = await readListsAgain(lists.length);
+      const [listPage, sortsNow] = await Promise.all([
+        readListsAgain(lists.length),
+        taskApi.viewSorts().catch(() => null),
+      ]);
+      if (sortsNow) {
+        // A move through the CLI or MCP switches its List to Custom (Q37), so the
+        // view follows the sort the core remembers and shows the order the AI made.
+        // A Task with unsaved text waits for it: a new sort starts from the first page.
+        const sortNow = sortOf(sortsNow, query.view);
+        if (sortNow !== query.sort) {
+          if (edited.length > 0 || superseded()) return false;
+          showLists(listPage);
+          setViewSorts((chosen) => ({ ...chosen, ...sortsNow }));
+          showSort(sortNow);
+          return true;
+        }
+        setViewSorts((chosen) => ({ ...chosen, ...sortsNow }));
+      }
       let again: Awaited<ReturnType<typeof readPageAgain>>;
       try {
         again = await readPageAgain(cursor, query);
@@ -886,9 +929,9 @@ export default function App() {
     }
   }
 
-  /** Shows the view in `nextSort` and remembers it for this view. */
-  function changeSort(nextSort: SortMode) {
-    if (sort === nextSort) return;
+  /** Shows the view on screen in `nextSort`, from its first page. */
+  function showSort(nextSort: SortMode) {
+    const shownKey = viewKey(currentQuery.current.view);
     newTaskToast.clearReveal();
     currentQuery.current = { ...currentQuery.current, sort: nextSort };
     requestGeneration.current += 1;
@@ -897,10 +940,37 @@ export default function App() {
     setLoading(true);
     setNextCursor(null);
     resetTaskPages();
-    setViewSorts((sorts) => ({ ...sorts, [viewKey(view)]: nextSort }));
-    taskApi.setViewSort(view, nextSort).catch((reason) => {
-      setError("Sorted, but Tasknotes could not remember it for next time: " + errorMessage(reason));
-    });
+    setViewSorts((sorts) => ({ ...sorts, [shownKey]: nextSort }));
+  }
+
+  /** Shows the view in `nextSort` and remembers it for this view. */
+  async function changeSort(nextSort: SortMode) {
+    if (sort === nextSort) return;
+    if (nextSort !== "custom") {
+      showSort(nextSort);
+      taskApi.setViewSort(view, nextSort).catch((reason) => {
+        setError("Sorted, but Tasknotes could not remember it for next time: " + errorMessage(reason));
+      });
+      return;
+    }
+    // The core first starts the List's Custom Order from the order on screen, or
+    // brings back the one it has (ADR 0010); the page in Custom is asked for after.
+    const shownView = view;
+    const stillShown = () => viewKey(currentQuery.current.view) === viewKey(shownView);
+    newTaskToast.clearReveal();
+    setError(null);
+    // Holds the sort control, and re-reads of outside changes, until the core answers.
+    setLoading(true);
+    try {
+      await taskApi.setViewSort(shownView, nextSort);
+    } catch (reason) {
+      if (!stillShown()) return;
+      setLoading(false);
+      setError("Could not switch to Custom order: " + errorMessage(reason));
+      return;
+    }
+    if (stillShown()) showSort(nextSort);
+    else setViewSorts((sorts) => ({ ...sorts, [viewKey(shownView)]: nextSort }));
   }
 
   // One move at a time: a second would name the revision the first is replacing.
@@ -1148,7 +1218,7 @@ export default function App() {
               aria-label="Sort tasks"
               value={sort}
               disabled={loading || loadingMore || Boolean(savingId)}
-              onChange={(event) => changeSort(event.target.value as SortMode)}
+              onChange={(event) => void changeSort(event.target.value as SortMode)}
             >
               <option value="priority">Highest priority</option>
               <option value="difficulty">Hardest first</option>
