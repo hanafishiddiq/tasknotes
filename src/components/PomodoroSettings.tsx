@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { DURATION_LIMITS, type PomodoroDurations } from "../lib/pomodoro-api";
+import type { DurationLimits, PomodoroDurations } from "../lib/pomodoro-api";
 import type { PomodoroControl } from "../lib/use-pomodoro";
 
 const FIELDS: { key: keyof PomodoroDurations; label: string; unit: string }[] = [
@@ -9,20 +9,36 @@ const FIELDS: { key: keyof PomodoroDurations; label: string; unit: string }[] = 
   { key: "sessionsBeforeLongBreak", label: "Long break after", unit: "sessions" },
 ];
 
-/** The Pomodoro lengths, kept by the shell; a change applies from the next focus or break. */
+/** The limits in words, from the numbers the shell sends. */
+function limitsHint(limits: DurationLimits): string {
+  const range = ({ min, max }: { min: number; max: number }) => `${min}–${max}`;
+  const breaks = limits.shortBreakMinutes.max === limits.longBreakMinutes.max
+    && limits.shortBreakMinutes.min === limits.longBreakMinutes.min
+    ? `breaks ${range(limits.shortBreakMinutes)} minutes`
+    : `breaks ${range(limits.shortBreakMinutes)} minutes, long breaks ${range(limits.longBreakMinutes)} minutes`;
+  return `Focus ${range(limits.focusMinutes)} minutes, ${breaks}, a long break after ${range(limits.sessionsBeforeLongBreak)} sessions.`;
+}
+
+/**
+ * The Pomodoro lengths and Silent, kept by the shell; a new length applies
+ * from the next focus or break. The limits come from the shell too.
+ */
 export default function PomodoroSettings({ pomodoro }: { pomodoro: PomodoroControl }) {
   const saved = pomodoro.view?.durations ?? null;
+  const limits = pomodoro.view?.limits ?? null;
   const [draft, setDraft] = useState<PomodoroDurations | null>(saved);
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
+  const [silentError, setSilentError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => { setDraft(saved); }, [saved?.focusMinutes, saved?.shortBreakMinutes,
     saved?.longBreakMinutes, saved?.sessionsBeforeLongBreak]);
 
-  if (!saved || !draft) return null;
+  if (!saved || !draft || !limits || !pomodoro.view) return null;
+  const silent = pomodoro.view.silent;
   const changed = FIELDS.some(({ key }) => draft[key] !== saved[key]);
   const valid = FIELDS.every(({ key }) => Number.isInteger(draft[key])
-    && draft[key] >= DURATION_LIMITS[key].min && draft[key] <= DURATION_LIMITS[key].max);
+    && draft[key] >= limits[key].min && draft[key] <= limits[key].max);
 
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -40,7 +56,7 @@ export default function PomodoroSettings({ pomodoro }: { pomodoro: PomodoroContr
         {FIELDS.map(({ key, label, unit }) => (
           <label key={key} className="settings-pomodoro-row">
             <span>{label}</span>
-            <input type="number" inputMode="numeric" min={DURATION_LIMITS[key].min} max={DURATION_LIMITS[key].max}
+            <input type="number" inputMode="numeric" min={limits[key].min} max={limits[key].max}
               step={1} value={Number.isNaN(draft[key]) ? "" : draft[key]}
               onChange={(event) => {
                 setMessage(null);
@@ -54,16 +70,21 @@ export default function PomodoroSettings({ pomodoro }: { pomodoro: PomodoroContr
             {saving ? "Saving..." : "Save lengths"}
           </button>
         )}
-        {changed && !valid && (
-          <p className="settings-hint settings-hint--error">
-            Focus 1–180 minutes, breaks 1–60 minutes, a long break after 1–12 sessions.
-          </p>
-        )}
+        {changed && !valid && <p className="settings-hint settings-hint--error">{limitsHint(limits)}</p>}
         {message && (
           <p className={`settings-hint${message.error ? " settings-hint--error" : ""}`}
             role={message.error ? "alert" : "status"}>{message.text}</p>
         )}
-        <p className="settings-hint">The focus end shows one notification, silent while interaction sounds are muted. Ambient rain is not affected.</p>
+        <label className="settings-choice">
+          <input type="checkbox" checked={silent}
+            onChange={async (event) => setSilentError(await pomodoro.setSilent(event.target.checked))} />
+          <span>Silent notifications</span>
+        </label>
+        {silentError && <p className="settings-hint settings-hint--error" role="alert">{silentError}</p>}
+        <p className="settings-hint">
+          The focus end and the break end each show one notification, without sound when Silent is on.
+          Interaction sounds and Ambient rain are separate.
+        </p>
       </form>
     </>
   );

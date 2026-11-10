@@ -7,8 +7,7 @@ import {
 export interface PomodoroControl {
   /** Null until the shell answers, and where there is no shell timer. */
   view: PomodoroView | null;
-  /** The shell's clock minus this window's, so countdowns match the menu bar. */
-  skew: number;
+  /** Why the last click could not reach the shell. */
   error: string | null;
   /** The one-time notification-style tip is showing. */
   tip: boolean;
@@ -17,68 +16,59 @@ export interface PomodoroControl {
   openNotificationSettings: () => Promise<void>;
   /** Saves the lengths; resolves to the refusal, or null when saved. */
   setDurations: (durations: PomodoroDurations) => Promise<string | null>;
+  /** Saves Silent; resolves to the refusal, or null when saved. */
+  setSilent: (silent: boolean) => Promise<string | null>;
 }
 
 interface Options {
-  /** Silent mode: the focus-end notification makes no sound. */
-  silent: boolean;
   /** A Task gained a Pomodoro Progress Entry. */
   onTaskChanged: (taskId: string) => void;
 }
 
 /**
- * The window's view of the shell's Pomodoro timer. The timer itself runs in
- * the shell, so it keeps going with the window closed; this only shows it
- * and sends clicks. It never touches sound: Ambient rain is independent.
+ * The window's view of the shell's Pomodoro timer. The timer runs in the
+ * shell, so it keeps going with the window closed; the shell sends what to
+ * show whenever it changes, so this keeps no clock of its own, only shows
+ * the view and sends clicks. It never touches sound: Ambient rain and the
+ * interaction sounds are independent.
  */
-export function usePomodoro({ silent, onTaskChanged }: Options): PomodoroControl {
+export function usePomodoro({ onTaskChanged }: Options): PomodoroControl {
   const [view, setView] = useState<PomodoroView | null>(null);
-  const [skew, setSkew] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [tip, setTip] = useState(false);
   const tipAsked = useRef(false);
   const taskChanged = useRef(onTaskChanged);
   taskChanged.current = onTaskChanged;
 
-  const show = useCallback((next: PomodoroView) => {
-    setView(next);
-    setSkew(next.now - Date.now());
-  }, []);
-
   useEffect(() => {
     let active = true;
     let unlisten: (() => void) | undefined;
     listenForPomodoro((changed) => {
       if (!active) return;
-      show(changed.view);
+      setView(changed.view);
       if (changed.taskChanged) taskChanged.current(changed.taskChanged);
     }).then((stop) => {
       if (active) unlisten = stop; else stop();
     }).catch(() => {});
-    pomodoroApi.state().then((current) => { if (active) show(current); }).catch(() => {});
+    pomodoroApi.state().then((current) => { if (active) setView(current); }).catch(() => {});
     return () => {
       active = false;
       unlisten?.();
     };
-  }, [show]);
-
-  const available = view !== null;
-  useEffect(() => {
-    if (available) pomodoroApi.setSilent(silent).catch(() => {});
-  }, [available, silent]);
+  }, []);
 
   const run = useCallback(async (command: PomodoroCommand) => {
     setError(null);
     try {
-      show(await pomodoroApi.command(command));
+      setView(await pomodoroApi.command(command));
     } catch (reason) {
       setError(errorMessage(reason));
     }
-    if (command.action === "start_focus" && !tipAsked.current) {
+    if ((command.action === "start_focus" || command.action === "start_next_focus") && !tipAsked.current) {
       tipAsked.current = true;
       pomodoroApi.takeTip().then((due) => { if (due) setTip(true); }).catch(() => {});
     }
-  }, [show]);
+  }, []);
 
   const openNotificationSettings = useCallback(async () => {
     try {
@@ -89,17 +79,19 @@ export function usePomodoro({ silent, onTaskChanged }: Options): PomodoroControl
     }
   }, []);
 
-  const setDurations = useCallback(async (durations: PomodoroDurations) => {
+  const save = useCallback(async (change: () => Promise<PomodoroView>) => {
     try {
-      show(await pomodoroApi.setDurations(durations));
+      setView(await change());
       return null;
     } catch (reason) {
       return errorMessage(reason);
     }
-  }, [show]);
+  }, []);
 
   return {
-    view, skew, error, tip, run, openNotificationSettings, setDurations,
+    view, error, tip, run, openNotificationSettings,
+    setDurations: (durations) => save(() => pomodoroApi.setDurations(durations)),
+    setSilent: (silent) => save(() => pomodoroApi.setSilent(silent)),
     dismissTip: () => setTip(false),
   };
 }

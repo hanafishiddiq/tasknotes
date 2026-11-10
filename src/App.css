@@ -591,7 +591,8 @@ button.folder-disclosure:hover:not(:disabled) {
   font-variant-numeric: tabular-nums;
   color: var(--text);
 }
-.pomodoro[data-phase="overtime"] .pomodoro-time {
+/* After the planned end the running Overtime is in the accent. */
+.pomodoro[data-phase="focus_done"] .pomodoro-time {
   color: var(--accent-text);
 }
 .pomodoro-status {
@@ -641,6 +642,12 @@ button.folder-disclosure:hover:not(:disabled) {
   margin: 2px 0 0;
   font-size: 12px;
   color: var(--red);
+}
+/* A session the shell could not store: the reason, then Try again / Discard. */
+.pomodoro-unsaved {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 /* Main column */

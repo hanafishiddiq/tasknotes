@@ -189,11 +189,8 @@ export default function App() {
   const outsideRead = useRef(0);
 
   useOutsideChanges(showOutsideChanges);
-  // Silent mode for the Pomodoro notification: the window's interaction sounds are muted.
-  const pomodoro = usePomodoro({
-    silent: sound.settings.interaction.muted,
-    onTaskChanged: () => void showOutsideChanges(),
-  });
+  // Silent is the Pomodoro's own setting, kept by the shell; sound settings play no part.
+  const pomodoro = usePomodoro({ onTaskChanged: () => void showOutsideChanges() });
 
   // Before paint, so the rows never show in their new place.
   useLayoutEffect(() => {

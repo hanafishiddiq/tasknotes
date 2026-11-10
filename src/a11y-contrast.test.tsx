@@ -53,7 +53,7 @@ const TEXT: Record<string, Placement> = {
   // The Pomodoro control at the foot of the sidebar
   ".pomodoro": { on: ["sidebar"] },
   ".pomodoro-time": { on: ["sidebar"] },
-  '.pomodoro[data-phase="overtime"] .pomodoro-time': { on: ["sidebar"] },
+  '.pomodoro[data-phase="focus_done"] .pomodoro-time': { on: ["sidebar"] },
   ".pomodoro-status": { on: ["sidebar"] },
   ".pomodoro-start select": { on: ["field"] },
   ".pomodoro-tip p": { on: ["sidebar"] },
