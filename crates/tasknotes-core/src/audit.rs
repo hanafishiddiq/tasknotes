@@ -333,6 +333,7 @@ revisioned!(
     crate::notes::UpdateNote,
     crate::note_folders::RenameNoteFolder,
     crate::note_folders::MoveNoteFolder,
+    crate::note_folders::ReorderNoteFolder,
     crate::style::SetStyle,
 );
 
@@ -432,17 +433,29 @@ impl TaskStore {
         input: I,
         change: impl FnOnce(I) -> Result<T, TaskError>,
     ) -> Result<T, TaskError> {
+        self.audited_as_decided(input, |input| {
+            change(input).map_err(|error| (action, error))
+        })
+    }
+
+    /// As `audited`, for a change that decides its action inside its own
+    /// transaction, from the row as the write finds it (a placement is a
+    /// move or a reorder): a refusal comes back with the action it refused.
+    pub(crate) fn audited_as_decided<I: Revisioned, T>(
+        &self,
+        input: I,
+        change: impl FnOnce(I) -> Result<T, (AuditAction, TaskError)>,
+    ) -> Result<T, TaskError> {
         let (entity_id, revision) = {
             let (id, revision) = input.target();
             (id.to_owned(), revision)
         };
-        change(input).map_err(|error| self.refused(action, &entity_id, revision, error))
+        change(input).map_err(|(action, error)| self.refused(action, &entity_id, revision, error))
     }
 
     /// Records a refused change, when the refusal means something, and
-    /// returns the error to give the caller (see `audited`). For a change
-    /// that only knows its action once inside its transaction.
-    pub(crate) fn refused(
+    /// returns the error to give the caller (see `audited`).
+    fn refused(
         &self,
         action: AuditAction,
         entity_id: &str,

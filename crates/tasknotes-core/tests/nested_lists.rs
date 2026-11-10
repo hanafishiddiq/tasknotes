@@ -12,8 +12,9 @@ use tasknotes_core::export::{ExportFormat, ExportRequest};
 use tasknotes_core::note_folders::{CreateNoteFolder, MAX_FOLDER_DEPTH};
 use tasknotes_core::removed::RemovedKind;
 use tasknotes_core::tasks::{
-    CreateList, CreateSubList, CreateTask, List, MoveList, MoveTask, PlaceList, RenameList,
-    ReorderList, SCHEMA_VERSION, SetListRemoved, SortMode, Task, TaskError, TaskStore, TaskView,
+    CreateList, CreateSubList, CreateTask, List, ListParent, MoveList, MoveTask, PlaceList,
+    RenameList, ReorderList, SCHEMA_VERSION, SetListRemoved, SortMode, Task, TaskError, TaskStore,
+    TaskView,
 };
 use tasknotes_core::tree::MAX_DEPTH;
 
@@ -193,6 +194,7 @@ fn the_tree_reads_parents_before_children_in_manual_order_across_pages() {
             id: a1.id.clone(),
             expected_revision: now(&w.desktop, &a1).revision,
             after_id: None,
+            parent: ListParent::Current,
         })
         .unwrap();
     assert_eq!(
@@ -661,6 +663,7 @@ fn upgrading_keeps_every_list_at_the_top_in_its_order_with_its_tasks() {
             id: b.id.clone(),
             expected_revision: b.revision,
             after_id: None,
+            parent: ListParent::Current,
         })
         .unwrap();
     drop(store);

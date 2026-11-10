@@ -6,8 +6,8 @@ use serde_json::Value;
 use tasknotes_cli::contract::{self, CliError};
 use tasknotes_core::tasks::{
     ChangeTask, CreateList, CreateSubList, CreateTask, Difficulty, DifficultyFilter, MoveList,
-    MoveTask, PatchTask, PatchTaskDetails, Priority, RecordProgress, RenameList, SetListRemoved,
-    SortMode, TaskError, TaskQuery, TaskScope, TaskView, WorkStatus,
+    MoveTask, PatchTask, PatchTaskDetails, Priority, RecordProgress, RenameList, ReorderList,
+    SetListRemoved, SortMode, TaskError, TaskQuery, TaskScope, TaskView, WorkStatus,
 };
 
 use crate::tools::*;
@@ -164,13 +164,12 @@ pub fn tools() -> Vec<ToolDef> {
                 let after_id =
                     contract::destination(a.after_id, a.first, ("after_id", "first: true"))?;
                 let parent = contract::list_parent(a.parent_id, a.top, ("parent_id", "top: true"))?;
-                item(contract::list(&contract::reorder_list(
-                    c.store,
-                    a.id,
-                    revision(a.revision)?,
+                item(contract::list(&c.store.reorder_list(ReorderList {
+                    expected_revision: revision(a.revision)?,
+                    id: a.id,
                     after_id,
                     parent,
-                )?))
+                })?))
             },
         ),
         tool(

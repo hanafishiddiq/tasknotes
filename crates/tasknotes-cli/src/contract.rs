@@ -20,9 +20,7 @@ use tasknotes_core::links::{LinkedNote, LinkedTask, NoteLink};
 use tasknotes_core::note_folders::{FolderParent, NoteFolder};
 use tasknotes_core::notes::{Note, NoteSummary};
 use tasknotes_core::removed::RemovedItem;
-use tasknotes_core::tasks::{
-    List, ListParent, PlaceList, ProgressEntry, ReorderList, Task, TaskError, TaskStore,
-};
+use tasknotes_core::tasks::{List, ListParent, ProgressEntry, Task, TaskError, TaskStore};
 
 /// The version of this JSON contract, sent as `schema_version` in every
 /// envelope. Not the database schema (`tasknotes_core::tasks::SCHEMA_VERSION`).
@@ -126,37 +124,6 @@ pub fn list_parent(
         return Ok(ListParent::Current);
     }
     destination(id, top, names).map(ListParent::named)
-}
-
-/// Puts a List after a sibling, or first: under the parent it has, or, when
-/// the caller names one, under that parent in the same step. The one entry
-/// the CLI and MCP share.
-pub fn reorder_list(
-    store: &TaskStore,
-    id: String,
-    expected_revision: i64,
-    after_id: Option<String>,
-    parent: ListParent,
-) -> Result<List, CliError> {
-    Ok(match parent {
-        ListParent::Current => store.reorder_list(ReorderList {
-            id,
-            expected_revision,
-            after_id,
-        })?,
-        ListParent::Top => store.place_list(PlaceList {
-            id,
-            expected_revision,
-            parent_id: None,
-            after_id,
-        })?,
-        ListParent::List(parent_id) => store.place_list(PlaceList {
-            id,
-            expected_revision,
-            parent_id: Some(parent_id),
-            after_id,
-        })?,
-    })
 }
 
 pub fn success_item(item: Value) -> Value {

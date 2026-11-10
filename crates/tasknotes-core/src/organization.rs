@@ -1,4 +1,4 @@
-use rusqlite::{OptionalExtension, params, params_from_iter};
+use rusqlite::{OptionalExtension, Transaction, params, params_from_iter};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
@@ -71,7 +71,11 @@ pub struct PlaceList {
     pub after_id: Option<String>,
 }
 
-/// Which parent a placed List ends up under.
+/// Which parent a placed List ends up under, as `FolderParent` for Note
+/// Folders. `Current` is what a reorder names: the desktop, the CLI and MCP
+/// give no parent to keep a List among its siblings, and the core resolves
+/// that inside the write, so a move made elsewhere in between is kept rather
+/// than undone, and the history names a reorder.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ListParent {
@@ -90,6 +94,7 @@ impl ListParent {
         parent_id.map_or(Self::Top, Self::List)
     }
 
+    /// The parent id this resolves to for a List now under `current`.
     fn resolve<'a>(&'a self, current: Option<&'a str>) -> Option<&'a str> {
         match self {
             Self::Current => current,
@@ -108,7 +113,9 @@ pub struct RenameList {
 }
 
 /// Puts a List directly after a sibling, or first without one, under the
-/// parent it has (ADR-0007).
+/// parent an interface names, or under the one it has when the write
+/// happens if it names none (ADR-0007, ADR 0009). The one entry point for
+/// the desktop, the CLI and MCP.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReorderList {
@@ -116,6 +123,8 @@ pub struct ReorderList {
     pub expected_revision: i64,
     #[serde(default)]
     pub after_id: Option<String>,
+    #[serde(default)]
+    pub parent: ListParent,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -398,13 +407,24 @@ fn current_list(
     expected_revision: i64,
 ) -> Result<List, TaskError> {
     let list = get_list(conn, id)?;
+    require_current(conn, &list, expected_revision)?;
+    Ok(list)
+}
+
+/// Refuses a write to `list`, as just read, when somebody changed it since
+/// `expected_revision` or it is hidden by Removed.
+fn require_current(
+    conn: &rusqlite::Connection,
+    list: &List,
+    expected_revision: i64,
+) -> Result<(), TaskError> {
     if list.revision != expected_revision {
         return Err(TaskError::RevisionConflict);
     }
-    if list_hidden(conn, id)? {
+    if list_hidden(conn, &list.id)? {
         return Err(TaskError::ListRemoved);
     }
-    Ok(list)
+    Ok(())
 }
 
 /// Whether `list` may live under `parent_id`: the parent is shown, the
@@ -660,64 +680,58 @@ impl TaskStore {
         Ok(updated)
     }
 
-    /// Puts a List after a sibling, or first, among the Lists that share its
-    /// parent. Its parent does not change.
+    /// Puts a List after a sibling, or first, under the parent `input` names
+    /// (its own when it names none), with the Lists inside it. Recorded as
+    /// `list.move` when that is another parent than the List has as the write
+    /// finds it, else as `list.reorder`; a refusal is recorded the same way,
+    /// or as a reorder when the List is gone.
     pub fn reorder_list(&self, input: ReorderList) -> Result<List, TaskError> {
-        let ReorderList {
-            id,
-            expected_revision,
-            after_id,
-        } = input;
-        let mut action = AuditAction::ListReorder;
-        self.place_list_inner(
-            &id,
-            expected_revision,
-            &ListParent::Current,
-            after_id.as_deref(),
-            &mut action,
-        )
-        .map_err(|error| self.refused(action, &id, Some(expected_revision), error))
+        #[cfg(test)]
+        crate::privacy::between_reads();
+        self.audited_as_decided(input, |input| self.place_list_inner(&input))
     }
 
     /// Puts a List, with the Lists inside it, exactly where the person dropped
-    /// it. Recorded as `list.move` when that is another parent than the List
-    /// has as the write finds it, else as `list.reorder`.
+    /// it: under `parent_id` (None: the top level), after `after_id` there.
     pub fn place_list(&self, input: PlaceList) -> Result<List, TaskError> {
-        let parent = ListParent::named(input.parent_id);
-        let mut action = AuditAction::ListReorder;
-        self.place_list_inner(
-            &input.id,
-            input.expected_revision,
-            &parent,
-            input.after_id.as_deref(),
-            &mut action,
-        )
-        .map_err(|error| self.refused(action, &input.id, Some(input.expected_revision), error))
+        self.reorder_list(ReorderList {
+            id: input.id,
+            expected_revision: input.expected_revision,
+            after_id: input.after_id,
+            parent: ListParent::named(input.parent_id),
+        })
     }
 
-    /// Sets `action` from the List as the transaction reads it, before any
-    /// check can refuse the write.
-    fn place_list_inner(
+    /// Reads the List once inside the write and decides from it, before any
+    /// check can refuse the change, whether it is a move or a reorder.
+    fn place_list_inner(&self, input: &ReorderList) -> Result<List, (AuditAction, TaskError)> {
+        let unread = |error| (AuditAction::ListReorder, error);
+        let mut conn = self.connect().map_err(unread)?;
+        let tx = self.begin_write(&mut conn).map_err(unread)?;
+        let old = get_list(&tx, &input.id).map_err(unread)?;
+        let parent_id = input.parent.resolve(old.parent_id.as_deref());
+        let action = if parent_id == old.parent_id.as_deref() {
+            AuditAction::ListReorder
+        } else {
+            AuditAction::ListMove
+        };
+        self.write_list_placement(tx, &old, parent_id, input, action)
+            .map_err(|error| (action, error))
+    }
+
+    fn write_list_placement(
         &self,
-        id: &str,
-        expected_revision: i64,
-        parent: &ListParent,
-        after_id: Option<&str>,
-        action: &mut AuditAction,
+        tx: Transaction,
+        old: &List,
+        parent_id: Option<&str>,
+        input: &ReorderList,
+        action: AuditAction,
     ) -> Result<List, TaskError> {
-        let mut conn = self.connect()?;
-        let tx = self.begin_write(&mut conn)?;
-        let stored = get_list(&tx, id).ok();
-        if let Some(stored) = &stored
-            && parent.resolve(stored.parent_id.as_deref()) != stored.parent_id.as_deref()
-        {
-            *action = AuditAction::ListMove;
-        }
-        let old = current_list(&tx, id, expected_revision)?;
-        let parent_id = parent.resolve(old.parent_id.as_deref());
+        require_current(&tx, old, input.expected_revision)?;
         if parent_id != old.parent_id.as_deref() {
-            require_list_destination(&tx, &old, parent_id)?;
+            require_list_destination(&tx, old, parent_id)?;
         }
+        let after_id = input.after_id.as_deref();
         if !manual_order::place(&tx, Siblings::lists(parent_id), &old.id, after_id)? {
             return Err(TaskError::ListUnchanged);
         }
@@ -725,8 +739,8 @@ impl TaskStore {
             "UPDATE lists SET parent_id=?1 WHERE id=?2",
             params![parent_id, old.id],
         )?;
-        let placed = bump_list(&tx, &old)?;
-        self.audit_applied(&tx, *action, &placed.id, placed.revision)?;
+        let placed = bump_list(&tx, old)?;
+        self.audit_applied(&tx, action, &placed.id, placed.revision)?;
         tx.commit()?;
         Ok(placed)
     }
@@ -921,4 +935,68 @@ fn require_unique_list_name(
         return Err(TaskError::ListNameConflict);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::audit::Interface;
+
+    /// Review finding (PR #32): whether a placement is a move or a reorder
+    /// is decided from the List as the write reads it, once, so another
+    /// writer moving it in between cannot leave the history naming the
+    /// wrong action.
+    #[test]
+    fn a_placement_is_recorded_from_the_list_as_the_write_finds_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("place-race.db");
+        let desktop = TaskStore::open(&db).unwrap();
+        let ai = TaskStore::open_as(&db, Interface::Cli).unwrap();
+        let work = desktop
+            .create_list(CreateList {
+                name: "Work".into(),
+            })
+            .unwrap();
+        let home = desktop
+            .create_list(CreateList {
+                name: "Home".into(),
+            })
+            .unwrap();
+        let moving = desktop
+            .create_sub_list(CreateSubList {
+                name: "Moving".into(),
+                parent_id: work.id.clone(),
+            })
+            .unwrap();
+        let (id, home_id) = (moving.id.clone(), home.id.clone());
+        crate::privacy::set_between_reads(move || {
+            desktop
+                .move_list(MoveList {
+                    id,
+                    expected_revision: moving.revision,
+                    parent_id: Some(home_id),
+                })
+                .unwrap();
+        });
+
+        let stale = ai.place_list(PlaceList {
+            id: moving.id.clone(),
+            expected_revision: moving.revision,
+            parent_id: Some(home.id.clone()),
+            after_id: None,
+        });
+
+        assert!(matches!(stale, Err(TaskError::RevisionConflict)));
+        let entries = ai.list_audit_entries(Some(&moving.id), 10, None).unwrap();
+        let refused = entries
+            .items
+            .iter()
+            .find(|entry| entry.interface == Interface::Cli)
+            .expect("the refusal is recorded");
+        assert_eq!(
+            refused.action.as_str(),
+            "list.reorder",
+            "the List already sat inside Home when the write ran"
+        );
+    }
 }

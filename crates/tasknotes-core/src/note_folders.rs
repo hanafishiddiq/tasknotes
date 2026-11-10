@@ -241,12 +241,25 @@ pub(crate) fn current_folder(
     id: &str,
     expected_revision: i64,
 ) -> Result<NoteFolder, TaskError> {
-    require_folder(conn, id)?;
     let folder = get_folder(conn, id)?.ok_or(TaskError::NoteFolderNotFound)?;
+    require_current(conn, &folder, expected_revision)?;
+    Ok(folder)
+}
+
+/// Refuses a write to `folder`, as just read, when it is hidden by Removed
+/// or somebody changed it since `expected_revision`.
+fn require_current(
+    conn: &Connection,
+    folder: &NoteFolder,
+    expected_revision: i64,
+) -> Result<(), TaskError> {
+    if crate::removed::folder_hidden(conn, &folder.id)? {
+        return Err(TaskError::NoteFolderRemoved);
+    }
     if folder.revision != expected_revision {
         return Err(TaskError::NoteFolderRevisionConflict);
     }
-    Ok(folder)
+    Ok(())
 }
 
 /// Whether `folder` may live under `parent_id`: the parent is shown, the
@@ -406,37 +419,49 @@ impl TaskStore {
     pub fn reorder_note_folder(&self, input: ReorderNoteFolder) -> Result<NoteFolder, TaskError> {
         #[cfg(test)]
         crate::privacy::between_reads();
-        let mut action = AuditAction::FolderReorder;
-        self.place_inner(&input, &mut action)
-            .map_err(|error| self.refused(action, &input.id, Some(input.expected_revision), error))
+        self.audited_as_decided(input, |input| self.place_inner(&input))
     }
 
-    /// Sets `action` from the folder as the transaction reads it, before any
-    /// check can refuse the write.
+    /// Reads the folder once inside the write and decides from it, before any
+    /// check can refuse the change, whether it is a move or a reorder.
     fn place_inner(
         &self,
         input: &ReorderNoteFolder,
-        action: &mut AuditAction,
-    ) -> Result<NoteFolder, TaskError> {
-        let mut conn = self.connect()?;
-        let tx = self.begin_write(&mut conn)?;
-        let leaves_parent = get_folder(&tx, &input.id)?.is_some_and(|stored| {
-            input.parent.resolve(stored.parent_id.as_deref()) != stored.parent_id.as_deref()
-        });
-        if leaves_parent {
-            *action = AuditAction::FolderMove;
-        }
-        let old = current_folder(&tx, &input.id, input.expected_revision)?;
+    ) -> Result<NoteFolder, (AuditAction, TaskError)> {
+        let unread = |error| (AuditAction::FolderReorder, error);
+        let mut conn = self.connect().map_err(unread)?;
+        let tx = self.begin_write(&mut conn).map_err(unread)?;
+        let old = get_folder(&tx, &input.id)
+            .and_then(|stored| stored.ok_or(TaskError::NoteFolderNotFound))
+            .map_err(unread)?;
         let parent_id = input.parent.resolve(old.parent_id.as_deref());
+        let action = if parent_id == old.parent_id.as_deref() {
+            AuditAction::FolderReorder
+        } else {
+            AuditAction::FolderMove
+        };
+        self.write_folder_placement(tx, &old, parent_id, input, action)
+            .map_err(|error| (action, error))
+    }
+
+    fn write_folder_placement(
+        &self,
+        tx: Transaction,
+        old: &NoteFolder,
+        parent_id: Option<&str>,
+        input: &ReorderNoteFolder,
+        action: AuditAction,
+    ) -> Result<NoteFolder, TaskError> {
+        require_current(&tx, old, input.expected_revision)?;
         if parent_id != old.parent_id.as_deref() {
-            require_destination(&tx, &old, parent_id)?;
+            require_destination(&tx, old, parent_id)?;
         }
         let after_id = input.after_id.as_deref();
         if !manual_order::place(&tx, Siblings::folders(parent_id), &old.id, after_id)? {
             return Err(TaskError::NoteFolderUnchanged);
         }
-        let placed = write_folder(&tx, &old, parent_id, &old.name)?;
-        self.audit_applied(&tx, *action, &placed.id, placed.revision)?;
+        let placed = write_folder(&tx, old, parent_id, &old.name)?;
+        self.audit_applied(&tx, action, &placed.id, placed.revision)?;
         tx.commit()?;
         Ok(placed)
     }

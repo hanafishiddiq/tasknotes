@@ -11,7 +11,8 @@ use tasknotes_core::note_folders::{
 };
 use tasknotes_core::removed::SetRemoved;
 use tasknotes_core::tasks::{
-    CreateList, List, RenameList, ReorderList, SCHEMA_VERSION, SetListRemoved, TaskError, TaskStore,
+    CreateList, List, ListParent, RenameList, ReorderList, SCHEMA_VERSION, SetListRemoved,
+    TaskError, TaskStore,
 };
 
 fn store_at(path: &Path) -> TaskStore {
@@ -47,6 +48,7 @@ fn reorder(store: &TaskStore, item: &List, after: Option<&List>) -> Result<List,
         id: item.id.clone(),
         expected_revision: current_list(store, &item.id).revision,
         after_id: after.map(|a| a.id.clone()),
+        parent: ListParent::Current,
     })
 }
 
@@ -268,6 +270,7 @@ fn a_stale_revision_is_refused_and_leaves_the_order_alone() {
         id: b.id.clone(),
         expected_revision: b.revision,
         after_id: None,
+        parent: ListParent::Current,
     });
 
     assert!(matches!(refused, Err(TaskError::RevisionConflict)));
@@ -306,6 +309,7 @@ fn two_writers_with_the_same_revision_cannot_both_move_a_list() {
                             id,
                             expected_revision,
                             after_id,
+                            parent: ListParent::Current,
                         })
                         .is_ok()
                 })
@@ -345,6 +349,7 @@ fn placing_after_a_list_that_is_gone_says_the_view_is_stale() {
         id: c.id.clone(),
         expected_revision: c.revision,
         after_id: Some("00000000-0000-4000-8000-000000000000".into()),
+        parent: ListParent::Current,
     });
     assert!(matches!(unknown, Err(TaskError::OrderAnchorChanged)));
     assert_eq!(list_names(&store), ["B", "C"]);

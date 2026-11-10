@@ -20,8 +20,8 @@ use tasknotes_core::style::{self, SetStyle};
 use tasknotes_core::tasks::{
     ChangeTask, CreateList, CreateSubList, CreateTask, Difficulty, DifficultyFilter, List,
     MoveList, MoveTask, PatchTask, PatchTaskDetails, Priority, RecordProgress, RenameList,
-    SetListRemoved, SortMode, Task, TaskError, TaskQuery, TaskScope, TaskStore, TaskView,
-    WorkStatus,
+    ReorderList, SetListRemoved, SortMode, Task, TaskError, TaskQuery, TaskScope, TaskStore,
+    TaskView, WorkStatus,
 };
 
 use access::Environment;
@@ -424,21 +424,20 @@ fn list_command(store: &TaskStore, verb: &str, words: &[String]) -> Result<Value
                     positionals: 1,
                 },
             )?;
-            item(contract::reorder_list(
-                store,
-                p.id().to_owned(),
-                p.revision()?,
-                contract::destination(
+            item(store.reorder_list(ReorderList {
+                id: p.id().to_owned(),
+                expected_revision: p.revision()?,
+                after_id: contract::destination(
                     p.value("after").map(str::to_owned),
                     p.has("first"),
                     ("--after ID", "--first"),
                 )?,
-                contract::list_parent(
+                parent: contract::list_parent(
                     p.value("parent").map(str::to_owned),
                     p.has("top"),
                     ("--parent ID", "--top"),
                 )?,
-            )?)
+            })?)
         }
         "style" => item(store.set_list_style(style_change(words)?)?),
         "remove" | "restore" => {
