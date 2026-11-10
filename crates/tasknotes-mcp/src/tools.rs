@@ -73,6 +73,7 @@ pub fn all() -> Vec<ToolDef> {
     let mut tools = crate::tools_task::tools();
     tools.extend(crate::tools_note::tools());
     tools.extend(crate::tools_bulk::tools());
+    tools.extend(crate::tools_pomodoro::tools());
     tools
 }
 

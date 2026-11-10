@@ -52,7 +52,12 @@ impl Data {
 
     /// Start the server and complete the MCP handshake.
     pub fn server(&self) -> Server {
-        let mut server = Server::spawn(self.path());
+        self.server_with(&[])
+    }
+
+    /// As `server`, with these environment variables set, e.g. `TZ`.
+    pub fn server_with(&self, env: &[(&str, &str)]) -> Server {
+        let mut server = Server::spawn_with(self.path(), env);
         server.initialize();
         server
     }
@@ -69,6 +74,10 @@ pub struct Server {
 
 impl Server {
     pub fn spawn(data_dir: &Path) -> Self {
+        Self::spawn_with(data_dir, &[])
+    }
+
+    pub fn spawn_with(data_dir: &Path, env: &[(&str, &str)]) -> Self {
         let stderr_dir = tempfile::tempdir().unwrap();
         let stderr_path = stderr_dir.path().join("stderr.txt");
         let mut child = Command::new(env!("CARGO_BIN_EXE_tasknotes-mcp"))
@@ -77,6 +86,7 @@ impl Server {
             // Never reach a real data directory, whatever the environment.
             .env_remove("TASKNOTES_DATA_DIR")
             .env("HOME", data_dir.join("home"))
+            .envs(env.iter().copied())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(std::fs::File::create(&stderr_path).unwrap())
