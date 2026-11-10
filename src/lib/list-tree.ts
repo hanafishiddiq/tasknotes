@@ -16,6 +16,9 @@ const WALK_LIMIT = 64;
 /** The core's limit: a List five levels deep holds no Lists. */
 export const MAX_LIST_DEPTH = 5;
 
+/** Between the names of a List's path, as in "Work › Reports". */
+const PATH_SEPARATOR = " › ";
+
 export interface ListTree {
   byId: Map<string, TaskList>;
   /** Lists a person sees: not in Removed, nor inside a List in Removed. */
@@ -30,6 +33,11 @@ export interface ListTree {
   within: (ancestorId: string, id: string) => boolean;
   /** Whether a shown List sits inside it, loaded or, as the core says, on a page not loaded yet. */
   hasChildren: (id: string) => boolean;
+  /**
+   * Its names from the top level down, "Work › Reports": names are unique only
+   * among siblings (owner decision Q33), so a name alone can repeat.
+   */
+  path: (id: string) => string;
 }
 
 export function listTree(lists: TaskList[]): ListTree {
@@ -54,6 +62,7 @@ export function listTree(lists: TaskList[]): ListTree {
     depth: (id) => Math.max(0, up(id).length - 1),
     within: (ancestorId, id) => up(id).some((item) => item.id === ancestorId),
     hasChildren: (id) => children(id).length > 0 || byId.get(id)?.hasChildren === true,
+    path: (id) => up(id).reverse().map((item) => item.name).join(PATH_SEPARATOR),
   };
 }
 
@@ -105,4 +114,16 @@ export function addList(all: TaskList[], created: TaskList): TaskList[] {
   const parentId = parentOf(created);
   const siblings = listTree(all).children(parentId);
   return moveSubtree([...all, created], created.id, parentId, siblings[siblings.length - 1] ?? null);
+}
+
+/** A List as a picker offers it: by its path, since a name alone can repeat. */
+export interface ListOption {
+  id: string;
+  label: string;
+}
+
+/** Every shown List, in tree order, labelled by its path. */
+export function listOptions(lists: TaskList[]): ListOption[] {
+  const tree = listTree(lists);
+  return tree.shown.map((list) => ({ id: list.id, label: tree.path(list.id) }));
 }

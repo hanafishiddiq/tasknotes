@@ -8,7 +8,7 @@ import {
   type SortMode, type TaskChange, type ProgressDraft, type TaskFilters,
   type Priority, type TaskListPage,
 } from "./lib/task-api";
-import { addList, listTree, moveSubtree, parentOf } from "./lib/list-tree";
+import { addList, listOptions, listTree, moveSubtree, parentOf } from "./lib/list-tree";
 import {
   DIFFICULTY_ORDER, DIFFICULTY_VIEW, PRIORITY_ORDER, PRIORITY_VIEW, STATUS_CHOICES,
   statusChoiceLabel,
@@ -1027,6 +1027,8 @@ export default function App() {
     shellApi.takeLaunchNotice().then(setLaunchNotice).catch(() => {});
   }, []);
 
+  // Names repeat in different parents (owner decision Q33): a picker shows each List's path.
+  const taskListOptions = useMemo(() => listOptions(lists), [lists]);
   const commands = buildCommands({
     lists, undoTitle: undo.next?.title ?? null, appearance: appearance.preference,
     navigate, openNotes: () => openNotes(), openRemoved, openSettings, focusInTasks,
@@ -1346,7 +1348,7 @@ export default function App() {
                         onSave={(nextTitle, nextDescription, base) => updateTask(task, nextTitle, nextDescription, base)}
                         onChange={(change, base) => changeTask(task, change, base)}
                         onRecordProgress={(update, base) => recordProgress(task, update, base)}
-                        lists={listTree(lists).shown}
+                        lists={taskListOptions}
                         today={today}
                         onMove={(listId) => moveTask(task, listId)}
                         onUpdateDetails={(tags, dueDate, base) => updateDetails(task, tags, dueDate, base)}

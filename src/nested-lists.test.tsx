@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
 import App from "./App";
-import type { TaskList } from "./lib/task-api";
+import type { Task, TaskList } from "./lib/task-api";
 import { NoteBackend } from "./test/note-backend";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -16,6 +16,7 @@ let backend: NoteBackend;
 let refuse: string | null;
 /** Lists per page of `list_lists`; the core pages the tree in this order. */
 let pageSize: number;
+let tasks: Task[];
 
 const eventually = (assertion: () => void) => waitFor(assertion, { timeout: 3000 });
 
@@ -55,6 +56,7 @@ beforeEach(() => {
   backend = new NoteBackend();
   refuse = null;
   pageSize = 100;
+  tasks = [];
   invokeMock.mockReset();
   invokeMock.mockImplementation(async (command, args) => {
     const body = (args ?? {}) as Record<string, any>;
@@ -66,7 +68,7 @@ beforeEach(() => {
         const end = at + pageSize;
         return { items: all.slice(at, end), nextCursor: end < all.length ? String(end) : null };
       }
-      case "list_tasks": return { items: [], nextCursor: null };
+      case "list_tasks": return { items: tasks, nextCursor: null };
       case "create_sub_list": {
         if (refuse) throw refuse;
         const made = list(input.name, input.parentId);
@@ -211,6 +213,43 @@ describe("Lists inside Lists", () => {
     expect(within(listsNav()).getByRole("textbox", { name: "New List name in L4" })).toHaveValue("l5");
   });
 
+  it("says why a List cannot be dropped beside a List of the same name, and reads the tree again", async () => {
+    lists = [list("Work"), list("Reports", "list-Work"), list("Home"), { ...list("Reports", "list-Home"), id: "list-Home-Reports" }];
+    window.localStorage.setItem(EXPANDED, JSON.stringify(["list-Work", "list-Home"]));
+    render(<App />);
+    await screen.findByRole("button", { name: "Home" });
+    expect(shownTree()).toEqual(["Work", "  Reports", "Home", "  Reports"]);
+    refuse = "A List with this name already exists here";
+    const second = within(listsNav()).getAllByRole("button", { name: "Reports" })[1];
+    dragTo(second, 14); // the middle of Work
+    drop(second);
+    expect(await screen.findByRole("alert")).toHaveTextContent("A List with this name already exists here");
+    await eventually(() => expect(shownTree()).toEqual(["Work", "  Reports", "Home", "  Reports"]));
+  });
+
+  it("names a List inside another by its path wherever names alone could repeat", async () => {
+    lists = [list("Adamaja IT"), list("Reports", "list-Adamaja IT"), list("Personal"), { ...list("Reports", "list-Personal"), id: "list-Personal-Reports" }];
+    tasks = [{
+      id: "task-1", title: "Synthetic report", description: "", status: "ready", priority: "medium",
+      difficulty: null, wontDo: false, progress: 0, nextStep: "", revision: 1, createdAt: 1, updatedAt: 1,
+      listId: "list-Personal-Reports", dueDate: null, tags: [],
+    }];
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("article", { name: "Synthetic report" });
+    await user.click(screen.getByRole("button", { name: "Open Synthetic report" }));
+    const select = within(screen.getByRole("region", { name: "Task details" })).getByRole("combobox", { name: "Task list" });
+    expect([...select.querySelectorAll("option")].map((option) => option.textContent))
+      .toEqual(["Inbox", "Adamaja IT", "Adamaja IT › Reports", "Personal", "Personal › Reports"]);
+    expect(select).toHaveDisplayValue("Personal › Reports");
+
+    // The palette's places too.
+    await user.keyboard("{Escape}{Meta>}k{/Meta}");
+    const palette = screen.getByRole("dialog", { name: "Command palette" });
+    await user.type(within(palette).getByRole("combobox", { name: "Command" }), "reports");
+    expect(within(palette).getAllByRole("option").map((option) => option.textContent))
+      .toEqual(expect.arrayContaining([expect.stringContaining("Adamaja IT › Reports"), expect.stringContaining("Personal › Reports")]));
+  });
 
   it("drops a List into another and out to the top level again", async () => {
     await shown();
