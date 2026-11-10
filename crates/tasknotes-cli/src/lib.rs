@@ -161,7 +161,7 @@ pub(crate) const USAGE: &str = "Usage: tasknotes [--data-dir DIR] \
     <task|list|note|folder|link|removed|audit|bulk|style|backup|export|access> <command> [id] [--options]; \
     task change ID --revision N [--status S] [--priority P] [--difficulty D|none] [--progress N] [--wont-do true|false]; \
     task list [--status S] [--priority P] [--difficulty D|none] [--wont-do true|false] [--tag T] [--sort priority|newest|difficulty|custom (with --list ID or --inbox)]; \
-    task reorder ID --revision N (--after ID | --first) (within its work-status group of its List's Custom Order); \
+    task reorder ID --revision N (--after ID | --first) (within its work-status group of its List's Custom Order; switches its List to Custom in the desktop); \
     list reorder ID --revision N (--after ID | --first); \
     list|folder style ID --revision N [--icon NAME|none] [--color NAME|none]; style options; \
     folder reorder ID --revision N (--after ID | --first) [--parent ID | --top]; \
@@ -349,8 +349,8 @@ fn task_move(store: &TaskStore, words: &[String]) -> Result<Task, CliError> {
 }
 
 /// Puts a Task directly after another of its work-status group in its
-/// List's Custom Order, or first (ADR 0010). The List's sort is the
-/// person's and stays as it is.
+/// List's Custom Order, or first (ADR 0010). The List then shows Custom in
+/// the desktop, as after a drag, so the person sees this order.
 fn task_reorder(store: &TaskStore, words: &[String]) -> Result<Task, CliError> {
     let p = parse(
         words,

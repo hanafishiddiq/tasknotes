@@ -65,7 +65,7 @@ pub fn tools() -> Vec<ToolDef> {
         tool(
             "task_reorder",
             Kind::Write,
-            "Put a Task directly after another Task of the same work-status group and List in that List's Custom Order (task_list sort custom), or first in its group. Never changes its status or the List's sort.",
+            "Put a Task directly after another Task of the same work-status group and List in that List's Custom Order (task_list sort custom), or first in its group. Never changes its status. It also switches that List to Custom in the person's app, as their own drag would, so they see this order.",
             |c, a: Reorder| {
                 let after_id = a.after()?;
                 item(task(c.store.reorder_task(ReorderTask {

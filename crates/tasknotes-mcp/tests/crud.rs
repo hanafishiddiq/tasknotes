@@ -663,11 +663,22 @@ fn tasks_read_and_move_in_custom_order_with_a_revision_check() {
         ["Three", "Two", "One"]
     );
 
+    let sort_of_list = || {
+        data.desktop()
+            .view_sorts()
+            .unwrap()
+            .into_iter()
+            .find(|item| item.view == tasknotes_core::tasks::TaskView::List(l.clone()))
+            .map(|item| item.sort)
+    };
+    assert_eq!(sort_of_list(), None);
     let moved = s.ok(
         "task_reorder",
         json!({"id": id(&three), "revision": rev(&three), "after_id": id(&one)}),
     );
     assert_eq!(rev(&moved), rev(&three) + 1);
+    // The List now shows Custom in the desktop, so the person sees this order (Q37).
+    assert_eq!(sort_of_list(), Some(tasknotes_core::tasks::SortMode::Custom));
     assert_eq!(
         titles(s.ok("task_list", custom.clone())),
         ["Two", "One", "Three"]

@@ -98,6 +98,13 @@ fn a_trusted_client_completes_the_handshake_and_lists_the_tools() {
         assert!(tool["inputSchema"].get("oneOf").is_none(), "{tool}");
         assert!(tool["description"].as_str().unwrap().len() > 10, "{tool}");
     }
+    // A move switches the List the person sees to Custom (Q37); the AI is told so.
+    let reorder = tools.iter().find(|t| t["name"] == "task_reorder").unwrap();
+    let description = reorder["description"].as_str().unwrap();
+    assert!(
+        description.contains("switches that List to Custom"),
+        "{description}"
+    );
     assert_eq!(server.close(), Some(0));
 }
 

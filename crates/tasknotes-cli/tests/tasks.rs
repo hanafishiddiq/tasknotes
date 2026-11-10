@@ -4,6 +4,7 @@ mod common;
 
 use common::{Cli, error_code};
 use serde_json::Value;
+use tasknotes_core::tasks::{SortMode, TaskView};
 
 fn create(cli: &Cli, title: &str) -> Value {
     cli.ok(&["task", "create", "--title", title])["item"].clone()
@@ -614,6 +615,16 @@ fn custom_order_lists_one_list_and_moves_a_task_after_another_with_a_revision() 
     let three = make("Three");
     let custom = || cli.ok(&["task", "list", "--list", list_id, "--sort", "custom"]);
     assert_eq!(titles(&custom()), ["Three", "Two", "One"]);
+    let sort_of_list = || {
+        tasknotes_core::tasks::TaskStore::open(&cli.db())
+            .unwrap()
+            .view_sorts()
+            .unwrap()
+            .into_iter()
+            .find(|item| item.view == TaskView::List(list_id.to_owned()))
+            .map(|item| item.sort)
+    };
+    assert_eq!(sort_of_list(), None);
 
     let moved = cli.ok(&[
         "task",
@@ -626,6 +637,8 @@ fn custom_order_lists_one_list_and_moves_a_task_after_another_with_a_revision() 
     ]);
     assert_eq!(moved["item"]["revision"], 2);
     assert_eq!(titles(&custom()), ["Two", "One", "Three"]);
+    // The List now shows Custom in the desktop, so the person sees this order (Q37).
+    assert_eq!(sort_of_list(), Some(SortMode::Custom));
     cli.ok(&[
         "task",
         "reorder",
@@ -684,4 +697,7 @@ fn custom_order_lists_one_list_and_moves_a_task_after_another_with_a_revision() 
         titles(&cli.ok(&["task", "list", "--inbox", "--sort", "custom"])),
         Vec::<String>::new()
     );
+    let usage = cli.run(&["task", "bogus"]);
+    let usage = usage.json["error"]["message"].as_str().unwrap().to_owned();
+    assert!(usage.contains("switches its List to Custom"), "{usage}");
 }
