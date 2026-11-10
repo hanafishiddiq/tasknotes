@@ -812,9 +812,13 @@ fn approval_lines(
             (None, lines)
         }
         Subject::Container if plan.action == BulkAction::RemoveList => {
+            // What removing it would hide, as the person sees it: a List or
+            // Task already in Removed, or inside a List in Removed, is hidden
+            // already and not counted.
             let below = "WITH RECURSIVE below(id) AS (
                     SELECT ?1 UNION
                     SELECT l.id FROM lists l JOIN below b ON l.parent_id = b.id
+                     WHERE l.removed_at IS NULL
                  )";
             let mut lines = many(
                 &format!(
@@ -826,7 +830,8 @@ fn approval_lines(
             lines.extend(many(
                 &format!(
                     "{below} SELECT id, title, 0 FROM tasks
-                     WHERE list_id IN (SELECT id FROM below) ORDER BY created_at DESC, id DESC"
+                     WHERE list_id IN (SELECT id FROM below) AND removed_at IS NULL
+                     ORDER BY created_at DESC, id DESC"
                 ),
                 ApprovalKind::Task,
             )?);

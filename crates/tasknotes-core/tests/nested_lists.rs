@@ -542,6 +542,50 @@ fn through_ai_removing_a_list_that_holds_a_list_needs_approval() {
     remove(&w.desktop, &work, true).unwrap();
 }
 
+/// Review finding (PR #32): the approval preview counts what the removal
+/// would hide, the way the person sees it: nothing already in Removed, nor
+/// anything inside a List already in Removed.
+#[test]
+fn the_approval_preview_counts_only_what_is_not_already_removed() {
+    let w = world();
+    let work = top(&w.ai, "Work");
+    let reports = sub(&w.ai, "Reports", &work).unwrap();
+    let old = sub(&w.ai, "Old", &work).unwrap();
+    task_in(&w.ai, "Synthetic shown task", &reports);
+    task_in(&w.ai, "Synthetic under an old List", &old);
+    let gone = task_in(&w.ai, "Synthetic removed task", &work);
+    w.ai.set_task_removed(tasknotes_core::removed::SetRemoved {
+        id: gone.id.clone(),
+        expected_revision: gone.revision,
+        removed: true,
+    })
+    .unwrap();
+    // Old holds a Task, so the AI interface asks for it too.
+    let requested =
+        w.ai.request_bulk(BulkAction::RemoveList, vec![old.id.clone()])
+            .unwrap();
+    w.desktop
+        .approve_bulk_request(&requested.request.id)
+        .unwrap();
+
+    w.ai.request_bulk(BulkAction::RemoveList, vec![work.id.clone()])
+        .unwrap();
+    let pending = &w.desktop.pending_bulk_requests().unwrap()[0];
+    let lines: Vec<(ApprovalKind, &str)> = pending
+        .items
+        .iter()
+        .map(|l| (l.kind, l.title.as_str()))
+        .collect();
+    assert_eq!(
+        lines,
+        [
+            (ApprovalKind::List, "Reports"),
+            (ApprovalKind::Task, "Synthetic shown task")
+        ]
+    );
+    assert_eq!(pending.total, 2);
+}
+
 #[test]
 fn moves_are_revisioned_and_audited_as_list_move_or_reorder() {
     let w = world();

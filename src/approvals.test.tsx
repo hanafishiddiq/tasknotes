@@ -178,7 +178,10 @@ describe("Waiting for approval", () => {
     const user = userEvent.setup();
     render(<App />);
     const view = await openApprovals(user);
-    const item = await within(view).findByRole("listitem", { name: /Synthetic Work/ });
+    // One List and one Task: the sentence counts items, not "2 Tasks".
+    const item = await within(view).findByRole("listitem", {
+      name: "Move the List “Synthetic Work” and 2 items in it to Removed",
+    });
     expect(within(item).getByText("Synthetic Reports")).toBeInTheDocument();
     expect(within(item).getByText("Synthetic nested task")).toBeInTheDocument();
   });
