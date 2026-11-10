@@ -66,9 +66,78 @@ pub fn civil_from_days(days: i64) -> (i64, i64, i64) {
     (year, month, day)
 }
 
+/// The day counted from 1970-01-01 of a calendar date, the inverse of
+/// [`civil_from_days`] (Howard Hinnant's `days_from_civil`).
+pub fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
+    let year = if month <= 2 { year - 1 } else { year };
+    let era = year.div_euclid(400);
+    let yoe = year.rem_euclid(400);
+    let mp = if month > 2 { month - 3 } else { month + 9 };
+    let doy = (153 * mp + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
+}
+
+/// The day of a real calendar date written `YYYY-MM-DD` (years 0001–9999);
+/// `None` for anything else, such as `2026-02-30`.
+pub fn parse_date(text: &str) -> Option<i64> {
+    let bytes = text.as_bytes();
+    let shaped = bytes.len() == 10
+        && bytes[4] == b'-'
+        && bytes[7] == b'-'
+        && bytes
+            .iter()
+            .enumerate()
+            .all(|(n, b)| n == 4 || n == 7 || b.is_ascii_digit());
+    if !shaped {
+        return None;
+    }
+    let number = |range: std::ops::Range<usize>| text[range].parse::<i64>().ok();
+    let (year, month, day) = (number(0..4)?, number(5..7)?, number(8..10)?);
+    if year == 0 || !(1..=12).contains(&month) || day == 0 {
+        return None;
+    }
+    let days = days_from_civil(year, month, day);
+    // A day past the month's end lands in the next month.
+    (civil_from_days(days) == (year, month, day)).then_some(days)
+}
+
+/// A day counted from 1970-01-01 written `YYYY-MM-DD`.
+pub fn format_date(days: i64) -> String {
+    let (year, month, day) = civil_from_days(days);
+    format!("{year:04}-{month:02}-{day:02}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dates_are_read_and_written_as_yyyy_mm_dd() {
+        assert_eq!(parse_date("1970-01-01"), Some(0));
+        assert_eq!(parse_date("2026-10-26"), Some(20_752));
+        assert_eq!(
+            parse_date("2024-02-29").map(format_date).unwrap(),
+            "2024-02-29"
+        );
+        assert_eq!(format_date(20_752), "2026-10-26");
+        assert_eq!(format_date(-1), "1969-12-31");
+        for refused in [
+            "2026-02-29",
+            "2026-02-30",
+            "2026-13-01",
+            "2026-00-10",
+            "2026-11-00",
+            "0000-01-01",
+            "2026-1-01",
+            "2026/11/10",
+            "+026-11-10",
+            "2026-11-10 ",
+            "",
+        ] {
+            assert_eq!(parse_date(refused), None, "{refused:?}");
+        }
+    }
 
     #[test]
     fn calendar_dates_are_right() {

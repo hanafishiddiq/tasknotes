@@ -18,6 +18,8 @@ use uuid::Uuid;
 use crate::audit::AuditAction;
 use crate::tasks::{ChangeTask, Task, TaskError, TaskStore, current_millis};
 
+pub use crate::pomodoro_history::{HistoryRange, HistorySession, PomodoroDay, PomodoroHistoryPage};
+
 /// The adjustable lengths, in whole minutes, and how many finished sessions
 /// earn a long break.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -127,7 +129,7 @@ impl SessionOutcome {
         }
     }
 
-    fn from_sql(value: &str) -> Option<Self> {
+    pub(crate) fn from_sql(value: &str) -> Option<Self> {
         match value {
             "finished" => Some(Self::Finished),
             "stopped" => Some(Self::Stopped),
@@ -174,12 +176,17 @@ pub struct RecordedSession {
     pub task: Option<Task>,
 }
 
+/// Seconds as the whole minutes a session shows, rounded to the nearest
+/// (half a minute rounds up): the Progress Entry and the history agree.
+pub fn whole_minutes(seconds: i64) -> i64 {
+    (seconds + 30).div_euclid(60)
+}
+
 /// The Progress Entry note of a finished session: "Pomodoro: 25 min focus",
-/// or "Pomodoro: 25 + 7 min focus" with Overtime, in whole minutes rounded
-/// to the nearest.
+/// or "Pomodoro: 25 + 7 min focus" with Overtime, in [`whole_minutes`].
 pub fn progress_note(planned_seconds: i64, overtime_seconds: i64) -> String {
-    let planned = (planned_seconds + 30) / 60;
-    let overtime = (overtime_seconds + 30) / 60;
+    let planned = whole_minutes(planned_seconds);
+    let overtime = whole_minutes(overtime_seconds);
     if overtime > 0 {
         format!("Pomodoro: {planned} + {overtime} min focus")
     } else {

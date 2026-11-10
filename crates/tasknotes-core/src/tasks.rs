@@ -173,6 +173,10 @@ pub enum TaskError {
     InvalidPomodoroDurations,
     #[error("This Pomodoro Session cannot be stored: its times or outcome do not fit together")]
     InvalidPomodoroSession,
+    #[error(
+        "Pomodoro history dates must be real calendar dates written YYYY-MM-DD, the first on or before the last"
+    )]
+    InvalidHistoryRange,
     #[error("Bulk Change request not found")]
     BulkRequestNotFound,
     #[error("This request has already been decided")]
@@ -257,7 +261,8 @@ impl TaskError {
             | InvalidTaskPlace
             | InvalidBulkSelection
             | InvalidPomodoroDurations
-            | InvalidPomodoroSession => "invalid_input",
+            | InvalidPomodoroSession
+            | InvalidHistoryRange => "invalid_input",
             InvalidCursor
             | InvalidHistoryCursor
             | InvalidRemovedCursor

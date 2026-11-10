@@ -95,6 +95,7 @@ pub mod note_folders;
 pub mod notes;
 mod organization;
 pub mod pomodoro;
+mod pomodoro_history;
 pub mod privacy;
 pub mod removed;
 mod search;
