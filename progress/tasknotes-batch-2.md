@@ -16,6 +16,7 @@ Tujuan akhir: Tasknotes di /Applications berisi 11 isi batch ini (PR #23, PR #24
   - [ ] Won't Do (Ticket 10)
   - [ ] Ikon dan warna (Ticket 01)
 - [ ] Fitur besar selesai: drag sort + Custom, nested List, Pomodoro
+- [ ] Klik lingkaran Task untuk menyelesaikan (Ticket 16, ditambahkan 2026-11-10)
 - [ ] Semua fitur di-merge ke main dan lolos cek gabungan
 - [ ] Satu build dipasang ke /Applications (setelah Han konfirmasi)
 - [ ] Cache build dan worktree yang sudah selesai dihapus
