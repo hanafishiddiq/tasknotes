@@ -78,10 +78,10 @@ pub fn start<R: Runtime>(app: &AppHandle<R>, data_dir: PathBuf) {
         &mut SystemShortcuts(app),
     );
     let keep = state.keep_in_menu_bar();
-    let durations = state.pomodoro_durations();
+    let (durations, silent) = (state.pomodoro_durations(), state.pomodoro_silent());
     app.manage(Shell(Mutex::new(state)));
     sync_tray(app, &mut app.state::<Shell>().lock(), keep);
-    crate::pomodoro::start(app, durations);
+    crate::pomodoro::start(app, durations, silent);
 }
 
 /// Hides the window instead of quitting when menu-bar mode is on. Returns true
@@ -223,11 +223,23 @@ pub fn set_pomodoro_durations(
     Ok(crate::pomodoro::set_durations(&app, durations))
 }
 
+/// Saves Silent for Pomodoro notifications (no sound); interaction sounds and
+/// Ambient rain are separate. When saving fails nothing changes.
+#[tauri::command]
+pub fn set_pomodoro_silent(
+    app: AppHandle,
+    shell: State<'_, Shell>,
+    silent: bool,
+) -> Result<PomodoroView, String> {
+    shell.lock().set_pomodoro_silent(silent)?;
+    Ok(crate::pomodoro::set_silent(&app, silent))
+}
+
 /// Whether to show the one-time tip about the notification style now. Reads
 /// the style first (`async`: off the main thread, where macOS answers).
 #[tauri::command(async)]
 pub fn take_pomodoro_tip(app: AppHandle) -> bool {
-    let persistent = crate::notification_style::persistent();
+    let persistent = crate::macos_notifications::persistent();
     app.state::<Shell>().lock().take_pomodoro_tip(persistent)
 }
 

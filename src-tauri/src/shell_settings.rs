@@ -19,6 +19,9 @@ pub struct ShellSettings {
     pub pomodoro: PomodoroDurations,
     /// The one-time tip about the notification style was shown.
     pub pomodoro_tip_shown: bool,
+    /// Pomodoro notifications make no sound. Off by default; unrelated to
+    /// the window's interaction sounds and Ambient rain.
+    pub pomodoro_silent: bool,
 }
 
 /// Off by default (owner decision 2026-10-25). The shortcut is remembered while
@@ -185,10 +188,20 @@ mod tests {
                 sessions_before_long_break: 3,
             },
             pomodoro_tip_shown: true,
+            pomodoro_silent: true,
             ..ShellSettings::default()
         };
         save_settings(&path, &settings).unwrap();
         assert_eq!(load_settings(&path).settings, settings);
+    }
+
+    #[test]
+    fn pomodoro_notifications_make_a_sound_until_silent_is_chosen() {
+        assert!(!ShellSettings::default().pomodoro_silent);
+        // A file from before the setting existed keeps the sound.
+        let path = scratch_file("pomodoro-silent-older");
+        std::fs::write(&path, r#"{"keepInMenuBar":true}"#).unwrap();
+        assert!(!load_settings(&path).settings.pomodoro_silent);
     }
 
     fn scratch_file(name: &str) -> std::path::PathBuf {

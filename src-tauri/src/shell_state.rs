@@ -140,6 +140,19 @@ impl ShellState {
         self.save().inspect_err(|_| self.settings.pomodoro = before)
     }
 
+    pub fn pomodoro_silent(&self) -> bool {
+        self.settings.pomodoro_silent
+    }
+
+    /// Saves Silent for Pomodoro notifications. When saving fails nothing
+    /// changes and the error is returned.
+    pub fn set_pomodoro_silent(&mut self, silent: bool) -> Result<(), String> {
+        let before = self.settings.pomodoro_silent;
+        self.settings.pomodoro_silent = silent;
+        self.save()
+            .inspect_err(|_| self.settings.pomodoro_silent = before)
+    }
+
     /// Whether the one-time notification tip is due, given the alert style
     /// read now (`None`: it could not be read). It is due once, unless the
     /// style is already Persistent; either way it is never due again.
@@ -372,6 +385,19 @@ mod tests {
         });
         assert!(result.is_err());
         assert_eq!(state.pomodoro_durations(), PomodoroDurations::default());
+    }
+
+    #[test]
+    fn silent_pomodoro_notifications_are_saved_and_remembered() {
+        let dir = scratch_dir("pomodoro-silent");
+        let mut state = launch(&dir, &mut FakeSystem::default());
+        assert!(!state.pomodoro_silent());
+        state.set_pomodoro_silent(true).unwrap();
+        assert!(launch(&dir, &mut FakeSystem::default()).pomodoro_silent());
+
+        break_the_data_folder(&dir);
+        assert!(state.set_pomodoro_silent(false).is_err());
+        assert!(state.pomodoro_silent());
     }
 
     #[test]

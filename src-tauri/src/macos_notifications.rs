@@ -1,6 +1,13 @@
-//! Reads (never changes) how macOS shows Tasknotes' notifications, for the
-//! one-time Pomodoro tip. The notification plugin cannot tell, so this asks
-//! `UNUserNotificationCenter` directly.
+//! What Tasknotes asks macOS about its notifications beyond what the
+//! notification plugin offers: how they are shown (read, never changed),
+//! for the one-time Pomodoro tip, and taking a delivered Pomodoro
+//! notification away once it is answered elsewhere.
+//!
+//! The two paths differ, and that is known: the plugin (2.8.0, through
+//! `notify-rust` without its `preview-macos-un` feature) posts with the
+//! deprecated `NSUserNotificationCenter`, so withdrawing goes through that
+//! center too; the style is read from `UNUserNotificationCenter`, which
+//! answers for the same per-app entry in System Settings › Notifications.
 
 /// Whether notifications stay on screen until the person acts on them
 /// ("Persistent", the Alerts style). `None` when it cannot be read: outside a
@@ -42,6 +49,38 @@ pub fn persistent() -> Option<bool> {
 pub fn persistent() -> Option<bool> {
     None
 }
+
+/// Takes away the delivered notifications with one of these titles, so
+/// their buttons do not linger once answered from the menu bar or the
+/// window. Call on the main thread.
+///
+/// The plugin cannot remove a notification on macOS, but the notification
+/// it posts waits on a thread of its own until it is answered or leaves
+/// Notification Center (`mac-notification-sys` polls for that every half
+/// second); taking it away here also ends that thread.
+#[cfg(target_os = "macos")]
+#[allow(deprecated)]
+pub fn withdraw_delivered(titles: &[&str]) {
+    use objc2_foundation::{NSBundle, NSUserNotificationCenter};
+
+    // Without a bundle identifier there is no center, and nothing of ours
+    // was delivered (a bare development run before its first notification).
+    if NSBundle::mainBundle().bundleIdentifier().is_none() {
+        return;
+    }
+    let center = NSUserNotificationCenter::defaultUserNotificationCenter();
+    for delivered in center.deliveredNotifications().to_vec() {
+        let ours = delivered
+            .title()
+            .is_some_and(|title| titles.contains(&title.to_string().as_str()));
+        if ours {
+            center.removeDeliveredNotification(&delivered);
+        }
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn withdraw_delivered(_titles: &[&str]) {}
 
 /// Opens Tasknotes' page in the system's notification settings.
 #[cfg(target_os = "macos")]

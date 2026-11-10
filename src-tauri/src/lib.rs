@@ -19,7 +19,7 @@ use tauri::{Manager, State};
 
 mod data;
 #[cfg(desktop)]
-mod notification_style;
+mod macos_notifications;
 #[cfg(desktop)]
 mod platform;
 #[cfg(desktop)]
@@ -522,7 +522,7 @@ pub fn run() {
             #[cfg(desktop)]
             pomodoro::pomodoro_command,
             #[cfg(desktop)]
-            pomodoro::set_pomodoro_silent,
+            shell::set_pomodoro_silent,
             #[cfg(desktop)]
             pomodoro::open_notification_settings
         ])
@@ -532,9 +532,15 @@ pub fn run() {
 }
 
 /// Clicking the Dock icon brings back a window hidden to the menu bar. Other
-/// systems reopen from the tray item, so there is nothing to do there.
-#[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
+/// systems reopen from the tray item, so there is nothing to do there. As the
+/// app ends, however it quits, a running Pomodoro Session is stored.
+#[cfg_attr(not(desktop), allow(unused_variables))]
 fn on_run_event(app: &tauri::AppHandle, event: tauri::RunEvent) {
+    #[cfg(desktop)]
+    if let tauri::RunEvent::Exit = event {
+        pomodoro::save_on_quit(app);
+        return;
+    }
     #[cfg(target_os = "macos")]
     if let tauri::RunEvent::Reopen {
         has_visible_windows: false,

@@ -688,8 +688,9 @@ fn overtime(now: Moment, ends_at: i64) -> i64 {
     (now.awake - ends_at).max(0) / MILLIS_PER_SECOND
 }
 
-/// mm:ss, with minutes past 59 kept as minutes ("90:00").
-fn clock(seconds: i64) -> String {
+/// mm:ss, with minutes past 59 kept as minutes ("90:00"), as the menu bar
+/// shows time.
+pub fn clock(seconds: i64) -> String {
     format!("{:02}:{:02}", seconds / 60, seconds % 60)
 }
 
