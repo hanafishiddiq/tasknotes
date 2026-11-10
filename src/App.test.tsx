@@ -75,7 +75,8 @@ describe("Tasknotes desktop", () => {
     render(<App />);
 
     expect(await screen.findByRole("heading", { name: "All tasks" })).toBeInTheDocument();
-    expect(screen.getByText("Your list is clear")).toBeInTheDocument();
+    // The first page waits for the sort each view remembers (ADR 0010).
+    expect(await screen.findByText("Your list is clear")).toBeInTheDocument();
 
     await user.type(screen.getByRole("textbox", { name: "Task title" }), "Write report");
     await user.type(screen.getByRole("textbox", { name: "Description (optional)" }), "Gather sources first");

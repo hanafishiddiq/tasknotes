@@ -439,6 +439,7 @@ fn back_to_v18(db: &Path) {
         "DROP INDEX lists_parent; DROP INDEX lists_manual_order;
          DROP INDEX lists_sibling_name; ALTER TABLE lists DROP COLUMN parent_id;
          CREATE INDEX lists_manual_order ON lists(position, id);
+         DROP INDEX tasks_custom_order; ALTER TABLE tasks DROP COLUMN position; DROP TABLE view_sorts;
          ALTER TABLE lists DROP COLUMN icon;
          ALTER TABLE lists DROP COLUMN color;
          ALTER TABLE note_folders DROP COLUMN icon;

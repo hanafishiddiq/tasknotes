@@ -13,8 +13,8 @@ use tasknotes_core::style::SetStyle;
 use tasknotes_core::tasks::{
     ChangeTask, CreateList, CreateSubList, CreateTask, DifficultyFilter, List, ListPage, MoveList,
     MoveTask, PlaceList, Priority, ProgressSequencePage, RecordProgress, RenameList, ReorderList,
-    SetListRemoved, SortMode, Task, TaskPage, TaskQuery, TaskStore, TaskView, UpdateTask,
-    UpdateTaskDetails, WorkStatus,
+    ReorderTask, SetListRemoved, SortMode, Task, TaskPage, TaskQuery, TaskStore, TaskView,
+    UpdateTask, UpdateTaskDetails, ViewSort, WorkStatus,
 };
 use tauri::{Manager, State};
 
@@ -178,6 +178,23 @@ fn set_note_folder_style(
 fn set_list_removed(store: State<'_, TaskStore>, input: SetListRemoved) -> Result<List, String> {
     store
         .set_list_removed(input)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn reorder_task(store: State<'_, TaskStore>, input: ReorderTask) -> Result<Task, String> {
+    store.reorder_task(input).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn view_sorts(store: State<'_, TaskStore>) -> Result<Vec<ViewSort>, String> {
+    store.view_sorts().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn set_view_sort(store: State<'_, TaskStore>, input: ViewSort) -> Result<(), String> {
+    store
+        .set_view_sort(&input.view, input.sort)
         .map_err(|error| error.to_string())
 }
 
@@ -483,6 +500,9 @@ pub fn run() {
             set_list_style,
             set_list_removed,
             move_task,
+            reorder_task,
+            view_sorts,
+            set_view_sort,
             update_task_details,
             list_notes,
             get_note,

@@ -13,8 +13,8 @@ use tasknotes_core::note_folders::{CreateNoteFolder, MAX_FOLDER_DEPTH};
 use tasknotes_core::removed::RemovedKind;
 use tasknotes_core::tasks::{
     CreateList, CreateSubList, CreateTask, List, ListParent, MoveList, MoveTask, PlaceList,
-    RenameList, ReorderList, SCHEMA_VERSION, SetListRemoved, SortMode, Task, TaskError, TaskStore,
-    TaskView,
+    RenameList, ReorderList, ReorderTask, SCHEMA_VERSION, SetListRemoved, SortMode, Task,
+    TaskError, TaskQuery, TaskStore, TaskView,
 };
 use tasknotes_core::tree::MAX_DEPTH;
 
@@ -678,9 +678,10 @@ fn exports_keep_the_nesting() {
     assert!(reports_file.contains("Synthetic weekly report"));
 }
 
-/// Puts a database back as schema v19 left it: Lists had no parent, and
-/// their names were unique among all Lists not in Removed.
-fn back_to_v19(db: &Path) {
+/// Puts a database back as schema v20 left it: Lists had no parent, and
+/// their names were unique among all Lists not in Removed. Tasks keep the
+/// Custom Order v20 gave them.
+fn back_to_v20(db: &Path) {
     Connection::open(db)
         .unwrap()
         .execute_batch(
@@ -689,7 +690,7 @@ fn back_to_v19(db: &Path) {
              CREATE UNIQUE INDEX lists_active_name ON lists(name COLLATE NOCASE)
                WHERE removed_at IS NULL;
              CREATE INDEX lists_manual_order ON lists(position, id);
-             PRAGMA user_version = 19;",
+             PRAGMA user_version = 20;",
         )
         .unwrap();
 }
@@ -711,7 +712,7 @@ fn upgrading_keeps_every_list_at_the_top_in_its_order_with_its_tasks() {
         })
         .unwrap();
     drop(store);
-    back_to_v19(&db);
+    back_to_v20(&db);
 
     let store = TaskStore::open(&db).unwrap();
     let version: i64 = Connection::open(&db)
@@ -735,4 +736,58 @@ fn upgrading_keeps_every_list_at_the_top_in_its_order_with_its_tasks() {
         }),
         Err(TaskError::ListNameConflict)
     ));
+}
+
+/// v21 touches only `lists`: every List's Custom Order (ADR 0010, v20) and
+/// the sort each view remembers come through the upgrade as they were.
+#[test]
+fn upgrading_keeps_each_lists_custom_order_and_remembered_sort() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("upgrade-custom.db");
+    let store = TaskStore::open(&db).unwrap();
+    let work = top(&store, "Synthetic Work");
+    let one = task_in(&store, "One", &work);
+    task_in(&store, "Two", &work);
+    let three = task_in(&store, "Three", &work);
+    store
+        .reorder_task(ReorderTask {
+            id: three.id.clone(),
+            expected_revision: three.revision,
+            after_id: Some(one.id.clone()),
+            before_id: None,
+            shown_sort: None,
+        })
+        .unwrap();
+    store
+        .set_view_sort(&TaskView::Inbox, SortMode::Difficulty)
+        .unwrap();
+    let custom = |store: &TaskStore| -> Vec<String> {
+        store
+            .query_tasks(
+                &TaskQuery {
+                    view: TaskView::List(work.id.clone()),
+                    sort: SortMode::Custom,
+                    ..TaskQuery::default()
+                },
+                100,
+                None,
+            )
+            .unwrap()
+            .items
+            .into_iter()
+            .map(|task| task.title)
+            .collect()
+    };
+    assert_eq!(custom(&store), ["Two", "One", "Three"]);
+    let sorts = store.view_sorts().unwrap();
+    drop(store);
+    back_to_v20(&db);
+
+    let store = TaskStore::open(&db).unwrap();
+    assert_eq!(custom(&store), ["Two", "One", "Three"]);
+    assert_eq!(store.view_sorts().unwrap(), sorts);
+    // A Sub-List made after the upgrade starts its own Custom Order.
+    let reports = sub(&store, "Synthetic Reports", &work).unwrap();
+    task_in(&store, "Report", &reports);
+    assert_eq!(custom(&store), ["Two", "One", "Three"]);
 }

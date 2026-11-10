@@ -87,6 +87,7 @@ pub mod audit;
 pub mod backup;
 pub mod bulk;
 pub mod calendar;
+mod custom_order;
 pub mod export;
 pub mod links;
 mod manual_order;

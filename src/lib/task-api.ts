@@ -5,8 +5,40 @@ export type WorkStatus = "ready" | "in_progress" | "completed";
 export type Priority = "very_low" | "low" | "medium" | "high" | "very_high";
 /** Optional: a Task without one has No Difficulty (`null`). */
 export type Difficulty = "very_easy" | "easy" | "medium" | "hard" | "very_hard";
-export type SortMode = "priority" | "newest" | "difficulty";
+/** "custom" is a List's Custom Order (ADR 0010): only for Inbox or one List. */
+export type SortMode = "priority" | "newest" | "difficulty" | "custom";
 export type TaskView = { kind: "all" } | { kind: "inbox" } | { kind: "list"; listId: string };
+
+/** The key a view's remembered sort is kept under, as the core names views. */
+export function viewKey(view: TaskView): string {
+  return view.kind === "list" ? `list:${view.listId}` : view.kind;
+}
+
+/** The sort a view opens with: what it remembers, or Priority. */
+export function sortOf(sorts: Readonly<Record<string, SortMode>>, view: TaskView): SortMode {
+  const sort = sorts[viewKey(view)];
+  return sort === "custom" && view.kind === "all" ? "priority" : sort ?? "priority";
+}
+
+/**
+ * Where a Task goes in its group of its List's Custom Order: directly after a
+ * Task (first when null), or directly before one, whose predecessor may sit on
+ * another page.
+ */
+export type TaskPlace = { afterId: string | null } | { beforeId: string };
+
+/** The Tasks of a page with one moved as `place` says; the same array when it cannot be placed. */
+export function placeLocally(tasks: Task[], id: string, place: TaskPlace): Task[] {
+  const moving = tasks.find((task) => task.id === id);
+  if (!moving) return tasks;
+  const others = tasks.filter((task) => task.id !== id);
+  const at = "beforeId" in place ? others.findIndex((task) => task.id === place.beforeId)
+    : place.afterId === null ? others.findIndex((task) => task.status === moving.status)
+    : others.findIndex((task) => task.id === place.afterId) + 1;
+  if (at < 0 || (at === 0 && "afterId" in place && place.afterId !== null)) return tasks;
+  others.splice(at, 0, moving);
+  return others;
+}
 
 export interface TaskList {
   id: string;
@@ -243,6 +275,26 @@ export const taskApi = {
 
   setListRemoved(input: ListMutation & { removed: boolean }): Promise<TaskList> {
     return invoke("set_list_removed", { input });
+  },
+
+  /**
+   * Places a Task in its group of its List's Custom Order. `shownSort` is the
+   * sort on screen: another than Custom starts the Custom Order from it and
+   * switches the List to Custom.
+   */
+  reorder(input: ListMutation & TaskPlace & { shownSort: SortMode }): Promise<Task> {
+    return invoke("reorder_task", { input });
+  },
+
+  /** The sort each view remembers; none when the core cannot say. */
+  async viewSorts(): Promise<Record<string, SortMode>> {
+    const sorts = await invoke<{ view: TaskView; sort: SortMode }[] | null>("view_sorts");
+    return Object.fromEntries((Array.isArray(sorts) ? sorts : []).map(({ view, sort }) => [viewKey(view), sort]));
+  },
+
+  /** Remembers the sort the person chose for a view. */
+  setViewSort(view: TaskView, sort: SortMode): Promise<void> {
+    return invoke("set_view_sort", { input: { view, sort } });
   },
 
   move(input: ListMutation & { listId: string | null }): Promise<Task> {

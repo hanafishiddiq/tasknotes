@@ -585,6 +585,7 @@ fn back_to_v17(db: &Path) {
         "DROP INDEX lists_parent; DROP INDEX lists_manual_order;
          DROP INDEX lists_sibling_name; ALTER TABLE lists DROP COLUMN parent_id;
          CREATE INDEX lists_manual_order ON lists(position, id);
+         DROP INDEX tasks_custom_order; ALTER TABLE tasks DROP COLUMN position; DROP TABLE view_sorts;
          ALTER TABLE tasks DROP COLUMN wont_do_from;
          ALTER TABLE tasks DROP COLUMN wont_do;
          ALTER TABLE progress_entries DROP COLUMN previous_wont_do;
