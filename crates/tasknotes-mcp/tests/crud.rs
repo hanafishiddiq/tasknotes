@@ -678,7 +678,10 @@ fn tasks_read_and_move_in_custom_order_with_a_revision_check() {
     );
     assert_eq!(rev(&moved), rev(&three) + 1);
     // The List now shows Custom in the desktop, so the person sees this order (Q37).
-    assert_eq!(sort_of_list(), Some(tasknotes_core::tasks::SortMode::Custom));
+    assert_eq!(
+        sort_of_list(),
+        Some(tasknotes_core::tasks::SortMode::Custom)
+    );
     assert_eq!(
         titles(s.ok("task_list", custom.clone())),
         ["Two", "One", "Three"]
