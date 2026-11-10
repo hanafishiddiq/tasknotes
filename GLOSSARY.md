@@ -8,7 +8,7 @@ Language shared by the task manager, notes editor, desktop UI, and AI integratio
 A unit of work with a title, optional description, work status, priority, and progress.
 
 **List**:
-An organizational collection of tasks. A task can be kept in the default Inbox when no other list is chosen. A List can contain other Lists, at most five levels deep; a List shows only its own Tasks, never those of the Lists inside it.
+An organizational collection of tasks. A task can be kept in the default Inbox when no other list is chosen. A List can contain other Lists, at most five levels deep; a List shows only its own Tasks, never those of the Lists inside it. Like Note Folders, sibling names are unique ignoring case (the top-level Lists are siblings of each other), so two Lists in different parents may share a name and are told apart by their path, "Work › Reports".
 
 **Sub-List**:
 A List placed inside another List, used only to group Lists; it shares nothing with the List around it.
