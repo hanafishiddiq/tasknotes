@@ -62,7 +62,7 @@ An immutable dated record of a Task's progress update or work-status transition.
 One timed stretch of focus, optionally for one Task, followed by a break the person starts. Only a session that reaches its end counts toward focus time; a stopped one is kept as Stopped.
 
 **Overtime**:
-Focus time a person keeps counting after a Pomodoro Session's planned end by choosing to keep focusing; it is added to that session.
+Focus time after a Pomodoro Session's planned end that the person chooses to count because they kept focusing; it is added to that session.
 _Avoid_: Extension, snooze.
 
 **Next Step**:
