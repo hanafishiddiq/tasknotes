@@ -81,6 +81,8 @@ struct Document {
 #[derive(Serialize)]
 struct ListRecord {
     id: String,
+    /// The List it sits inside, or `null` at the top level (ADR 0009).
+    parent_id: Option<String>,
     name: String,
     revision: i64,
     created_at: i64,
@@ -242,11 +244,13 @@ impl TaskStore {
         };
         let lists = collect(
             conn,
-            "SELECT id, name, revision, created_at, updated_at, removed_at, position, icon, color FROM lists
-             ORDER BY position, id",
+            "SELECT id, name, revision, created_at, updated_at, removed_at, position, icon, color,
+                    parent_id FROM lists
+             ORDER BY coalesce(parent_id, ''), position, id",
             |row| {
                 Ok(ListRecord {
                     id: row.get(0)?,
+                    parent_id: row.get(9)?,
                     name: row.get(1)?,
                     revision: row.get(2)?,
                     created_at: row.get(3)?,
@@ -418,13 +422,28 @@ fn write_markdown(doc: &Document, root: &Path) -> std::io::Result<()> {
     let tasks_dir = root.join("Tasks");
     private_dir(&tasks_dir)?;
     let mut names = Names::default();
-    let mut groups: Vec<(Option<&str>, String)> = vec![(None, "Inbox".to_owned())];
-    groups.extend(
-        doc.lists
+    let mut groups: Vec<(Option<&str>, String, PathBuf)> =
+        vec![(None, "Inbox".to_owned(), names.file(&tasks_dir, "Inbox"))];
+    // A List inside another is written as `<parent>/<List>.md`, next to
+    // `<parent>.md`, so the folders on disk keep the nesting (ADR 0009).
+    let tree: Vec<Placed> = doc
+        .lists
+        .iter()
+        .map(|l| Placed {
+            id: &l.id,
+            parent_id: l.parent_id.as_deref(),
+            label: labeled(&l.name, l.removed),
+        })
+        .collect();
+    for (id, file) in place_tree(&tree, &tasks_dir, &mut names) {
+        let heading = tree
             .iter()
-            .map(|l| (Some(l.id.as_str()), labeled(&l.name, l.removed))),
-    );
-    for (list_id, heading) in groups {
+            .find(|l| l.id == id)
+            .map(|l| l.label.clone())
+            .unwrap_or_default();
+        groups.push((Some(id), heading, file));
+    }
+    for (list_id, heading, file) in groups {
         let tasks: Vec<&TaskRecord> = doc
             .tasks
             .iter()
@@ -434,34 +453,27 @@ fn write_markdown(doc: &Document, root: &Path) -> std::io::Result<()> {
         for task in tasks {
             text.push_str(&task_markdown(task));
         }
-        write_private(&names.file(&tasks_dir, &heading), text.as_bytes())?;
+        if let Some(dir) = file.parent() {
+            fs::create_dir_all(dir)?;
+        }
+        write_private(&file, text.as_bytes())?;
     }
 
     let notes_dir = root.join("Notes");
     private_dir(&notes_dir)?;
-    let mut folder_dirs: HashMap<&str, PathBuf> = HashMap::new();
-    // Parents before children; a damaged (cyclic) tree is cut at the root.
-    let mut pending: Vec<&FolderRecord> = doc.note_folders.iter().collect();
-    while !pending.is_empty() {
-        let before = pending.len();
-        pending.retain(|folder| {
-            let parent = match folder.parent_id.as_deref() {
-                None => Some(notes_dir.clone()),
-                Some(id) => folder_dirs.get(id).cloned(),
-            };
-            let Some(parent) = parent else { return true };
-            let dir = names.file(&parent, &labeled(&folder.name, folder.removed));
-            let dir = dir.with_extension("");
-            folder_dirs.insert(&folder.id, dir);
-            false
-        });
-        if pending.len() == before {
-            for folder in pending.drain(..) {
-                let dir = names.file(&notes_dir, &labeled(&folder.name, folder.removed));
-                folder_dirs.insert(&folder.id, dir.with_extension(""));
-            }
-        }
-    }
+    let folders: Vec<Placed> = doc
+        .note_folders
+        .iter()
+        .map(|f| Placed {
+            id: &f.id,
+            parent_id: f.parent_id.as_deref(),
+            label: labeled(&f.name, f.removed),
+        })
+        .collect();
+    let folder_dirs: HashMap<&str, PathBuf> = place_tree(&folders, &notes_dir, &mut names)
+        .into_iter()
+        .map(|(id, file)| (id, file.with_extension("")))
+        .collect();
     // Parents sort before their children.
     let mut dirs: Vec<&PathBuf> = folder_dirs.values().collect();
     dirs.sort();
@@ -634,6 +646,47 @@ fn iso_time(ms: i64) -> String {
         minutes / 60,
         minutes % 60
     )
+}
+
+/// A List or Note Folder as a Markdown export lays out its tree: its id, the
+/// id of the one it sits in (None at the top), and the name its file gets.
+struct Placed<'a> {
+    id: &'a str,
+    parent_id: Option<&'a str>,
+    label: String,
+}
+
+/// A unique `<dir>/<label>.md` for each item, its children under
+/// `<dir>/<label>/`, in the order given. Parents come before children; a
+/// damaged (cyclic) tree is cut at `root`.
+fn place_tree<'a>(items: &[Placed<'a>], root: &Path, names: &mut Names) -> Vec<(&'a str, PathBuf)> {
+    let mut files: HashMap<&str, PathBuf> = HashMap::new();
+    let mut placed = Vec::with_capacity(items.len());
+    let mut pending: Vec<&Placed<'a>> = items.iter().collect();
+    while !pending.is_empty() {
+        let before = pending.len();
+        pending.retain(|item| {
+            let dir = match item.parent_id {
+                None => root.to_path_buf(),
+                Some(id) => match files.get(id) {
+                    Some(file) => file.with_extension(""),
+                    None => return true,
+                },
+            };
+            let file = names.file(&dir, &item.label);
+            files.insert(item.id, file.clone());
+            placed.push((item.id, file));
+            false
+        });
+        if pending.len() == before {
+            for item in pending.drain(..) {
+                let file = names.file(root, &item.label);
+                files.insert(item.id, file.clone());
+                placed.push((item.id, file));
+            }
+        }
+    }
+    placed
 }
 
 /// File names unique per directory as macOS file systems compare them:

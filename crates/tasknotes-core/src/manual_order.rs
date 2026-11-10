@@ -1,24 +1,26 @@
-//! Manual order of Lists and Note Folders (ADR-0007), and the Custom Order
-//! of a List's Tasks (ADR 0010): where one sits among its siblings, the same
-//! rule for all. Siblings keep the order of their `position`, the id
-//! settling ties; one in Removed keeps its place, so restoring it brings it
-//! back there.
+//! Manual order of Lists and Note Folders (ADR-0007), one group of siblings
+//! per parent in either tree (ADR 0009), and the Custom Order of a List's
+//! Tasks (ADR 0010): where one sits among its siblings, the same rule for
+//! all. Siblings keep the order of their `position`, the id settling ties;
+//! one in Removed keeps its place, so restoring it brings it back there.
 
 use rusqlite::{Connection, Transaction, params};
 
 use crate::tasks::{TaskError, WorkStatus};
+use crate::tree::Tree;
 
 /// The rows that are ordered against each other.
 #[derive(Clone, Copy)]
 pub(crate) enum Siblings<'a> {
-    Lists,
-    /// The children of one folder, or the top level.
-    Folders {
+    /// The children of one List or folder, or the top level of either tree.
+    Tree {
+        tree: Tree,
         parent_id: Option<&'a str>,
     },
     /// Every Task of one List (or Inbox, `None`), numbered as one sequence;
     /// only the shown Tasks of one work-status group are the ones a move
-    /// is placed among.
+    /// is placed among. A List's own Tasks only: the Tasks of a List inside
+    /// it keep a sequence of their own.
     Tasks {
         list_id: Option<&'a str>,
         status: WorkStatus,
@@ -36,11 +38,24 @@ struct Sibling {
     anchorable: bool,
 }
 
-impl Siblings<'_> {
+impl<'a> Siblings<'a> {
+    pub(crate) const fn lists(parent_id: Option<&'a str>) -> Self {
+        Self::Tree {
+            tree: Tree::Lists,
+            parent_id,
+        }
+    }
+
+    pub(crate) const fn folders(parent_id: Option<&'a str>) -> Self {
+        Self::Tree {
+            tree: Tree::NoteFolders,
+            parent_id,
+        }
+    }
+
     const fn table(self) -> &'static str {
         match self {
-            Self::Lists => "lists",
-            Self::Folders { .. } => "note_folders",
+            Self::Tree { tree, .. } => tree.table(),
             Self::Tasks { .. } => "tasks",
         }
     }
@@ -49,7 +64,7 @@ impl Siblings<'_> {
     const fn anchor_changed(self) -> TaskError {
         match self {
             Self::Tasks { .. } => TaskError::TaskOrderAnchorChanged,
-            _ => TaskError::OrderAnchorChanged,
+            Self::Tree { .. } => TaskError::OrderAnchorChanged,
         }
     }
 
@@ -59,7 +74,7 @@ impl Siblings<'_> {
     fn first_position(self, rows: &[Sibling]) -> i64 {
         match self {
             Self::Tasks { .. } => rows.first().map_or(1, |row| row.position),
-            _ => 1,
+            Self::Tree { .. } => 1,
         }
     }
 
@@ -73,17 +88,12 @@ impl Siblings<'_> {
             })
         };
         let rows = match self {
-            Self::Lists => conn
-                .prepare(
-                    "SELECT id, position, removed_at IS NULL FROM lists ORDER BY position, id",
-                )?
-                .query_map([], read)?
-                .collect::<rusqlite::Result<_>>()?,
-            Self::Folders { parent_id } => conn
-                .prepare(
-                    "SELECT id, position, removed_at IS NULL FROM note_folders
+            Self::Tree { tree, parent_id } => conn
+                .prepare(&format!(
+                    "SELECT id, position, removed_at IS NULL FROM {}
                      WHERE coalesce(parent_id, '') = coalesce(?1, '') ORDER BY position, id",
-                )?
+                    tree.table()
+                ))?
                 .query_map(params![parent_id], read)?
                 .collect::<rusqlite::Result<_>>()?,
             Self::Tasks { list_id, status } => conn

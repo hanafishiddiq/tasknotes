@@ -1,4 +1,5 @@
 import type { Command } from "../components/CommandPalette";
+import { listOptions } from "./list-tree";
 import type { TaskList, TaskView } from "./task-api";
 import { APPEARANCES, APPEARANCE_LABELS, type ThemePreference } from "./use-theme";
 
@@ -22,8 +23,9 @@ export function buildCommands(from: CommandSources): Command[] {
   return [
     { id: "go-all", label: "All tasks", group: "Go to", run: () => from.navigate({ kind: "all" }) },
     { id: "go-inbox", label: "Inbox", group: "Go to", run: () => from.navigate({ kind: "inbox" }) },
-    ...from.lists.filter((list) => !list.removed).map((list): Command => ({
-      id: `go-list-${list.id}`, label: list.name, group: "Go to", keywords: "list",
+    // Shown Lists only, each by its path: a name alone can repeat in another parent.
+    ...listOptions(from.lists).map((list): Command => ({
+      id: `go-list-${list.id}`, label: list.label, group: "Go to", keywords: "list",
       run: () => from.navigate({ kind: "list", listId: list.id }),
     })),
     { id: "go-notes", label: "All notes", group: "Go to", run: from.openNotes },

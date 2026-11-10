@@ -166,6 +166,26 @@ describe("Waiting for approval", () => {
     expect(within(item).getByText("Excluded from AI")).toBeInTheDocument();
   });
 
+  it("shows the Lists and Tasks a List removal would hide (Ticket 12)", async () => {
+    pending = [request("req-5", {
+      request: { ...request("req-5").request, action: { action: "remove_list" }, count: null },
+      target: "Synthetic Work", total: 2,
+      items: [
+        { kind: "list", id: "l-2", title: "Synthetic Reports", excludedFromAi: false },
+        { kind: "task", id: "t-9", title: "Synthetic nested task", excludedFromAi: false },
+      ],
+    })];
+    const user = userEvent.setup();
+    render(<App />);
+    const view = await openApprovals(user);
+    // One List and one Task: the sentence counts items, not "2 Tasks".
+    const item = await within(view).findByRole("listitem", {
+      name: "Move the List “Synthetic Work” and 2 items in it to Removed",
+    });
+    expect(within(item).getByText("Synthetic Reports")).toBeInTheDocument();
+    expect(within(item).getByText("Synthetic nested task")).toBeInTheDocument();
+  });
+
   it("asks again when the window regains focus, so a new request appears", async () => {
     render(<App />);
     await screen.findByRole("article", { name: "Synthetic draft" });

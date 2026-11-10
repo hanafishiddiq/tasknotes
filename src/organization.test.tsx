@@ -217,7 +217,7 @@ describe("Inbox, Lists, and Task metadata", () => {
     const user = userEvent.setup();
     const previous = call.getMockImplementation()!;
     call.mockImplementation(async (command, args) => {
-      if (command === "create_list") throw new Error("A List with this name already exists");
+      if (command === "create_list") throw new Error("A List with this name already exists here");
       return previous(command, args);
     });
     render(<App />);
@@ -225,7 +225,7 @@ describe("Inbox, Lists, and Task metadata", () => {
     const input = screen.getByRole("textbox", { name: "New list name" });
     await user.type(input, "Already taken");
     await user.click(screen.getByRole("button", { name: "Add list" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("A List with this name already exists");
+    expect(await screen.findByRole("alert")).toHaveTextContent("A List with this name already exists here");
     expect(input).toHaveValue("Already taken");
   });
 

@@ -11,10 +11,10 @@ use tasknotes_core::privacy::SetNoteExcludeFromAi;
 use tasknotes_core::removed::{RemovedPage, SetRemoved};
 use tasknotes_core::style::SetStyle;
 use tasknotes_core::tasks::{
-    ChangeTask, CreateList, CreateTask, DifficultyFilter, List, ListPage, MoveTask, Priority,
-    ProgressSequencePage, RecordProgress, RenameList, ReorderList, ReorderTask, SetListRemoved,
-    SortMode, Task, TaskPage, TaskQuery, TaskStore, TaskView, UpdateTask, UpdateTaskDetails,
-    ViewSort, WorkStatus,
+    ChangeTask, CreateList, CreateSubList, CreateTask, DifficultyFilter, List, ListPage, MoveList,
+    MoveTask, PlaceList, Priority, ProgressSequencePage, RecordProgress, RenameList, ReorderList,
+    ReorderTask, SetListRemoved, SortMode, Task, TaskPage, TaskQuery, TaskStore, TaskView,
+    UpdateTask, UpdateTaskDetails, ViewSort, WorkStatus,
 };
 use tauri::{Manager, State};
 
@@ -125,6 +125,15 @@ fn create_list(store: State<'_, TaskStore>, input: CreateList) -> Result<List, S
     store.create_list(input).map_err(|error| error.to_string())
 }
 
+/// An empty List inside another, at the bottom there (ADR 0009): the row's
+/// "New List inside", as `list create --parent` and MCP `list_create`.
+#[tauri::command]
+fn create_sub_list(store: State<'_, TaskStore>, input: CreateSubList) -> Result<List, String> {
+    store
+        .create_sub_list(input)
+        .map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 fn rename_list(store: State<'_, TaskStore>, input: RenameList) -> Result<List, String> {
     store.rename_list(input).map_err(|error| error.to_string())
@@ -133,6 +142,19 @@ fn rename_list(store: State<'_, TaskStore>, input: RenameList) -> Result<List, S
 #[tauri::command]
 fn reorder_list(store: State<'_, TaskStore>, input: ReorderList) -> Result<List, String> {
     store.reorder_list(input).map_err(|error| error.to_string())
+}
+
+/// Puts a List, with the Lists inside it, under a parent and after a sibling
+/// there, in one step: a sidebar drop (ADR 0009).
+#[tauri::command]
+fn place_list(store: State<'_, TaskStore>, input: PlaceList) -> Result<List, String> {
+    store.place_list(input).map_err(|error| error.to_string())
+}
+
+/// Moves a List into another (at the bottom there) or to the top level.
+#[tauri::command]
+fn move_list(store: State<'_, TaskStore>, input: MoveList) -> Result<List, String> {
+    store.move_list(input).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -470,8 +492,11 @@ pub fn run() {
             list_progress_entries,
             list_lists,
             create_list,
+            create_sub_list,
             rename_list,
             reorder_list,
+            place_list,
+            move_list,
             set_list_style,
             set_list_removed,
             move_task,

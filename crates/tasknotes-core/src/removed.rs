@@ -113,7 +113,7 @@ pub struct RemovedItem {
     /// The revision a restore must name.
     pub revision: i64,
     pub removed_at: i64,
-    /// Its List, or a folder above it, is in Removed too: that comes back first.
+    /// A List or folder around it is in Removed too: that comes back first.
     pub in_removed_container: bool,
 }
 
@@ -137,8 +137,10 @@ const REMOVED_ITEMS: &str = concat!(
     "
        FROM notes n WHERE n.removed_at IS NOT NULL /*note*/
      UNION ALL
-     SELECT 'list', id, name, revision, removed_at, 0 FROM lists
-       WHERE removed_at IS NOT NULL /*list*/
+     SELECT 'list', l.id, l.name, l.revision, l.removed_at, coalesce(l.parent_id IN (",
+    hidden_lists!(),
+    "), 0)
+       FROM lists l WHERE l.removed_at IS NOT NULL /*list*/
      UNION ALL
      SELECT 'note_folder', f.id, f.name, f.revision, f.removed_at,
             coalesce(f.parent_id IN (",
@@ -169,7 +171,7 @@ pub(crate) fn require_writable_task(conn: &Connection, id: &str) -> Result<(), T
     }
 }
 
-/// Whether the Task's List is in Removed.
+/// Whether the Task's List is in Removed, or inside a Removed List.
 fn task_list_removed(conn: &Connection, task: &Task) -> Result<bool, TaskError> {
     Ok(conn.query_row(
         concat!(
@@ -234,7 +236,7 @@ impl TaskStore {
             note.push_str(&format!(
                 " AND n.rowid IN (SELECT rowid FROM notes_fts WHERE notes_fts MATCH {term})"
             ));
-            list.push_str(&format!(" AND name LIKE '%' || {word} || '%'"));
+            list.push_str(&format!(" AND l.name LIKE '%' || {word} || '%'"));
             folder.push_str(&format!(" AND f.name LIKE '%' || {word} || '%'"));
         }
         let page_filter = match after {

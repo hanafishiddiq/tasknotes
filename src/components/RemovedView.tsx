@@ -6,7 +6,7 @@ import { removedApi, type RemovedItem, type RemovedKind } from "../lib/removed-a
 const KIND: Record<RemovedKind, { label: string; container: string; icon: typeof Folder }> = {
   task: { label: "Task", container: "Restore its List first", icon: SquareCheck },
   note: { label: "Note", container: "Restore its folder first", icon: NotebookText },
-  list: { label: "List", container: "", icon: ListChecks },
+  list: { label: "List", container: "Restore the List it is in first", icon: ListChecks },
   note_folder: { label: "Folder", container: "Restore the folder above it first", icon: Folder },
 };
 
