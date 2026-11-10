@@ -121,6 +121,7 @@ const TEXT: Record<string, Placement> = {
   ".approval-meta": { on: ["bg"] },
   ".approval-stale": { on: ["bg"] },
   // Pomodoro history: hairline rows on the canvas, like Removed.
+  ".pomodoro-history-hint": { on: ["bg"] },
   ".pomodoro-day-head h2": { on: ["bg"] },
   ".pomodoro-day-total": { on: ["bg"] },
   ".pomodoro-session": { on: ["bg"] },

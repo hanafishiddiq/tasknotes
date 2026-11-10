@@ -1321,6 +1321,11 @@ kbd {
 }
 /* Pomodoro history: one section per local day, newest first, hairline rows
    like Removed. Numbers are tabular; the Task title is the only accent text. */
+.pomodoro-history-hint {
+  margin: 0;
+  padding: 0 10px;
+  color: var(--text-3);
+}
 .pomodoro-day {
   margin: 20px 0 0;
 }

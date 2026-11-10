@@ -61,10 +61,15 @@ export default function PomodoroHistoryView({ hidden, refreshKey, onOpenTask }: 
   // Days on screen, so reading again keeps the older ones the person loaded.
   const shown = useRef(0);
   shown.current = days.length;
+  // Bumped by every read from the top. An older page asked for before it
+  // continues a list that is gone, so its answer is dropped: appending it
+  // could skip the day that the new first page no longer reaches.
+  const generation = useRef(0);
 
   useEffect(() => {
     if (hidden) return;
-    let active = true;
+    const read = ++generation.current;
+    const current = () => read === generation.current;
     const keep = shown.current;
     (async () => {
       let page = await pomodoroApi.history();
@@ -73,28 +78,30 @@ export default function PomodoroHistoryView({ hidden, refreshKey, onOpenTask }: 
         page = await pomodoroApi.history(page.nextCursor);
         items = [...items, ...page.items];
       }
-      if (!active) return;
+      if (!current()) return;
       setDays(items);
       setCursor(page.nextCursor);
       setError(null);
     })()
-      .catch((reason) => { if (active) setError("Couldn't load the Pomodoro history: " + errorMessage(reason)); })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+      .catch((reason) => { if (current()) setError("Couldn't load the Pomodoro history: " + errorMessage(reason)); })
+      .finally(() => { if (current()) setLoading(false); });
+    return () => { generation.current++; };
   }, [hidden, refreshKey]);
 
   async function loadMore() {
     if (!cursor || loadingMore) return;
+    const read = generation.current;
     setLoadingMore(true);
     try {
       const page = await pomodoroApi.history(cursor);
+      if (read !== generation.current) return;
       setDays((current) => {
         const seen = new Set(current.map((day) => day.date));
         return [...current, ...page.items.filter((day) => !seen.has(day.date))];
       });
       setCursor(page.nextCursor);
     } catch (reason) {
-      setError("Couldn't load more days: " + errorMessage(reason));
+      if (read === generation.current) setError("Couldn't load more days: " + errorMessage(reason));
     } finally {
       setLoadingMore(false);
     }
@@ -105,7 +112,7 @@ export default function PomodoroHistoryView({ hidden, refreshKey, onOpenTask }: 
       <div className="main-scroll">
         <section className="content-wrap pomodoro-history" aria-label="Pomodoro history">
           <div className="page-title"><h1>Pomodoro</h1></div>
-          <p className="removed-hint">
+          <p className="pomodoro-history-hint">
             Each day counts its finished sessions: the planned focus plus any Overtime you counted.
             Stopped sessions are listed but not counted. Days follow this Mac&rsquo;s time zone, and
             a session that runs past midnight stays on the day it started.

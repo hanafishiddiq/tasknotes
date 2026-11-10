@@ -74,17 +74,25 @@ const shellSays = (phase: PomodoroPhase, sessionStored: boolean) => act(() =>
 
 let pages: Record<string, PomodoroHistoryPage>;
 let outsideLatest: number;
+/** A history read for this cursor waits until the test lets it answer. */
+let held: { cursor: string; release: () => void } | null;
 
 beforeEach(() => {
   pages = { first: { items: [TODAY, MARCH_4], nextCursor: "p1|2025-03-04" }, "p1|2025-03-04": { items: [FEB_2], nextCursor: null } };
   outsideLatest = 1;
+  held = null;
   window.localStorage.clear();
   call.mockReset();
   call.mockImplementation(async (command, args) => {
     const body = (args ?? {}) as Record<string, any>;
     switch (command) {
       case "pomodoro_history": {
-        const page = pages[body.cursor ?? "first"];
+        const key = body.cursor ?? "first";
+        if (held?.cursor === key) {
+          await new Promise<void>((resolve) => { held!.release = resolve; });
+          held = null;
+        }
+        const page = pages[key];
         if (!page) throw new Error("History cursor is invalid");
         return structuredClone(page);
       }
@@ -223,6 +231,25 @@ describe("Pomodoro history page (Ticket 14)", () => {
     await shellSays({ phase: "idle" }, true);
     await waitFor(() => expect(lastArgs("pomodoro_history")).toMatchObject({ cursor: "p1|2025-03-04" }));
     expect(within(page).getByRole("region", { name: "Sunday, Feb 2, 2025" })).toBeInTheDocument();
+  });
+
+  it("never skips a day when a session is stored while older days are loading", async () => {
+    const { user, page } = await openHistory();
+    held = { cursor: "p1|2025-03-04", release: () => {} };
+    await user.click(within(page).getByRole("button", { name: "Load more days" }));
+    // Meanwhile a session lands on a day between: the first page now ends a day later.
+    const MARCH_10: PomodoroDay = { ...MARCH_4, date: "2025-03-10" };
+    pages.first = { items: [TODAY, MARCH_10], nextCursor: "p1|2025-03-10" };
+    pages["p1|2025-03-10"] = { items: [MARCH_4], nextCursor: "p1|2025-03-04" };
+    await shellSays({ phase: "idle" }, true);
+    await within(page).findByRole("region", { name: "Monday, Mar 10, 2025" });
+    await act(async () => held?.release());
+
+    // The older page answered for the list as it was; what shows is the core's order.
+    await waitFor(() => expect(within(page).getByRole("button", { name: "Load more days" })).toBeEnabled());
+    expect(within(page).queryByRole("region", { name: "Sunday, Feb 2, 2025" })).not.toBeInTheDocument();
+    await user.click(within(page).getByRole("button", { name: "Load more days" }));
+    expect(await within(page).findByRole("region", { name: "Tuesday, Mar 4, 2025" })).toBeInTheDocument();
   });
 
   it("reads the history again after a change made outside the window", async () => {
