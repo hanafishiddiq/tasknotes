@@ -438,6 +438,28 @@ describe("Custom Order", () => {
     expect(regions[0]).toHaveTextContent("Turn off filters to reorder Tasks");
   });
 
+  it("never starts a drag or a move from a Task's check, which completes the Task instead (Ticket 16)", async () => {
+    const user = await showList("Work");
+    const check = within(screen.getByRole("article", { name: "Three" })).getByRole("button", { name: "Complete “Three”" });
+    const from = 3 * ROW_HEIGHT + ROW_HEIGHT / 2;
+    fireEvent.mouseDown(check, { button: 0, clientX: 5, clientY: from });
+    fireEvent.mouseMove(window, { clientX: 5, clientY: onRow(1, "upper") });
+    expect(document.querySelector("[data-dragging]")).toBeNull();
+    expect(document.querySelector("[data-drop-edge]")).toBeNull();
+    fireEvent.mouseUp(window);
+
+    // Alt with the arrows belongs to the row's title, not to its check.
+    act(() => check.focus());
+    await user.keyboard("{Alt>}{ArrowUp}{/Alt}");
+    expect(reorders()).toEqual([]);
+    expect(titles()).toEqual(["Doing", "One", "Two", "Three"]);
+
+    await user.click(check);
+    await eventually(() => expect(calls.filter((call) => call.command === "change_task").map((call) => call.body.input))
+      .toEqual([{ id: "Three", expectedRevision: 1, status: "completed" }]));
+    expect(reorders()).toEqual([]);
+  });
+
   it("shows the core's order again when it refuses a move", async () => {
     await showList("Work");
     tasks.find((item) => item.id === "Three")!.revision = 5;

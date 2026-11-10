@@ -184,6 +184,26 @@ export function statusChoiceArgs(choice: StatusChoice): { wontDo: true } | { sta
   return choice === "wont_do" ? { wontDo: true } : { status: choice };
 }
 
+/**
+ * What a click on a Task's round check does (Ticket 16): complete a Ready or
+ * In Progress Task, reopen a Completed one, or clear Won't Do. Each is the
+ * status control's own change; the core decides the progress that follows.
+ */
+export type CheckAction = "complete" | "reopen" | "clear_wont_do";
+
+/** The check's action for a Task as it shows now. */
+export function checkActionOf(task: Pick<Task, "status" | "wontDo">): CheckAction {
+  if (task.wontDo) return "clear_wont_do";
+  return task.status === "completed" ? "reopen" : "complete";
+}
+
+/** What the core is sent for a check action. Reopening restores the progress the Task had before. */
+export function checkActionArgs(action: CheckAction): TaskChange {
+  return action === "clear_wont_do" ? { wontDo: false }
+    : action === "reopen" ? { status: "in_progress" }
+    : { status: "completed" };
+}
+
 function queryArgs(view: TaskView, filters: TaskFilters) {
   const text = filters.text.trim();
   const tag = filters.tag.trim();

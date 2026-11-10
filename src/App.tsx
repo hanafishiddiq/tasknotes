@@ -4,7 +4,8 @@ import {
   Tag,
 } from "lucide-react";
 import {
-  taskApi, NO_FILTERS, TASK_PAGE_SIZE, placeLocally, sortOf, viewKey, type Task, type TaskList,
+  taskApi, NO_FILTERS, TASK_PAGE_SIZE, checkActionArgs, checkActionOf, placeLocally, sortOf, viewKey,
+  type Task, type TaskList,
   type TaskView, type SortMode, type TaskChange, type ProgressDraft, type TaskFilters,
   type Priority, type TaskListPage, type TaskPlace,
 } from "./lib/task-api";
@@ -25,6 +26,7 @@ import { useShortcuts } from "./lib/use-shortcuts";
 import { useTaskDrafts } from "./lib/use-task-drafts";
 import { flushSync } from "react-dom";
 import { useUndo } from "./lib/use-undo";
+import { useCompletionUndo } from "./lib/use-completion-undo";
 import { useNewTaskToast } from "./lib/use-new-task-toast";
 import { useBriefNotice } from "./lib/use-brief-notice";
 import { errorMessage, isListRemoved } from "./lib/error-message";
@@ -113,6 +115,8 @@ export default function App() {
   const [removedKey, setRemovedKey] = useState(0);
   // Recent moves to Removed, which Undo (or ⌘Z) brings back newest first.
   const undo = useUndo();
+  // "Task completed · Undo" for a few seconds after a check completes a Task; view state only.
+  const completionUndo = useCompletionUndo();
   // "Task added · Click to edit" after a Task is created here; view state only.
   const newTaskToast = useNewTaskToast();
   // Why a Task cannot be moved here, said when the person tries; view state only.
@@ -203,6 +207,14 @@ export default function App() {
     if (scrollAnchor.current && taskScroll.current) holdScrollAnchor(taskScroll.current, scrollAnchor.current);
     scrollAnchor.current = null;
   }, [tasks]);
+
+  // Undo names the revision its completion made: once the Task shows another (changed
+  // here, elsewhere, or reopened), the offer is gone rather than refused.
+  const { taskId: undoTaskId, revision: undoRevision, hide: hideCompletionUndo } = completionUndo;
+  useEffect(() => {
+    const shown = tasks.find((task) => task.id === undoTaskId);
+    if (shown && shown.revision !== undoRevision) hideCompletionUndo(shown.id);
+  }, [tasks, undoTaskId, undoRevision, hideCompletionUndo]);
 
   // Once the text is saved or given up, the list is what the core says again.
   const keptWithoutEdits = [...keptForEdits.current].some((id) => !drafts.get(id));
@@ -341,6 +353,12 @@ export default function App() {
     setFocusRequest(null);
   }, [focusRequest, workspace, loading, creating, savingId]);
 
+  /** Leaving the Task view: the bars go; moves to Removed stay undoable with ⌘Z. */
+  function hideUndoBars() {
+    undo.hideNotice();
+    completionUndo.hide();
+  }
+
   function resetTaskPages() {
     requestGeneration.current += 1;
     setCurrentPageCursor(null);
@@ -348,7 +366,7 @@ export default function App() {
   }
 
   function openNotes(scope: NoteScope = ALL_NOTES) {
-    undo.hideNotice();
+    hideUndoBars();
     newTaskToast.clearReveal();
     setNotesOpened(true);
     setWorkspace("notes");
@@ -395,21 +413,21 @@ export default function App() {
 
   function openSettings() {
     if (busy) return;
-    undo.hideNotice();
+    hideUndoBars();
     newTaskToast.clearReveal();
     setWorkspace("settings");
   }
 
   function openRemoved() {
     if (busy) return;
-    undo.hideNotice();
+    hideUndoBars();
     newTaskToast.clearReveal();
     setWorkspace("removed");
   }
 
   function openApprovals() {
     if (busy) return;
-    undo.hideNotice();
+    hideUndoBars();
     newTaskToast.clearReveal();
     void approvals.refresh();
     setWorkspace("approvals");
@@ -475,7 +493,7 @@ export default function App() {
   function navigate(next: TaskView) {
     if (busy) return;
     setWorkspace("tasks");
-    undo.hideNotice();
+    hideUndoBars();
     newTaskToast.clearReveal();
     if (next.kind === view.kind &&
         (next.kind !== "list" || (view.kind === "list" && next.listId === view.listId))) return;
@@ -897,6 +915,30 @@ export default function App() {
 
   async function changeTask(task: Task, change: TaskChange, expectedRevision: number) {
     await saveEdits(task, () => taskApi.change({ id: task.id, expectedRevision, ...change }));
+  }
+
+  /**
+   * The round check: the status control's own change, named against the Task on
+   * screen. A completion offers Undo for a few seconds, which takes the Task back
+   * to the progress it had, named against the revision the completion made.
+   */
+  async function checkTask(task: Task) {
+    const action = checkActionOf(task);
+    const done: { task?: Task } = {};
+    const saved = await commitTaskMutation(task, async () => (done.task = await taskApi.change({
+      id: task.id, expectedRevision: task.revision, ...checkActionArgs(action),
+    })));
+    const completed = done.task;
+    if (!saved || !completed || action !== "complete") return;
+    // The newer bar takes the place of the Removed notice; ⌘Z still takes that move back.
+    undo.hideNotice();
+    completionUndo.offer(completed.id, completed.revision, async () => {
+      // Back to In Progress with the progress it had. The core opens Ready only to
+      // work that has not started, so a Task completed from Ready comes back at 0%.
+      await commitTaskMutation(completed, () => taskApi.change({
+        id: completed.id, expectedRevision: completed.revision, status: "in_progress", progress: task.progress,
+      }));
+    });
   }
 
   async function recordProgress(task: Task, update: ProgressDraft, expectedRevision: number) {
@@ -1475,6 +1517,7 @@ export default function App() {
                         onUpdateDetails={(tags, dueDate, base) => updateDetails(task, tags, dueDate, base)}
                         onOpenNote={openLinkedNote}
                         onRemove={() => removeTask(task)}
+                        onCheck={() => checkTask(task)}
                         shown={workspace === "tasks"}
                         edits={drafts.get(task.id)}
                         onEdits={(edits) => drafts.set(task.id, edits)}
@@ -1546,6 +1589,20 @@ export default function App() {
           <span>{undo.error}</span>
           <button className="button button-small" type="button" onClick={undo.dismissError}>
             Dismiss
+          </button>
+        </div>
+      )}
+      {/* One bar at a time in the window's last row; the newer offer hid the older notice. */}
+      {!undo.error && !undo.noticeShown && completionUndo.taskId !== null && (
+        <div role="status" aria-label="Task completed" className="undo-bar"
+          onMouseEnter={() => completionUndo.hold("hover", true)}
+          onMouseLeave={() => completionUndo.hold("hover", false)}
+          onFocus={() => completionUndo.hold("focus", true)}
+          onBlur={() => completionUndo.hold("focus", false)}>
+          <span>Task completed</span>
+          <button className="button button-small" type="button" disabled={Boolean(savingId)}
+            onClick={completionUndo.run}>
+            Undo
           </button>
         </div>
       )}

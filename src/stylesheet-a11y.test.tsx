@@ -81,6 +81,16 @@ describe("Stylesheet accessibility", () => {
     expect(has(":focus-visible", /outline: 2px solid var\(--focus\)/)).toBe(true);
   });
 
+  it("keeps the round check a circle with the focus ring, and reaches its hit area 4px past the ring", () => {
+    // Ticket 16: the check is a button. The shared ring stays on; the ring's own radius keeps it round.
+    const ring = all.filter((rule) => rule.selector === ".task-check");
+    expect(ring.some((rule) => /border-radius: 50%/.test(rule.body))).toBe(true);
+    expect(all.findIndex((rule) => rule.selector === ".task-check"))
+      .toBeGreaterThan(all.findIndex((rule) => rule.selector === ":focus-visible"));
+    expect(has("button.task-check::before", /inset: -4px/)).toBe(true);
+    expect(has("button.task-check", /position: relative/)).toBe(true);
+  });
+
   it("only moves anything when Reduce Motion is off", () => {
     const moving = all.filter((rule) => /\b(transition|animation)\s*:/.test(rule.body) && !/animation:\s*none/.test(rule.body));
     expect(moving.length).toBeGreaterThan(0);

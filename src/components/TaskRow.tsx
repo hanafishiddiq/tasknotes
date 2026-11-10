@@ -3,6 +3,7 @@ import {
 } from "react";
 import { CalendarDays, Check, Folder, LoaderCircle, Tag, Trash2 } from "lucide-react";
 import {
+  checkActionOf,
   statusChoiceArgs,
   statusChoiceOf,
   type StatusChoice,
@@ -28,6 +29,7 @@ import {
   NO_DIFFICULTY_ICON,
   WONT_DO_ICON,
   WONT_DO_LABEL,
+  checkActionLabel,
 } from "../lib/task-visuals";
 
 /** Why a finished Task's Won't do choice is closed (ADR 0008). */
@@ -65,6 +67,8 @@ interface TaskRowProps {
   onOpenNote: (noteId: string) => void;
   /** Moves the Task to Removed; restoring it later brings back everything. */
   onRemove: () => Promise<void>;
+  /** The round check: completes, reopens or clears Won't Do, as `checkActionOf` says. */
+  onCheck: () => Promise<void>;
   /** False while the Notes workspace covers the Task view. */
   shown: boolean;
   /** What was typed and not saved, kept above the row so it outlives it. */
@@ -150,6 +154,7 @@ export default function TaskRow({
   onUpdateDetails,
   onOpenNote,
   onRemove,
+  onCheck,
   shown,
   edits,
   onEdits,
@@ -187,6 +192,8 @@ export default function TaskRow({
   const canChangeDetails = !saving && !hasUnsavedText && !hasUnsavedProgressUpdate;
   const canChangeMetadata = !saving && !hasUnsavedText && !hasUnsavedDetails;
   const canChangeSelectors = canChangeMetadata && !hasUnsavedProgressUpdate;
+  // The check changes the status, so it waits for typed edits and a save in flight like the status control.
+  const canCheck = !saving && !dirty;
   const numericProgress =
     draftProgress.trim() === "" ? NaN : Number(draftProgress);
   const validProgress =
@@ -275,11 +282,18 @@ export default function TaskRow({
       aria-label={task.title}
     >
       <div className="task-row">
-        <span className={`task-check task-check--${checkKind}`} aria-hidden="true">
+        {/* Outside the open button, so a click never opens the row or starts a drag. */}
+        <button
+          type="button"
+          className={`task-check task-check--${checkKind}`}
+          aria-label={checkActionLabel(checkActionOf(task), task.title)}
+          disabled={!canCheck}
+          onClick={() => void onCheck()}
+        >
           {wontDo
-            ? <WONT_DO_ICON size={11} strokeWidth={3} />
-            : task.status === "completed" && <Check size={11} strokeWidth={3} />}
-        </span>
+            ? <WONT_DO_ICON size={11} strokeWidth={3} aria-hidden="true" />
+            : task.status === "completed" && <Check size={11} strokeWidth={3} aria-hidden="true" />}
+        </button>
         <button
           className="task-open"
           type="button"
