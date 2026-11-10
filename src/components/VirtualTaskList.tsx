@@ -4,8 +4,9 @@ import {
 import {
   defaultRangeExtractor, measureElement, observeElementRect, useVirtualizer, type Range, type Virtualizer,
 } from "@tanstack/react-virtual";
-import { TASK_PAGE_SIZE, type Task, type WorkStatus } from "../lib/task-api";
+import { TASK_PAGE_SIZE, type Task, type TaskPlace, type WorkStatus } from "../lib/task-api";
 import { STATUS_ORDER, STATUS_VIEW } from "../lib/task-visuals";
+import { useRowDrag, watchRefusedDrag, type RowDrop } from "../lib/use-row-drag";
 
 type Item =
   | { kind: "heading"; status: WorkStatus; count: number }
@@ -35,6 +36,17 @@ interface VirtualTaskListProps {
    */
   reveal?: { taskId: string } | null;
   onRevealed?: () => void;
+  /**
+   * Given only where a Task may move (one List, nothing filtered): a Task row
+   * is dragged, or moved with Alt+Up/Down, within its work-status group.
+   * Resolves whether the move was made.
+   */
+  onPlace?: (task: Task, place: TaskPlace) => Promise<boolean>;
+  /**
+   * Given where a Task may not move (several Lists, or a filter on): a try,
+   * by a drag or Alt+Up/Down, calls this instead, and nothing moves.
+   */
+  onMoveBlocked?: () => void;
 }
 
 /**
@@ -82,7 +94,7 @@ const TaskSlotContent = memo(function TaskSlotContent({ task, renderTask }: {
  */
 export default function VirtualTaskList({
   tasks, hasMore, scrollRef, keepMounted, renderTask, expandedId, onCollapse,
-  flashId = null, reveal = null, onRevealed,
+  flashId = null, reveal = null, onRevealed, onPlace, onMoveBlocked,
 }: VirtualTaskListProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const [scrollMargin, setScrollMargin] = useState(0);
@@ -99,6 +111,43 @@ export default function VirtualTaskList({
       ...group.map((task): Item => ({ kind: "task", task })),
     ];
   }), [tasks]);
+
+  // What a screen reader hears after a move.
+  const [moved, setMoved] = useState("");
+  const byId = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);
+
+  /** The Tasks of one group, in order: what a move is placed among. */
+  const groupOf = (status: WorkStatus) => tasks.filter((task) => task.status === status);
+
+  function place(task: Task, where: TaskPlace) {
+    if (!onPlace) return;
+    const anchorId = "beforeId" in where ? where.beforeId : where.afterId;
+    const anchor = anchorId === null ? undefined : byId.get(anchorId);
+    void onPlace(task, where).then((placed) => {
+      if (!placed) return;
+      setMoved(anchor === undefined ? `${task.title} moved to the top of ${STATUS_VIEW[task.status].label}`
+        : `${task.title} moved ${"beforeId" in where ? "before" : "after"} ${anchor.title}`);
+    });
+  }
+
+  const drag = useRowDrag({
+    container: listRef,
+    scrollArea: scrollRef,
+    canNest: false,
+    // Within its own group only: a drop elsewhere never changes a status.
+    canTarget: (dragged, id) => dragged !== id && byId.get(dragged)?.status === byId.get(id)?.status,
+    onDrop(dragged: string, drop: RowDrop) {
+      const task = byId.get(dragged);
+      if (!task || drop.edge === "into") return;
+      if (drop.id === null) {
+        // Below every row: after the last one, when that is in the same group.
+        const last = tasks[tasks.length - 1];
+        if (last && last.id !== task.id && last.status === task.status) place(task, { afterId: last.id });
+        return;
+      }
+      place(task, drop.edge === "before" ? { beforeId: drop.id } : { afterId: drop.id });
+    },
+  });
 
   const pinned = useMemo(() => items.flatMap((item, index) =>
     item.kind === "task" && (keepMounted.has(item.task.id) || item.task.id === focusTarget || item.task.id === focusedId)
@@ -163,6 +212,26 @@ export default function VirtualTaskList({
       return;
     }
     if (!target.classList.contains("task-open")) return;
+    if (!onPlace && onMoveBlocked && event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+      // Not here: say why, and leave the list and focus where they are.
+      event.preventDefault();
+      onMoveBlocked();
+      return;
+    }
+    if (onPlace && event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+      // Alt with the arrows moves the Task itself, within its group.
+      event.preventDefault();
+      const task = byId.get(id);
+      if (!task) return;
+      const group = groupOf(task.status);
+      const at = group.findIndex((item) => item.id === id);
+      const neighbour = group[event.key === "ArrowUp" ? at - 1 : at + 1];
+      if (!neighbour) return;
+      place(task, event.key === "ArrowUp" ? { beforeId: neighbour.id } : { afterId: neighbour.id });
+      // The row moves in the page; focus follows it.
+      setFocusTarget(id);
+      return;
+    }
     const order = items.flatMap((item) => item.kind === "task" ? [item.task.id] : []);
     const at = order.indexOf(id);
     const next = event.key === "ArrowDown" ? order[at + 1]
@@ -241,6 +310,9 @@ export default function VirtualTaskList({
     ) : (
       <div key={virtual.key} className={`task-slot ${item.task.id === flashId ? "task-slot--flash" : ""}`}
         data-index={virtual.index}
+        data-drag-row={onPlace ? item.task.id : undefined}
+        data-dragging={drag.dragging === item.task.id || undefined}
+        data-drop-edge={dropEdge(item.task.id)}
         data-task-id={item.task.id} ref={virtualizer.measureElement}>
         <TaskSlotContent task={item.task} renderTask={renderTask} />
       </div>
@@ -248,8 +320,24 @@ export default function VirtualTaskList({
   }
   const tail = Math.max(0, total + scrollMargin - previousEnd);
 
+  function dropEdge(id: string) {
+    if (drag.drop?.id === id) return drag.drop.edge;
+    // Below every row lands after the last one, only when that is in the dragged Task's group.
+    const last = tasks[tasks.length - 1];
+    return drag.drop?.edge === "end" && id === last?.id && drag.dragging !== null &&
+      byId.get(drag.dragging)?.status === last.status ? "after" : undefined;
+  }
+
   return (
     <div className="task-list" ref={listRef} onKeyDown={onKeyDown}
+      onMouseDown={(onPlace || onMoveBlocked) && ((event) => {
+        // A drag starts on the row's title area, never on a control inside an open Task.
+        const id = (event.target as HTMLElement).closest(".task-open")
+          ?.closest<HTMLElement>("[data-task-id]")?.dataset.taskId;
+        if (!id) return;
+        if (onPlace) drag.start(event, id);
+        else if (onMoveBlocked) watchRefusedDrag(event, onMoveBlocked);
+      })}
       onFocus={(event) => setFocusedId(
         (event.target as HTMLElement).closest<HTMLElement>("[data-task-id]")?.dataset.taskId ?? null)}
       onBlur={(event) => {
@@ -261,6 +349,7 @@ export default function VirtualTaskList({
         </section>
       ))}
       {tail > 0 && <div aria-hidden="true" style={{ height: tail }} />}
+      <span className="sr-only" aria-live="polite">{moved}</span>
     </div>
   );
 }

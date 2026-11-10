@@ -106,6 +106,9 @@ struct TaskRecord {
     wont_do: bool,
     next_step: String,
     list_id: Option<String>,
+    /// Its place in its List's Custom Order (ADR 0010): lower comes first
+    /// within a work-status group.
+    position: i64,
     deadline: Option<String>,
     tags: Vec<String>,
     revision: i64,
@@ -254,14 +257,21 @@ impl TaskStore {
                 })
             },
         )?;
-        let mut tasks: Vec<Task> = collect(
+        let (mut tasks, positions): (Vec<Task>, Vec<i64>) = collect(
             conn,
             &format!(
-                "SELECT {} FROM tasks ORDER BY created_at, id",
+                "SELECT {}, position FROM tasks ORDER BY created_at, id",
                 crate::tasks::COLUMNS
             ),
-            crate::tasks::read_task,
-        )?;
+            |row| {
+                Ok((
+                    crate::tasks::read_task(row)?,
+                    row.get::<_, i64>(crate::tasks::COLUMN_COUNT)?,
+                ))
+            },
+        )?
+        .into_iter()
+        .unzip();
         // Bounded statements, well below SQLite's variable limit.
         for chunk in tasks.chunks_mut(500) {
             crate::organization::hydrate_tags(conn, chunk)?;
@@ -293,7 +303,8 @@ impl TaskStore {
         }
         let tasks = tasks
             .into_iter()
-            .map(|task| TaskRecord {
+            .zip(positions)
+            .map(|(task, position)| TaskRecord {
                 progress_entries: history.remove(&task.id).unwrap_or_default(),
                 id: task.id,
                 title: task.title,
@@ -305,6 +316,7 @@ impl TaskStore {
                 wont_do: task.wont_do,
                 next_step: task.next_step,
                 list_id: task.list_id,
+                position,
                 deadline: task.due_date,
                 tags: task.tags,
                 revision: task.revision,

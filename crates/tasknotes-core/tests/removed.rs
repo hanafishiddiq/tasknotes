@@ -293,7 +293,7 @@ fn v8_database(db: &Path) -> (String, String) {
                ON note_folders(coalesce(parent_id, ''), name_fold);
              DROP TABLE IF EXISTS audit_entries; DROP TABLE IF EXISTS bulk_requests; DROP TABLE IF EXISTS retired_revisions;
              DROP INDEX tasks_status_difficulty_order; ALTER TABLE tasks DROP COLUMN difficulty; ALTER TABLE lists DROP COLUMN icon; ALTER TABLE lists DROP COLUMN color;
-             ALTER TABLE tasks DROP COLUMN wont_do_from; ALTER TABLE tasks DROP COLUMN wont_do; ALTER TABLE progress_entries DROP COLUMN previous_wont_do;
+             DROP INDEX tasks_custom_order; ALTER TABLE tasks DROP COLUMN position; DROP TABLE view_sorts; ALTER TABLE tasks DROP COLUMN wont_do_from; ALTER TABLE tasks DROP COLUMN wont_do; ALTER TABLE progress_entries DROP COLUMN previous_wont_do;
              ALTER TABLE progress_entries DROP COLUMN wont_do;
              DROP INDEX lists_manual_order; ALTER TABLE lists DROP COLUMN position;
              CREATE INDEX lists_created_order ON lists(created_at DESC, id DESC);

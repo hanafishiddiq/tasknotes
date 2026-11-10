@@ -14,6 +14,8 @@ interface RowDragOptions {
   /** Whether a row's middle means "inside it" rather than before or after. */
   canNest: boolean;
   onDrop: (dragged: string, drop: RowDrop) => void;
+  /** What scrolls while the mouse is held near its edge; the sidebar when left out. */
+  scrollArea?: RefObject<HTMLElement | null>;
 }
 
 /** How far the mouse travels before a press on a row becomes a drag, not a click. */
@@ -44,8 +46,38 @@ function dropAt(
   return rows.length > 0 ? { id: null, edge: "end" } : null;
 }
 
+/** The release after a drag would also click the row that was pressed. */
+function swallowClick() {
+  const swallow = (click: Event) => click.stopPropagation();
+  window.addEventListener("click", swallow, { capture: true, once: true });
+  window.setTimeout(() => window.removeEventListener("click", swallow, true));
+}
+
 /**
- * Press, move and release on a sidebar row. Mouse events rather than HTML drag
+ * A press on a row that cannot move here: once it travels as far as a drag
+ * would, `refused` is called, and the release clicks nothing. No row moves.
+ */
+export function watchRefusedDrag(event: MouseEvent, refused: () => void) {
+  if (event.button !== 0) return;
+  const startX = event.clientX;
+  const startY = event.clientY;
+  let dragged = false;
+  const onMove = (move: globalThis.MouseEvent) => {
+    if (dragged || Math.hypot(move.clientX - startX, move.clientY - startY) < DRAG_DISTANCE) return;
+    dragged = true;
+    refused();
+  };
+  const onUp = () => {
+    window.removeEventListener("mousemove", onMove, true);
+    window.removeEventListener("mouseup", onUp, true);
+    if (dragged) swallowClick();
+  };
+  window.addEventListener("mousemove", onMove, true);
+  window.addEventListener("mouseup", onUp, true);
+}
+
+/**
+ * Press, move and release on a sidebar row or a Task row. Mouse events rather than HTML drag
  * and drop: the desktop window gives file drops to the shell, and these rows
  * never leave it. Escape puts the row back.
  */
@@ -82,13 +114,14 @@ export function useRowDrag(options: RowDragOptions) {
       active = true;
       setDragging(id);
       document.body.classList.add("row-dragging");
-      // Holding near the sidebar's edge keeps scrolling it.
+      // Holding near the edge of the area that scrolls keeps scrolling it.
       scroller = window.setInterval(() => {
-        const sidebar = latest.current.container.current?.closest<HTMLElement>(".sidebar");
-        if (!sidebar) return;
-        const box = sidebar.getBoundingClientRect();
-        if (lastY < box.top + SCROLL_EDGE) sidebar.scrollTop -= SCROLL_STEP;
-        else if (lastY > box.bottom - SCROLL_EDGE) sidebar.scrollTop += SCROLL_STEP;
+        const { scrollArea, container } = latest.current;
+        const area = scrollArea ? scrollArea.current : container.current?.closest<HTMLElement>(".sidebar");
+        if (!area) return;
+        const box = area.getBoundingClientRect();
+        if (lastY < box.top + SCROLL_EDGE) area.scrollTop -= SCROLL_STEP;
+        else if (lastY > box.bottom - SCROLL_EDGE) area.scrollTop += SCROLL_STEP;
         else return;
         aim();
       }, 16);
@@ -113,13 +146,6 @@ export function useRowDrag(options: RowDragOptions) {
       setDragging(null);
       setDrop(null);
       stop.current = null;
-    };
-
-    // The release after a drag would also click the row that was pressed.
-    const swallowClick = () => {
-      const swallow = (click: Event) => click.stopPropagation();
-      window.addEventListener("click", swallow, { capture: true, once: true });
-      window.setTimeout(() => window.removeEventListener("click", swallow, true));
     };
 
     function onUp() {
