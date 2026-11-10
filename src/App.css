@@ -1319,6 +1319,88 @@ kbd {
   font-size: 12px;
   color: var(--text-3);
 }
+/* Pomodoro history: one section per local day, newest first, hairline rows
+   like Removed. Numbers are tabular; the Task title is the only accent text. */
+.pomodoro-day {
+  margin: 20px 0 0;
+}
+.pomodoro-day-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  margin: 0 0 4px;
+  padding: 0 10px;
+}
+.pomodoro-day-head h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+.pomodoro-day-total {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-3);
+}
+.pomodoro-sessions {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pomodoro-session {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) auto 64px;
+  align-items: center;
+  gap: 12px;
+  min-height: 32px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--sep);
+  color: var(--text-2);
+}
+.pomodoro-session-time,
+.pomodoro-session-length {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pomodoro-session-task {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pomodoro-task-link {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--accent-text);
+  font: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.pomodoro-task-link:hover {
+  text-decoration: underline;
+}
+.pomodoro-no-task,
+.pomodoro-session-outcome {
+  color: var(--text-3);
+}
+.pomodoro-session-outcome {
+  font-size: 12px;
+}
+/* Listed, not counted: the whole row steps down a gray. */
+.pomodoro-session[data-outcome="stopped"] {
+  color: var(--text-3);
+}
+.pomodoro-more {
+  margin-top: 12px;
+}
+
 /* Waiting for approval: one block per request, hairline-separated like Removed. */
 .approval-list {
   margin: 0;
@@ -2393,6 +2475,14 @@ kbd {
 @media (max-width: 720px) {
   .toolbar-search {
     width: 140px;
+  }
+  /* The length and outcome move under the Task. */
+  .pomodoro-session {
+    grid-template-columns: 64px minmax(0, 1fr) auto;
+    row-gap: 2px;
+  }
+  .pomodoro-session-length {
+    grid-column: 2;
   }
   .notes-workspace {
     grid-template-columns: minmax(0, 1fr);

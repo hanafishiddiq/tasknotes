@@ -108,6 +108,17 @@ struct Changed {
     view: PomodoroView,
     /// A Task that gained a Pomodoro Progress Entry.
     task_changed: Option<String>,
+    /// A session was stored just now, so the history has a new entry.
+    session_stored: bool,
+}
+
+/// What storing a step's ended sessions did, for the page.
+#[derive(Default)]
+struct Stored {
+    /// A Task that gained a Pomodoro Progress Entry.
+    task_changed: Option<String>,
+    /// At least one session was stored.
+    any: bool,
 }
 
 /// At launch, after the shell settings are read: the notifications' buttons,
@@ -166,8 +177,8 @@ pub fn start<R: Runtime>(app: &AppHandle<R>, durations: PomodoroDurations, silen
             shell.shared.run_ticks(
                 || shell.now(),
                 |step| {
-                    let task_changed = perform(&handle, step);
-                    publish(&handle, task_changed);
+                    let stored = perform(&handle, step);
+                    publish(&handle, stored);
                 },
             );
         });
@@ -186,17 +197,17 @@ fn run<R: Runtime>(
     let step = step(&mut shell.lock(), shell.now());
     shell.shared.wake();
     let changed = step.changed;
-    let task_changed = perform(app, step);
-    if changed {
-        publish(app, task_changed)
+    let stored = perform(app, step);
+    if changed || stored.any {
+        publish(app, stored)
     } else {
         shell.lock().view(shell.now())
     }
 }
 
 /// Withdraws and posts notifications (in that order, on the main thread)
-/// and stores the ended sessions. Returns a Task that gained a Progress Entry.
-fn perform<R: Runtime>(app: &AppHandle<R>, step: Step) -> Option<String> {
+/// and stores the ended sessions.
+fn perform<R: Runtime>(app: &AppHandle<R>, step: Step) -> Stored {
     if step.withdraw || step.notify.is_some() {
         let handle = app.clone();
         let (withdraw, notify) = (step.withdraw, step.notify);
@@ -210,12 +221,13 @@ fn perform<R: Runtime>(app: &AppHandle<R>, step: Step) -> Option<String> {
         });
     }
     let shell = app.state::<PomodoroShell>();
-    let mut task_changed = None;
+    let mut stored = Stored::default();
     for session in step.record {
         let result = record(app, session.clone());
-        task_changed = shell.lock().saved(session, result).or(task_changed);
+        stored.any |= result.is_ok();
+        stored.task_changed = shell.lock().saved(session, result).or(stored.task_changed);
     }
-    task_changed
+    stored
 }
 
 /// Stores one ended session in the core.
@@ -227,7 +239,7 @@ fn record<R: Runtime>(app: &AppHandle<R>, session: EndedSession) -> Result<Optio
 }
 
 /// Brings the menu bar up to date and tells the page.
-fn publish<R: Runtime>(app: &AppHandle<R>, task_changed: Option<String>) -> PomodoroView {
+fn publish<R: Runtime>(app: &AppHandle<R>, stored: Stored) -> PomodoroView {
     let shell = app.state::<PomodoroShell>();
     let view = shell.lock().view(shell.now());
     refresh_tray(app);
@@ -235,7 +247,8 @@ fn publish<R: Runtime>(app: &AppHandle<R>, task_changed: Option<String>) -> Pomo
         CHANGED,
         Changed {
             view: view.clone(),
-            task_changed,
+            task_changed: stored.task_changed,
+            session_stored: stored.any,
         },
     );
     view
@@ -441,4 +454,34 @@ pub fn pomodoro_command(app: AppHandle, command: Command) -> PomodoroView {
 #[tauri::command]
 pub fn open_notification_settings(app: AppHandle) -> Result<(), String> {
     crate::macos_notifications::open_settings(&app.config().identifier)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The page reads the history again on `sessionStored` and on nothing
+    /// else the timer sends each second (`src/lib/pomodoro-api.ts`).
+    #[test]
+    fn the_page_hears_when_a_session_was_stored() {
+        let view = Pomodoro::new(PomodoroDurations::default(), false).view(Moment {
+            wall: 1_794_243_600_000,
+            awake: 0,
+        });
+        let sent = |stored: Stored| {
+            serde_json::to_value(Changed {
+                view: view.clone(),
+                task_changed: stored.task_changed,
+                session_stored: stored.any,
+            })
+            .unwrap()
+        };
+        let stored = sent(Stored {
+            task_changed: Some("task-1".into()),
+            any: true,
+        });
+        assert_eq!(stored["sessionStored"], true);
+        assert_eq!(stored["taskChanged"], "task-1");
+        assert_eq!(sent(Stored::default())["sessionStored"], false);
+    }
 }

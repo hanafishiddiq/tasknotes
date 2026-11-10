@@ -45,7 +45,50 @@ export interface PomodoroChanged {
   view: PomodoroView;
   /** A Task that gained a Pomodoro Progress Entry. */
   taskChanged: string | null;
+  /** A session was stored just now: the history has a new entry. */
+  sessionStored: boolean;
 }
+
+/** A stored session as the history shows it (`tasknotes_core::pomodoro::HistorySession`). */
+export interface HistorySession {
+  id: string;
+  startedAt: number;
+  endedAt: number;
+  outcome: "finished" | "stopped";
+  plannedSeconds: number;
+  overtimeSeconds: number;
+  /** Whole minutes, rounded as the session's Progress Entry says them. */
+  plannedMinutes: number;
+  /** The Overtime the person counted, in whole minutes; 0 for a Stopped session. */
+  overtimeMinutes: number;
+  taskId: string | null;
+  /** Null without a Task, or while its Task is in Removed (`taskRemoved`). */
+  taskTitle: string | null;
+  taskRemoved: boolean;
+}
+
+/**
+ * One local day with sessions, as the core counts it: only Finished sessions
+ * count, and focus is their planned length plus counted Overtime.
+ */
+export interface PomodoroDay {
+  /** YYYY-MM-DD on this Mac's clock; a session belongs to the day it started. */
+  date: string;
+  finishedSessions: number;
+  focusMinutes: number;
+  stoppedSessions: number;
+  /** Newest first. */
+  sessions: HistorySession[];
+}
+
+export interface PomodoroHistoryPage {
+  /** Newest day first. */
+  items: PomodoroDay[];
+  nextCursor: string | null;
+}
+
+/** Days the history page reads at a time. */
+export const HISTORY_PAGE_DAYS = 14;
 
 export type PomodoroCommand =
   | { action: "start_focus"; taskId: string | null }
@@ -59,6 +102,10 @@ export type PomodoroCommand =
 
 export const pomodoroApi = {
   state: () => invoke<PomodoroView>("pomodoro_state"),
+  /** The daily history, newest day first; `cursor` continues after an earlier page. */
+  history: (cursor: string | null = null) => invoke<PomodoroHistoryPage>(
+    "pomodoro_history", { from: null, to: null, limit: HISTORY_PAGE_DAYS, cursor },
+  ),
   command: (command: PomodoroCommand) => invoke<PomodoroView>("pomodoro_command", { command }),
   setDurations: (durations: PomodoroDurations) =>
     invoke<PomodoroView>("set_pomodoro_durations", { durations }),
