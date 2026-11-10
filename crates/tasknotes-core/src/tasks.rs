@@ -164,6 +164,15 @@ pub enum TaskError {
     InvalidStyleIcon,
     #[error("Unknown colour: choose one of Tasknotes' twelve colour names (style options)")]
     InvalidStyleColor,
+    #[error(
+        "Pomodoro lengths: focus 1–{focus} minutes, breaks 1–{breaks} minutes, a long break after 1–{sessions} sessions",
+        focus = crate::pomodoro::MAX_FOCUS_MINUTES,
+        breaks = crate::pomodoro::MAX_BREAK_MINUTES,
+        sessions = crate::pomodoro::MAX_SESSIONS_BEFORE_LONG_BREAK
+    )]
+    InvalidPomodoroDurations,
+    #[error("This Pomodoro Session cannot be stored: its times or outcome do not fit together")]
+    InvalidPomodoroSession,
     #[error("Bulk Change request not found")]
     BulkRequestNotFound,
     #[error("This request has already been decided")]
@@ -246,7 +255,9 @@ impl TaskError {
             | InvalidStyleColor
             | CustomOrderNeedsOneList
             | InvalidTaskPlace
-            | InvalidBulkSelection => "invalid_input",
+            | InvalidBulkSelection
+            | InvalidPomodoroDurations
+            | InvalidPomodoroSession => "invalid_input",
             InvalidCursor
             | InvalidHistoryCursor
             | InvalidRemovedCursor
@@ -886,7 +897,7 @@ const WONT_DO_FROM_COLUMN: usize = 15;
 pub(crate) const COLUMN_COUNT: usize = 16;
 
 /// The database schema this core reads and writes.
-pub const SCHEMA_VERSION: i64 = 21;
+pub const SCHEMA_VERSION: i64 = 22;
 
 /// How long a write waits for another process (the CLI, MCP) holding the database lock.
 pub const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -1120,6 +1131,11 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), TaskError> {
     if version < 21 {
         let migration = connection.transaction()?;
         crate::organization::migrate_v21(&migration)?;
+        migration.commit()?;
+    }
+    if version < 22 {
+        let migration = connection.transaction()?;
+        crate::pomodoro::migrate_v22(&migration)?;
         migration.commit()?;
     }
     Ok(())

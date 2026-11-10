@@ -94,6 +94,7 @@ mod manual_order;
 pub mod note_folders;
 pub mod notes;
 mod organization;
+pub mod pomodoro;
 pub mod privacy;
 pub mod removed;
 mod search;

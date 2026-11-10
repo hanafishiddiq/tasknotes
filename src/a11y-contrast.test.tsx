@@ -50,6 +50,14 @@ const TEXT: Record<string, Placement> = {
   ".sidebar-link": { on: ["sidebar"] },
   ".sidebar-link:hover:not(:disabled)": { on: ["sidebar"] },
   ".folder-form select": { on: ["field"] },
+  // The Pomodoro control at the foot of the sidebar
+  ".pomodoro": { on: ["sidebar"] },
+  ".pomodoro-time": { on: ["sidebar"] },
+  '.pomodoro[data-phase="focus_done"] .pomodoro-time': { on: ["sidebar"] },
+  ".pomodoro-status": { on: ["sidebar"] },
+  ".pomodoro-start select": { on: ["field"] },
+  ".pomodoro-tip p": { on: ["sidebar"] },
+  ".pomodoro-error": { on: ["sidebar"] },
   // Icon and colour picker, inline in the sidebar
   ".style-picker-preview": { on: ["sidebar"] },
   ".style-search": { on: ["field"] },
@@ -92,6 +100,10 @@ const TEXT: Record<string, Placement> = {
   ".settings-backup-kind": { on: ["bg"] },
   ".settings-hint--error": { on: ["bg"] },
   ".settings-hint--error p:first-child": { on: ["bg"] },
+  ".settings-pomodoro-row": { on: ROW },
+  ".settings-pomodoro-row input": { on: ["field"] },
+  ".settings-pomodoro-unit": { on: ROW },
+  ".settings-pomodoro .settings-hint--error": { on: ["bg"] },
   "kbd": { on: ["bg"] },
   // Palette
   ".palette-field input": { on: ["sidebar"] },
@@ -243,6 +255,7 @@ const NO_PAIR_NEEDED: Record<string, string> = {
   ".folder-form--nested svg": "decorative icon beside its field",
   ".style-picker-preview svg": "decorative preview beside its name; each chosen colour is checked in style-picker.test",
   ".settings-choice svg": "decorative icon beside its label",
+  ".pomodoro-head svg": "decorative icon beside its name",
   ".note-hit svg": "decorative icon beside its title",
   ".linked-open svg": "decorative icon beside its title",
   ".note-folder-picker svg": "decorative icon beside its select",
@@ -258,7 +271,7 @@ const NO_PAIR_NEEDED: Record<string, string> = {
 const DECORATIVE_LINES = [
   ".undo-bar", ".task-toast", ".sidebar", ".toolbar", ".settings-shortcut", ".settings-backup", ".palette", ".palette-field",
   ".removed-item", ".approval", ".task-slot + .task-slot .task-card::before", ".history-entry", ".linked-item",
-  ".note-list-pane", ".next-step-input", ".note-quote", ".style-picker",
+  ".note-list-pane", ".next-step-input", ".note-quote", ".style-picker", ".pomodoro", ".pomodoro-tip",
   // The sidebar's resize edge lights up under the pointer; its separator role and focus ring carry the meaning.
   ".sidebar-resizer:hover::after", "body.sidebar-resizing .sidebar-resizer::after",
 ];
@@ -268,6 +281,7 @@ const OUTLINED_LIKE_THE_RING = [
   ".toolbar-search:focus-within", ".toolbar-sort:focus-within", ".settings-choice:has(input:focus-visible)",
   ".settings-mute:focus-visible", ".settings-sound-row input:focus-visible", ".property:focus-within",
   ".progress-number:focus-within", ".progress-note-input:focus-visible", ".note-search:focus-within",
+  ".pomodoro-start select:focus-visible", ".settings-pomodoro-row input:focus-visible",
 ];
 
 /** Text colours as selected text, against the highlight over what they are written on. */

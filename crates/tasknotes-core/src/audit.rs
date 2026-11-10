@@ -107,6 +107,7 @@ actions! {
     BulkApprove => "bulk.approve",
     BulkDecline => "bulk.decline",
     BackupRestore => "backup.restore",
+    PomodoroRecord => "pomodoro.record",
 }
 
 impl AuditAction {
@@ -126,6 +127,7 @@ impl AuditAction {
             | FolderRemove | FolderRestore => "note_folders",
             LinkCreate | LinkRemove | LinkRestore => "task_note_links",
             BulkRequest | BulkApprove | BulkDecline => "bulk_requests",
+            PomodoroRecord => "pomodoro_sessions",
             BackupRestore => return None,
         })
     }

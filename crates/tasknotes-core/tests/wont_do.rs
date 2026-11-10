@@ -582,7 +582,8 @@ fn a_wont_do_task_names_the_work_status_it_returns_to() {
 fn back_to_v17(db: &Path) {
     let conn = Connection::open(db).unwrap();
     conn.execute_batch(
-        "DROP INDEX lists_parent; DROP INDEX lists_manual_order;
+        "DROP TABLE pomodoro_sessions;
+         DROP INDEX lists_parent; DROP INDEX lists_manual_order;
          DROP INDEX lists_sibling_name; ALTER TABLE lists DROP COLUMN parent_id;
          CREATE INDEX lists_manual_order ON lists(position, id);
          DROP INDEX tasks_custom_order; ALTER TABLE tasks DROP COLUMN position; DROP TABLE view_sorts;

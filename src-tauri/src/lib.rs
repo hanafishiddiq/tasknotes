@@ -20,7 +20,13 @@ use tauri::{Manager, State};
 
 mod data;
 #[cfg(desktop)]
+mod macos_notifications;
+#[cfg(desktop)]
 mod platform;
+#[cfg(desktop)]
+mod pomodoro;
+#[cfg(desktop)]
+mod pomodoro_state;
 #[cfg(feature = "qa-probe")]
 mod qa_probe;
 #[cfg(desktop)]
@@ -452,7 +458,9 @@ fn decline_bulk_request(store: State<'_, TaskStore>, id: String) -> Result<BulkR
 pub fn run() {
     let builder = tauri::Builder::default();
     #[cfg(desktop)]
-    let builder = builder.plugin(shell::shortcut_plugin());
+    let builder = builder
+        .plugin(shell::shortcut_plugin())
+        .plugin(tauri_plugin_notification::init());
     builder
         .manage(quit::QuitState::default())
         .menu(quit::menu)
@@ -550,7 +558,19 @@ pub fn run() {
             #[cfg(desktop)]
             shell::take_quick_capture,
             #[cfg(desktop)]
-            shell::take_launch_notice
+            shell::take_launch_notice,
+            #[cfg(desktop)]
+            shell::set_pomodoro_durations,
+            #[cfg(desktop)]
+            shell::take_pomodoro_tip,
+            #[cfg(desktop)]
+            pomodoro::pomodoro_state,
+            #[cfg(desktop)]
+            pomodoro::pomodoro_command,
+            #[cfg(desktop)]
+            shell::set_pomodoro_silent,
+            #[cfg(desktop)]
+            pomodoro::open_notification_settings
         ])
         .build(tauri::generate_context!())
         .expect("Unable to launch Tasknotes")
@@ -558,9 +578,15 @@ pub fn run() {
 }
 
 /// Clicking the Dock icon brings back a window hidden to the menu bar. Other
-/// systems reopen from the tray item, so there is nothing to do there.
-#[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
+/// systems reopen from the tray item, so there is nothing to do there. As the
+/// app ends, however it quits, a running Pomodoro Session is stored.
+#[cfg_attr(not(desktop), allow(unused_variables))]
 fn on_run_event(app: &tauri::AppHandle, event: tauri::RunEvent) {
+    #[cfg(desktop)]
+    if let tauri::RunEvent::Exit = event {
+        pomodoro::save_on_quit(app);
+        return;
+    }
     #[cfg(target_os = "macos")]
     if let tauri::RunEvent::Reopen {
         has_visible_windows: false,

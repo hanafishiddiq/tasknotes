@@ -22,6 +22,9 @@ import NewTaskToast from "./components/NewTaskToast";
 import { useLocalCalendarDay } from "./lib/use-local-calendar-day";
 import { useTheme } from "./lib/use-theme";
 import { useSound } from "./lib/sound/use-sound";
+import { usePomodoro } from "./lib/use-pomodoro";
+import PomodoroControl from "./components/PomodoroControl";
+import PomodoroSettings from "./components/PomodoroSettings";
 import { useShortcuts } from "./lib/use-shortcuts";
 import { useTaskDrafts } from "./lib/use-task-drafts";
 import { flushSync } from "react-dom";
@@ -198,6 +201,8 @@ export default function App() {
   const outsideRead = useRef(0);
 
   useOutsideChanges(showOutsideChanges);
+  // Silent is the Pomodoro's own setting, kept by the shell; sound settings play no part.
+  const pomodoro = usePomodoro({ onTaskChanged: () => void showOutsideChanges() });
 
   // Before paint, so the rows never show in their new place.
   useLayoutEffect(() => {
@@ -1204,6 +1209,7 @@ export default function App() {
     <div className="app-shell" inert={paletteOpen} ref={sidebar.shellRef}
       style={{ "--sidebar-width": `${sidebar.width}px` } as CSSProperties}>
       <TaskSidebar
+        pomodoro={<PomodoroControl pomodoro={pomodoro} tasks={tasks} openTaskId={expandedId} />}
         view={view} notesActive={workspace !== "tasks"} onOpenNotes={() => openNotes()}
         removedActive={workspace === "removed"} onOpenRemoved={openRemoved}
         pendingApprovals={approvals.count} approvalsActive={workspace === "approvals"}
@@ -1551,6 +1557,7 @@ export default function App() {
       <SettingsView hidden={workspace !== "settings"} preference={appearance.preference}
         onPreference={appearance.setPreference}>
         <SoundSettings sound={sound} />
+        <PomodoroSettings pomodoro={pomodoro} />
       </SettingsView>
       <RemovedView hidden={workspace !== "removed"} refreshKey={removedKey} onRestored={restored} />
       <ApprovalsView hidden={workspace !== "approvals"} refreshKey={approvals.count}

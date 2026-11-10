@@ -309,7 +309,8 @@ fn v9_database(db: &Path) -> String {
     rusqlite::Connection::open(db)
         .unwrap()
         .execute_batch(
-            "DROP TRIGGER audit_entries_append_only_update;
+            "DROP TABLE pomodoro_sessions;
+             DROP TRIGGER audit_entries_append_only_update;
              DROP TRIGGER audit_entries_append_only_delete;
              DROP TABLE audit_entries;
              DROP TABLE retired_revisions;

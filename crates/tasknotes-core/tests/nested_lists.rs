@@ -678,14 +678,15 @@ fn exports_keep_the_nesting() {
     assert!(reports_file.contains("Synthetic weekly report"));
 }
 
-/// Puts a database back as schema v20 left it: Lists had no parent, and
-/// their names were unique among all Lists not in Removed. Tasks keep the
-/// Custom Order v20 gave them.
+/// Puts a database back as schema v20 left it: no Pomodoro Sessions (v22),
+/// Lists had no parent, and their names were unique among all Lists not in
+/// Removed. Tasks keep the Custom Order v20 gave them.
 fn back_to_v20(db: &Path) {
     Connection::open(db)
         .unwrap()
         .execute_batch(
-            "DROP INDEX lists_parent; DROP INDEX lists_manual_order;
+            "DROP TABLE pomodoro_sessions;
+             DROP INDEX lists_parent; DROP INDEX lists_manual_order;
              DROP INDEX lists_sibling_name; ALTER TABLE lists DROP COLUMN parent_id;
              CREATE UNIQUE INDEX lists_active_name ON lists(name COLLATE NOCASE)
                WHERE removed_at IS NULL;

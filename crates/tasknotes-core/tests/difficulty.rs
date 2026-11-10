@@ -298,7 +298,8 @@ fn a_difficulty_filter_reads_and_writes_a_level_name_or_none() {
 fn back_to_v16(db: &Path) {
     let conn = Connection::open(db).unwrap();
     conn.execute_batch(
-        "DROP INDEX lists_parent; DROP INDEX lists_manual_order;
+        "DROP TABLE pomodoro_sessions;
+         DROP INDEX lists_parent; DROP INDEX lists_manual_order;
          DROP INDEX lists_sibling_name; ALTER TABLE lists DROP COLUMN parent_id;
          CREATE INDEX lists_manual_order ON lists(position, id);
          DROP INDEX tasks_status_difficulty_order;

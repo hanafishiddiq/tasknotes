@@ -995,7 +995,8 @@ fn a_backup_from_an_older_schema_is_upgraded_on_restore() {
         rusqlite::Connection::open(snapshot_path(&fx, &backup))
             .unwrap()
             .execute_batch(&format!(
-                "DROP TABLE retired_revisions;
+                "DROP TABLE pomodoro_sessions;
+                 DROP TABLE retired_revisions;
                  DROP TABLE bulk_requests;
                  ALTER TABLE audit_entries DROP COLUMN requested_by;
                  DROP INDEX tasks_status_difficulty_order; ALTER TABLE tasks DROP COLUMN difficulty; ALTER TABLE lists DROP COLUMN icon; ALTER TABLE lists DROP COLUMN color;
