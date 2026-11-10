@@ -9,8 +9,9 @@ use tasknotes_core::audit::{AuditAction, AuditOutcome, Interface};
 use tasknotes_core::export::{ExportFormat, ExportRequest};
 use tasknotes_core::removed::SetRemoved;
 use tasknotes_core::tasks::{
-    ChangeTask, CreateList, CreateTask, List, MoveTask, Priority, ReorderTask, SCHEMA_VERSION,
-    SortMode, Task, TaskError, TaskQuery, TaskStore, TaskView, ViewSort, WorkStatus,
+    ChangeTask, CreateList, CreateTask, Difficulty, List, MoveTask, Priority, ReorderTask,
+    SCHEMA_VERSION, SortMode, Task, TaskError, TaskQuery, TaskStore, TaskView, ViewSort,
+    WorkStatus,
 };
 
 fn store_at(path: &Path) -> TaskStore {
@@ -235,8 +236,9 @@ fn a_stale_revision_is_refused_and_recorded_and_an_applied_move_is_audited() {
         ]
     );
     assert_eq!(AuditAction::TaskReorder.as_str(), "task.reorder");
-    // The CLI reads and moves the Custom Order; the List's sort is the person's.
-    assert_eq!(sort_of(&desktop, &TaskView::Inbox), None);
+    // A move through the CLI switches Inbox to Custom (Q37), so the person
+    // sees it; the refused one before it switched nothing.
+    assert_eq!(sort_of(&desktop, &TaskView::Inbox), Some(SortMode::Custom));
 }
 
 #[test]
@@ -551,4 +553,291 @@ fn upgrading_from_v19_starts_custom_order_newest_first_and_changes_nothing_else(
     assert_eq!(custom(&store, None), ["I2", "I1"]);
     assert!(store.view_sorts().unwrap().is_empty());
     assert_eq!(rows(), before);
+}
+
+fn set_priority(store: &TaskStore, task: &Task, priority: Priority) {
+    store
+        .change_task(ChangeTask {
+            id: task.id.clone(),
+            expected_revision: now(store, task).revision,
+            priority: Some(priority),
+            ..ChangeTask::default()
+        })
+        .unwrap();
+}
+
+/// A List whose Tasks differ in every way a sort looks at: work status,
+/// priority, Difficulty, and creation times that tie, so the id decides.
+/// One Task is in Removed; it keeps a place no one sees.
+fn mixed_list(store: &TaskStore, db: &Path, name: &str) -> (List, Vec<Task>) {
+    let work = list(store, name);
+    let mut made = Vec::new();
+    for n in 0..12 {
+        let task = task_in(store, &format!("{name} {n:02}"), Some(&work));
+        store
+            .change_task(ChangeTask {
+                id: task.id.clone(),
+                expected_revision: task.revision,
+                status: Some(
+                    [
+                        WorkStatus::Ready,
+                        WorkStatus::InProgress,
+                        WorkStatus::Completed,
+                    ][n % 3],
+                ),
+                priority: Some(
+                    [
+                        Priority::Low,
+                        Priority::VeryHigh,
+                        Priority::Medium,
+                        Priority::High,
+                    ][n % 4],
+                ),
+                difficulty: Some(
+                    [None, Some(Difficulty::Hard), Some(Difficulty::VeryEasy)][n / 3 % 3],
+                ),
+                ..ChangeTask::default()
+            })
+            .unwrap();
+        made.push(task);
+    }
+    // Pairs created in the same millisecond: the id settles their order.
+    Connection::open(db)
+        .unwrap()
+        .execute(
+            "UPDATE tasks SET created_at = 1000 + (rowid / 2) WHERE list_id = ?1",
+            params![work.id],
+        )
+        .unwrap();
+    let gone = &made[4];
+    store
+        .set_task_removed(SetRemoved {
+            id: gone.id.clone(),
+            expected_revision: now(store, gone).revision,
+            removed: true,
+        })
+        .unwrap();
+    (work, made)
+}
+
+/// Starting a Custom Order from the order on screen, by choosing Custom or
+/// by a drag, uses the very order a page of that sort lists (one shared
+/// definition), for every sort a List can show.
+#[test]
+fn custom_starts_from_exactly_the_order_each_sort_lists() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("seed.db");
+    let store = store_at(&db);
+    for sort in SortMode::ALL.into_iter().filter(|s| *s != SortMode::Custom) {
+        let (chosen, _) = mixed_list(&store, &db, &format!("Chosen {sort:?}"));
+        let view = view_of(Some(&chosen));
+        store.set_view_sort(&view, sort).unwrap();
+        let listed = titles(&store, view.clone(), sort);
+        assert_eq!(listed.len(), 11, "{sort:?}");
+        store.set_view_sort(&view, SortMode::Custom).unwrap();
+        assert_eq!(
+            titles(&store, view.clone(), SortMode::Custom),
+            listed,
+            "{sort:?}"
+        );
+
+        let (dragged, made) = mixed_list(&store, &db, &format!("Dragged {sort:?}"));
+        let view = view_of(Some(&dragged));
+        store.set_view_sort(&view, sort).unwrap();
+        let mut listed = titles(&store, view.clone(), sort);
+        // The last Ready Task on screen, dropped above the first Ready one.
+        let at = |listed: &[String], task: &Task| {
+            listed
+                .iter()
+                .position(|title| *title == task.title)
+                .unwrap()
+        };
+        let mut ready: Vec<&Task> = made
+            .iter()
+            .filter(|task| now(&store, task).status == WorkStatus::Ready)
+            .collect();
+        ready.sort_by_key(|task| at(&listed, task));
+        let (first, last) = (ready[0], ready[ready.len() - 1]);
+        reorder(&store, last, None, Some(first), Some(sort)).unwrap();
+        let (from, to) = (at(&listed, last), at(&listed, first));
+        let moving = listed.remove(from);
+        listed.insert(to, moving);
+        assert_eq!(
+            titles(&store, view.clone(), SortMode::Custom),
+            listed,
+            "{sort:?}"
+        );
+        assert_eq!(sort_of(&store, &view), Some(SortMode::Custom));
+    }
+}
+
+/// Q35: choosing Custom for a List that has none of its own yet starts it
+/// from the order on screen, as a drag does. Once it has one, looking by
+/// another sort and back brings that one back (spec story 9).
+#[test]
+fn choosing_custom_starts_from_the_order_on_screen_then_keeps_that_order() {
+    let (_dir, store) = fresh();
+    let work = list(&store, "Synthetic Work");
+    let low = task_in(&store, "Low", Some(&work));
+    let high = task_in(&store, "High", Some(&work));
+    task_in(&store, "Mid", Some(&work));
+    set_priority(&store, &low, Priority::Low);
+    set_priority(&store, &high, Priority::VeryHigh);
+    let view = view_of(Some(&work));
+    // Newest first is where new Tasks land; the screen shows Priority.
+    assert_eq!(custom(&store, Some(&work)), ["Mid", "High", "Low"]);
+    assert_eq!(sort_of(&store, &view), None);
+
+    // A List that remembers no sort shows Priority.
+    store.set_view_sort(&view, SortMode::Custom).unwrap();
+    assert_eq!(custom(&store, Some(&work)), ["High", "Mid", "Low"]);
+    assert_eq!(sort_of(&store, &view), Some(SortMode::Custom));
+
+    // Its own order now: arranged, then looked at by another sort and back.
+    after(&store, &low, None).unwrap();
+    assert_eq!(custom(&store, Some(&work)), ["Low", "High", "Mid"]);
+    store.set_view_sort(&view, SortMode::Newest).unwrap();
+    store.set_view_sort(&view, SortMode::Custom).unwrap();
+    assert_eq!(custom(&store, Some(&work)), ["Low", "High", "Mid"]);
+
+    // Inbox starts from the sort it remembers, Hardest first here: by
+    // Priority or as new Tasks land, Newer would come first.
+    let older = task_in(&store, "Older", None);
+    let newer = task_in(&store, "Newer", None);
+    set_priority(&store, &newer, Priority::VeryHigh);
+    store
+        .change_task(ChangeTask {
+            id: older.id.clone(),
+            expected_revision: older.revision,
+            difficulty: Some(Some(Difficulty::Hard)),
+            ..ChangeTask::default()
+        })
+        .unwrap();
+    assert_eq!(custom(&store, None), ["Newer", "Older"]);
+    store
+        .set_view_sort(&TaskView::Inbox, SortMode::Difficulty)
+        .unwrap();
+    store
+        .set_view_sort(&TaskView::Inbox, SortMode::Custom)
+        .unwrap();
+    assert_eq!(custom(&store, None), ["Older", "Newer"]);
+}
+
+/// Q37: a move through the CLI or MCP switches its List to Custom, as a
+/// drag does, so the person sees the order the AI made. It moves within
+/// the Custom Order the AI read. A refused move switches nothing.
+#[test]
+fn a_move_from_any_interface_switches_its_list_to_custom() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("q37.db");
+    let desktop = store_at(&db);
+    let work = list(&desktop, "Synthetic Work");
+    let one = task_in(&desktop, "One", Some(&work));
+    let two = task_in(&desktop, "Two", Some(&work));
+    let three = task_in(&desktop, "Three", Some(&work));
+    set_priority(&desktop, &one, Priority::VeryHigh);
+    let view = view_of(Some(&work));
+    desktop.set_view_sort(&view, SortMode::Priority).unwrap();
+
+    for interface in [Interface::Cli, Interface::Mcp] {
+        let ai = TaskStore::open_as(&db, interface).unwrap();
+        // Refused: nothing moves and the List keeps its sort.
+        let err = after(&ai, &two, Some(&three)).unwrap_err();
+        assert_eq!(err.code(), "unchanged");
+        assert_eq!(sort_of(&desktop, &view), Some(SortMode::Priority));
+        let err = after(&ai, &three, Some(&now(&desktop, &three))).unwrap_err();
+        assert_eq!(err.code(), "unchanged");
+        assert_eq!(sort_of(&desktop, &view), Some(SortMode::Priority));
+
+        // The AI read Three, Two, One in Custom and puts Three last.
+        assert_eq!(custom(&ai, Some(&work)), ["Three", "Two", "One"]);
+        after(&ai, &three, Some(&one)).unwrap();
+        assert_eq!(custom(&desktop, Some(&work)), ["Two", "One", "Three"]);
+        assert_eq!(sort_of(&desktop, &view), Some(SortMode::Custom));
+
+        // Back as it was for the next interface.
+        after(&ai, &three, None).unwrap();
+        desktop.set_view_sort(&view, SortMode::Priority).unwrap();
+    }
+}
+
+/// Finding 6: switching a large List to Custom rewrites every position in
+/// one transaction. Timed on 5,000 synthetic Tasks; the budget is loose so
+/// a slow machine still passes, and the time is printed for the record.
+#[test]
+fn switching_a_list_of_5000_tasks_to_custom_is_quick() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("large.db");
+    let store = store_at(&db);
+    let chosen = list(&store, "Synthetic Large Chosen");
+    let dragged = list(&store, "Synthetic Large Dragged");
+    {
+        let mut conn = Connection::open(&db).unwrap();
+        let tx = conn.transaction().unwrap();
+        let mut insert = tx
+            .prepare(
+                "INSERT INTO tasks (id, title, description, status, priority, progress,
+                 revision, created_at, updated_at, next_step, list_id, position, difficulty)
+                 VALUES (?1, ?2, '', ?3, ?4, ?5, 1, ?6, ?6, '', ?7, ?8, ?9)",
+            )
+            .unwrap();
+        for target in [&chosen, &dragged] {
+            for n in 0..5000_i64 {
+                let status = ["ready", "in_progress", "completed"][(n % 3) as usize];
+                let progress = [0, 40, 100][(n % 3) as usize];
+                let priority = ["very_low", "low", "medium", "high", "very_high"][(n % 5) as usize];
+                let difficulty = [None, Some("easy"), Some("hard")][(n % 3) as usize];
+                insert
+                    .execute(params![
+                        uuid::Uuid::new_v4().to_string(),
+                        format!("Synthetic large {n}"),
+                        status,
+                        priority,
+                        progress,
+                        1_000 + n * 7 % 4999,
+                        target.id,
+                        -n,
+                        difficulty,
+                    ])
+                    .unwrap();
+            }
+        }
+        drop(insert);
+        tx.commit().unwrap();
+    }
+    let view = view_of(Some(&chosen));
+    let listed = titles(&store, view.clone(), SortMode::Priority);
+
+    let started = std::time::Instant::now();
+    store.set_view_sort(&view, SortMode::Custom).unwrap();
+    let choose = started.elapsed();
+    assert_eq!(titles(&store, view, SortMode::Custom), listed);
+
+    let view = view_of(Some(&dragged));
+    // The top two on screen, both In Progress; the second dropped above the first.
+    let page = store
+        .query_tasks(
+            &TaskQuery {
+                view: view.clone(),
+                ..TaskQuery::default()
+            },
+            2,
+            None,
+        )
+        .unwrap()
+        .items;
+    let (first, second) = (&page[0], &page[1]);
+    assert_eq!(first.status, second.status);
+    let started = std::time::Instant::now();
+    reorder(&store, second, None, Some(first), Some(SortMode::Priority)).unwrap();
+    let drag = started.elapsed();
+    assert_eq!(sort_of(&store, &view), Some(SortMode::Custom));
+
+    eprintln!(
+        "5,000-Task List switched to Custom: by choosing it {} ms, by a drag {} ms",
+        choose.as_millis(),
+        drag.as_millis()
+    );
+    assert!(choose.as_millis() < 2_000, "{choose:?}");
+    assert!(drag.as_millis() < 2_000, "{drag:?}");
 }
