@@ -14,6 +14,8 @@ const ROW_HEIGHT = 28;
 let lists: TaskList[];
 let backend: NoteBackend;
 let refuse: string | null;
+/** Lists per page of `list_lists`; the core pages the tree in this order. */
+let pageSize: number;
 
 const eventually = (assertion: () => void) => waitFor(assertion, { timeout: 3000 });
 
@@ -42,17 +44,28 @@ function bump(id: string, change: Partial<TaskList>): TaskList {
 
 beforeAll(() => import("./components/NotesWorkspace"));
 
+/** Where the sidebar remembers which Lists are open, as Note Folders do. */
+const EXPANDED = "tasknotes.lists.expanded";
+
 beforeEach(() => {
   window.localStorage.clear();
+  // Lists start collapsed; most tests begin with the tree open.
+  window.localStorage.setItem(EXPANDED, JSON.stringify(["list-Work", "list-Reports"]));
   lists = [list("Work"), list("Reports", "list-Work"), list("Weekly", "list-Reports"), list("Home"), list("Garden")];
   backend = new NoteBackend();
   refuse = null;
+  pageSize = 100;
   invokeMock.mockReset();
   invokeMock.mockImplementation(async (command, args) => {
     const body = (args ?? {}) as Record<string, any>;
     const input = body.input;
     switch (command) {
-      case "list_lists": return { items: tree(), nextCursor: null };
+      case "list_lists": {
+        const at = Number(body.cursor ?? 0);
+        const all = tree();
+        const end = at + pageSize;
+        return { items: all.slice(at, end), nextCursor: end < all.length ? String(end) : null };
+      }
       case "list_tasks": return { items: [], nextCursor: null };
       case "quit_ready": return null;
       case "reorder_list":
@@ -114,22 +127,43 @@ async function shown() {
 }
 
 describe("Lists inside Lists", () => {
-  it("shows the tree, collapses and expands a List, and remembers it after a restart", async () => {
+  it("start collapsed like Note Folders, and remember what the person opened after a restart", async () => {
+    window.localStorage.clear();
     const user = userEvent.setup();
-    await shown();
-    expect(shownTree()).toEqual(["Work", "  Reports", "    Weekly", "Home", "Garden"]);
+    render(<App />);
+    await screen.findByRole("button", { name: "Garden" });
+    expect(shownTree()).toEqual(["Work", "Home", "Garden"]);
+    expect(within(listsNav()).getByRole("button", { name: "Expand Work" })).toHaveAttribute("aria-expanded", "false");
 
+    await user.click(within(listsNav()).getByRole("button", { name: "Expand Work" }));
+    await user.click(within(listsNav()).getByRole("button", { name: "Expand Reports" }));
+    expect(shownTree()).toEqual(["Work", "  Reports", "    Weekly", "Home", "Garden"]);
     await user.click(within(listsNav()).getByRole("button", { name: "Collapse Reports" }));
     expect(shownTree()).toEqual(["Work", "  Reports", "Home", "Garden"]);
-    expect(within(listsNav()).getByRole("button", { name: "Expand Reports" })).toHaveAttribute("aria-expanded", "false");
+    // Stored as Note Folders store theirs: the ids of the open ones.
+    expect(JSON.parse(window.localStorage.getItem(EXPANDED)!)).toEqual(["list-Work"]);
 
     cleanup();
     render(<App />);
     await screen.findByRole("button", { name: "Reports" });
     expect(shownTree()).toEqual(["Work", "  Reports", "Home", "Garden"]);
-    await user.click(within(listsNav()).getByRole("button", { name: "Expand Reports" }));
-    expect(shownTree()).toEqual(["Work", "  Reports", "    Weekly", "Home", "Garden"]);
   });
+
+  it("shows the disclosure of a List whose Lists are on the next page, and opening it loads them", async () => {
+    window.localStorage.clear();
+    lists = [list("Home"), list("Work"), list("Reports", "list-Work")];
+    pageSize = 2;
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("button", { name: "Work" });
+    expect(shownTree()).toEqual(["Home", "Work"]);
+
+    await user.click(within(listsNav()).getByRole("button", { name: "Expand Work" }));
+    await eventually(() => expect(shownTree()).toEqual(["Home", "Work", "  Reports"]));
+    expect(invokeMock.mock.calls.filter(([name]) => name === "list_lists").map(([, args]) => (args as any).cursor))
+      .toEqual([null, "2"]);
+  });
+
 
   it("drops a List into another and out to the top level again", async () => {
     await shown();
@@ -205,6 +239,7 @@ describe("Lists inside Lists", () => {
       list("Work", null, { removed: true }), list("Reports", "list-Work"),
       list("Home"), list("Garden", "list-Home", { icon: "flower", color: "green" }),
     ];
+    window.localStorage.setItem(EXPANDED, JSON.stringify(["list-Work", "list-Home"]));
     render(<App />);
     await screen.findByRole("button", { name: "Garden" });
     expect(shownTree()).toEqual(["Home", "  Garden"]);

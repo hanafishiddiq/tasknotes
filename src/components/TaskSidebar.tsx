@@ -9,6 +9,7 @@ import StyleIcon from "./StyleIcon";
 import StylePicker from "./StylePicker";
 import type { Style } from "../lib/style";
 import type { TaskList, TaskView } from "../lib/task-api";
+import { readExpanded, writeExpanded } from "../lib/expanded";
 import { listTree, parentOf } from "../lib/list-tree";
 import { alreadyThere, anchorFor, useRowDrag, type RowDrop } from "../lib/use-row-drag";
 import type { Theme } from "../lib/use-theme";
@@ -105,28 +106,27 @@ export default function TaskSidebar({
   }
 
   const tree = listTree(lists);
-  const [collapsed, setCollapsed] = useState<Set<string>>(readCollapsed);
-  const isOpen = (id: string) => !collapsed.has(id);
+  // Lists start collapsed, as Note Folders do; the open ones are remembered.
+  const [expanded, setExpanded] = useState<Set<string>>(() => readExpanded(EXPANDED_LISTS_KEY));
+  const isOpen = (id: string) => expanded.has(id);
   function setOpen(id: string, open: boolean) {
-    setCollapsed((before) => {
-      if (open !== before.has(id)) return before;
+    setExpanded((before) => {
+      if (open === before.has(id)) return before;
       const next = new Set(before);
-      if (open) next.delete(id);
-      else next.add(id);
-      writeCollapsed(next);
+      if (open) next.add(id);
+      else next.delete(id);
+      writeExpanded(EXPANDED_LISTS_KEY, next);
       return next;
     });
   }
+  /** Opens or closes a List; its Lists may be on the next page, which opening then loads. */
+  function toggle(id: string) {
+    const open = !isOpen(id);
+    setOpen(id, open);
+    if (open && tree.children(id).length === 0 && hasMoreLists) void onLoadMoreLists();
+  }
   // A List shows while every List around it is open.
-  const rows = tree.shown.filter((list) => {
-    let at = parentOf(list);
-    for (let level = 0; at && level < 64; level += 1) {
-      if (!isOpen(at)) return false;
-      const parent = tree.byId.get(at);
-      at = parent ? parentOf(parent) : null;
-    }
-    return true;
-  });
+  const rows = tree.shown.filter((list) => tree.up(list.id).slice(1).every((around) => isOpen(around.id)));
   const rowIds = rows.map((list) => list.id);
   const [moved, setMoved] = useState("");
   // The List a keyboard move carries: moving its row in the page would drop focus.
@@ -136,7 +136,7 @@ export default function TaskSidebar({
     if (!refocus.current) return;
     listsNav.current?.querySelector<HTMLElement>(`[data-list-id="${CSS.escape(refocus.current)}"]`)?.focus();
     refocus.current = null;
-  }, [lists]);
+  }, [lists, expanded]);
 
   // One move at a time: a second would name the revision the first is replacing.
   const moving = useRef(false);
@@ -148,10 +148,11 @@ export default function TaskSidebar({
     moving.current = true;
     const after = afterId && tree.byId.get(afterId)?.name;
     const parent = parentId && tree.byId.get(parentId)?.name;
+    // Open where it lands in the same render as the move, so its row, and focus, show at once.
+    if (parentId) setOpen(parentId, true);
     const placed = sameParent ? await onReorderList(list, afterId) : await onPlaceList(list, parentId, afterId);
     moving.current = false;
     if (placed) {
-      if (parentId) setOpen(parentId, true);
       setMoved(after ? `${list.name} moved after ${after}` : parent ? `${list.name} moved to the top of ${parent}` : `${list.name} moved to the top`);
     } else refocus.current = null;
   }
@@ -163,10 +164,10 @@ export default function TaskSidebar({
     }
     if (busy || moving.current) return;
     moving.current = true;
+    setOpen(parent.id, true);
     const placed = await onMoveList(list, parent.id);
     moving.current = false;
     if (placed) {
-      setOpen(parent.id, true);
       setMoved(`${list.name} moved into ${parent.name}`);
     } else refocus.current = null;
   }
@@ -292,7 +293,7 @@ export default function TaskSidebar({
       <nav ref={listsNav} aria-label="Lists" className="sidebar-nav">
         {rows.map((list) => {
           const depth = tree.depth(list.id);
-          const hasChildren = tree.children(list.id).length > 0;
+          const hasChildren = tree.hasChildren(list.id);
           const open = hasChildren && isOpen(list.id);
           const edge = dropEdge(list.id);
           // A line just below an open List's row belongs to the Lists inside it.
@@ -305,7 +306,7 @@ export default function TaskSidebar({
             {hasChildren && (
               <button type="button" className="folder-disclosure" disabled={busy}
                 aria-label={`${open ? "Collapse" : "Expand"} ${list.name}`} aria-expanded={open}
-                onClick={() => setOpen(list.id, !open)}>
+                onClick={() => toggle(list.id)}>
                 {open ? <ChevronDown size={13} aria-hidden="true" /> : <ChevronRight size={13} aria-hidden="true" />}
               </button>
             )}
@@ -402,22 +403,5 @@ export default function TaskSidebar({
   );
 }
 
-/** Which Lists the person closed; every List starts open. */
-export const COLLAPSED_LISTS_KEY = "tasknotes.lists.collapsed";
-
-function readCollapsed(): Set<string> {
-  try {
-    const stored: unknown = JSON.parse(window.localStorage.getItem(COLLAPSED_LISTS_KEY) ?? "[]");
-    return new Set(Array.isArray(stored) ? stored.filter((id): id is string => typeof id === "string") : []);
-  } catch {
-    return new Set();
-  }
-}
-
-function writeCollapsed(collapsed: Set<string>) {
-  try {
-    window.localStorage.setItem(COLLAPSED_LISTS_KEY, JSON.stringify([...collapsed]));
-  } catch {
-    // Not remembered across launches; the sidebar still works.
-  }
-}
+/** Which Lists the person opened, kept as Note Folders keep theirs (`EXPANDED_FOLDERS_KEY`). */
+export const EXPANDED_LISTS_KEY = "tasknotes.lists.expanded";

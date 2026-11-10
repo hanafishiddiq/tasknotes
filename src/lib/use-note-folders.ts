@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { errorMessage } from "./error-message";
+import { readExpanded, writeExpanded } from "./expanded";
 import { noteApi, type NoteFolder } from "./note-api";
 import { removedApi } from "./removed-api";
 import type { Style } from "./style";
@@ -21,23 +22,6 @@ export interface FolderOption {
 
 const key = (parentId: string | null) => parentId ?? "";
 
-function readExpanded(): Set<string> {
-  try {
-    const stored = JSON.parse(window.localStorage.getItem(EXPANDED_FOLDERS_KEY) ?? "[]");
-    return new Set(Array.isArray(stored) ? stored.filter((id) => typeof id === "string") : []);
-  } catch {
-    return new Set();
-  }
-}
-
-function writeExpanded(expanded: Set<string>) {
-  try {
-    window.localStorage.setItem(EXPANDED_FOLDERS_KEY, JSON.stringify([...expanded]));
-  } catch {
-    // Storage unavailable: the tree still works, it just opens collapsed next time.
-  }
-}
-
 /**
  * The Note Folder tree as the sidebar shows it: one bounded page of children
  * per open folder. Every rule (names, depth, cycles) is the core's; this only
@@ -45,7 +29,7 @@ function writeExpanded(expanded: Set<string>) {
  */
 export function useNoteFolders(enabled: boolean) {
   const [levels, setLevels] = useState<Record<string, Level>>({});
-  const [expanded, setExpanded] = useState<Set<string>>(readExpanded);
+  const [expanded, setExpanded] = useState<Set<string>>(() => readExpanded(EXPANDED_FOLDERS_KEY));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const expandedRef = useRef(expanded);
@@ -91,7 +75,7 @@ export function useNoteFolders(enabled: boolean) {
   const remember = (next: Set<string>) => {
     expandedRef.current = next;
     setExpanded(next);
-    writeExpanded(next);
+    writeExpanded(EXPANDED_FOLDERS_KEY, next);
   };
 
   async function toggle(folder: NoteFolder) {
