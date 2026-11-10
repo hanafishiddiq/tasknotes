@@ -636,10 +636,8 @@ fn iso_time(ms: i64) -> String {
     )
 }
 
-/// File names unique per directory as macOS file systems compare them:
-/// ignoring case and Unicode form, so a precomposed "Café" and one with a
-/// combining accent are one name.
-/// A List or folder as a Markdown export lays out its tree.
+/// A List or Note Folder as a Markdown export lays out its tree: its id, the
+/// id of the one it sits in (None at the top), and the name its file gets.
 struct Placed<'a> {
     id: &'a str,
     parent_id: Option<&'a str>,
@@ -679,6 +677,9 @@ fn place_tree<'a>(items: &[Placed<'a>], root: &Path, names: &mut Names) -> Vec<(
     placed
 }
 
+/// File names unique per directory as macOS file systems compare them:
+/// ignoring case and Unicode form, so a precomposed "Café" and one with a
+/// combining accent are one name.
 #[derive(Default)]
 struct Names {
     taken: HashMap<PathBuf, std::collections::HashSet<String>>,
