@@ -4,11 +4,12 @@
  * window; synthetic data only.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
 import App from "./App";
 import type { SortMode, Task, TaskList, TaskView } from "./lib/task-api";
+import { NOTICE_FADE_MS, NOTICE_MS, useBriefNotice } from "./lib/use-brief-notice";
 import { NoteBackend } from "./test/note-backend";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -398,11 +399,76 @@ describe("Custom Order", () => {
     expect(reorders()).toEqual([]);
   });
 
+  it("says quietly why a Task cannot move under a filter or across Lists", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findAllByRole("article");
+    const before = titles();
+
+    // All tasks spans every List.
+    drag("Two", onRow(0, "upper"));
+    const notice = await screen.findByText("Open one List to reorder Tasks");
+    expect(notice.closest("[aria-live='polite']")).not.toBeNull();
+    expect(notice).not.toHaveAttribute("tabindex");
+    expect(titles()).toEqual(before);
+    // The press was a drag, not a click: the Task did not open.
+    expect(openButton("Two")).toHaveAttribute("aria-expanded", "false");
+
+    act(() => openButton("Three").focus());
+    await user.keyboard("{Alt>}{ArrowUp}{/Alt}");
+    expect(openButton("Three")).toHaveFocus();
+    expect(titles()).toEqual(before);
+    // A plain click opens the Task as always, and says nothing.
+    expect(reorders()).toEqual([]);
+
+    // One List, but a search is on.
+    await user.click(screen.getByRole("button", { name: "Work" }));
+    await eventually(() => expect(document.querySelector(".task-slot[data-drag-row]")).not.toBeNull());
+    await user.type(screen.getByRole("searchbox", { name: "Search tasks and notes" }), "T");
+    await eventually(() => expect(titles()).toEqual(["Two", "Three"]));
+    act(() => openButton("Three").focus());
+    await user.keyboard("{Alt>}{ArrowUp}{/Alt}");
+    expect(await screen.findByText("Turn off filters to reorder Tasks")).toBeInTheDocument();
+    expect(openButton("Three")).toHaveFocus();
+    expect(titles()).toEqual(["Two", "Three"]);
+    expect(reorders()).toEqual([]);
+    // Its own live region beside the new Task toast's, so neither replaces the other.
+    const regions = [...document.querySelectorAll(".toast-stack [aria-live='polite']")];
+    expect(regions).toHaveLength(2);
+    expect(regions[0]).toHaveTextContent("Turn off filters to reorder Tasks");
+  });
+
   it("shows the core's order again when it refuses a move", async () => {
     await showList("Work");
     tasks.find((item) => item.id === "Three")!.revision = 5;
     drag("Three", onRow(1, "upper"));
     expect(await screen.findByText(/Revision conflict/)).toBeInTheDocument();
     await eventually(() => expect(titles()).toEqual(["Doing", "One", "Two", "Three"]));
+  });
+});
+
+describe("the brief notice", () => {
+  it("shows about 2 seconds, then fades out and leaves; a new one starts over", () => {
+    vi.useFakeTimers();
+    try {
+      const { result } = renderHook(() => useBriefNotice());
+      expect(result.current.text).toBeNull();
+      act(() => result.current.show("Turn off filters to reorder Tasks"));
+      expect(result.current.text).toBe("Turn off filters to reorder Tasks");
+      const seq = result.current.seq;
+
+      act(() => vi.advanceTimersByTime(NOTICE_MS - 500));
+      act(() => result.current.show("Open one List to reorder Tasks"));
+      expect(result.current.seq).toBeGreaterThan(seq);
+      act(() => vi.advanceTimersByTime(NOTICE_MS - 1));
+      expect(result.current.leaving).toBe(false);
+      act(() => vi.advanceTimersByTime(1));
+      expect(result.current.leaving).toBe(true);
+      act(() => vi.advanceTimersByTime(NOTICE_FADE_MS));
+      expect(result.current.text).toBeNull();
+      expect(NOTICE_MS).toBe(2000);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

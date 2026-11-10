@@ -46,6 +46,36 @@ function dropAt(
   return rows.length > 0 ? { id: null, edge: "end" } : null;
 }
 
+/** The release after a drag would also click the row that was pressed. */
+function swallowClick() {
+  const swallow = (click: Event) => click.stopPropagation();
+  window.addEventListener("click", swallow, { capture: true, once: true });
+  window.setTimeout(() => window.removeEventListener("click", swallow, true));
+}
+
+/**
+ * A press on a row that cannot move here: once it travels as far as a drag
+ * would, `refused` is called, and the release clicks nothing. No row moves.
+ */
+export function watchRefusedDrag(event: MouseEvent, refused: () => void) {
+  if (event.button !== 0) return;
+  const startX = event.clientX;
+  const startY = event.clientY;
+  let dragged = false;
+  const onMove = (move: globalThis.MouseEvent) => {
+    if (dragged || Math.hypot(move.clientX - startX, move.clientY - startY) < DRAG_DISTANCE) return;
+    dragged = true;
+    refused();
+  };
+  const onUp = () => {
+    window.removeEventListener("mousemove", onMove, true);
+    window.removeEventListener("mouseup", onUp, true);
+    if (dragged) swallowClick();
+  };
+  window.addEventListener("mousemove", onMove, true);
+  window.addEventListener("mouseup", onUp, true);
+}
+
 /**
  * Press, move and release on a sidebar row or a Task row. Mouse events rather than HTML drag
  * and drop: the desktop window gives file drops to the shell, and these rows
@@ -116,13 +146,6 @@ export function useRowDrag(options: RowDragOptions) {
       setDragging(null);
       setDrop(null);
       stop.current = null;
-    };
-
-    // The release after a drag would also click the row that was pressed.
-    const swallowClick = () => {
-      const swallow = (click: Event) => click.stopPropagation();
-      window.addEventListener("click", swallow, { capture: true, once: true });
-      window.setTimeout(() => window.removeEventListener("click", swallow, true));
     };
 
     function onUp() {

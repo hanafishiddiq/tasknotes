@@ -26,6 +26,7 @@ import { useTaskDrafts } from "./lib/use-task-drafts";
 import { flushSync } from "react-dom";
 import { useUndo } from "./lib/use-undo";
 import { useNewTaskToast } from "./lib/use-new-task-toast";
+import { useBriefNotice } from "./lib/use-brief-notice";
 import { errorMessage, isListRemoved } from "./lib/error-message";
 import { listenForQuit } from "./lib/quit";
 import { listenForQuickCapture, shellApi } from "./lib/shell-api";
@@ -114,6 +115,8 @@ export default function App() {
   const undo = useUndo();
   // "Task added · Click to edit" after a Task is created here; view state only.
   const newTaskToast = useNewTaskToast();
+  // Why a Task cannot be moved here, said when the person tries; view state only.
+  const reorderNotice = useBriefNotice();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const paletteReturn = useRef<HTMLElement | null>(null);
   // A field to focus once the Task view is showing (⌘N, ⌘F, palette).
@@ -1158,8 +1161,10 @@ export default function App() {
 
   const filtering = !sameFilters(filters, NO_FILTERS);
   // Tasks move only in one List or Inbox with nothing filtered: there the
-  // whole group is what the person sees (ADR 0010).
-  const canPlace = view.kind !== "all" && !filtering;
+  // whole group is what the person sees (ADR 0010). Elsewhere a try says why (Q36).
+  const moveBlocked = view.kind === "all" ? "Open one List to reorder Tasks"
+    : filtering ? "Turn off filters to reorder Tasks" : null;
+  const canPlace = moveBlocked === null;
   const filterControlsActive = filtering || searchDraft.trim() !== "" || tagDraft.trim() !== "";
   const captureOpen = title.length > 0 || description.length > 0;
   const captureDisabled = creating || Boolean(savingId) || loading || loadError;
@@ -1454,6 +1459,7 @@ export default function App() {
                     reveal={newTaskToast.reveal}
                     onRevealed={newTaskToast.clearReveal}
                     onPlace={canPlace ? placeTask : undefined}
+                    onMoveBlocked={moveBlocked === null ? undefined : () => reorderNotice.show(moveBlocked)}
                     renderTask={(task) => (
                       <TaskRow
                         task={task}
@@ -1500,7 +1506,18 @@ export default function App() {
             </section>
           </div>
         </div>
-        <NewTaskToast toast={newTaskToast} onOpen={openNewTask} />
+        <div className="toast-stack">
+          {/* Its own live region, so it never replaces or hides the new Task toast. */}
+          <div className="toast-region" aria-live="polite">
+            {reorderNotice.text && (
+              <p key={reorderNotice.seq}
+                className={`task-toast task-toast--notice ${reorderNotice.leaving ? "task-toast--leaving" : ""}`}>
+                {reorderNotice.text}
+              </p>
+            )}
+          </div>
+          <NewTaskToast toast={newTaskToast} onOpen={openNewTask} />
+        </div>
       </main>
       <SettingsView hidden={workspace !== "settings"} preference={appearance.preference}
         onPreference={appearance.setPreference}>

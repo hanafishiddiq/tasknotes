@@ -6,7 +6,7 @@ import {
 } from "@tanstack/react-virtual";
 import { TASK_PAGE_SIZE, type Task, type TaskPlace, type WorkStatus } from "../lib/task-api";
 import { STATUS_ORDER, STATUS_VIEW } from "../lib/task-visuals";
-import { useRowDrag, type RowDrop } from "../lib/use-row-drag";
+import { useRowDrag, watchRefusedDrag, type RowDrop } from "../lib/use-row-drag";
 
 type Item =
   | { kind: "heading"; status: WorkStatus; count: number }
@@ -42,6 +42,11 @@ interface VirtualTaskListProps {
    * Resolves whether the move was made.
    */
   onPlace?: (task: Task, place: TaskPlace) => Promise<boolean>;
+  /**
+   * Given where a Task may not move (several Lists, or a filter on): a try,
+   * by a drag or Alt+Up/Down, calls this instead, and nothing moves.
+   */
+  onMoveBlocked?: () => void;
 }
 
 /**
@@ -89,7 +94,7 @@ const TaskSlotContent = memo(function TaskSlotContent({ task, renderTask }: {
  */
 export default function VirtualTaskList({
   tasks, hasMore, scrollRef, keepMounted, renderTask, expandedId, onCollapse,
-  flashId = null, reveal = null, onRevealed, onPlace,
+  flashId = null, reveal = null, onRevealed, onPlace, onMoveBlocked,
 }: VirtualTaskListProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const [scrollMargin, setScrollMargin] = useState(0);
@@ -207,6 +212,12 @@ export default function VirtualTaskList({
       return;
     }
     if (!target.classList.contains("task-open")) return;
+    if (!onPlace && onMoveBlocked && event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+      // Not here: say why, and leave the list and focus where they are.
+      event.preventDefault();
+      onMoveBlocked();
+      return;
+    }
     if (onPlace && event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
       // Alt with the arrows moves the Task itself, within its group.
       event.preventDefault();
@@ -319,11 +330,13 @@ export default function VirtualTaskList({
 
   return (
     <div className="task-list" ref={listRef} onKeyDown={onKeyDown}
-      onMouseDown={onPlace && ((event) => {
+      onMouseDown={(onPlace || onMoveBlocked) && ((event) => {
         // A drag starts on the row's title area, never on a control inside an open Task.
         const id = (event.target as HTMLElement).closest(".task-open")
           ?.closest<HTMLElement>("[data-task-id]")?.dataset.taskId;
-        if (id) drag.start(event, id);
+        if (!id) return;
+        if (onPlace) drag.start(event, id);
+        else if (onMoveBlocked) watchRefusedDrag(event, onMoveBlocked);
       })}
       onFocus={(event) => setFocusedId(
         (event.target as HTMLElement).closest<HTMLElement>("[data-task-id]")?.dataset.taskId ?? null)}

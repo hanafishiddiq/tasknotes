@@ -572,11 +572,18 @@ button.folder-disclosure:hover:not(:disabled) {
  * the two never overlap. Flat like everything else (no shadow, no slide); it sits
  * over the rows rather than in the layout, so it never moves the list.
  */
-.toast-region {
+.toast-stack {
   position: absolute;
   right: 20px;
   bottom: 16px;
   z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  pointer-events: none;
+}
+.toast-region {
   pointer-events: none;
 }
 .task-toast {
@@ -597,6 +604,11 @@ button.folder-disclosure:hover:not(:disabled) {
 }
 .task-toast--leaving {
   opacity: 0;
+}
+/* A brief notice (why a Task cannot move here) above the toast: nothing to click. */
+.task-toast--notice {
+  margin: 0;
+  pointer-events: none;
 }
 .toolbar {
   display: flex;
