@@ -23,6 +23,8 @@ type ChangeInput = {
 let saved: Task[];
 let changes: ChangeInput[];
 let removedIds: string[];
+/** The audit log's end: bumped when "another process" changes something. */
+let latestEntry: number;
 
 function task(id: string, fields: Partial<Task> = {}): Task {
   return {
@@ -56,6 +58,7 @@ beforeEach(() => {
   ];
   changes = [];
   removedIds = [];
+  latestEntry = 1;
   invokeMock.mockReset();
   invokeMock.mockImplementation(async (command, args) => {
     const body = (args ?? {}) as Record<string, any>;
@@ -79,6 +82,8 @@ beforeEach(() => {
         saved = saved.map((item) => item.id === input.id ? changed : item);
         return changed;
       }
+      case "outside_changes":
+        return { latest: latestEntry, changed: body.seen != null && latestEntry > body.seen, createdTasks: [] };
       case "set_task_removed": {
         const found = saved.find((item) => item.id === body.input.id)!;
         if (body.input.removed) removedIds.push(found.id);
@@ -306,6 +311,80 @@ describe("moving through the menu and closing it", () => {
       delete (HTMLElement.prototype as { offsetWidth?: number }).offsetWidth;
       delete (HTMLElement.prototype as { offsetHeight?: number }).offsetHeight;
     }
+  });
+});
+
+describe("what the review of PR #40 asked for", () => {
+  it("places Priority beside its item, to the left without room, and never past the window's bottom", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await rightClick("Synthetic idea");
+    const { innerWidth: width, innerHeight: height } = window;
+    vi.spyOn(item("Priority"), "getBoundingClientRect").mockReturnValue({
+      left: width - 210, right: width - 10, top: height - 40, bottom: height - 14,
+      width: 200, height: 26, x: width - 210, y: height - 40, toJSON: () => ({}),
+    });
+    Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, get: () => 220 });
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, get: () => 150 });
+    try {
+      item("Priority").focus();
+      await user.keyboard("{ArrowRight}");
+      const levels = screen.getByRole("menu", { name: "Priority" });
+      // No room on the right: it opens to the left of its item, with its real width.
+      expect(parseFloat(levels.style.left)).toBe(width - 210 - 220 - 2);
+      expect(parseFloat(levels.style.top) + 150).toBeLessThanOrEqual(height);
+    } finally {
+      delete (HTMLElement.prototype as { offsetWidth?: number }).offsetWidth;
+      delete (HTMLElement.prototype as { offsetHeight?: number }).offsetHeight;
+    }
+  });
+
+  it("goes for good when its Task leaves the page, rather than coming back with it", async () => {
+    render(<App />);
+    await rightClick("Synthetic idea");
+    removedIds.push("idea");
+    latestEntry += 1;
+    fireEvent(window, new Event("focus"));
+    await waitFor(() => expect(screen.queryByRole("article", { name: "Synthetic idea" })).toBeNull());
+    expect(screen.queryByRole("menu")).toBeNull();
+
+    removedIds = [];
+    latestEntry += 1;
+    fireEvent(window, new Event("focus"));
+    await screen.findByRole("article", { name: "Synthetic idea" });
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("closes for a ⌘ shortcut, which then does its own work", async () => {
+    render(<App />);
+    await rightClick("Synthetic idea");
+    fireEvent.keyDown(item("Open"), { key: "k", metaKey: true });
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("gives focus back after a choice, so the keyboard goes on from the row", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    const open = await screen.findByRole("button", { name: "Open Synthetic idea" });
+    open.focus();
+    await user.keyboard("{Shift>}{F10}{/Shift}{Enter}");
+    expect(within(row("Synthetic idea")).getByRole("region", { name: "Task details" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Close Synthetic idea" })).toHaveFocus();
+  });
+
+  it("keeps Priority open while the pointer crosses another item on its way there", async () => {
+    render(<App />);
+    await rightClick("Synthetic idea");
+    fireEvent.mouseEnter(item("Priority"));
+    const levels = screen.getByRole("menu", { name: "Priority" });
+    fireEvent.mouseEnter(item("Move to Removed"));
+    fireEvent.mouseEnter(levels);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(screen.getByRole("menu", { name: "Priority" })).toBeInTheDocument();
+
+    // Resting on another item closes it.
+    fireEvent.mouseEnter(item("Move to Removed"));
+    await waitFor(() => expect(screen.queryByRole("menu", { name: "Priority" })).toBeNull());
   });
 });
 

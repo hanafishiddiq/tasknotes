@@ -22,7 +22,7 @@ Tujuan akhir: Tasknotes di /Applications berisi 4 perubahan batch 3 (tombol Remo
 - [ ] Menu klik kanan Task (tiket 03) di main
   - [x] Tanya jawab Q20–Q24 (Q21: menu custom sesuai desain app)
   - [x] Dikerjakan dengan TDD (15 tes menu)
-  - [ ] Draft PR, review dua sumbu, temuan diperbaiki
+  - [x] Draft PR #40, review dua sumbu, temuan diperbaiki
   - [ ] Di-merge setelah CI hijau (Q24)
 - [ ] Halaman Pomodoro lengkap (tiket 04) di main
 - [ ] Semua tiket di main dan lolos CI gabungan

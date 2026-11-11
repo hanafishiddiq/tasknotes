@@ -16,6 +16,10 @@ import {
 import TaskProgressHistory from "./TaskProgressHistory";
 import TaskLinkedNotes from "./TaskLinkedNotes";
 import { useSeenOnScreen } from "../lib/use-seen-on-screen";
+import type { MenuPoint } from "./TaskContextMenu";
+
+/** Where a row's titles and secondary content start: the status ring column plus its gap (DESIGN.md Layout). */
+const ROW_CONTENT_INSET = 38;
 import { deadlineStatus } from "../lib/deadlines";
 import type { ListOption } from "../lib/list-tree";
 import type { EditableFields, UnsavedTaskEdits } from "../lib/use-task-drafts";
@@ -83,7 +87,7 @@ interface TaskRowProps {
   /** Given while the mark waits to be seen: called when the row is on screen with the window in front. */
   onSeen?: () => void;
   /** Right-click, Shift+F10 or the menu key on the row: open the Task menu here (batch 3, Ticket 03). */
-  onMenu?: (x: number, y: number) => void;
+  onMenu?: (at: MenuPoint) => void;
 }
 
 /** ⌘↵, with Ctrl+Return as a quiet alias (as in use-shortcuts.ts): save the edit group the key was pressed in. */
@@ -302,13 +306,14 @@ export default function TaskRow({
       <div className="task-row"
         onContextMenu={onMenu && ((event) => {
           event.preventDefault();
-          onMenu(event.clientX, event.clientY);
+          onMenu({ x: event.clientX, y: event.clientY });
         })}
         onKeyDown={onMenu && ((event) => {
           if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
           event.preventDefault();
+          // Under the row, at the content inset where titles start (DESIGN.md Layout).
           const box = event.currentTarget.getBoundingClientRect();
-          onMenu(box.left + 38, box.bottom);
+          onMenu({ x: box.left + ROW_CONTENT_INSET, y: box.bottom });
         })}>
         {/* Outside the open button, so a click never opens the row or starts a drag. */}
         <button

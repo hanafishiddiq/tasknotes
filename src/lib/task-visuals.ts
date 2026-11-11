@@ -44,7 +44,7 @@ export function statusChoiceLabel(choice: StatusChoice): string {
   return choice === "wont_do" ? WONT_DO_LABEL : STATUS_VIEW[choice].label;
 }
 /** Why a finished Task's Won't Do choice is closed (ADR 0008). */
-export const FINISHED_CANNOT_BE_SET_ASIDE = "Reopen it first: a finished Task can't be set aside";
+const FINISHED_CANNOT_BE_SET_ASIDE = "Reopen it first: a finished Task can't be set aside";
 /**
  * Whether a status choice is open for a Task now, and why not when the reason is
  * worth saying. Ready is for work not yet started, which a Task completed or set
