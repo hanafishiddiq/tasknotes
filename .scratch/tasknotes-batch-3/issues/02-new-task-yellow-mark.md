@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** in progress — reviewed in PR #39; merge after green CI (owner Q19); the owner's native check remains
+**Implementation:** merged to main in PR #39 (`83aa171`); the owner's native check waits for the batch-3 install build
 
 ## Acceptance criteria
 

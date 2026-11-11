@@ -52,6 +52,8 @@ import RemovedView from "./components/RemovedView";
 import ApprovalsView from "./components/ApprovalsView";
 import { usePendingApprovals } from "./lib/use-pending-approvals";
 import { useOutsideChanges } from "./lib/use-outside-changes";
+import { useCountPlacement } from "./lib/count-placement";
+import { useUnfinishedCounts } from "./lib/use-unfinished-counts";
 import { captureScrollAnchor, holdScrollAnchor, type ScrollAnchor } from "./lib/scroll-anchor";
 import SettingsView from "./components/SettingsView";
 import SoundSettings from "./components/SoundSettings";
@@ -205,6 +207,9 @@ export default function App() {
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
   const appearance = useTheme();
+  const [countPlacement, setCountPlacement] = useCountPlacement();
+  // Read again after anything that can change a number: the Tasks or Lists on hand, or a restore.
+  const unfinishedCounts = useUnfinishedCounts([tasks, lists, removedKey]);
   const sidebar = useSidebarWidth();
   const sound = useSound();
   // A Task view change in flight: moving elsewhere waits until it settles.
@@ -1357,7 +1362,7 @@ export default function App() {
             onOpen={(folder) => openNotes({ kind: "folder", folderId: folder.id })}
             onRemoved={folderRemoved} />
         )}
-        lists={lists} shownCount={countKnown ? tasks.length : null} hasMoreTasks={Boolean(nextCursor)}
+        lists={lists} counts={unfinishedCounts} countPlacement={countPlacement}
         listError={listError}
         hasMoreLists={Boolean(listCursor)} busy={busy}
         theme={appearance.theme} onToggleTheme={appearance.toggle}
@@ -1713,7 +1718,7 @@ export default function App() {
         )}
       </main>
       <SettingsView hidden={workspace !== "settings"} preference={appearance.preference}
-        onPreference={appearance.setPreference}>
+        onPreference={appearance.setPreference} countPlacement={countPlacement} onCountPlacement={setCountPlacement}>
         <SoundSettings sound={sound} />
         {pomodoro.view && (
           <>

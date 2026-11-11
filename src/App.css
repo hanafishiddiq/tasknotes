@@ -260,7 +260,11 @@ body.sidebar-resizing * {
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
 }
-.folder[aria-current="page"] .folder-count {
+/* On a filled row (the current one, one under the pointer, a drop target)
+   the count steps up to secondary gray: tertiary falls under 4.5:1 there. */
+.folder[aria-current="page"] .folder-count,
+.folder:hover:not(:disabled) .folder-count,
+.folder-row[data-drop-edge="into"] .folder-count {
   color: var(--text-2);
 }
 .folder--quiet {

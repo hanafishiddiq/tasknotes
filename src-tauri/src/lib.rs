@@ -16,7 +16,7 @@ use tasknotes_core::tasks::{
     ChangeTask, CreateList, CreateSubList, CreateTask, DifficultyFilter, List, ListPage, MoveList,
     MoveTask, PlaceList, Priority, ProgressSequencePage, RecordProgress, RenameList, ReorderList,
     ReorderTask, SetListRemoved, SortMode, Task, TaskPage, TaskQuery, TaskStore, TaskView,
-    UpdateTask, UpdateTaskDetails, ViewSort, WorkStatus,
+    UnfinishedCounts, UpdateTask, UpdateTaskDetails, ViewSort, WorkStatus,
 };
 use tauri::{Manager, State};
 
@@ -457,6 +457,13 @@ fn pomodoro_totals(store: State<'_, TaskStore>) -> Result<PomodoroTotals, String
     store.pomodoro_totals().map_err(|error| error.to_string())
 }
 
+/// The unfinished Tasks of All tasks, the Inbox and each List: the numbers
+/// beside the sidebar's folders (batch 3, Ticket 05).
+#[tauri::command]
+fn unfinished_counts(store: State<'_, TaskStore>) -> Result<UnfinishedCounts, String> {
+    store.unfinished_counts().map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 fn outside_changes(
     store: State<'_, TaskStore>,
@@ -563,6 +570,7 @@ pub fn run() {
             list_removed,
             pomodoro_history,
             pomodoro_totals,
+            unfinished_counts,
             list_pending_bulk_requests,
             count_pending_bulk_requests,
             outside_changes,

@@ -15,7 +15,7 @@ pub use crate::organization::{
     CreateList, CreateSubList, List, ListPage, ListParent, MoveList, MoveTask, PatchTaskDetails,
     PlaceList, RenameList, ReorderList, SetListRemoved, TaskView, UpdateTaskDetails,
 };
-pub use crate::search::{TaskQuery, TaskScope};
+pub use crate::search::{TaskQuery, TaskScope, UnfinishedCounts};
 
 /// One stable interface for desktop commands today and CLI/MCP adapters later.
 #[derive(Debug, Clone)]

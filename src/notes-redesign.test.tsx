@@ -129,10 +129,10 @@ describe("native QA findings (2026-10-22)", () => {
   };
 
   function folderCount(button: HTMLElement) {
-    return button.querySelector(".folder-count")?.textContent ?? null;
+    return button.querySelector(".folder-count [aria-hidden]")?.textContent ?? null;
   }
 
-  it("shows the visible count beside the active view only", async () => {
+  it("shows every folder's unfinished count from the core, not the rows loaded on the page", async () => {
     const user = userEvent.setup();
     const inboxTask = task({ id: "inbox-1", title: "Inbox task" });
     const homeTasks = [
@@ -147,6 +147,8 @@ describe("native QA findings (2026-10-22)", () => {
         if (view?.kind === "inbox") return { items: [inboxTask], nextCursor: null };
         return { items: [inboxTask, ...homeTasks], nextCursor: "more" };
       }
+      // Batch 3, Ticket 05: the core counts every unfinished Task, past the first page too.
+      if (command === "unfinished_counts") return { all: 140, inbox: 1, lists: { [home.id]: 139 } };
       throw new Error("Unexpected command: " + command);
     });
     render(<App />);
@@ -154,14 +156,14 @@ describe("native QA findings (2026-10-22)", () => {
     const allTasks = screen.getByRole("button", { name: "All tasks" });
     const inbox = screen.getByRole("button", { name: "Inbox" });
     const list = screen.getByRole("button", { name: "Home Errands" });
-    expect(folderCount(allTasks)).toBe("3+");
-    expect(folderCount(list)).toBeNull();
+    expect(folderCount(allTasks)).toBe("140");
+    expect(folderCount(inbox)).toBe("1");
+    expect(folderCount(list)).toBe("139");
 
     await user.click(list);
     await screen.findByRole("article", { name: "Call the dentist" });
-    expect(folderCount(list)).toBe("2");
-    expect(folderCount(allTasks)).toBeNull();
-    expect(folderCount(inbox)).toBeNull();
+    expect(folderCount(list)).toBe("139");
+    expect(folderCount(allTasks)).toBe("140");
   });
 
   it("shows +N for Tags beyond the two shown on a row", async () => {

@@ -6,6 +6,7 @@ import App from "./App";
 import { TASK_PAGE_SIZE, type Task, type TaskList } from "./lib/task-api";
 import { OUTSIDE_CHANGE_POLL_MS } from "./lib/use-outside-changes";
 import { NoteBackend } from "./test/note-backend";
+import { countUnfinished } from "./test/unfinished-counts";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 const call = vi.mocked(invoke);
@@ -149,6 +150,7 @@ async function answer(command: string, args: unknown): Promise<unknown> {
       case "list_note_tasks":
         return { items: [], nextCursor: null };
       case "count_pending_bulk_requests": return 0;
+      case "unfinished_counts": return countUnfinished(tasks, lists);
       case "quit_ready": return null;
       default: return notes.handle(command, body);
     }
@@ -174,6 +176,32 @@ describe("Changes made outside the window", () => {
     expect(await screen.findByRole("article", { name: "Added through MCP" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Imported" })).toBeVisible();
     expect(screen.getByRole("article", { name: "Synthetic task 1" })).toBeVisible();
+  });
+
+  it("reads the sidebar's numbers again, even when the page showing did not change (batch 3, Ticket 05)", async () => {
+    const work = list("Work");
+    lists = [work];
+    tasks = [task(1, { listId: work.id })];
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Work" }));
+    await screen.findByRole("article", { name: "Synthetic task 1" });
+    const inboxCount = () => screen.getByRole("button", { name: "Inbox" }).querySelector(".folder-count [aria-hidden]")?.textContent;
+    await waitFor(() => expect(screen.getByRole("button", { name: "Work" })).toHaveAccessibleDescription("1 unfinished"));
+    expect(inboxCount()).toBeUndefined();
+
+    // The CLI adds a Task to the Inbox; the Work page stays as it was.
+    tasks.push(task(2, { title: "Added through the CLI" }));
+    outside();
+    await focusWindow();
+    await waitFor(() => expect(inboxCount()).toBe("1"));
+    expect(screen.getByRole("button", { name: "All tasks" })).toHaveAccessibleDescription("2 unfinished");
+
+    // An MCP client moves the Work List to Removed: its Task no longer counts.
+    lists[0] = { ...work, removed: true, revision: 2 };
+    outside();
+    await focusWindow();
+    await waitFor(() => expect(screen.getByRole("button", { name: "All tasks" })).toHaveAccessibleDescription("1 unfinished"));
   });
 
   it("finds them on its own while the window stays in focus", async () => {

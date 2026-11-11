@@ -1,5 +1,5 @@
 import {
-  Fragment, useEffect, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type ReactNode,
+  Fragment, useEffect, useId, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type ReactNode,
 } from "react";
 import {
   Check, ChevronDown, ChevronRight, ClipboardCheck, History, Inbox, ListChecks, ListPlus, Moon, NotebookText, Palette,
@@ -8,7 +8,8 @@ import {
 import StyleIcon from "./StyleIcon";
 import StylePicker from "./StylePicker";
 import type { Style } from "../lib/style";
-import type { TaskList, TaskView } from "../lib/task-api";
+import { countFor, viewKey, type TaskList, type TaskView, type UnfinishedCounts } from "../lib/task-api";
+import type { CountPlacement } from "../lib/count-placement";
 import { readExpanded, writeExpanded } from "../lib/expanded";
 import { MAX_LIST_DEPTH, listTree, parentOf } from "../lib/list-tree";
 import { alreadyThere, anchorFor, useRowDrag, type RowDrop } from "../lib/use-row-drag";
@@ -43,9 +44,10 @@ interface TaskSidebarProps {
   pomodoro?: ReactNode;
   lists: TaskList[];
   listError: string | null;
-  /** Tasks on the current page, or null when the count is not known. */
-  shownCount: number | null;
-  hasMoreTasks: boolean;
+  /** Each place's unfinished Tasks as the core counts them; null until they are read. */
+  counts: UnfinishedCounts | null;
+  /** Where the numbers show, as chosen in Settings (Q48). */
+  countPlacement: CountPlacement;
   hasMoreLists: boolean;
   busy: boolean;
   theme: Theme;
@@ -69,7 +71,7 @@ interface TaskSidebarProps {
 }
 
 export default function TaskSidebar({
-  view, notesActive, removedActive, onOpenRemoved, pendingApprovals, approvalsActive, onOpenApprovals, settingsActive, onOpenSettings, pomodoroPageActive, onOpenPomodoroPage, allNotesCurrent, noteFolders, resizer, pomodoro, lists, listError, shownCount, hasMoreTasks, hasMoreLists, busy,
+  view, notesActive, removedActive, onOpenRemoved, pendingApprovals, approvalsActive, onOpenApprovals, settingsActive, onOpenSettings, pomodoroPageActive, onOpenPomodoroPage, allNotesCurrent, noteFolders, resizer, pomodoro, lists, listError, counts, countPlacement, hasMoreLists, busy,
   theme, onToggleTheme, onNavigate, onOpenNotes, onCreateList, onCreateSubList, onRenameList, onReorderList,
   onPlaceList, onMoveList,
   onStyleList, onRemoveList,
@@ -274,31 +276,50 @@ export default function TaskSidebar({
   // While Notes are open, no Task view is the current place.
   const isCurrent = (place: TaskView) => !notesActive && place.kind === view.kind &&
     (place.kind !== "list" || (view.kind === "list" && view.listId === place.listId));
-  // The page holds only the active view's Tasks, so only that folder gets a count.
-  const count = (place: TaskView) => isCurrent(place) && shownCount !== null && (
-    <span className="folder-count">{shownCount}{hasMoreTasks ? "+" : ""}</span>
-  );
+  const countId = useId();
+  /**
+   * A folder's number of unfinished Tasks where Settings shows it (Q48), with
+   * the words a screen reader hears after the folder's name; a place with
+   * none shows no number.
+   */
+  const count = (place: TaskView) => {
+    if (!counts || countPlacement === "none" || (countPlacement === "open" && !isCurrent(place))) return {};
+    const number = countFor(counts, place);
+    if (number === 0) return {};
+    const id = `${countId}-${viewKey(place)}`;
+    return {
+      describedBy: id,
+      shown: (
+        <span className="folder-count" id={id}>
+          <span aria-hidden="true">{number}</span>
+          <span className="sr-only">{number} unfinished</span>
+        </span>
+      ),
+    };
+  };
+  const allCount = count({ kind: "all" });
+  const inboxCount = count({ kind: "inbox" });
 
   return (
     <aside className="sidebar">
       <div className="sidebar-heading">Tasknotes</div>
       <nav aria-label="Workspace" className="sidebar-nav">
         <button type="button" disabled={busy}
-          aria-label="All tasks"
+          aria-label="All tasks" aria-describedby={allCount.describedBy}
           className="folder"
           aria-current={isCurrent({ kind: "all" }) ? "page" : undefined}
           onClick={() => onNavigate({ kind: "all" })}>
           <ListChecks size={17} aria-hidden="true" />
           <span className="folder-name">All tasks</span>
-          {count({ kind: "all" })}
+          {allCount.shown}
         </button>
         <button type="button" disabled={busy}
-          aria-label="Inbox"
+          aria-label="Inbox" aria-describedby={inboxCount.describedBy}
           className="folder"
           aria-current={isCurrent({ kind: "inbox" }) ? "page" : undefined}
           onClick={() => onNavigate({ kind: "inbox" })}>
           <Inbox size={17} aria-hidden="true" /><span className="folder-name">Inbox</span>
-          {count({ kind: "inbox" })}
+          {inboxCount.shown}
         </button>
         <button type="button" disabled={busy}
           aria-label="Removed"
@@ -328,6 +349,7 @@ export default function TaskSidebar({
           const depth = tree.depth(list.id);
           const hasChildren = tree.hasChildren(list.id);
           const open = hasChildren && isOpen(list.id);
+          const listCount = count({ kind: "list", listId: list.id });
           const edge = dropEdge(list.id);
           // A line just below an open List's row belongs to the Lists inside it.
           const dropDepth = edge === "after" && open ? depth + 1 : depth;
@@ -359,7 +381,7 @@ export default function TaskSidebar({
             ) : (
               <>
                 <button type="button" disabled={busy}
-                  aria-label={list.name}
+                  aria-label={list.name} aria-describedby={listCount.describedBy}
                   data-list-id={list.id}
                   aria-current={isCurrent({ kind: "list", listId: list.id }) ? "page" : undefined}
                   aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown Alt+ArrowLeft Alt+ArrowRight"
@@ -368,7 +390,7 @@ export default function TaskSidebar({
                   onKeyDown={(event) => moveWithKeys(event, list)}
                   onClick={() => onNavigate({ kind: "list", listId: list.id })}>
                   <StyleIcon icon={list.icon} color={list.color} /><span className="folder-name">{list.name}</span>
-                  {count({ kind: "list", listId: list.id })}
+                  {listCount.shown}
                 </button>
                 <span className="folder-actions">
                   <button type="button" className="folder-action" disabled={busy}

@@ -62,6 +62,25 @@ export interface TaskListPage {
   nextCursor: string | null;
 }
 
+/**
+ * The unfinished Tasks (Ready and In Progress) of each place, as the core
+ * counts them for the sidebar (batch 3, Ticket 05): Completed, Won't Do and
+ * Removed never count, and a List counts only its own Tasks.
+ */
+export interface UnfinishedCounts {
+  all: number;
+  inbox: number;
+  /** By List id; a List with none is left out. */
+  lists: Record<string, number>;
+}
+
+/** A place's number: every unfinished Task for All tasks, the Inbox's, or one List's own. */
+export function countFor(counts: UnfinishedCounts, place: TaskView): number {
+  if (place.kind === "all") return counts.all;
+  if (place.kind === "inbox") return counts.inbox;
+  return counts.lists[place.listId] ?? 0;
+}
+
 export interface ListMutation {
   id: string;
   expectedRevision: number;
@@ -274,6 +293,11 @@ export const taskApi = {
 
   lists(cursor: string | null = null): Promise<TaskListPage> {
     return invoke("list_lists", { limit: 100, cursor, includeRemoved: true });
+  },
+
+  /** The numbers beside the sidebar's folders, counted by the core without reading any Task. */
+  unfinishedCounts(): Promise<UnfinishedCounts> {
+    return invoke("unfinished_counts");
   },
 
   createList(name: string): Promise<TaskList> {
