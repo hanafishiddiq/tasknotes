@@ -41,7 +41,7 @@ pub fn tools() -> Vec<ToolDef> {
         tool(
             "task_change",
             Kind::Write,
-            "Change a Task's work status, priority, Difficulty and/or progress percentage under the core's transition rules; difficulty null clears it to No Difficulty. wont_do true marks it Won't Do (Completed, keeping its progress; give no other status or progress); wont_do false, or any other status or progress, reopens it.",
+            "Change a Task's work status, priority, Difficulty and/or progress percentage under the core's transition rules; difficulty null clears it to No Difficulty. wont_do true marks it Won't Do (Completed, keeping its progress; give no other status or progress); wont_do false, or any other status or progress, reopens it. A Completed Task's completed_from names the status it had before it was completed: give that status to reopen it there (ready only to one completed before it started, at 0%; in_progress returns the progress it had).",
             task_change,
         ),
         tool(
