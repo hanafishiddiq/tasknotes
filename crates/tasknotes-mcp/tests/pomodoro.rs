@@ -159,6 +159,74 @@ fn a_session_says_each_thing_once_in_the_minutes_its_day_adds_up() {
 }
 
 #[test]
+fn a_page_is_a_week_of_days_unless_the_client_asks_for_more() {
+    let data = Data::trusted();
+    let desktop = data.desktop();
+    for day in 0..9 {
+        desktop
+            .record_pomodoro_session(session(
+                None,
+                NOV_10_JAKARTA + day * 24 * HOUR + 9 * HOUR,
+                SessionOutcome::Finished,
+            ))
+            .unwrap();
+    }
+    let mut server = data.server_with(&JAKARTA);
+    let week = server.ok("pomodoro_history", json!({}));
+    let dates: Vec<_> = week["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|day| day["date"].clone())
+        .collect();
+    assert_eq!(dates.len(), 7);
+    assert_eq!(dates[0], "2026-11-18");
+    assert_eq!(dates[6], "2026-11-12");
+    let rest = server.ok(
+        "pomodoro_history",
+        json!({"cursor": week["next_cursor"].as_str().expect("two more days")}),
+    );
+    assert_eq!(rest["items"].as_array().unwrap().len(), 2);
+    assert_eq!(rest["next_cursor"], Value::Null);
+    let all = server.ok("pomodoro_history", json!({"limit": 9}));
+    assert_eq!(all["items"].as_array().unwrap().len(), 9);
+}
+
+#[test]
+fn one_answer_holds_at_most_a_hundred_sessions_in_whole_days() {
+    let data = Data::trusted();
+    let desktop = data.desktop();
+    // 60 one-minute sessions on 11-11 and 50 on 11-10.
+    for (day, count) in [(1, 60), (0, 50)] {
+        for n in 0..count {
+            let started_at = NOV_10_JAKARTA + day * 24 * HOUR + 8 * HOUR + n * 2 * MINUTE;
+            desktop
+                .record_pomodoro_session(EndedSession {
+                    planned_seconds: 60,
+                    overtime_seconds: 0,
+                    ended_at: started_at + MINUTE,
+                    ..session(None, started_at, SessionOutcome::Finished)
+                })
+                .unwrap();
+        }
+    }
+    let mut server = data.server_with(&JAKARTA);
+    let first = server.ok("pomodoro_history", json!({"limit": 10}));
+    let days = first["items"].as_array().unwrap();
+    assert_eq!(days.len(), 1, "60 + 50 would pass 100");
+    assert_eq!(days[0]["date"], "2026-11-11");
+    assert_eq!(days[0]["sessions"].as_array().unwrap().len(), 60);
+    let cursor = first["next_cursor"]
+        .as_str()
+        .expect("the next day")
+        .to_owned();
+    let second = server.ok("pomodoro_history", json!({"limit": 10, "cursor": cursor}));
+    assert_eq!(second["items"][0]["date"], "2026-11-10");
+    assert_eq!(second["items"][0]["sessions"].as_array().unwrap().len(), 50);
+    assert_eq!(second["next_cursor"], Value::Null);
+}
+
+#[test]
 fn from_to_limit_and_cursor_read_a_range_of_days() {
     let (_data, _, mut server) = world();
     let only = server.ok(
