@@ -163,7 +163,7 @@ fn dispatch(
 
 pub(crate) const USAGE: &str = "Usage: tasknotes [--data-dir DIR] \
     <task|list|note|folder|link|removed|audit|bulk|style|pomodoro|backup|export|access> <command> [id] [--options]; \
-    task change ID --revision N [--status S] [--priority P] [--difficulty D|none] [--progress N] [--wont-do true|false]; \
+    task change ID --revision N [--status S] [--priority P] [--difficulty D|none] [--progress N] [--wont-do true|false] (a Completed Task reopens to its completed_from with --status); \
     task list [--status S] [--priority P] [--difficulty D|none] [--wont-do true|false] [--tag T] [--sort priority|newest|difficulty|custom (with --list ID or --inbox)]; \
     task reorder ID --revision N (--after ID | --first) (within its work-status group of its List's Custom Order; switches its List to Custom in the desktop); \
     list create --name N [--parent ID]; list move ID --revision N (--parent ID | --top); \

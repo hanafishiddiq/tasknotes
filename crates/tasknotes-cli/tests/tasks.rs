@@ -593,6 +593,61 @@ fn wont_do_is_set_cleared_and_filtered_through_the_cli() {
     assert!(usage.contains("[--wont-do true|false]"), "{usage}");
 }
 
+/// Owner decision Q48: a Completed Task names the work status it was completed
+/// from, and reopening returns it there through the CLI as everywhere else.
+#[test]
+fn reopening_returns_a_task_to_the_status_it_was_completed_from_through_the_cli() {
+    let cli = Cli::trusted();
+    let change = |task: &Value, flags: &[&str]| -> Value {
+        let revision = task["revision"].to_string();
+        let mut args = vec![
+            "task",
+            "change",
+            task["id"].as_str().unwrap(),
+            "--revision",
+            &revision,
+        ];
+        args.extend_from_slice(flags);
+        cli.ok(&args)["item"].clone()
+    };
+
+    let ready = create(&cli, "Synthetic idea");
+    assert!(ready["completed_from"].is_null());
+    let done = change(&ready, &["--status", "completed"]);
+    assert_eq!(done["completed_from"], "ready");
+    let read = cli.ok(&["task", "get", &id(&done)])["item"].clone();
+    assert_eq!(read["completed_from"], "ready");
+    let reopened = change(&done, &["--status", "ready"]);
+    assert_eq!(
+        (
+            &reopened["status"],
+            &reopened["progress"],
+            &reopened["completed_from"]
+        ),
+        (&Value::from("ready"), &Value::from(0), &Value::Null)
+    );
+
+    let started = change(&create(&cli, "Synthetic draft"), &["--progress", "40"]);
+    let done = change(&started, &["--status", "completed"]);
+    assert_eq!(done["completed_from"], "in_progress");
+    let refused = cli.run(&[
+        "task",
+        "change",
+        &id(&done),
+        "--revision",
+        &done["revision"].to_string(),
+        "--status",
+        "ready",
+    ]);
+    assert_eq!(error_code(&refused, 5), "invalid_transition");
+    let reopened = change(&done, &["--status", "in_progress"]);
+    assert_eq!(
+        (&reopened["status"], &reopened["progress"]),
+        (&Value::from("in_progress"), &Value::from(40))
+    );
+    assert!(reopened["completed_from"].is_null());
+}
+
 fn titles(page: &Value) -> Vec<String> {
     page["items"]
         .as_array()

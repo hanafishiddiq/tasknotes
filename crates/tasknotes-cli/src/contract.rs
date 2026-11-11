@@ -171,6 +171,10 @@ pub fn task(task: &Task) -> Value {
         "progress": task.progress,
         // A Completed Task set aside rather than finished (ADR 0008).
         "wont_do": task.wont_do,
+        // While Completed, the work status it had before ("ready" or
+        // "in_progress"), where reopening returns it (Q48); `null` otherwise,
+        // or when its history does not say (then it counts as started).
+        "completed_from": to_value(&task.completed_from),
         "next_step": task.next_step,
         "list_id": task.list_id,
         "deadline": task.due_date,

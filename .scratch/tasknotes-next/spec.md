@@ -11,7 +11,7 @@ After using Tasknotes v1 daily, the owner listed friction points in the "Tasknot
 
 ## Solution
 
-Ship eleven changes in one build: two finished Draft PRs (#23 outside changes appear live, #24 manual sidebar order) and nine features, each a vertical slice through the shared Rust core, the desktop UI, the CLI and MCP where it touches data.
+Ship twelve changes in one build: two finished Draft PRs (#23 outside changes appear live, #24 manual sidebar order) and ten features (the tenth, completing from the check, added on 2026-11-10), each a vertical slice through the shared Rust core, the desktop UI, the CLI and MCP where it touches data.
 
 ## User Stories
 
@@ -41,6 +41,10 @@ Ship eleven changes in one build: two finished Draft PRs (#23 outside changes ap
 13. As the owner, I want a clearly visible pale-yellow hover on Lists and Note Folders.
 14. As the owner, I want to resize the sidebar by dragging its edge (210–400 px, default 260 px), remembered across launches. When a name still does not fit, the hover action icons cover its end on the row's background instead of overlapping it.
 15. As the owner, I want an icon and a colour for each List and Note Folder: 12 colours readable in light and dark themes, icons from the app's Lucide set with a search box. Existing emoji in names are left alone. The CLI and MCP can read and set them.
+
+### Completing from the check
+
+24. As the owner, I want to click a Task's round check to complete it (Ready or In Progress), click it again to reopen it, and on a Won't Do Task clear Won't Do; completing shows an Undo bar and plays the completion sound (Ticket 16, added 2026-11-10).
 
 ### Pomodoro
 
