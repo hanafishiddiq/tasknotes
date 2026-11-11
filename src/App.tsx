@@ -28,8 +28,7 @@ import { useTheme } from "./lib/use-theme";
 import { useSound } from "./lib/sound/use-sound";
 import { usePomodoro } from "./lib/use-pomodoro";
 import PomodoroControl from "./components/PomodoroControl";
-import PomodoroSettings from "./components/PomodoroSettings";
-import PomodoroHistoryView from "./components/PomodoroHistoryView";
+import PomodoroPage from "./components/PomodoroPage";
 import { useShortcuts } from "./lib/use-shortcuts";
 import { useTaskDrafts } from "./lib/use-task-drafts";
 import { flushSync } from "react-dom";
@@ -130,6 +129,8 @@ export default function App() {
   const [removedKey, setRemovedKey] = useState(0);
   // Bumped when the shell stores a Pomodoro Session or something changed outside, so the history asks again.
   const [pomodoroHistoryKey, setPomodoroHistoryKey] = useState(0);
+  // The Pomodoro page names a focus's Task from these before it asks the core.
+  const taskTitles = useMemo(() => new Map(tasks.map((task) => [task.id, task.title])), [tasks]);
   // Recent moves to Removed, which Undo (or ⌘Z) brings back newest first.
   const undo = useUndo();
   // "Task completed · Undo" for a few seconds after a check completes a Task; it goes
@@ -1714,10 +1715,18 @@ export default function App() {
       <SettingsView hidden={workspace !== "settings"} preference={appearance.preference}
         onPreference={appearance.setPreference}>
         <SoundSettings sound={sound} />
-        <PomodoroSettings pomodoro={pomodoro} />
+        {pomodoro.view && (
+          <>
+            <h2 className="settings-heading" id="settings-pomodoro">Pomodoro</h2>
+            <p className="settings-hint">Focus and break lengths and Silent notifications are on the Pomodoro page.</p>
+            <button type="button" className="button button-small settings-pomodoro-open"
+              onClick={openPomodoroHistory}>Open Pomodoro</button>
+          </>
+        )}
       </SettingsView>
       <RemovedView hidden={workspace !== "removed"} refreshKey={removedKey} onRestored={restored} />
-      <PomodoroHistoryView hidden={workspace !== "pomodoro"} refreshKey={pomodoroHistoryKey}
+      <PomodoroPage hidden={workspace !== "pomodoro"} refreshKey={pomodoroHistoryKey} pomodoro={pomodoro}
+        lists={lists} knownTitles={taskTitles}
         onOpenTask={(taskId) => showTaskAlone(taskId, "pomodoro")} />
       <ApprovalsView hidden={workspace !== "approvals"} refreshKey={approvals.count}
         onDecided={bulkDecided} />

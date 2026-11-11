@@ -18,9 +18,9 @@ function statusText(view: PomodoroView, taskTitle: string | null): string {
   const forTask = taskTitle ? ` · ${taskTitle}` : "";
   switch (view.phase) {
     case "idle": return "Ready to focus";
-    case "focus": return `Focus${forTask}`;
+    case "focus": return `${view.paused ? "Paused" : "Focus"}${forTask}`;
     case "focus_done": return `Focus done${forTask}`;
-    case "break": return view.long ? "Long break" : "Break";
+    case "break": return view.paused ? "Break paused" : view.long ? "Long break" : "Break";
     case "break_done": return "Break over";
   }
 }
@@ -64,7 +64,7 @@ export default function PomodoroControl({ pomodoro, tasks, openTaskId }: Pomodor
       <div className="pomodoro-head">
         <Timer size={16} aria-hidden="true" />
         <span className="pomodoro-name">Pomodoro</span>
-        {time && <span className="pomodoro-time" aria-label={time.label}>{time.text}</span>}
+        {time && <span className="pomodoro-time" role="timer" aria-label={time.label}>{time.text}</span>}
       </div>
       <p className="pomodoro-status" role="status">{statusText(view, taskTitle)}</p>
 
@@ -84,6 +84,10 @@ export default function PomodoroControl({ pomodoro, tasks, openTaskId }: Pomodor
 
       {view.phase !== "idle" && (
         <div className="pomodoro-actions">
+          {(view.phase === "focus" || view.phase === "break") && view.paused && (
+            <button type="button" className="button button-small button-primary"
+              onClick={() => void run({ action: "resume" })}>Resume</button>
+          )}
           {view.phase === "focus_done" && (
             <>
               <button type="button" className="button button-small button-primary"

@@ -4,6 +4,7 @@ import type userEvent from "@testing-library/user-event";
 import {
   everyRowKind, fixtureList, fixtureRequest, fixtureTask, FIXTURE_NOW, RICH_NOTE, World,
 } from "./a11y-world";
+import type { PomodoroView } from "../lib/pomodoro-api";
 
 /**
  * One scene per view and state of the app, walked to with the real window, for
@@ -56,6 +57,16 @@ const pomodoroDays = () => [{
       taskId: "gone", taskTitle: null, taskRemoved: true },
   ],
 }];
+/** The shell's timer view for a scene: idle defaults, then what the scene says. */
+const pomodoroView = (phase: Record<string, unknown>): PomodoroView => {
+  const minutes = { min: 1, max: 60 };
+  return {
+    title: null, plannedSeconds: null, finishedInCycle: 0, lastTaskId: null, silent: false, saveError: null,
+    durations: { focusMinutes: 25, shortBreakMinutes: 5, longBreakMinutes: 15, sessionsBeforeLongBreak: 4 },
+    limits: { focusMinutes: { min: 1, max: 180 }, shortBreakMinutes: minutes, longBreakMinutes: minutes, sessionsBeforeLongBreak: { min: 1, max: 12 } },
+    ...phase,
+  } as PomodoroView;
+};
 const searchTasks = async (user: User, text: string) => {
   await screen.findByRole("region", { name: "Your tasks" });
   await user.type(screen.getByRole("searchbox", { name: "Search tasks and notes" }), text);
@@ -275,12 +286,43 @@ export const SCENES: Record<string, Scene> = {
     },
   },
 
-  // Pomodoro history
+  // The Pomodoro page (batch 3, Ticket 04): the timer, today's rail and the focus record.
   "Pomodoro history: days": {
     given: () => { world.pomodoroDays = pomodoroDays(); },
     show: async (user) => {
       await openPomodoroHistory(user);
       await screen.findByRole("button", { name: "Synthetic focus Task" }, eventually);
+    },
+  },
+  "Pomodoro page: a paused focus with today's rail": {
+    given: () => {
+      world.pomodoroDays = pomodoroDays();
+      world.pomodoroView = pomodoroView({
+        phase: "focus", taskId: "t1", remainingSeconds: 14 * 60 + 32, paused: true, plannedSeconds: 1500, finishedInCycle: 2,
+      });
+    },
+    show: async (user) => {
+      await openPomodoroHistory(user);
+      // The sidebar block and the page each offer Resume.
+      expect(await screen.findAllByRole("button", { name: "Resume" }, eventually)).toHaveLength(2);
+      await screen.findByRole("button", { name: "Synthetic focus Task" }, eventually);
+    },
+  },
+  "Pomodoro page: choosing the Task": {
+    given: () => { world.pomodoroView = pomodoroView({ phase: "idle" }); },
+    show: async (user) => {
+      await openPomodoroHistory(user);
+      await user.click(await screen.findByRole("button", { name: /choose a Task$/ }, eventually));
+      await screen.findByRole("dialog", { name: "Task for the focus" });
+      await screen.findAllByRole("option", {}, eventually);
+    },
+  },
+  "Pomodoro page: lengths": {
+    given: () => { world.pomodoroView = pomodoroView({ phase: "idle" }); },
+    show: async (user) => {
+      await openPomodoroHistory(user);
+      await user.click(await screen.findByRole("button", { name: "Pomodoro lengths" }, eventually));
+      await screen.findByRole("dialog", { name: "Pomodoro lengths" });
     },
   },
   "Pomodoro history: empty": {

@@ -114,10 +114,6 @@ const TEXT: Record<string, Placement> = {
   ".settings-backup-kind": { on: ["bg"] },
   ".settings-hint--error": { on: ["bg"] },
   ".settings-hint--error p:first-child": { on: ["bg"] },
-  ".settings-pomodoro-row": { on: ROW },
-  ".settings-pomodoro-row input": { on: ["field"] },
-  ".settings-pomodoro-unit": { on: ROW },
-  ".settings-pomodoro .settings-hint--error": { on: ["bg"] },
   "kbd": { on: ["bg"] },
   // Palette
   ".palette-field input": { on: ["sidebar"] },
@@ -139,14 +135,48 @@ const TEXT: Record<string, Placement> = {
   ".approval-meta": { on: ["bg"] },
   ".approval-stale": { on: ["bg"] },
   // Pomodoro history: hairline rows on the canvas, like Removed.
-  ".pomodoro-history-hint": { on: ["bg"] },
-  ".pomodoro-day-head h2": { on: ["bg"] },
-  ".pomodoro-day-total": { on: ["bg"] },
-  ".pomodoro-session": { on: ["bg"] },
-  ".pomodoro-task-link": { on: ["bg"] },
-  ".pomodoro-no-task": { on: ["bg"] },
-  ".pomodoro-session-outcome": { on: ["bg"] },
-  '.pomodoro-session[data-outcome="stopped"]': { on: ["bg"] },
+  // The Pomodoro page (batch 3, Ticket 04): the timer, today's rail and the focus record.
+  ".pomo-task": { on: ["bg", "hover"] },
+  "button.pomo-task:hover": { on: ["hover"] },
+  'button.pomo-task[aria-expanded="true"]': { on: ["hover"] },
+  ".pomo-task--set": { on: ["bg", "hover"] },
+  ".pomo-clock": { on: ["bg"] },
+  '.pomo-page[data-phase="focus_done"] .pomo-clock': { on: ["bg"] },
+  '.pomo-page[data-phase="break_done"] .pomo-clock': { on: ["bg"] },
+  ".pomo-word": { on: ["bg"] },
+  '.pomo-page[data-phase="focus_done"] .pomo-word': { on: ["bg"] },
+  ".pomo-pill": { on: ["field", "hover"] },
+  ".pomo-pill--go": { on: ["accent"] },
+  ".pomo-second-button": { on: ["bg", "hover"] },
+  ".pomo-second-button:hover": { on: ["hover"] },
+  ".pomo-error": { on: ["bg"] },
+  ".pomo-rail-label": { on: ["bg"] },
+  ".pomo-rail-total": { on: ["bg"] },
+  ".pomo-rail-hours": { on: ["bg"] },
+  ".pomo-record-head h2": { on: ["bg"] },
+  ".pomo-record-all": { on: ["bg"] },
+  ".pomo-day-head h3": { on: ["bg"] },
+  ".pomo-day-total": { on: ["bg"] },
+  ".pomo-session": { on: ["bg"] },
+  ".pomo-task-link": { on: ["bg"] },
+  ".pomo-no-task": { on: ["bg"] },
+  '.pomo-session[data-outcome="stopped"]': { on: ["bg"] },
+  '.pomo-session[data-outcome="stopped"] .pomo-task-link': { on: ["bg"] },
+  // Its two sheets, on the Task menu's sidebar gray.
+  ".pomo-picker-search input": { on: ["field"] },
+  ".pomo-picker-search input::placeholder": { on: ["field"] },
+  ".pomo-picker-head": { on: ["sidebar"] },
+  ".pomo-option": { on: ["sidebar"] },
+  '.pomo-option[data-active="true"]': { on: ["row-selected"] },
+  ".pomo-option-list": { on: ["sidebar"] },
+  '.pomo-option[data-active="true"] .pomo-option-list': { on: ["row-selected"] },
+  ".pomo-picker-note": { on: ["sidebar"] },
+  ".pomo-picker-error": { on: ["sidebar"] },
+  ".pomo-lengths-error": { on: ["sidebar"] },
+  ".pomo-length": { on: ["sidebar"] },
+  ".pomo-stepper input": { on: ["field"] },
+  ".pomo-length-unit": { on: ["sidebar"] },
+  ".pomo-silent": { on: ["sidebar", "hover"] },
   // Task rows
   ".task-group-heading span": { on: ["bg"] },
   ".note-hit": { on: ROW },
@@ -263,6 +293,26 @@ const INDICATORS: { selector: string; property: string; means: string; place: Pl
   // The new Task toast's X (batch 3, Ticket 02), on the toast's hover-gray box.
   { selector: ".task-toast-close", property: "color", means: "toast dismiss button", place: { on: ["hover"] } },
   { selector: ".task-toast-close:hover", property: "color", means: "toast dismiss button", place: { on: ["hover"] } },
+  // The Pomodoro page (batch 3, Ticket 04): what the ring, the beads and the rail say without words.
+  { selector: ".pomo-ring-arc", property: "stroke", means: "spent focus", place: { on: ["bg"] } },
+  { selector: '.pomo-page[data-phase="break"] .pomo-ring-arc', property: "stroke", means: "spent break", place: { on: ["bg"] } },
+  { selector: ".pomo-ring-lap", property: "stroke", means: "Overtime lap", place: { on: ["bg"] } },
+  { selector: ".pomo-ring-knob", property: "fill", means: "where the time is", place: { on: ["bg"] } },
+  { selector: '.pomo-page[data-paused] .pomo-ring-knob', property: "stroke", means: "paused knob", place: { on: ["bg"] } },
+  { selector: '.pomo-bead[data-state="done"]', property: "background", means: "finished in the cycle", place: { on: ["bg"] } },
+  { selector: ".pomo-mark", property: "background", means: "a counted session today", place: { on: ["bg"] } },
+  { selector: ".pomo-rail-now", property: "border-left", means: "now on today's rail", place: { on: ["bg"] } },
+  { selector: ".pomo-dot", property: "background", means: "a counted session", place: { on: ["bg"] } },
+  { selector: ".pomo-stop", property: "color", means: "Stop button", place: { on: ["bg"] } },
+  { selector: ".pomo-stop:hover", property: "color", means: "Stop button", place: { on: ["hover"] } },
+  { selector: ".pomo-stepper button", property: "color", means: "length step button", place: { on: ["field"] } },
+  { selector: ".pomo-stepper button:hover:not(:disabled)", property: "color", means: "length step button", place: { on: ["hover"] } },
+  { selector: ".pomo-silent input", property: "accent-color", means: "checked Silent", place: { on: ["sidebar", "hover"] } },
+  { selector: ".pomo-option-ring", property: "border", means: "Ready ring", place: { on: ["sidebar"] } },
+  { selector: ".pomo-option-ring--in_progress", property: "border-color", means: "In Progress ring", place: { on: ["sidebar"] } },
+  { selector: ".pomo-option-ring--in_progress::after", property: "background", means: "In Progress dot", place: { on: ["sidebar"] } },
+  { selector: '.pomo-option[data-active="true"] .pomo-option-ring', property: "border-color", means: "ring on the highlighted Task", place: { on: ["row-selected"] } },
+  { selector: '.pomo-option[data-active="true"] .pomo-option-ring--in_progress::after', property: "background", means: "dot on the highlighted Task", place: { on: ["row-selected"] } },
 ];
 
 /** Rules with a colour that deliberately need no pair here, each with why. */
@@ -293,6 +343,7 @@ const NO_PAIR_NEEDED: Record<string, string> = {
   ".palette-field": "the colour reaches only a decorative icon; the field sets its own",
   ".palette-field:focus-within": "the colour reaches only a decorative icon; the underline is checked",
   ".note-search": "the colour reaches only a decorative icon; the field sets its own",
+  ".pomo-picker-search": "the colour reaches only a decorative icon; the field sets its own",
   ".task-card--expanded .task-row .task-check--completed": "this colour is the disc's; the disc is checked",
   ".task-card--expanded .task-row .task-check--completed svg": "the tick sits on the disc; the disc is checked",
 };
@@ -300,7 +351,7 @@ const NO_PAIR_NEEDED: Record<string, string> = {
 /** Lines and fills that separate or decorate and say nothing by themselves. */
 const DECORATIVE_LINES = [
   ".undo-bar", ".task-toast", ".sidebar", ".toolbar", ".settings-shortcut", ".settings-backup", ".palette", ".palette-field",
-  ".removed-item", ".pomodoro-session", ".approval", ".task-menu", ".task-slot + .task-slot .task-card::before", ".history-entry", ".linked-item",
+  ".removed-item", ".pomo-session", ".pomo-rail-line::before", ".approval", ".task-menu", ".task-slot + .task-slot .task-card::before", ".history-entry", ".linked-item",
   ".note-list-pane", ".next-step-input", ".note-quote", ".style-picker", ".pomodoro", ".pomodoro-tip",
   // The sidebar's resize edge lights up under the pointer; its separator role and focus ring carry the meaning.
   ".sidebar-resizer:hover::after", "body.sidebar-resizing .sidebar-resizer::after",
@@ -311,7 +362,7 @@ const OUTLINED_LIKE_THE_RING = [
   ".toolbar-search:focus-within", ".toolbar-sort:focus-within", ".settings-choice:has(input:focus-visible)",
   ".settings-mute:focus-visible", ".settings-sound-row input:focus-visible", ".property:focus-within",
   ".progress-number:focus-within", ".progress-note-input:focus-visible", ".note-search:focus-within",
-  ".pomodoro-start select:focus-visible", ".settings-pomodoro-row input:focus-visible",
+  ".pomodoro-start select:focus-visible",
 ];
 
 /** Text colours as selected text, against the highlight over what they are written on. */
@@ -440,7 +491,8 @@ describe("the contrast check itself", () => {
   it("uses no fill it does not check text against", () => {
     const tokensAsFills = new Set(rules.filter((rule) => rule.media === null)
       .flatMap((rule) => [...(declared(rule, "background") ?? "").matchAll(/^var\(--([\w-]+)\)$/g)].map((match) => match[1])));
-    expect([...tokensAsFills].sort()).toEqual(["accent", "bg", "field", "hover", "red", "row-selected", "row-selected-text", "selection", "sep", "side-hover", "side-selected", "sidebar"]);
+    // accent-text fills only the In Progress dot in the Pomodoro Task picker: a mark with no text on it.
+    expect([...tokensAsFills].sort()).toEqual(["accent", "accent-text", "bg", "field", "hover", "red", "row-selected", "row-selected-text", "selection", "sep", "side-hover", "side-selected", "sidebar"]);
   });
 
   it("checks text on every fill mixed from two tokens", () => {

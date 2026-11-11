@@ -69,6 +69,7 @@ const NATIVELY_INTERACTIVE = "button, a[href], input, select, textarea, label, s
 const POINTER_ONLY_ON_PURPOSE: Record<string, string> = {
   ".palette-layer": "a click on the backdrop closes the palette; Escape does the same",
   ".palette-option": "the palette's field holds focus; the arrows and Return choose an option",
+  ".pomo-option": "the Task sheet's search field holds focus; the arrows and Return choose a Task, as in the palette",
   '.sidebar-resizer[role="separator"][tabindex="0"]': "the focusable edge: arrows, Home and End resize it; Return resets it as a double-click does",
   ".task-list": "a drag starts on a Task's title button, which Alt+Up and Alt+Down move the same way",
 };
