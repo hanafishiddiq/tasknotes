@@ -912,6 +912,14 @@ button.folder-disclosure:hover:not(:disabled) {
   padding: 0 10px;
   font-size: 12px;
 }
+/* Move to Removed on an open Task: Alert Red text and icon, a faint red fill only under the pointer. */
+.button-remove {
+  color: var(--red);
+}
+.button-remove:hover:not(:disabled) {
+  color: var(--red);
+  background: color-mix(in srgb, var(--red) 8%, var(--bg));
+}
 .button-primary {
   font-weight: 600;
   color: var(--accent-ink);

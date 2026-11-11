@@ -202,7 +202,7 @@ Neutral grays carry everything; a single yellow, split by theme into fill and te
 
 ### Secondary
 - **Caution Orange** (`caution-orange`; light `light-caution-orange`): High and Very High priority, "Due today", and the metadata guard hint under the editor.
-- **Alert Red** (`alert-red`; light `light-alert-red`): "Overdue", error banners and inline errors.
+- **Alert Red** (`alert-red`; light `light-alert-red`): "Overdue", error banners, inline errors, and the Move to Removed button on an open Task (owner decision 2026-11-11).
 
 ### Style colours
 Twelve named colours a person may give a List's or Note Folder's sidebar icon (`--style-<key>` in App.css; keys from `crates/tasknotes-core/src/style.json`): red, orange, yellow, green, mint, teal, cyan, blue, indigo, purple, pink, brown, after Apple's system colours. Each theme has its own value, at least 3:1 (WCAG AA for a graphical object) on the sidebar, sidebar hover yellow and folder-selected gray, and 4.5:1 on the plain sidebar; `src/style-picker.test.tsx` checks every pair. They colour only that icon (and the picker's swatches and preview), never text or fills.
@@ -268,11 +268,12 @@ The app icon is a Notes-yellow status ring and check on graphite, with a slight 
 ## Components
 
 ### Buttons
-Quiet until needed; only the primary button carries color.
+Quiet until needed; only the primary button carries a fill, and only Move to Removed carries red text.
 - **Shape:** gently rounded (6px), 28px tall (26px small).
 - **Default:** transparent with secondary-gray text; hover steps to hover gray and primary text.
 - **Primary:** Notes yellow fill with accent ink, weight 600. Hover keeps the fill and brightens it slightly (`brightness(1.05)`). Disabled primary becomes a field-gray box with tertiary text at weight 500 rather than a faded yellow.
 - **Shortcut hint:** a Task Save button (Save changes, Save tags and deadline, Apply progress / Save progress update) ends with `⌘↵` in its own ink at 11px, weight 400, 6px after the label; screen readers hear it as "Command Return" (`aria-keyshortcuts="Meta+Enter"` plus a description), not as part of the name. The description's source carries `hidden`, so line-by-line reading never meets it; the hint drops while the button reads "Saving...". Ctrl+Return is a quiet alias, as for the app's other ⌘ shortcuts (`use-shortcuts.ts`): it works but is never shown or announced.
+- **Remove:** Move to Removed at the end of an open Task is a small default button whose label and trash icon are Alert Red (batch 3, Ticket 01). Under the pointer it keeps the red and takes a faint red fill, 8% red over the canvas: more would drop the red label below 4.5:1 in light appearance. Removed stays reversible, so there is no dialog.
 - **Icon button:** 32x28, secondary-gray icon, same hover as default.
 - **Text link:** small accent-text label with no box (history "Load more", retry).
 

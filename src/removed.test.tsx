@@ -126,6 +126,19 @@ describe("Removed and restore", () => {
     expect(within(row).getByText("30%")).toBeInTheDocument();
   });
 
+  it("marks Move to Removed on an open Task as the red remove button", async () => {
+    // Batch 3, Ticket 01: App.css colours `.button-remove` Alert Red (stylesheet-a11y.test).
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("article", { name: "Prepare launch" });
+    await user.click(screen.getByRole("button", { name: "Open Prepare launch" }));
+    const details = screen.getByRole("region", { name: "Task details" });
+    const remove = within(details).getByRole("button", { name: "Move to Removed" });
+    expect(remove).toHaveClass("button", "button-small", "button-remove");
+    // Only this button: Save and the other Task controls keep their own look.
+    expect(details.querySelectorAll(".button-remove")).toHaveLength(1);
+  });
+
   it("offers Undo right after a Task is moved to Removed", async () => {
     const user = userEvent.setup();
     render(<App />);

@@ -18,8 +18,16 @@ const AA_TEXT = 4.5;
 const AA_LARGE = 3;
 const AA_NON_TEXT = 3;
 
-/** Where things sit. All but the active filter chip are tokens used as fills. */
-type Surface = "bg" | "sidebar" | "hover" | "side-hover" | "side-selected" | "field" | "row-selected" | "accent" | "filter-chip";
+/** Where things sit: tokens used as fills, and the colour-mixes in MIXED. */
+type Surface =
+  | "bg" | "sidebar" | "hover" | "side-hover" | "side-selected" | "field" | "row-selected" | "accent"
+  | "filter-chip" | "remove-hover";
+
+/** Surfaces App.css mixes from two tokens, by the rule whose background each is. */
+const MIXED: Partial<Record<Surface, string>> = {
+  "filter-chip": ".property.filter-chip--active",
+  "remove-hover": ".button-remove:hover:not(:disabled)",
+};
 
 interface Placement {
   on: Surface[];
@@ -80,6 +88,9 @@ const TEXT: Record<string, Placement> = {
   // Buttons and banners
   ".button": { on: ["bg", "hover"] },
   ".button:hover:not(:disabled)": { on: ["hover"] },
+  // Move to Removed on an open Task (batch 3, Ticket 01): Alert Red on the canvas, and on its faint red hover.
+  ".button-remove": { on: ["bg"] },
+  ".button-remove:hover:not(:disabled)": { on: ["remove-hover"] },
   ".button-primary": { on: ["accent"] },
   ".button-primary:hover:not(:disabled)": { on: ["accent"] },
   ".error-banner": { on: ["hover"] },
@@ -307,11 +318,16 @@ interface Pair { id: string; foreground: Color; surface: Color; need: number }
 function palette(theme: Theme) {
   const values = tokens(theme);
   const color = (name: string): Color => parseColor(values[name]);
-  const chip = /color-mix\(in srgb, var\(--([\w-]+)\) (\d+)%, var\(--([\w-]+)\)\)/.exec(
-    declared(ruleDeclaring(".property.filter-chip--active", "background")!, "background")!,
-  )!;
-  const surface = (name: Surface): Color =>
-    name === "filter-chip" ? mixed(color(chip[1]), Number(chip[2]), color(chip[3])) : color(name);
+  const mix = (selector: string): Color => {
+    const found = /color-mix\(in srgb, var\(--([\w-]+)\) (\d+)%, var\(--([\w-]+)\)\)/.exec(
+      declared(ruleDeclaring(selector, "background")!, "background")!,
+    )!;
+    return mixed(color(found[1]), Number(found[2]), color(found[3]));
+  };
+  const surface = (name: Surface): Color => {
+    const from = MIXED[name];
+    return from ? mix(from) : color(name);
+  };
   /** The one var() or currentColor in a declaration's value, as a colour. */
   const resolve = (value: string, place: Placement, own: string | null): Color => {
     const named = /var\(--([\w-]+)\)/.exec(value);

@@ -657,7 +657,7 @@ export default function TaskRow({
           <TaskLinkedNotes taskId={task.id} shown={shown} onOpenNote={onOpenNote} />
           <TaskProgressHistory taskId={task.id} revision={task.revision} />
           <div className="task-remove-row">
-            <button type="button" className="button button-small" disabled={!canChangeSelectors}
+            <button type="button" className="button button-small button-remove" disabled={!canChangeSelectors}
               onClick={() => void onRemove()}>
               <Trash2 size={13} aria-hidden="true" /> Move to Removed
             </button>
