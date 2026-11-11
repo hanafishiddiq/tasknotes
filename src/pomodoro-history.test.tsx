@@ -241,6 +241,12 @@ describe("Pomodoro history page (Ticket 14)", () => {
 
   it("reads the history again when the shell stores a session, not on every tick", async () => {
     const { page } = await openHistory();
+    // The window's first outside-changes check reads everything once more; on a
+    // slow machine it can land seconds later, so let it finish before counting.
+    await waitFor(async () => {
+      await act(async () => { window.dispatchEvent(new Event("focus")); });
+      expect(lastArgs("outside_changes")).toMatchObject({ seen: 1 });
+    });
     const before = historyReads().length;
     await shellSays({ phase: "focus", taskId: null, remainingSeconds: 100 }, false);
     await shellSays({ phase: "focus", taskId: null, remainingSeconds: 99 }, false);
