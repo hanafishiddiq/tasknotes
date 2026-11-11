@@ -35,6 +35,7 @@ import { flushSync } from "react-dom";
 import { useUndo } from "./lib/use-undo";
 import { useCompletionUndo } from "./lib/use-completion-undo";
 import { useNewTaskToast } from "./lib/use-new-task-toast";
+import { useNewTaskMarks } from "./lib/use-new-task-marks";
 import { useBriefNotice } from "./lib/use-brief-notice";
 import { errorMessage, isListRemoved } from "./lib/error-message";
 import { listenForQuit } from "./lib/quit";
@@ -135,6 +136,8 @@ export default function App() {
   const completionUndo = useCompletionUndo(tasks);
   // "Task added · Click to edit" after a Task is created here; view state only.
   const newTaskToast = useNewTaskToast();
+  // The pale-yellow mark on Tasks just added, here or by an AI; view state only.
+  const newTaskMarks = useNewTaskMarks();
   // Why a Task cannot be moved here, said when the person tries; view state only.
   const reorderNotice = useBriefNotice();
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -221,7 +224,12 @@ export default function App() {
   // Only the newest re-read of an outside change may show what it read.
   const outsideRead = useRef(0);
 
-  useOutsideChanges(showOutsideChanges);
+  useOutsideChanges(showOutsideChanges, newTaskMarks.addedOutside);
+  // Opening any Task ends the person's own new Task marks, and that Task's mark.
+  const { opened: markOpened } = newTaskMarks;
+  useEffect(() => {
+    if (expandedId) markOpened(expandedId);
+  }, [expandedId, markOpened]);
   // Silent is the Pomodoro's own setting, kept by the shell; sound settings play no part.
   const pomodoro = usePomodoro({
     onTaskChanged: () => void showOutsideChanges(),
@@ -834,6 +842,7 @@ export default function App() {
       );
       sound.play("create");
       newTaskToast.added(created.id);
+      newTaskMarks.addedHere(created.id);
       const generation = ++requestGeneration.current;
       const { sort: latestSort, view: latestView, filters: latestFilters } = currentQuery.current;
       // Clear only after the actual write succeeds; retry must not create a
@@ -1030,6 +1039,7 @@ export default function App() {
     if (removed) {
       setExpandedId(null);
       newTaskToast.forget(task.id);
+      newTaskMarks.forget(task.id);
       undo.push({
         key: `task:${removed.id}`, title: removed.title,
         undo: async () => {
@@ -1601,6 +1611,8 @@ export default function App() {
                         edits={drafts.get(task.id)}
                         onEdits={(edits) => drafts.set(task.id, edits)}
                         reorderable={canPlace}
+                        justAdded={newTaskMarks.marked.has(task.id)}
+                        onSeen={newTaskMarks.waitingToBeSeen.has(task.id) ? () => newTaskMarks.seen(task.id) : undefined}
                       />
                     )}
                   />

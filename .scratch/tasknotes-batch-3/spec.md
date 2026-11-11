@@ -24,7 +24,7 @@ Four tickets, one at a time, each settled with the owner before it is built: the
 
 1. As the owner, I want Move to Removed at the end of an open Task to read red (text and icon), with a faint red fill under the pointer, so it stands apart from Save; it stays a reversible move with no dialog. Notes keep their toolbar trash icon as it is.
 
-### New Task yellow mark (Ticket 02, being settled)
+### New Task yellow mark (Ticket 02, settled)
 
 Owner answers, 2026-11-11 (Q5–Q8):
 
@@ -35,7 +35,10 @@ Owner answers, 2026-11-11 (Q5–Q8):
 - Q4 (after a labelled picture of both): the toast stays alongside the mark, replacing the 2026-11-09 decision of a toast instead of a lasting mark. The toast now stays 10 seconds (was 6) and has an X that closes it at once.
 - Q10: Tasks created through the CLI or MCP count as added by AI (the audit log names the interface and the Task; the app cannot tell an AI from the owner typing in Terminal); same yellow, no extra icon; Tasks an AI only changes are not marked.
 - Q13: no toast for Tasks added by AI.
-- Q11 and Q12, being clarified: the owner answered "after 10 seconds" for when an AI-added Task's mark goes, and "my earlier decision" for Tasks added while the app is closed.
+- Q11/Q14: an AI-added Task's mark goes 10 seconds after it is seen (window in front, row on screen), or when it is opened; the others stay.
+- Q12/Q15: nothing is stored: a Task added while the app is closed gets no mark, and quitting clears every mark.
+- Q16: the owner's own adds keep Q6, not 10 seconds.
+- Colour: half the sidebar hover yellow over the canvas, the strongest mix that keeps row text and the status ring at WCAG AA (Ticket 02).
 
 ## Implementation Decisions
 

@@ -186,12 +186,16 @@ pub struct AuditPage {
 /// What the window asks every few seconds: whether another process changed
 /// anything since it last looked. Every change the CLI or an MCP client makes
 /// leaves an Audit Entry, and an entry names no user text.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OutsideChanges {
     /// Where the log ends now; the window hands it back as `seen`.
     pub latest: i64,
     /// An applied entry after `seen` came from another interface. Always false without `seen`.
     pub changed: bool,
+    /// Tasks another interface created after `seen`, oldest first: the window
+    /// marks them as new (batch 3, Ticket 02). Always empty without `seen`.
+    pub created_tasks: Vec<String>,
 }
 
 /// Schema v10: the audit table. Triggers refuse UPDATE and DELETE, so no
@@ -356,7 +360,8 @@ impl TaskStore {
     /// applied entry from another interface. A refused call changed nothing, so
     /// it does not count. Desktop only: an append number would tell an AI
     /// interface how much it may not see. It walks only the entries since
-    /// `seen`, so its cost does not grow with the log.
+    /// `seen`, so its cost does not grow with the log. It also names the Tasks
+    /// those entries created, which the window marks as new.
     pub fn outside_changes(&self, seen: Option<i64>) -> Result<OutsideChanges, TaskError> {
         self.require_desktop()?;
         let conn = self.connect()?;
@@ -378,7 +383,32 @@ impl TaskStore {
             )?,
             None => false,
         };
-        Ok(OutsideChanges { latest, changed })
+        let created_tasks = match seen {
+            Some(seen) if changed => {
+                let mut statement = conn.prepare(
+                    "SELECT entity_id FROM audit_entries
+                     WHERE sequence > ?1 AND interface <> ?2 AND outcome = ?3 AND action = ?4
+                     ORDER BY sequence",
+                )?;
+                statement
+                    .query_map(
+                        params![
+                            seen,
+                            Interface::Desktop.as_str(),
+                            AuditOutcome::Applied.as_str(),
+                            AuditAction::TaskCreate.as_str()
+                        ],
+                        |row| row.get(0),
+                    )?
+                    .collect::<Result<Vec<String>, _>>()?
+            }
+            _ => Vec::new(),
+        };
+        Ok(OutsideChanges {
+            latest,
+            changed,
+            created_tasks,
+        })
     }
 
     /// Record a refusal about an entity in `conn`, outside any change: a

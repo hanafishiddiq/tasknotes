@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** in progress — toast and flash part done on `feat/batch3-new-task-mark`; the mark waits for Q11/Q12 to be clarified
+**Implementation:** in progress — built on `feat/batch3-new-task-mark`; review and the owner's native check remain
 
 ## Acceptance criteria
 
@@ -14,10 +14,11 @@
 - [x] Its X ("Dismiss") closes it at once, without a fade, and opens nothing; a later add brings it back with its full time. — `src/new-task-toast.test.tsx` ("goes at once from its X…").
 - [x] Opening a Task from the toast lays no outline and no flash over it; the open Task keeps its usual open-row yellow. — App test "clicking it scrolls to the new Task and opens it, with no outline or flash"; stylesheet test: no `.task-slot--flash` rule and no outline on `.task-slot`.
 - [x] The X is readable on the toast's hover-gray box (3:1 for an icon-only control). — `src/a11y-contrast.test.tsx`, `.task-toast-close` and its hover.
-- [ ] A Task the owner adds in the window is marked (sidebar hover yellow fill on its row, no border, kept under the pointer) until any Task is opened; several adds in a row are all marked; switching List keeps the marks; quitting clears them.
-- [ ] A Task created through the CLI or MCP is marked the same way, with no toast; when its mark goes per Q11/Q12 (being clarified).
-- [ ] Text on the mark (title, metadata, priority and deadline colours) and the red Move to Removed keep WCAG AA.
-- [ ] Screen readers hear that a marked Task was just added.
+- [x] A Task the owner adds in the window is marked (pale-yellow fill on its row, no border, kept under the pointer) until any Task is opened, including from the toast; several adds in a row are all marked; nothing is stored, so quitting clears them. — `src/new-task-mark.test.tsx` ("is marked, with every add in a row…", "loses its mark when the toast opens it", "forgets a Task moved to Removed, and stores nothing"). Switching List keeps them by construction: the marks live in App state, not in the view.
+- [x] A Task created through the CLI or MCP while the window is open is marked the same way, with no toast; its mark goes 10 seconds after its row is half on screen with the window in front, or when it is opened; the others stay. — core `tests/audit.rs` ("the_window_learns_which_tasks_were_created_outside": only CLI/MCP `task.create`, in order, once); `src/new-task-mark.test.tsx` ("is marked with no toast, and goes 10 seconds after it is seen", "waits while the window is not in front", "keeps the others marked when one of them is opened").
+- [x] A Task created while the window was closed gets no mark (Q15). — core test (the first look reports none); App test "gets no mark when it was added before the window opened".
+- [x] Text and marks on the row keep WCAG AA on the mark: title, subtitle, progress, metadata, priority and deadline colours, tags, and the status ring, dot and disc. — `src/a11y-contrast.test.tsx`, surface `new-mark`. The full sidebar hover yellow failed nine pairs (dark: Overdue red, the "+N" tag; light: High and Very High orange, Overdue, Due today, the In Progress ring and dot, the Completed disc); 60% still failed five, 52% one; 50% passes all. The opened Task never carries the mark, so the red Move to Removed never sits on it.
+- [x] Screen readers hear "Just added" on a marked row. — `src/new-task-mark.test.tsx`.
 - [ ] The owner sees the toast, the X and the mark in the installed app (batch-3 click check).
 
 ## Delivery guardrails
@@ -29,3 +30,7 @@
 ## Comments
 
 **2026-11-11 — owner decisions (Han), Q4–Q13:** see the spec's "New Task yellow mark" section. Q4 replaces the 2026-11-09 decision (batch 2 Ticket 07: "toast instead of a Recently added section or a lasting yellow mark"): the toast stays and a lasting mark is added. Out of this ticket: the reorder notice above the toast keeps its 2 seconds and has no X; the completion Undo bar keeps its 6 seconds.
+
+**2026-11-11 — owner decisions (Han), Q14–Q16:** an AI-added Task's 10 seconds start when it is seen (window in front, row on screen); opening it first ends it at once. Tasks added while the app is closed get no mark, and nothing is stored ("my earlier decision", read as Q6). The owner's own adds keep Q6 (until any Task is opened), not 10 seconds.
+
+**2026-11-11 — colour (technical call, reported to the owner):** Q7 asked for the sidebar hover yellow; the mark uses half of it over the canvas (dark `#353121`, light `#fdf6d0`), the strongest mix that keeps every row text and the status ring at WCAG AA.

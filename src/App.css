@@ -1581,6 +1581,17 @@ kbd {
   color: var(--row-selected-text);
   background: var(--row-selected);
 }
+/* A Task just added, here or by an AI (batch 3, Ticket 02): the sidebar hover yellow on its row,
+   no border, and it stays under the pointer. Opening it ends the mark, so it never meets the open row's yellow. */
+.task-card--new:not(.task-card--expanded) .task-row,
+.task-card--new:not(.task-card--expanded) .task-row:hover {
+  background: color-mix(in srgb, var(--side-hover) 50%, var(--bg));
+}
+/* Like a hovered row, it hides the hairlines on either side. */
+.task-card--new::before,
+.task-slot:has(.task-card--new) + .task-slot .task-card::before {
+  border-color: transparent;
+}
 .task-check {
   display: grid;
   flex: none;
