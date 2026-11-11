@@ -212,7 +212,7 @@ it("hides the ⌘↵ hint while the button reads Saving...", () => {
 
 it("lists ⌘↵ in the Settings keyboard shortcuts", () => {
   render(<SettingsView hidden={false} preference="system" onPreference={() => undefined}
-    counts="every" onCounts={() => undefined} />);
+    countPlacement="every" onCountPlacement={() => undefined} />);
   const shortcut = screen.getByText("Save the open Task edit").closest("div")!;
   expect(within(shortcut).getByText("⌘↵")).toBeInTheDocument();
 });

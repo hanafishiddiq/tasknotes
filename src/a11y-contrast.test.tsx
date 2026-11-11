@@ -54,6 +54,9 @@ const TEXT: Record<string, Placement> = {
   ".folder": { on: ["sidebar", "side-hover", "side-selected"] },
   ".folder-count": { on: ["sidebar", "hover"] },
   '.folder[aria-current="page"] .folder-count': { on: ["side-selected"] },
+  // Batch 3, Ticket 05: a count on every row, so also under the pointer and on a drop target.
+  ".folder:hover:not(:disabled) .folder-count": { on: ["side-hover"] },
+  '.folder-row[data-drop-edge="into"] .folder-count': { on: ["side-selected"] },
   ".folder--quiet": { on: ["sidebar", "side-hover", "side-selected"] },
   ".folder-form input": { on: ["sidebar", "hover"] },
   ".folder-form input::placeholder": { on: ["sidebar", "hover"] },

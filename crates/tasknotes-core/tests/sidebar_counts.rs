@@ -133,3 +133,35 @@ fn removed_tasks_and_the_tasks_of_a_removed_list_do_not_count() {
     assert_eq!(counts.all, 1);
     assert!(counts.lists.is_empty(), "{:?}", counts.lists);
 }
+
+#[test]
+fn a_list_inside_a_removed_list_counts_nothing_until_it_is_restored() {
+    let World { store, _dir } = world();
+    let outer = list(&store, "Synthetic outer");
+    let inner = store
+        .create_sub_list(CreateSubList {
+            name: "Synthetic inner".into(),
+            parent_id: outer.id.clone(),
+        })
+        .unwrap();
+    task(&store, "Deep in the inner List", Some(&inner));
+    assert_eq!(counts(&store).lists.get(&inner.id), Some(&1));
+
+    let removed = store
+        .set_list_removed(SetListRemoved {
+            id: outer.id.clone(),
+            expected_revision: outer.revision,
+            removed: true,
+        })
+        .unwrap();
+    assert_eq!(counts(&store), UnfinishedCounts::default());
+
+    store
+        .set_list_removed(SetListRemoved {
+            id: outer.id.clone(),
+            expected_revision: removed.revision,
+            removed: false,
+        })
+        .unwrap();
+    assert_eq!(counts(&store).all, 1);
+}

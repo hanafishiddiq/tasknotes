@@ -8,8 +8,8 @@ import {
 import StyleIcon from "./StyleIcon";
 import StylePicker from "./StylePicker";
 import type { Style } from "../lib/style";
-import type { TaskList, TaskView, UnfinishedCounts } from "../lib/task-api";
-import type { SidebarCounts } from "../lib/use-sidebar-counts";
+import { countFor, viewKey, type TaskList, type TaskView, type UnfinishedCounts } from "../lib/task-api";
+import type { CountPlacement } from "../lib/count-placement";
 import { readExpanded, writeExpanded } from "../lib/expanded";
 import { MAX_LIST_DEPTH, listTree, parentOf } from "../lib/list-tree";
 import { alreadyThere, anchorFor, useRowDrag, type RowDrop } from "../lib/use-row-drag";
@@ -47,7 +47,7 @@ interface TaskSidebarProps {
   /** Each place's unfinished Tasks as the core counts them; null until they are read. */
   counts: UnfinishedCounts | null;
   /** Where the numbers show, as chosen in Settings (Q48). */
-  countsShown: SidebarCounts;
+  countPlacement: CountPlacement;
   hasMoreLists: boolean;
   busy: boolean;
   theme: Theme;
@@ -71,7 +71,7 @@ interface TaskSidebarProps {
 }
 
 export default function TaskSidebar({
-  view, notesActive, removedActive, onOpenRemoved, pendingApprovals, approvalsActive, onOpenApprovals, settingsActive, onOpenSettings, pomodoroPageActive, onOpenPomodoroPage, allNotesCurrent, noteFolders, resizer, pomodoro, lists, listError, counts, countsShown, hasMoreLists, busy,
+  view, notesActive, removedActive, onOpenRemoved, pendingApprovals, approvalsActive, onOpenApprovals, settingsActive, onOpenSettings, pomodoroPageActive, onOpenPomodoroPage, allNotesCurrent, noteFolders, resizer, pomodoro, lists, listError, counts, countPlacement, hasMoreLists, busy,
   theme, onToggleTheme, onNavigate, onOpenNotes, onCreateList, onCreateSubList, onRenameList, onReorderList,
   onPlaceList, onMoveList,
   onStyleList, onRemoveList,
@@ -283,11 +283,10 @@ export default function TaskSidebar({
    * none shows no number.
    */
   const count = (place: TaskView) => {
-    if (!counts || countsShown === "none" || (countsShown === "open" && !isCurrent(place))) return {};
-    const number = place.kind === "all" ? counts.all
-      : place.kind === "inbox" ? counts.inbox : counts.lists[place.listId] ?? 0;
+    if (!counts || countPlacement === "none" || (countPlacement === "open" && !isCurrent(place))) return {};
+    const number = countFor(counts, place);
     if (number === 0) return {};
-    const id = `${countId}-${place.kind === "list" ? place.listId : place.kind}`;
+    const id = `${countId}-${viewKey(place)}`;
     return {
       describedBy: id,
       shown: (

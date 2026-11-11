@@ -3,10 +3,10 @@ import { taskApi, type UnfinishedCounts } from "./task-api";
 
 /**
  * The sidebar's numbers, read from the core again whenever `readAgainWhen`
- * changes: the Tasks or Lists on hand, or what came back from Removed. Only
- * the newest answer is shown. A failed read keeps the numbers already shown
- * (none at first) until the next change reads again: a number is a hint, and
- * the place itself always lists its Tasks.
+ * changes: the Tasks or Lists on hand, or a restore or outside change. Only
+ * the newest answer is shown. A failed read shows no numbers rather than old
+ * ones, until the next change reads again: a number is a hint, and the place
+ * itself always lists its Tasks.
  */
 export function useUnfinishedCounts(readAgainWhen: DependencyList): UnfinishedCounts | null {
   const [counts, setCounts] = useState<UnfinishedCounts | null>(null);
@@ -15,7 +15,7 @@ export function useUnfinishedCounts(readAgainWhen: DependencyList): UnfinishedCo
     const read = ++latest.current;
     taskApi.unfinishedCounts()
       .then((next) => { if (read === latest.current) setCounts(next); })
-      .catch(() => {});
+      .catch(() => { if (read === latest.current) setCounts(null); });
   }, readAgainWhen);
   return counts;
 }

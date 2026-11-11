@@ -52,7 +52,7 @@ import RemovedView from "./components/RemovedView";
 import ApprovalsView from "./components/ApprovalsView";
 import { usePendingApprovals } from "./lib/use-pending-approvals";
 import { useOutsideChanges } from "./lib/use-outside-changes";
-import { useSidebarCounts } from "./lib/use-sidebar-counts";
+import { useCountPlacement } from "./lib/count-placement";
 import { useUnfinishedCounts } from "./lib/use-unfinished-counts";
 import { captureScrollAnchor, holdScrollAnchor, type ScrollAnchor } from "./lib/scroll-anchor";
 import SettingsView from "./components/SettingsView";
@@ -207,7 +207,7 @@ export default function App() {
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
   const appearance = useTheme();
-  const [sidebarCounts, setSidebarCounts] = useSidebarCounts();
+  const [countPlacement, setCountPlacement] = useCountPlacement();
   // Read again after anything that can change a number: the Tasks or Lists on hand, or a restore.
   const unfinishedCounts = useUnfinishedCounts([tasks, lists, removedKey]);
   const sidebar = useSidebarWidth();
@@ -1362,7 +1362,7 @@ export default function App() {
             onOpen={(folder) => openNotes({ kind: "folder", folderId: folder.id })}
             onRemoved={folderRemoved} />
         )}
-        lists={lists} counts={unfinishedCounts} countsShown={sidebarCounts}
+        lists={lists} counts={unfinishedCounts} countPlacement={countPlacement}
         listError={listError}
         hasMoreLists={Boolean(listCursor)} busy={busy}
         theme={appearance.theme} onToggleTheme={appearance.toggle}
@@ -1718,7 +1718,7 @@ export default function App() {
         )}
       </main>
       <SettingsView hidden={workspace !== "settings"} preference={appearance.preference}
-        onPreference={appearance.setPreference} counts={sidebarCounts} onCounts={setSidebarCounts}>
+        onPreference={appearance.setPreference} countPlacement={countPlacement} onCountPlacement={setCountPlacement}>
         <SoundSettings sound={sound} />
         {pomodoro.view && (
           <>

@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
 import App from "./App";
 import type { Task, TaskList } from "./lib/task-api";
+import { countUnfinished } from "./test/unfinished-counts";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 const call = vi.mocked(invoke);
@@ -26,13 +27,6 @@ function task(n: number, fields: Partial<Task> = {}): Task {
   };
 }
 
-const countsOf = (all: Task[]) => {
-  const unfinished = all.filter((item) => item.status !== "completed");
-  const lists: Record<string, number> = {};
-  for (const item of unfinished) if (item.listId) lists[item.listId] = (lists[item.listId] ?? 0) + 1;
-  return { all: unfinished.length, inbox: unfinished.filter((item) => !item.listId).length, lists };
-};
-
 beforeEach(() => {
   tasks = [
     task(1), task(2, { status: "in_progress", progress: 30 }), task(3, { status: "completed", progress: 100 }),
@@ -50,7 +44,7 @@ beforeEach(() => {
           || (view.kind === "inbox" ? !item.listId : item.listId === view.listId));
         return { items: items.map((item) => ({ ...item })), nextCursor: null };
       }
-      case "unfinished_counts": return countsOf(tasks);
+      case "unfinished_counts": return countUnfinished(tasks);
       case "create_task": {
         const made = task(100 + tasks.length, { title: body.input.title.trim() });
         tasks.push(made);
@@ -115,6 +109,22 @@ describe("Sidebar counts of unfinished Tasks (batch 3, Ticket 05)", () => {
     await screen.findByRole("article", { name: "Synthetic task 1" });
     await user.click(screen.getByRole("button", { name: "Settings" }));
     expect(screen.getByRole("radio", { name: "None" })).toBeChecked();
+  });
+
+  it("shows no numbers when the core cannot count, rather than old ones", async () => {
+    const user = userEvent.setup();
+    await openApp();
+    const answer = call.getMockImplementation()!;
+    call.mockImplementation(async (command, args) => {
+      if (command === "unfinished_counts") throw "Storage is unavailable";
+      return answer(command, args);
+    });
+    // A change reads the numbers again; the read fails.
+    await user.type(screen.getByRole("textbox", { name: "Task title" }), "Synthetic new errand");
+    await user.click(screen.getByRole("button", { name: "Add task" }));
+    await screen.findByRole("article", { name: "Synthetic new errand" });
+    await waitFor(() => expect(shown("All tasks")).toBeNull());
+    expect(screen.getByRole("navigation", { name: "Lists" }).querySelector(".folder-count")).toBeNull();
   });
 
   it("reads the numbers again after a Task changes here", async () => {

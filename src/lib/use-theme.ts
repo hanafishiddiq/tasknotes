@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useStoredChoice } from "./stored-choice";
 
 export type Theme = "dark" | "light";
 /** What the person chose: one appearance, or whatever the system shows. */
@@ -13,17 +14,6 @@ export const APPEARANCE_LABELS: Record<ThemePreference, string> = {
 
 const STORAGE_KEY = "tasknotes.theme";
 const SYSTEM_DARK = "(prefers-color-scheme: dark)";
-
-// A per-window display preference, not domain data: storage may be unavailable,
-// in which case the app simply opens dark.
-function storedPreference(): ThemePreference {
-  try {
-    const value = window.localStorage.getItem(STORAGE_KEY);
-    return value === "light" || value === "system" ? value : "dark";
-  } catch {
-    return "dark";
-  }
-}
 
 function systemTheme(): Theme {
   // Without matchMedia (very old WebViews, tests) there is no system signal: stay dark.
@@ -41,7 +31,8 @@ export interface ThemeControl {
 }
 
 export function useTheme(): ThemeControl {
-  const [preference, setPreference] = useState<ThemePreference>(storedPreference);
+  // Without storage the app simply opens dark.
+  const [preference, setPreference] = useStoredChoice<ThemePreference>(STORAGE_KEY, APPEARANCES, "dark");
   const [system, setSystem] = useState<Theme>(systemTheme);
   const theme = preference === "system" ? system : preference;
 
@@ -57,14 +48,6 @@ export function useTheme(): ThemeControl {
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(STORAGE_KEY, preference);
-    } catch {
-      // Keep the in-memory choice for this session.
-    }
-  }, [preference]);
 
   return {
     theme, preference, setPreference,

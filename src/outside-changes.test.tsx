@@ -6,6 +6,7 @@ import App from "./App";
 import { TASK_PAGE_SIZE, type Task, type TaskList } from "./lib/task-api";
 import { OUTSIDE_CHANGE_POLL_MS } from "./lib/use-outside-changes";
 import { NoteBackend } from "./test/note-backend";
+import { countUnfinished } from "./test/unfinished-counts";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 const call = vi.mocked(invoke);
@@ -149,14 +150,7 @@ async function answer(command: string, args: unknown): Promise<unknown> {
       case "list_note_tasks":
         return { items: [], nextCursor: null };
       case "count_pending_bulk_requests": return 0;
-      case "unfinished_counts": {
-        // As the core counts them: Ready and In Progress, outside Lists in Removed.
-        const hidden = new Set(lists.filter((item) => item.removed).map((item) => item.id));
-        const open = tasks.filter((item) => item.status !== "completed" && !(item.listId && hidden.has(item.listId)));
-        const byList: Record<string, number> = {};
-        for (const item of open) if (item.listId) byList[item.listId] = (byList[item.listId] ?? 0) + 1;
-        return { all: open.length, inbox: open.filter((item) => !item.listId).length, lists: byList };
-      }
+      case "unfinished_counts": return countUnfinished(tasks, lists);
       case "quit_ready": return null;
       default: return notes.handle(command, body);
     }
@@ -202,6 +196,12 @@ describe("Changes made outside the window", () => {
     await focusWindow();
     await waitFor(() => expect(inboxCount()).toBe("1"));
     expect(screen.getByRole("button", { name: "All tasks" })).toHaveAccessibleDescription("2 unfinished");
+
+    // An MCP client moves the Work List to Removed: its Task no longer counts.
+    lists[0] = { ...work, removed: true, revision: 2 };
+    outside();
+    await focusWindow();
+    await waitFor(() => expect(screen.getByRole("button", { name: "All tasks" })).toHaveAccessibleDescription("1 unfinished"));
   });
 
   it("finds them on its own while the window stays in focus", async () => {

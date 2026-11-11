@@ -74,6 +74,13 @@ export interface UnfinishedCounts {
   lists: Record<string, number>;
 }
 
+/** A place's number: every unfinished Task for All tasks, the Inbox's, or one List's own. */
+export function countFor(counts: UnfinishedCounts, place: TaskView): number {
+  if (place.kind === "all") return counts.all;
+  if (place.kind === "inbox") return counts.inbox;
+  return counts.lists[place.listId] ?? 0;
+}
+
 export interface ListMutation {
   id: string;
   expectedRevision: number;

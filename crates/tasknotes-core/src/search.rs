@@ -217,7 +217,8 @@ pub struct UnfinishedCounts {
 }
 
 impl TaskStore {
-    /// [`UnfinishedCounts`] in one grouped count: no Task is read.
+    /// [`UnfinishedCounts`] in one grouped count: SQLite counts the visible
+    /// rows, and only the numbers come back, never a Task.
     pub fn unfinished_counts(&self) -> Result<UnfinishedCounts, TaskError> {
         let conn = self.connect()?;
         let mut stmt = conn.prepare(concat!(

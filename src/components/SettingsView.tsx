@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Monitor, Moon, Sun } from "lucide-react";
 import { APPEARANCES, APPEARANCE_LABELS, type ThemePreference } from "../lib/use-theme";
-import { SIDEBAR_COUNTS, SIDEBAR_COUNT_LABELS, type SidebarCounts } from "../lib/use-sidebar-counts";
+import { COUNT_PLACEMENTS, COUNT_PLACEMENT_LABELS, type CountPlacement } from "../lib/count-placement";
 import { SHORTCUTS } from "../lib/shortcuts";
 import MenuBarSettings from "./MenuBarSettings";
 import DataSettings from "./DataSettings";
@@ -13,14 +13,14 @@ interface SettingsViewProps {
   preference: ThemePreference;
   onPreference: (next: ThemePreference) => void;
   /** Where the sidebar shows each folder's unfinished Tasks (Q48). */
-  counts: SidebarCounts;
-  onCounts: (next: SidebarCounts) => void;
+  countPlacement: CountPlacement;
+  onCountPlacement: (next: CountPlacement) => void;
   /** Sections owned by other features (e.g. Sound), shown after Appearance. */
   children?: ReactNode;
 }
 
 /** Per-window preferences. Later tickets add menu-bar, shortcut and sound settings here. */
-export default function SettingsView({ hidden, preference, onPreference, counts, onCounts, children }: SettingsViewProps) {
+export default function SettingsView({ hidden, preference, onPreference, countPlacement, onCountPlacement, children }: SettingsViewProps) {
   return (
     <main className="main-view" hidden={hidden}>
       <div className="main-scroll">
@@ -45,11 +45,11 @@ export default function SettingsView({ hidden, preference, onPreference, counts,
 
           <h2 className="settings-heading" id="settings-sidebar-counts">Task counts in the sidebar</h2>
           <div className="settings-choices" role="radiogroup" aria-labelledby="settings-sidebar-counts">
-            {SIDEBAR_COUNTS.map((value) => (
+            {COUNT_PLACEMENTS.map((value) => (
               <label key={value} className="settings-choice">
                 <input type="radio" name="sidebar-counts" value={value}
-                  checked={counts === value} onChange={() => onCounts(value)} />
-                <span>{SIDEBAR_COUNT_LABELS[value]}</span>
+                  checked={countPlacement === value} onChange={() => onCountPlacement(value)} />
+                <span>{COUNT_PLACEMENT_LABELS[value]}</span>
               </label>
             ))}
           </div>
