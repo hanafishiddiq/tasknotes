@@ -32,9 +32,10 @@ Tujuan akhir: Tasknotes di /Applications berisi 5 perubahan batch 3 (tombol Remo
     - [x] Han memilih susunan A (Q39)
     - [x] Start break saat fokus berjalan, menitnya tetap dihitung (Q43)
     - [x] Q40–Q42 dan Q44 dijawab "ya semua" (menit saja, bukan sesi)
-  - [ ] Inti: Pause/Resume, Start break lebih awal, total sepanjang waktu
-  - [ ] Shell: perintah baru, menu bar, notifikasi
-  - [ ] Halaman A: timer, pilihan Task, durasi, garis hari, riwayat
+  - [x] Inti: Pause/Resume, Start break lebih awal, total sepanjang waktu (commit 9ab3463, dc6a1f3)
+  - [x] Shell: perintah baru, menu bar, notifikasi (commit 3280e46)
+  - [x] Halaman A: timer, pilihan Task, durasi, garis hari, riwayat (commit 8133fc4; 1534 tes window hijau)
+  - [x] Dicek di app debug dengan data contoh (tombol Pause tetap kuning, sudah diperbaiki)
   - [ ] Draft PR, review dua sumbu, merge setelah Han konfirmasi
 - [ ] Angka Task belum selesai di sidebar (tiket 05) di main
   - [x] Diminta Han dan dijawab (Q45 Ready + In Progress; Q46 semua folder, bisa diatur di Settings)

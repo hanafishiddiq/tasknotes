@@ -6,19 +6,19 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** in progress — design settled 2026-11-11 (Q39–Q44)
+**Implementation:** in progress — built on `feat/batch3-pomodoro-page` (core, shell, page); Draft PR and review next
 
 ## Acceptance criteria
 
-- [ ] Pause / Resume during a focus or a break: paused time counts as neither focus, break nor Overtime, and a planned end never passes while paused; Stop while paused is Stop at the pause. The menu bar title shows "⏸ 12:34" and its menu offers Resume (Pause while running); the sidebar block shows the paused state.
-- [ ] Start break while a focus runs or is paused ends it early: its minutes count as focus time for the day, the all-time totals and the Task's Progress Entry, but not as a session nor toward the long break (Q43–Q44); under a minute it is stored as Stopped. The menu bar offers it too. CLI and MCP history name such a session as ended early.
-- [ ] Past the planned end, Stop keeps storing a Finished session without Overtime (unchanged).
-- [ ] The first screen of the page: the Task line (a link that opens the picker while idle; the Task, or "Next: …" during a break, otherwise), the ring (fills as focus is spent; grey in a break; dim while paused; a second inner lap for Overtime), the time in large tabular numerals with a one-word state, four cycle beads (screen readers hear "Session 2 of 4"), and one button that is yellow only while the timer waits for the owner, grey Pause while running, a small Stop icon, and a quiet second choice (Count +07:12, Start break, Skip to focus).
-- [ ] The Task picker is a searchable sheet in the Task menu's look: "No Task" and every unfinished Task in every List, In Progress first, with the List name; it opens on the chosen Task; keyboard and pointer as the Task menu.
-- [ ] The lengths (Focus, Break, Long break, Long break after) and Silent sit in a sheet behind an icon at the top right, saved with Save; Settings keeps one line linking to the page.
-- [ ] Today's day rail: one mark per session at its time (Finished and ended early filled, Stopped hollow, the running focus dim), now as a thin line, today's counted focus at its end; each mark names its time, Task and length to pointer, keyboard and screen readers.
-- [ ] The focus record below: all-time sessions and focus from the core in its heading, then each day as today's history does (newest first, its sessions oldest first), with "Load more days".
-- [ ] Every text keeps WCAG AA in both themes; the paused pulse and the ring's colour fades stop under Reduce Motion.
+- [x] Pause / Resume during a focus or a break: paused time counts as neither focus, break nor Overtime, and a planned end never passes while paused; Stop while paused is Stop at the pause. The menu bar title shows "⏸ 12:34" and its menu offers Resume (Pause while running); the sidebar block shows the paused state.
+- [x] Start break while a focus runs or is paused ends it early: its minutes count as focus time for the day, the all-time totals and the Task's Progress Entry, but not as a session nor toward the long break (Q43–Q44); under a minute it is stored as Stopped. The menu bar offers it too. CLI and MCP history name such a session as ended early.
+- [x] Past the planned end, Stop keeps storing a Finished session without Overtime (unchanged).
+- [x] The first screen of the page: the Task line (a link that opens the picker while idle; the Task, or "Next: …" during a break, otherwise), the ring (fills as focus is spent; grey in a break; dim while paused; a second inner lap for Overtime), the time in large tabular numerals with a one-word state, four cycle beads (screen readers hear "Session 2 of 4"), and one button that is yellow only while the timer waits for the owner, grey Pause while running, a small Stop icon, and a quiet second choice (Count +07:12, Start break, Skip to focus).
+- [x] The Task picker is a searchable sheet in the Task menu's look: "No Task" and every unfinished Task in every List, In Progress first, with the List name; it opens on the chosen Task; keyboard and pointer as the Task menu.
+- [x] The lengths (Focus, Break, Long break, Long break after) and Silent sit in a sheet behind an icon at the top right, saved with Save; Settings keeps one line linking to the page.
+- [x] Today's day rail: one mark per session at its time (Finished and ended early filled, Stopped hollow, the running focus dim), now as a thin line, today's counted focus at its end; each mark names its times, Task and outcome to the pointer and screen readers; the record below says the same for the keyboard.
+- [x] The focus record below: all-time sessions and focus from the core in its heading, then each day as today's history does (newest first, its sessions oldest first), with "Load more days".
+- [x] Every text keeps WCAG AA in both themes; the paused pulse and the ring's colour fades stop under Reduce Motion.
 - [ ] The owner checks it in the installed app (batch-3 click check).
 
 ## Delivery guardrails
@@ -41,3 +41,5 @@
 **2026-11-11 — Q43 answered: "Tetap dihitung"** (changed from the recommendation): a break started early still counts the minutes focused. Open as Q44: whether such a focus also counts as a session and toward the long break, or adds its minutes only (the preview shows minutes only). Storing it needs a schema change, since a Finished session today must have reached its planned length.
 
 **2026-11-11 — Q40–Q42 and Q44 answered "ya semua"**: the design is settled (see the spec). Storing a focus ended early needs a third session outcome in the store (schema change).
+
+**2026-11-11 — built (evidence):** core `cargo test` with new timer tests (pause, resume, break early, the cycle, the length under way) and store tests (Ended Early Progress Entry, v23→v24 migration keeping every row, all-time totals counted as the days are); shell tests for the menu (Pause / Resume / Start break) and the view; window tests for the page (timer, picker, lengths, rail, record), contrast for every new colour in both themes (three light-theme pairs on the sheet's gray failed at 2.9:1 and now take accent text), axe and keyboard scenes for the timer, the picker and the lengths sheet. Seen in the debug app on synthetic data: idle, picker, focus, paused and the lengths sheet. One fix from that check: the main button kept the previous yellow while it faded to gray, so it is now a new button per choice with no colour transition. Not decided by this ticket and left as it was: the sidebar keeps All tasks highlighted on other pages; in the debug window the Pomodoro folder also showed no current-page gray, although the code and a browser check give it one (to look at in the installed app).
