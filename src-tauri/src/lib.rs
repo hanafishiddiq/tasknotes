@@ -492,9 +492,7 @@ fn decline_bulk_request(store: State<'_, TaskStore>, id: String) -> Result<BulkR
 pub fn run() {
     let builder = tauri::Builder::default();
     #[cfg(desktop)]
-    let builder = builder
-        .plugin(shell::shortcut_plugin())
-        .plugin(tauri_plugin_notification::init());
+    let builder = builder.plugin(shell::shortcut_plugin());
     builder
         .manage(quit::QuitState::default())
         .menu(quit::menu)

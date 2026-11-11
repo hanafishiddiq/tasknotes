@@ -30,18 +30,18 @@ tasknotes-core = { path = "../crates/tasknotes-core" }
 # Global Quick Capture shortcut (Ticket 15); desktop only, used from Rust, no JS permissions.
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-global-shortcut = "=2.4.1"
-# Pomodoro notifications: focus end (Start break / Count overtime) and break
-# end (Start focus) (Ticket 02);
-# used from Rust only, so no JavaScript permission is granted.
-tauri-plugin-notification = "=2.8.0"
 
-# Reads the notification alert style (Persistent or not) for the one-time tip,
-# and withdraws an answered Pomodoro notification (the plugin cannot on macOS).
+# Pomodoro notifications through UNUserNotificationCenter only (batch 3,
+# Issue 06): posting with Start break / Count overtime / Start focus, the
+# clicks, withdrawing an answered one, and the alert style for the one-time
+# tip. No notification plugin: its macOS path is the older
+# NSUserNotificationCenter, which macOS 27 refuses to an app that also uses
+# this one.
 [target.'cfg(target_os = "macos")'.dependencies]
 block2 = "0.6"
 objc2 = "0.6"
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSBundle", "NSString", "NSUserNotification"] }
-objc2-user-notifications = { version = "0.3", default-features = false, features = ["std", "block2", "UNUserNotificationCenter", "UNNotificationSettings"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSBundle", "NSDictionary", "NSError", "NSObject", "NSSet", "NSString", "NSValue"] }
+objc2-user-notifications = { version = "0.3", default-features = false, features = ["std", "block2", "UNNotification", "UNNotificationAction", "UNNotificationCategory", "UNNotificationContent", "UNNotificationRequest", "UNNotificationResponse", "UNNotificationSettings", "UNNotificationSound", "UNNotificationTrigger", "UNUserNotificationCenter"] }
 
 [dev-dependencies]
 tempfile = "3"
