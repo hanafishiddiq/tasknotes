@@ -3,11 +3,14 @@
 //! count and focus minutes and its sessions in the order they started. The
 //! one rule the window, the CLI and MCP read:
 //!
-//! - Only Finished sessions count. A Stopped one is listed, never counted.
+//! - Only Finished sessions count as sessions. A Stopped one is listed,
+//!   never counted.
 //! - A Finished session's focus is its planned length plus the Overtime the
 //!   person counted with "Count +mm:ss", each rounded to the nearest whole
-//!   minute as its Progress Entry says it ("25 + 7 min"); a day's focus
-//!   minutes are the sum of what its sessions show.
+//!   minute as its Progress Entry says it ("25 + 7 min"); an Ended Early
+//!   one's is its focus before Start break, rounded the same way ("10 min";
+//!   batch 3, Q43–Q44). A day's focus minutes, and the all-time totals, are
+//!   the sum of what its sessions show.
 //! - A session belongs to the day it started on, on the wall clock it
 //!   started on: the offset from UTC the Mac had at its start (schema v23),
 //!   so travelling or a daylight-saving change later never moves it, and
@@ -24,7 +27,9 @@ use rusqlite::params;
 use serde::Serialize;
 
 use crate::calendar::{DAY_MS, TimeZone, day_at, format_date, parse_date};
-use crate::pomodoro::{PomodoroSession, SessionOutcome, read_session, whole_minutes};
+use crate::pomodoro::{
+    PomodoroSession, SESSION_COLUMNS, SessionOutcome, read_session, whole_minutes,
+};
 use crate::tasks::{TaskError, TaskStore};
 
 /// Which days to read: `from` and `to` are local dates (`YYYY-MM-DD`),
@@ -56,8 +61,8 @@ pub struct PomodoroDay {
     pub date: String,
     /// Finished sessions: the ones that count.
     pub finished_sessions: i64,
-    /// Planned plus counted Overtime of the Finished sessions, in the whole
-    /// minutes each session shows.
+    /// Planned plus counted Overtime of the Finished sessions, and the focus
+    /// of the Ended Early ones, in the whole minutes each session shows.
     pub focus_minutes: i64,
     /// Listed, never counted.
     pub stopped_sessions: i64,
@@ -85,9 +90,10 @@ pub struct HistorySession {
     /// The counted Overtime in whole minutes ("7" in "25 + 7 min"); zero
     /// for a Stopped session.
     pub overtime_minutes: i64,
-    /// A Stopped session's focus before Stop, in whole minutes ("Stopped
-    /// after 12 min"), sleep never included; `None` for a Finished session
-    /// and for a Stopped one stored before schema v23, which kept no time.
+    /// A Stopped session's focus before Stop ("Stopped after 12 min"), or an
+    /// Ended Early one's before Start break ("10 min"), in whole minutes,
+    /// sleep and pauses never included; `None` for a Finished session and
+    /// for a Stopped one stored before schema v23, which kept no time.
     pub stopped_after_minutes: Option<i64>,
     /// The Task's title while it is shown; `None` without a Task or while
     /// it is in Removed (`task_removed`).
@@ -148,7 +154,39 @@ const HISTORY_SQL: &str = concat!(
      ORDER BY s.started_at DESC, s.sequence DESC"
 );
 
+/// Every session ever stored, counted as the days are: the Finished
+/// sessions, and the focus minutes of the Finished and Ended Early ones.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PomodoroTotals {
+    pub finished_sessions: i64,
+    pub focus_minutes: i64,
+}
+
 impl TaskStore {
+    /// The all-time totals the Pomodoro page shows (batch 3, Q42). Read
+    /// only; every interface may read them.
+    pub fn pomodoro_totals(&self) -> Result<PomodoroTotals, TaskError> {
+        let conn = self.connect()?;
+        let mut statement =
+            conn.prepare(&format!("SELECT {SESSION_COLUMNS} FROM pomodoro_sessions"))?;
+        let mut totals = PomodoroTotals {
+            finished_sessions: 0,
+            focus_minutes: 0,
+        };
+        for session in statement.query_map([], read_session)? {
+            let session = session?;
+            totals.finished_sessions += i64::from(session.outcome == SessionOutcome::Finished);
+            totals.focus_minutes += counted_minutes(
+                session.outcome,
+                whole_minutes(session.planned_seconds),
+                whole_minutes(session.overtime_seconds),
+                session.stopped_after_seconds.map(whole_minutes),
+            );
+        }
+        Ok(totals)
+    }
+
     /// Up to `limit` days of the history in `range`, newest first, after the
     /// day a `cursor` from an earlier page names. Every interface may read it.
     pub fn pomodoro_history(
@@ -266,6 +304,23 @@ fn history_session(
     }
 }
 
+/// The focus a session counts, in the whole minutes it shows: a Finished
+/// one its planned length and the Overtime counted, an Ended Early one its
+/// focus before the break, a Stopped one nothing. The days and the all-time
+/// totals both count with this.
+fn counted_minutes(
+    outcome: SessionOutcome,
+    planned_minutes: i64,
+    overtime_minutes: i64,
+    stopped_after_minutes: Option<i64>,
+) -> i64 {
+    match outcome {
+        SessionOutcome::Finished => planned_minutes + overtime_minutes,
+        SessionOutcome::EndedEarly => stopped_after_minutes.unwrap_or(0),
+        SessionOutcome::Stopped => 0,
+    }
+}
+
 /// The day's count and focus minutes, from its sessions alone; `newest_first`
 /// is the order they were read in.
 fn summarize(day: i64, mut newest_first: Vec<HistorySession>) -> PomodoroDay {
@@ -279,8 +334,16 @@ fn summarize(day: i64, mut newest_first: Vec<HistorySession>) -> PomodoroDay {
     PomodoroDay {
         date: format_date(day),
         finished_sessions: finished().count() as i64,
-        focus_minutes: finished()
-            .map(|entry| entry.planned_minutes + entry.overtime_minutes)
+        focus_minutes: sessions
+            .iter()
+            .map(|entry| {
+                counted_minutes(
+                    entry.outcome,
+                    entry.planned_minutes,
+                    entry.overtime_minutes,
+                    entry.stopped_after_minutes,
+                )
+            })
             .sum(),
         stopped_sessions: sessions
             .iter()

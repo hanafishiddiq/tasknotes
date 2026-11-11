@@ -39,6 +39,13 @@ pub enum Command {
     /// At the planned end: the Overtime so far is counted as focus and the
     /// break starts.
     CountOvertime,
+    /// Holds a running focus or break until Resume.
+    Pause,
+    Resume,
+    /// Before the planned end: the focus ends early (its minutes count) and
+    /// the break starts. Not offered by a notification, so a stale one can
+    /// never end a newer focus.
+    BreakEarly,
     Stop,
     /// Store again the sessions that could not be stored.
     RetrySave,
@@ -81,6 +88,9 @@ pub struct Step {
 /// One choice in the menu-bar item's menu.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MenuAction {
+    Pause,
+    Resume,
+    BreakEarly,
     StartBreak,
     CountOvertime,
     StartFocus,
@@ -89,7 +99,10 @@ pub enum MenuAction {
     DiscardUnsaved,
 }
 
-const MENU_ACTIONS: [(MenuAction, &str); 6] = [
+const MENU_ACTIONS: [(MenuAction, &str); 9] = [
+    (MenuAction::Pause, "tasknotes-pomodoro-pause"),
+    (MenuAction::Resume, "tasknotes-pomodoro-resume"),
+    (MenuAction::BreakEarly, "tasknotes-pomodoro-break-early"),
     (MenuAction::StartBreak, "tasknotes-pomodoro-start-break"),
     (
         MenuAction::CountOvertime,
@@ -121,6 +134,9 @@ impl MenuAction {
 
     pub fn command(self) -> Command {
         match self {
+            Self::Pause => Command::Pause,
+            Self::Resume => Command::Resume,
+            Self::BreakEarly => Command::BreakEarly,
             Self::StartBreak => Command::StartBreak,
             Self::CountOvertime => Command::CountOvertime,
             Self::StartFocus => Command::StartNextFocus,
@@ -146,6 +162,15 @@ pub struct PomodoroView {
     pub state: TimerState,
     /// The menu bar text, e.g. "🍅 12:34".
     pub title: Option<String>,
+    /// The length of the focus or break under way, as planned when it
+    /// started, so the page's ring shows how much is spent.
+    pub planned_seconds: Option<i64>,
+    /// The page's beads: Finished sessions in the cycle toward the long
+    /// break, or the whole cycle a long break closed while it lasts.
+    pub finished_in_cycle: u32,
+    /// When the focus under way started, in wall-clock milliseconds, so the
+    /// page's day rail draws it from there.
+    pub focus_started_at: Option<i64>,
     pub durations: PomodoroDurations,
     pub limits: DurationLimits,
     /// The Task the next focus after a break is for.
@@ -234,6 +259,13 @@ impl Pomodoro {
             }
             Command::StartBreak => step.record.extend(self.timer.start_break(now).ok()),
             Command::CountOvertime => step.record.extend(self.timer.count_overtime(now).ok()),
+            Command::Pause => {
+                let _ = self.timer.pause(now);
+            }
+            Command::Resume => {
+                let _ = self.timer.resume(now);
+            }
+            Command::BreakEarly => step.record.extend(self.timer.break_early(now).ok()),
             Command::Stop => step.record.extend(self.timer.stop(now)),
             Command::RetrySave => {
                 step.changed |= !self.unsaved.is_empty();
@@ -335,9 +367,20 @@ impl Pomodoro {
                 "Discard the unsaved session",
             ));
         }
+        let hold = |paused: bool| {
+            if paused {
+                entry(MenuAction::Resume, "Resume")
+            } else {
+                entry(MenuAction::Pause, "Pause")
+            }
+        };
         match self.timer.state(now) {
             TimerState::Idle => {}
-            TimerState::Focus { .. } => entries.push(entry(MenuAction::Stop, "Stop Pomodoro")),
+            TimerState::Focus { paused, .. } => {
+                entries.push(hold(paused));
+                entries.push(entry(MenuAction::BreakEarly, "Start break"));
+                entries.push(entry(MenuAction::Stop, "Stop Pomodoro"));
+            }
             TimerState::FocusDone {
                 overtime_seconds, ..
             } => {
@@ -348,7 +391,12 @@ impl Pomodoro {
                 ));
                 entries.push(entry(MenuAction::Stop, "Stop Pomodoro"));
             }
-            TimerState::Break { .. } | TimerState::BreakDone { .. } => {
+            TimerState::Break { paused, .. } => {
+                entries.push(hold(paused));
+                entries.push(entry(MenuAction::StartFocus, "Start focus"));
+                entries.push(entry(MenuAction::Stop, "Stop Pomodoro"));
+            }
+            TimerState::BreakDone { .. } => {
                 entries.push(entry(MenuAction::StartFocus, "Start focus"));
                 entries.push(entry(MenuAction::Stop, "Stop Pomodoro"));
             }
@@ -360,6 +408,9 @@ impl Pomodoro {
         PomodoroView {
             state: self.timer.state(now),
             title: self.title(now),
+            planned_seconds: self.timer.planned_seconds(),
+            finished_in_cycle: self.timer.finished_in_cycle(),
+            focus_started_at: self.timer.focus_started_at(),
             durations: self.timer.durations(),
             limits: DurationLimits::CURRENT,
             last_task_id: self.last_task_id.clone(),
@@ -539,7 +590,8 @@ mod tests {
             pomodoro.view(at(41 * MIN)).state,
             TimerState::Focus {
                 task_id: Some("task-1".into()),
-                remaining_seconds: 25 * 60
+                remaining_seconds: 25 * 60,
+                paused: false
             }
         );
     }
@@ -571,7 +623,8 @@ mod tests {
             pomodoro.view(at(32 * MIN + 12 * SEC)).state,
             TimerState::Break {
                 long: false,
-                remaining_seconds: 5 * 60
+                remaining_seconds: 5 * 60,
+                paused: false
             }
         );
     }
@@ -764,7 +817,10 @@ mod tests {
                 .map(|entry| entry.label)
                 .collect::<Vec<_>>()
         };
-        assert_eq!(labels(&pomodoro, MIN), ["Stop Pomodoro"]);
+        assert_eq!(
+            labels(&pomodoro, MIN),
+            ["Pause", "Start break", "Stop Pomodoro"]
+        );
         at_the_end(&mut pomodoro);
         assert_eq!(
             labels(&pomodoro, 32 * MIN + 12 * SEC),
@@ -773,7 +829,12 @@ mod tests {
         pomodoro.apply(Command::StartBreak, at(33 * MIN));
         assert_eq!(
             labels(&pomodoro, 34 * MIN),
-            ["Start focus", "Stop Pomodoro"]
+            ["Pause", "Start focus", "Stop Pomodoro"]
+        );
+        pomodoro.apply(Command::Pause, at(34 * MIN));
+        assert_eq!(
+            labels(&pomodoro, 34 * MIN),
+            ["Resume", "Start focus", "Stop Pomodoro"]
         );
         pomodoro.apply(Command::Stop, at(35 * MIN));
         assert!(labels(&pomodoro, 35 * MIN).is_empty());
@@ -784,12 +845,76 @@ mod tests {
     }
 
     #[test]
+    fn pause_holds_the_focus_in_the_window_and_the_menu_bar_until_resume() {
+        let mut pomodoro = start(Some("task-1"));
+        let step = pomodoro.apply(Command::Pause, at(10 * MIN));
+        assert!(step.changed);
+        assert!(step.record.is_empty());
+        let json = serde_json::to_value(pomodoro.view(at(30 * MIN))).unwrap();
+        assert_eq!(json["phase"], "focus");
+        assert_eq!(json["paused"], true);
+        assert_eq!(json["remainingSeconds"], 15 * 60);
+        assert_eq!(json["title"], "⏸ 15:00");
+        assert_eq!(pomodoro.next_change_in(at(30 * MIN)), None);
+        let actions: Vec<_> = pomodoro
+            .menu(at(30 * MIN))
+            .unwrap()
+            .into_iter()
+            .map(|entry| entry.action)
+            .collect();
+        assert_eq!(
+            actions,
+            [MenuAction::Resume, MenuAction::BreakEarly, MenuAction::Stop]
+        );
+        assert_eq!(MenuAction::Resume.command(), Command::Resume);
+        // A second Pause (a double click) changes nothing.
+        assert!(!pomodoro.apply(Command::Pause, at(31 * MIN)).changed);
+        pomodoro.apply(Command::Resume, at(40 * MIN));
+        assert_eq!(pomodoro.title(at(40 * MIN)).as_deref(), Some("🍅 15:00"));
+    }
+
+    #[test]
+    fn a_break_started_early_stores_the_focus_as_ended_early_and_starts_the_break() {
+        let mut pomodoro = start(Some("task-1"));
+        let mut step = pomodoro.apply(Command::BreakEarly, at(10 * MIN));
+        assert!(step.changed);
+        let ended = step.record.remove(0);
+        assert_eq!(ended.outcome, SessionOutcome::EndedEarly);
+        assert_eq!(ended.stopped_after_seconds, Some(10 * 60));
+        assert_eq!(pomodoro.title(at(11 * MIN)).as_deref(), Some("☕ 04:00"));
+        assert_eq!(MenuAction::BreakEarly.command(), Command::BreakEarly);
+        // Past the planned end it is not the early break: it changes nothing.
+        let mut pomodoro = start(None);
+        at_the_end(&mut pomodoro);
+        assert!(
+            pomodoro
+                .apply(Command::BreakEarly, at(26 * MIN))
+                .record
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn the_window_names_every_command_as_the_page_sends_it() {
+        for (json, command) in [
+            (r#"{"action":"pause"}"#, Command::Pause),
+            (r#"{"action":"resume"}"#, Command::Resume),
+            (r#"{"action":"break_early"}"#, Command::BreakEarly),
+        ] {
+            assert_eq!(serde_json::from_str::<Command>(json).unwrap(), command);
+        }
+    }
+
+    #[test]
     fn the_view_gives_the_window_seconds_limits_and_settings() {
         let mut pomodoro = start(Some("task-1"));
         let json = serde_json::to_value(pomodoro.view(at(MIN))).unwrap();
         assert_eq!(json["phase"], "focus");
         assert_eq!(json["taskId"], "task-1");
         assert_eq!(json["remainingSeconds"], 24 * 60);
+        assert_eq!(json["plannedSeconds"], 25 * 60);
+        assert_eq!(json["finishedInCycle"], 0);
+        assert_eq!(json["focusStartedAt"], T0);
         assert_eq!(json["title"], "🍅 24:00");
         assert_eq!(json["durations"]["focusMinutes"], 25);
         assert_eq!(json["limits"]["focusMinutes"]["max"], 180);

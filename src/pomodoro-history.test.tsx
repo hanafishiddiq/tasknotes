@@ -5,7 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import App from "./App";
 import {
   POMODORO_CHANGED, type HistorySession, type PomodoroDay, type PomodoroHistoryPage, type PomodoroPhase,
-  type PomodoroView,
+  type PomodoroTotals, type PomodoroView,
 } from "./lib/pomodoro-api";
 import { localCalendarDay } from "./lib/deadlines";
 import type { Task } from "./lib/task-api";
@@ -81,7 +81,7 @@ const rowTexts = (rows: HTMLElement[]) => rows.map((row) => row.textContent?.rep
 function shellView(phase: PomodoroPhase): PomodoroView {
   const minutes = { min: 1, max: 60 };
   return {
-    ...phase, title: null, lastTaskId: null, silent: false, saveError: null,
+    ...phase, title: null, lastTaskId: null, silent: false, saveError: null, plannedSeconds: null, finishedInCycle: 0, focusStartedAt: null,
     durations: { focusMinutes: 25, shortBreakMinutes: 5, longBreakMinutes: 15, sessionsBeforeLongBreak: 4 },
     limits: { focusMinutes: minutes, shortBreakMinutes: minutes, longBreakMinutes: minutes, sessionsBeforeLongBreak: minutes },
   };
@@ -91,11 +91,13 @@ const shellSays = (phase: PomodoroPhase, sessionStored: boolean) => act(() =>
   tauriEvents.emit(POMODORO_CHANGED, { view: shellView(phase), taskChanged: null, sessionStored }));
 
 let pages: Record<string, PomodoroHistoryPage>;
+let totals: PomodoroTotals;
 let outsideLatest: number;
 /** A history read for this cursor waits until the test lets it answer. */
 let held: { cursor: string; release: () => void } | null;
 
 beforeEach(() => {
+  totals = { finishedSessions: 148, focusMinutes: 3707 };
   pages = { first: { items: [TODAY, MARCH_4], nextCursor: "p1|2025-03-04" }, "p1|2025-03-04": { items: [FEB_2], nextCursor: null } };
   outsideLatest = 1;
   held = null;
@@ -114,6 +116,8 @@ beforeEach(() => {
         if (!page) throw new Error("History cursor is invalid");
         return structuredClone(page);
       }
+      case "pomodoro_totals": return { ...totals };
+      case "pomodoro_state": return shellView({ phase: "idle" });
       case "outside_changes": return { latest: outsideLatest, changed: body.seen != null && outsideLatest > body.seen, createdTasks: [] };
       case "list_lists": return { items: [], nextCursor: null };
       case "list_tasks": {
@@ -147,15 +151,15 @@ async function openHistory() {
   await screen.findByRole("article", { name: "Synthetic plan" });
   expect(historyReads()).toHaveLength(0);
   await user.click(screen.getByRole("button", { name: "Pomodoro" }));
-  const page = await screen.findByRole("region", { name: "Pomodoro history" });
+  const page = await screen.findByRole("region", { name: "Focus record" });
   await within(page).findByRole("heading", { name: /^Today/ });
   return { user, page };
 }
 
-describe("Pomodoro history page (Ticket 14)", () => {
+describe("Pomodoro page: the focus record (Ticket 14, batch 3 layout A)", () => {
   it("is a page of the sidebar named like its heading, like Settings", async () => {
-    const { page } = await openHistory();
-    expect(within(page).getByRole("heading", { level: 1 })).toHaveTextContent("Pomodoro");
+    await openHistory();
+    expect(screen.getByRole("heading", { level: 1, name: "Pomodoro" })).toBeInTheDocument();
     const row = screen.getByRole("button", { name: "Pomodoro" });
     expect(row).toHaveTextContent(/^Pomodoro$/);
     expect(row).toHaveAttribute("aria-current", "page");
@@ -171,7 +175,7 @@ describe("Pomodoro history page (Ticket 14)", () => {
     await user.type(within(palette).getByRole("combobox", { name: "Command" }), "pomodoro");
     expect(within(palette).getByRole("option", { name: "Pomodoro" })).toBeInTheDocument();
     await user.keyboard("{Enter}");
-    const page = await screen.findByRole("region", { name: "Pomodoro history" });
+    const page = await screen.findByRole("region", { name: "Focus record" });
     expect(await within(page).findByRole("heading", { name: /^Today/ })).toBeVisible();
   });
 
@@ -179,33 +183,73 @@ describe("Pomodoro history page (Ticket 14)", () => {
     const { page } = await openHistory();
     const day = within(page).getByRole("region", { name: "Today" });
     expect(within(day).getByRole("heading")).toHaveTextContent("Today");
-    expect(within(day).getByText("2 sessions · 57 min focus · 1 stopped")).toBeInTheDocument();
+    expect(within(day).getByText("2 · 57m · 1 stopped")).toBeInTheDocument();
+    expect(within(day).getByText("2 sessions, 57 minutes of focus, 1 stopped")).toHaveClass("sr-only");
 
     const rows = within(day).getAllByRole("listitem");
-    // Oldest first: the day reads as a log.
+    // Oldest first: the day reads as a log, each session by how it ended.
     expect(rowTexts(rows)).toEqual([
-      "9:00 AMSynthetic plan25 + 7 minFinished",
-      "10:00 AMNo Task25 minFinished",
-      "11:00 AMTask removed25 min plannedStopped after 12 min",
+      "9:00 AM – 9:25 AMSynthetic plan25 + 7m",
+      "10:00 AM – 10:25 AMNo Task25m",
+      "11:00 AM – 11:25 AMTask removed12m",
     ]);
+    expect(rows.map((row) => within(row).getByRole("img").getAttribute("aria-label")))
+      .toEqual(["Finished", "Finished", "Stopped after 12 min"]);
     expect(within(rows[0]).getByRole("button", { name: "Synthetic plan" })).toBeInTheDocument();
     expect(within(rows[2]).queryByRole("button")).not.toBeInTheDocument();
 
     const older = within(page).getByRole("region", { name: "Tuesday, Mar 4, 2025" });
-    expect(within(older).getByText("1 session · 50 min focus · 2 stopped")).toBeInTheDocument();
+    expect(within(older).getByText("1 · 50m · 2 stopped")).toBeInTheDocument();
     // On the clock each session started on (Jakarta), whatever this computer's time zone is.
     expect(rowTexts(within(older).getAllByRole("listitem"))).toEqual([
-      "2:05 PMNo Task50 minFinished",
-      "3:00 PMNo Task25 min plannedStopped after <1 min",
-      "4:00 PMNo Task25 min plannedStopped",
+      "2:05 PM – 2:30 PMNo Task50m",
+      "3:00 PM – 3:25 PMNo Task<1m",
+      "4:00 PM – 4:25 PMNo Task",
     ]);
   });
 
-  it("says how days are counted, travel and midnight included", async () => {
+  it("draws today as a rail under the timer, a mark for each session at its time", async () => {
+    await openHistory();
+    const rail = screen.getByRole("figure", { name: "Today" });
+    expect(within(rail).getAllByRole("img").map((mark) => mark.getAttribute("aria-label"))).toEqual([
+      "9:00 AM – 9:25 AM, Synthetic plan, Finished",
+      "10:00 AM – 10:25 AM, No Task, Finished",
+      "11:00 AM – 11:25 AM, Task removed, Stopped after 12 min",
+    ]);
+    expect(within(rail).getByText("57m")).toBeInTheDocument();
+    expect(within(rail).getByText("57 minutes of focus today")).toHaveClass("sr-only");
+    // A focus running now is a mark of its own, from when it started, whatever pauses moved its end.
+    const nineOClock = within(rail).getAllByRole("img")[0].style.left;
+    await act(() => tauriEvents.emit(POMODORO_CHANGED, {
+      view: {
+        ...shellView({ phase: "focus", taskId: null, remainingSeconds: 15 * 60, paused: true }),
+        plannedSeconds: 25 * 60, focusStartedAt: todayAt(9),
+      },
+      taskChanged: null, sessionStored: false,
+    }));
+    expect(within(rail).getByRole("img", { name: "The focus running now" }).style.left).toBe(nineOClock);
+  });
+
+  it("heads the record with the all-time totals the core counted", async () => {
     const { page } = await openHistory();
-    expect(page).toHaveTextContent("Stopped sessions are listed but not counted");
-    expect(page).toHaveTextContent("A session keeps the day and time of the clock it started on, even after you travel");
-    expect(page).toHaveTextContent("a session that runs past midnight stays on the day it started");
+    expect(within(page).getByText("148 sessions · 61h 47m all time")).toBeInTheDocument();
+    expect(within(page).getByText("All time: 148 sessions, 3707 minutes of focus")).toHaveClass("sr-only");
+    expect(call.mock.calls.some(([command]) => command === "pomodoro_totals")).toBe(true);
+  });
+
+  it("names a focus ended early by the minutes it counted", async () => {
+    pages.first = {
+      items: [{
+        ...TODAY, finishedSessions: 0, focusMinutes: 10, stoppedSessions: 0,
+        sessions: [session({ outcome: "ended_early", stoppedAfterMinutes: 10, endedAt: todayAt(9, 10) })],
+      }],
+      nextCursor: null,
+    };
+    const { page } = await openHistory();
+    const row = within(within(page).getByRole("region", { name: "Today" })).getByRole("listitem");
+    expect(rowTexts([row])).toEqual(["9:00 AM – 9:10 AMNo Task10m"]);
+    expect(within(row).getByRole("img")).toHaveAccessibleName("Break started early, 10 min counted");
+    expect(within(page).getByText("0 · 10m")).toBeInTheDocument();
   });
 
   it("loads older days only when asked", async () => {
@@ -223,19 +267,20 @@ describe("Pomodoro history page (Ticket 14)", () => {
     expect(await screen.findByRole("status", { name: "Pomodoro Task" })).toHaveTextContent(
       "Showing the Task of a Pomodoro Session",
     );
-    expect(screen.getByRole("region", { name: "Pomodoro history", hidden: true }).closest("main")).not.toBeVisible();
+    expect(screen.getByRole("region", { name: "Focus record", hidden: true }).closest("main")).not.toBeVisible();
     expect(lastArgs("list_tasks")).toMatchObject({ taskId: "task-1" });
   });
 
   it("shows an empty history as empty, with nothing made up", async () => {
     pages = { first: { items: [], nextCursor: null } };
+    totals = { finishedSessions: 0, focusMinutes: 0 };
     const user = userEvent.setup();
     render(<App />);
     await screen.findByRole("article", { name: "Synthetic plan" });
     await user.click(screen.getByRole("button", { name: "Pomodoro" }));
-    const page = await screen.findByRole("region", { name: "Pomodoro history" });
+    const page = await screen.findByRole("region", { name: "Focus record" });
     expect(await within(page).findByRole("heading", { name: "No Pomodoro sessions yet" })).toBeInTheDocument();
-    expect(within(page).queryByText(/min focus/)).not.toBeInTheDocument();
+    expect(within(page).queryByText(/all time/)).not.toBeInTheDocument();
     expect(within(page).queryByRole("button", { name: "Load more days" })).not.toBeInTheDocument();
   });
 
@@ -248,13 +293,13 @@ describe("Pomodoro history page (Ticket 14)", () => {
       expect(lastArgs("outside_changes")).toMatchObject({ seen: 1 });
     });
     const before = historyReads().length;
-    await shellSays({ phase: "focus", taskId: null, remainingSeconds: 100 }, false);
-    await shellSays({ phase: "focus", taskId: null, remainingSeconds: 99 }, false);
+    await shellSays({ phase: "focus", taskId: null, remainingSeconds: 100, paused: false }, false);
+    await shellSays({ phase: "focus", taskId: null, remainingSeconds: 99, paused: false }, false);
     expect(historyReads()).toHaveLength(before);
 
     pages.first = { items: [{ ...TODAY, finishedSessions: 3, focusMinutes: 82 }, MARCH_4], nextCursor: "p1|2025-03-04" };
-    await shellSays({ phase: "break", long: false, remainingSeconds: 300 }, true);
-    expect(await within(page).findByText("3 sessions · 82 min focus · 1 stopped")).toBeInTheDocument();
+    await shellSays({ phase: "break", long: false, remainingSeconds: 300, paused: false }, true);
+    expect(await within(page).findByText("3 · 1h 22m · 1 stopped")).toBeInTheDocument();
   });
 
   it("keeps the older days it showed when it reads again", async () => {
@@ -325,7 +370,7 @@ describe("Pomodoro history page (Ticket 14)", () => {
     render(<App />);
     await screen.findByRole("article", { name: "Synthetic plan" });
     await user.click(screen.getByRole("button", { name: "Pomodoro" }));
-    const page = await screen.findByRole("region", { name: "Pomodoro history" });
+    const page = await screen.findByRole("region", { name: "Focus record" });
     expect(await within(page).findByRole("alert")).toHaveTextContent("Couldn't load the Pomodoro history");
     expect(within(page).queryByRole("heading", { name: "No Pomodoro sessions yet" })).not.toBeInTheDocument();
   });

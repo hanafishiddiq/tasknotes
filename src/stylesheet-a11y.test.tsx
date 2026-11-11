@@ -66,6 +66,7 @@ describe("Stylesheet accessibility", () => {
       ".next-step-input": [".next-step-input:focus", /border-bottom-color:|border-color:/],
       ".progress-note-input": [".progress-note-input:focus-visible", /outline: 2px/],
       ".note-search input": [".note-search:focus-within", /outline: 2px/],
+      ".pomo-picker-search input": [".pomo-picker-search:focus-within", /box-shadow:/],
       // Writing surfaces: the caret is the focus indicator, as in Notes.
       ".task-page-title": [".task-page-title", /outline: none/],
       ".task-page-body": [".task-page-body", /outline: none/],

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
 import App from "./App";
@@ -48,15 +48,17 @@ let shellMissing: boolean;
 let failNextCommand: string | null;
 
 const common = () => ({
-  title: null, durations: view?.durations ?? { ...DEFAULTS }, limits: view?.limits ?? LIMITS,
+  title: null, plannedSeconds: null, finishedInCycle: 0, focusStartedAt: null,
+  durations: view?.durations ?? { ...DEFAULTS }, limits: view?.limits ?? LIMITS,
   lastTaskId: view?.lastTaskId ?? null, silent: view?.silent ?? false, saveError: null,
 });
 const idle = (): PomodoroView => ({ ...common(), phase: "idle" });
 const focus = (taskId: string | null, remainingSeconds = 25 * 60): PomodoroView =>
-  ({ ...common(), phase: "focus", taskId, remainingSeconds, lastTaskId: taskId });
+  ({ ...common(), phase: "focus", taskId, remainingSeconds, paused: false, plannedSeconds: 25 * 60, lastTaskId: taskId });
 const focusDone = (overtimeSeconds: number): PomodoroView =>
   ({ ...common(), phase: "focus_done", taskId: view.lastTaskId, overtimeSeconds });
-const onBreak = (): PomodoroView => ({ ...common(), phase: "break", long: false, remainingSeconds: 5 * 60 });
+const onBreak = (): PomodoroView =>
+  ({ ...common(), phase: "break", long: false, remainingSeconds: 5 * 60, paused: false, plannedSeconds: 5 * 60 });
 
 function shell(command: string, body: Record<string, any>) {
   if (shellMissing && /pomodoro|notification/.test(command)) throw new Error(`Command ${command} not found`);
@@ -71,7 +73,10 @@ function shell(command: string, body: Record<string, any>) {
       const { action, taskId } = body.command;
       if (action === "start_focus") view = focus(taskId ?? null);
       if (action === "start_next_focus") view = focus(view.lastTaskId);
-      if (action === "start_break" || action === "count_overtime") view = onBreak();
+      if (action === "start_break" || action === "count_overtime" || action === "break_early") view = onBreak();
+      if ((action === "pause" || action === "resume") && (view.phase === "focus" || view.phase === "break")) {
+        view = { ...view, paused: action === "pause" };
+      }
       if (action === "stop") view = idle();
       if (action === "retry_save" || action === "discard_unsaved") view = { ...view, saveError: null };
       return view;
@@ -115,7 +120,17 @@ beforeEach(() => {
     if (answered !== undefined) return answered;
     switch (command) {
       case "list_lists": return { items: [], nextCursor: null };
-      case "list_tasks": return { items: tasks.map((task) => ({ ...task })), nextCursor: null };
+      case "list_tasks": {
+        // As the core filters them (by status, search text or one Task) and pages them.
+        const text = (body.text ?? "").toLowerCase();
+        const items = tasks.filter((task) => (!body.status || task.status === body.status)
+          && task.title.toLowerCase().includes(text) && (!body.taskId || task.id === body.taskId));
+        const from = Number(body.cursor ?? 0);
+        const to = from + (body.limit ?? items.length);
+        return { items: items.slice(from, to).map((task) => ({ ...task })), nextCursor: to < items.length ? String(to) : null };
+      }
+      case "pomodoro_history": return { items: [], nextCursor: null };
+      case "pomodoro_totals": return { finishedSessions: 0, focusMinutes: 0 };
       case "list_removed": return { items: [], nextCursor: null };
       case "list_progress_entries": return { items: [], nextCursor: null };
       case "list_task_notes": return { items: [], nextCursor: null };
@@ -279,61 +294,192 @@ describe("Pomodoro control (Ticket 02)", () => {
   });
 });
 
-describe("Pomodoro settings", () => {
-  async function openSettings(user: ReturnType<typeof userEvent.setup>) {
-    await renderApp();
-    await user.click(screen.getByRole("button", { name: "Settings" }));
-    return screen.getByRole("form", { name: "Pomodoro" });
+/** Opens the Pomodoro page from the sidebar. */
+async function openPage(user: ReturnType<typeof userEvent.setup>) {
+  await renderApp();
+  await user.click(screen.getByRole("button", { name: "Pomodoro" }));
+  return screen.getByRole("main", { name: "Pomodoro" });
+}
+
+describe("Pomodoro page timer (batch 3, Ticket 04)", () => {
+  it("shows what the shell sends: the Task, the time, its state and the place in the cycle", async () => {
+    const user = userEvent.setup();
+    view = { ...focus("task-1", 14 * 60 + 32), finishedInCycle: 2 };
+    const page = await openPage(user);
+    expect(within(page).getByRole("timer", { name: "14:32 left" })).toHaveTextContent("14:32");
+    expect(within(page).getByText("Focus")).toBeInTheDocument();
+    expect(within(page).getByText("Synthetic plan")).toBeInTheDocument();
+    expect(within(page).getByRole("img", { name: "Session 3 of 4 before the long break" })).toBeInTheDocument();
+    // While the timer runs nothing waits for the person: Pause is not the yellow button.
+    expect(within(page).getByRole("button", { name: "Pause" })).not.toHaveClass("pomo-pill--go");
+  });
+
+  it("pauses and resumes a focus, and can start the break before its end", async () => {
+    const user = userEvent.setup();
+    view = focus("task-1", 14 * 60 + 32);
+    const page = await openPage(user);
+    await user.click(within(page).getByRole("button", { name: "Pause" }));
+    expect(last(commands("pomodoro_command"))).toEqual({ command: { action: "pause" } });
+    expect(await within(page).findByText("Paused")).toBeInTheDocument();
+    const resume = within(page).getByRole("button", { name: "Resume" });
+    expect(resume).toHaveClass("pomo-pill--go");
+    expect(screen.getByRole("region", { name: "Pomodoro" })).toHaveTextContent("Paused · Synthetic plan");
+
+    await user.click(resume);
+    expect(last(commands("pomodoro_command"))).toEqual({ command: { action: "resume" } });
+    await user.click(await within(page).findByRole("button", { name: "Start break" }));
+    expect(last(commands("pomodoro_command"))).toEqual({ command: { action: "break_early" } });
+    expect(await within(page).findByText("Break")).toBeInTheDocument();
+  });
+
+  it("offers Start break and Count +07:12 at the planned end, and Stop throughout", async () => {
+    const user = userEvent.setup();
+    view = focus("task-1");
+    view = focusDone(7 * 60 + 12);
+    const page = await openPage(user);
+    expect(within(page).getByRole("timer", { name: "Overtime 07:12" })).toHaveTextContent("+07:12");
+    expect(within(page).getByRole("button", { name: "Start break" })).toHaveClass("pomo-pill--go");
+    await user.click(within(page).getByRole("button", { name: "Count +07:12" }));
+    expect(last(commands("pomodoro_command"))).toEqual({ command: { action: "count_overtime" } });
+    await user.click(await within(page).findByRole("button", { name: "Stop" }));
+    expect(last(commands("pomodoro_command"))).toEqual({ command: { action: "stop" } });
+  });
+
+  it("offers Pause and Skip to focus in a break, and Start focus once it is over", async () => {
+    const user = userEvent.setup();
+    view = { ...onBreak(), lastTaskId: "task-1" };
+    const page = await openPage(user);
+    expect(within(page).getByText("Next: Synthetic plan")).toBeInTheDocument();
+    await user.click(within(page).getByRole("button", { name: "Skip to focus" }));
+    expect(last(commands("pomodoro_command"))).toEqual({ command: { action: "start_next_focus" } });
+    await shellChanged({ ...common(), phase: "break_done", long: false, lastTaskId: "task-1" });
+    expect(within(page).getByRole("button", { name: "Start focus" })).toHaveClass("pomo-pill--go");
+    expect(within(page).queryByRole("button", { name: "Pause" })).not.toBeInTheDocument();
+  });
+
+  it("chooses the Task from a sheet of every unfinished Task, In Progress first, searched by the core", async () => {
+    const user = userEvent.setup();
+    tasks.push({ ...base, id: "task-3", title: "Synthetic review", status: "ready", progress: 0 });
+    const page = await openPage(user);
+    await user.click(within(page).getByRole("button", { name: "Focus without a Task, choose a Task" }));
+    const sheet = screen.getByRole("dialog", { name: "Task for the focus" });
+    const search = within(sheet).getByRole("combobox", { name: "Search Tasks" });
+    expect(search).toHaveFocus();
+    await waitFor(() => expect(within(sheet).getAllByRole("option")).toHaveLength(3));
+    expect(within(sheet).getAllByRole("option").map((option) => option.textContent))
+      .toEqual(["No Task", "Synthetic planInbox", "Synthetic reviewInbox"]);
+    expect(within(sheet).getByRole("group", { name: "In Progress" })).toHaveTextContent("Synthetic plan");
+    expect(within(sheet).getByRole("group", { name: "Ready" })).toHaveTextContent("Synthetic review");
+
+    await user.type(search, "review");
+    await waitFor(() => expect(within(sheet).getAllByRole("option")).toHaveLength(1));
+    expect(commands("list_tasks")).toContainEqual(expect.objectContaining({ text: "review", status: "ready" }));
+    await user.keyboard("{Enter}");
+    expect(screen.queryByRole("dialog", { name: "Task for the focus" })).not.toBeInTheDocument();
+    const line = within(page).getByRole("button", { name: "Focus on “Synthetic review”, choose a Task" });
+    expect(line).toHaveFocus();
+
+    await user.click(within(page).getByRole("button", { name: "Start" }));
+    expect(last(commands("pomodoro_command"))).toEqual({ command: { action: "start_focus", taskId: "task-3" } });
+  });
+
+  it("opens on the chosen Task past the first page, and reads on as the list is scrolled", async () => {
+    const user = userEvent.setup();
+    for (let n = 1; n <= 120; n += 1) {
+      tasks.push({ ...base, id: `ready-${n}`, title: `Synthetic step ${n}`, status: "ready", progress: 0 });
+    }
+    const page = await openPage(user);
+    // The last focus was for a Task the first page of Ready does not hold.
+    await shellChanged({ ...idle(), lastTaskId: "ready-75" });
+    await user.click(within(page).getByRole("button", { name: /choose a Task/ }));
+    const sheet = screen.getByRole("dialog", { name: "Task for the focus" });
+    const chosen = await within(sheet).findByRole("option", { name: /Synthetic step 75(?!\d)/ });
+    expect(chosen).toHaveAttribute("aria-selected", "true");
+    expect(chosen).toHaveAttribute("data-active", "true");
+    expect(within(sheet).getByRole("combobox")).toHaveAttribute("aria-activedescendant", chosen.id);
+
+    // Scrolling to the end of the list reads the rest.
+    const list = within(sheet).getByRole("listbox");
+    expect(within(list).queryByRole("option", { name: /Synthetic step 120(?!\d)/ })).not.toBeInTheDocument();
+    fireEvent.scroll(list);
+    expect(await within(list).findByRole("option", { name: /Synthetic step 120(?!\d)/ })).toBeInTheDocument();
+    expect(within(list).getAllByRole("option")).toHaveLength(1 + 1 + 120);
+  });
+
+  it("closes the Task sheet with Escape and gives focus back", async () => {
+    const user = userEvent.setup();
+    const page = await openPage(user);
+    const line = within(page).getByRole("button", { name: "Focus without a Task, choose a Task" });
+    await user.click(line);
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Task for the focus" })).not.toBeInTheDocument();
+    expect(line).toHaveFocus();
+  });
+});
+
+describe("Pomodoro lengths (batch 3, behind the icon on the page)", () => {
+  async function openLengths(user: ReturnType<typeof userEvent.setup>) {
+    const page = await openPage(user);
+    await user.click(within(page).getByRole("button", { name: "Pomodoro lengths" }));
+    return screen.getByRole("dialog", { name: "Pomodoro lengths" });
   }
 
   it("shows 25 / 5 / 15 and a long break after 4, and saves a change", async () => {
     const user = userEvent.setup();
-    const form = await openSettings(user);
-    expect(within(form).getByRole("spinbutton", { name: /^Focus/ })).toHaveValue(25);
-    expect(within(form).getByRole("spinbutton", { name: /^Break/ })).toHaveValue(5);
-    expect(within(form).getByRole("spinbutton", { name: /^Long break(?! after)/ })).toHaveValue(15);
-    expect(within(form).getByRole("spinbutton", { name: /^Long break after/ })).toHaveValue(4);
-    expect(within(form).queryByRole("button", { name: "Save lengths" })).not.toBeInTheDocument();
+    const sheet = await openLengths(user);
+    expect(within(sheet).getByRole("spinbutton", { name: "Focus" })).toHaveValue(25);
+    expect(within(sheet).getByRole("spinbutton", { name: "Break" })).toHaveValue(5);
+    expect(within(sheet).getByRole("spinbutton", { name: "Long break" })).toHaveValue(15);
+    expect(within(sheet).getByRole("spinbutton", { name: "Long break after" })).toHaveValue(4);
+    expect(within(sheet).queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
 
-    const focusField = within(form).getByRole("spinbutton", { name: /^Focus/ });
+    await user.click(within(sheet).getByRole("button", { name: "More focus" }));
+    expect(within(sheet).getByRole("spinbutton", { name: "Focus" })).toHaveValue(26);
+    const focusField = within(sheet).getByRole("spinbutton", { name: "Focus" });
     await user.clear(focusField);
     await user.type(focusField, "50");
-    await user.click(within(form).getByRole("button", { name: "Save lengths" }));
+    await user.click(within(sheet).getByRole("button", { name: "Save" }));
     expect(commands("set_pomodoro_durations")).toEqual([{ durations: { ...DEFAULTS, focusMinutes: 50 } }]);
-    expect(await within(form).findByRole("status")).toHaveTextContent("next focus or break");
-    expect(within(form).getByRole("spinbutton", { name: /^Focus/ })).toHaveValue(50);
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Pomodoro lengths" })).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Pomodoro lengths" })).toHaveFocus();
   });
 
   it("refuses lengths outside the shell's limits before asking it", async () => {
     const user = userEvent.setup();
     // The window keeps no copy of the limits: it uses what the shell sends.
     view = { ...idle(), limits: { ...LIMITS, focusMinutes: { min: 1, max: 120 } } };
-    const form = await openSettings(user);
-    const focusField = within(form).getByRole("spinbutton", { name: /^Focus/ });
+    const sheet = await openLengths(user);
+    const focusField = within(sheet).getByRole("spinbutton", { name: "Focus" });
     expect(focusField).toHaveAttribute("max", "120");
     await user.clear(focusField);
     await user.type(focusField, "150");
-    expect(within(form).getByRole("button", { name: "Save lengths" })).toBeDisabled();
-    expect(within(form).getByText(/Focus 1–120 minutes, breaks 1–60 minutes, a long break after 1–12 sessions/))
+    expect(within(sheet).getByRole("button", { name: "Save" })).toBeDisabled();
+    expect(within(sheet).getByText(/Focus 1–120 minutes, breaks 1–60 minutes, a long break after 1–12 sessions/))
       .toBeInTheDocument();
-    await user.clear(focusField);
-    await user.type(focusField, "0");
-    expect(within(form).getByRole("button", { name: "Save lengths" })).toBeDisabled();
     expect(commands("set_pomodoro_durations")).toHaveLength(0);
   });
 
   it("has a Silent setting of its own, apart from interaction sounds and Ambient rain", async () => {
     const user = userEvent.setup();
-    const form = await openSettings(user);
-    // Muting interaction sounds no longer touches Pomodoro notifications.
-    await user.click(screen.getByRole("button", { name: "Mute interaction sounds" }));
-    expect(commands("set_pomodoro_silent")).toHaveLength(0);
-
-    const silent = within(form).getByRole("checkbox", { name: "Silent notifications" });
+    const sheet = await openLengths(user);
+    const silent = within(sheet).getByRole("checkbox", { name: "Silent notifications" });
     expect(silent).not.toBeChecked();
     await user.click(silent);
     expect(commands("set_pomodoro_silent")).toEqual([{ silent: true }]);
-    await waitFor(() => expect(within(form).getByRole("checkbox", { name: "Silent notifications" })).toBeChecked());
+    await waitFor(() => expect(within(sheet).getByRole("checkbox", { name: "Silent notifications" })).toBeChecked());
+  });
+
+  it("leaves Settings one line that leads to the page", async () => {
+    const user = userEvent.setup();
+    await renderApp();
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    expect(screen.queryByRole("spinbutton", { name: /Focus/ })).not.toBeInTheDocument();
+    expect(screen.getByText("Focus and break lengths and Silent notifications are on the Pomodoro page.")).toBeInTheDocument();
+    // Muting interaction sounds never touches Pomodoro notifications.
+    await user.click(screen.getByRole("button", { name: "Mute interaction sounds" }));
+    expect(commands("set_pomodoro_silent")).toHaveLength(0);
+    await user.click(screen.getByRole("button", { name: "Open Pomodoro" }));
+    expect(screen.getByRole("main", { name: "Pomodoro" })).toBeVisible();
   });
 });
 

@@ -28,8 +28,8 @@ interface TaskSidebarProps {
   settingsActive: boolean;
   onOpenSettings: () => void;
   /** The Pomodoro page (the daily history) is showing. */
-  pomodoroHistoryActive: boolean;
-  onOpenPomodoroHistory: () => void;
+  pomodoroPageActive: boolean;
+  onOpenPomodoroPage: () => void;
   /** Notes are showing every Note rather than one folder. */
   allNotesCurrent: boolean;
   /** The Note Folder tree, once Notes have been opened. */
@@ -69,7 +69,7 @@ interface TaskSidebarProps {
 }
 
 export default function TaskSidebar({
-  view, notesActive, removedActive, onOpenRemoved, pendingApprovals, approvalsActive, onOpenApprovals, settingsActive, onOpenSettings, pomodoroHistoryActive, onOpenPomodoroHistory, allNotesCurrent, noteFolders, resizer, pomodoro, lists, listError, shownCount, hasMoreTasks, hasMoreLists, busy,
+  view, notesActive, removedActive, onOpenRemoved, pendingApprovals, approvalsActive, onOpenApprovals, settingsActive, onOpenSettings, pomodoroPageActive, onOpenPomodoroPage, allNotesCurrent, noteFolders, resizer, pomodoro, lists, listError, shownCount, hasMoreTasks, hasMoreLists, busy,
   theme, onToggleTheme, onNavigate, onOpenNotes, onCreateList, onCreateSubList, onRenameList, onReorderList,
   onPlaceList, onMoveList,
   onStyleList, onRemoveList,
@@ -442,8 +442,8 @@ export default function TaskSidebar({
       <div className="sidebar-spacer" />
       {pomodoro}
       <button type="button" className="folder folder--quiet" disabled={busy}
-        aria-label="Pomodoro" aria-current={pomodoroHistoryActive ? "page" : undefined}
-        onClick={onOpenPomodoroHistory}>
+        aria-label="Pomodoro" aria-current={pomodoroPageActive ? "page" : undefined}
+        onClick={onOpenPomodoroPage}>
         <History size={16} aria-hidden="true" /><span className="folder-name">Pomodoro</span>
       </button>
       <button type="button" className="folder folder--quiet" disabled={busy}

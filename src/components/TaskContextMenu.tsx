@@ -3,6 +3,7 @@ import { Check, ChevronRight, Trash2 } from "lucide-react";
 import type { Priority, StatusChoice, Task } from "../lib/task-api";
 import { statusChoiceOf } from "../lib/task-api";
 import { PRIORITY_ORDER, PRIORITY_VIEW, statusChoiceLabel, statusChoiceState } from "../lib/task-visuals";
+import { fitInWindow } from "../lib/fit-in-window";
 
 /** Where the Task menu opens: the pointer, or under the row for the keyboard. */
 export interface MenuPoint {
@@ -54,12 +55,7 @@ type Entry =
 type Choice = Extract<Entry, { kind: "choice" }>;
 
 /** Where a sheet of this size fits in the window, as near the asked point as it can. */
-function fitted(x: number, y: number, width: number, height: number) {
-  return {
-    left: Math.max(EDGE, Math.min(x, window.innerWidth - width - EDGE)),
-    top: Math.max(EDGE, Math.min(y, window.innerHeight - height - EDGE)),
-  };
-}
+const fitted = (x: number, y: number, width: number, height: number) => fitInWindow(x, y, width, height, EDGE);
 
 /**
  * The keys every sheet shares: arrows over the enabled items (wrapping), Home and End.

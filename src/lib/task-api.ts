@@ -262,6 +262,12 @@ export const taskApi = {
     return page.items.length > 0;
   },
 
+  /** One Task as the All tasks view holds it; null when it is gone or in Removed. */
+  async get(taskId: string): Promise<Task | null> {
+    const page = await invoke<TaskPage>("list_tasks", { limit: 1, cursor: null, taskId });
+    return page.items[0] ?? null;
+  },
+
   create(input: TaskDraft, listId?: string): Promise<Task> {
     return invoke("create_task", { input, ...(listId ? { listId } : {}) });
   },

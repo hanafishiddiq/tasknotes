@@ -150,6 +150,33 @@ fn history_lists_days_newest_first_with_what_each_counts() {
     assert_eq!(older["sessions"][0]["task_id"], json!(task.id));
 }
 
+#[test]
+fn a_focus_ended_early_is_named_so_and_counts_its_minutes_but_not_as_a_session() {
+    let cli = Cli::trusted();
+    let desktop = TaskStore::open(&cli.db()).unwrap();
+    let start = NOV_10_JAKARTA + 9 * HOUR;
+    desktop
+        .record_pomodoro_session(session(None, start, 0))
+        .unwrap();
+    desktop
+        .record_pomodoro_session(EndedSession {
+            outcome: SessionOutcome::EndedEarly,
+            stopped_after_seconds: Some(12 * 60),
+            ended_at: start + HOUR + 12 * MINUTE,
+            ..session(None, start + HOUR, 0)
+        })
+        .unwrap();
+    let page = ok_in(&cli, JAKARTA_TZ, &["pomodoro", "history"]);
+    let day = &page["items"][0];
+    assert_eq!(day["finished_sessions"], 1);
+    assert_eq!(day["focus_minutes"], 37, "25 + the 12 before Start break");
+    assert_eq!(day["stopped_sessions"], 0);
+    let early = &day["sessions"][1];
+    assert_eq!(early["outcome"], "ended_early");
+    assert_eq!(early["stopped_after_minutes"], 12);
+    assert_eq!(early["overtime_minutes"], 0);
+}
+
 fn dates(page: &Value) -> Vec<Value> {
     page["items"]
         .as_array()

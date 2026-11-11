@@ -22,15 +22,22 @@ export type DurationLimits = Record<keyof PomodoroDurations, Limit>;
  */
 export type PomodoroPhase =
   | { phase: "idle" }
-  | { phase: "focus"; taskId: string | null; remainingSeconds: number }
+  /** `paused`: held by Pause until Resume; paused time never counts. */
+  | { phase: "focus"; taskId: string | null; remainingSeconds: number; paused: boolean }
   /** The planned end passed: Overtime runs until Start break, Count overtime or Stop. */
   | { phase: "focus_done"; taskId: string | null; overtimeSeconds: number }
-  | { phase: "break"; long: boolean; remainingSeconds: number }
+  | { phase: "break"; long: boolean; remainingSeconds: number; paused: boolean }
   | { phase: "break_done"; long: boolean };
 
 export type PomodoroView = PomodoroPhase & {
   /** The menu bar text, e.g. "🍅 12:34". */
   title: string | null;
+  /** The length of the focus or break under way as it was planned when it started; null otherwise. */
+  plannedSeconds: number | null;
+  /** The beads: Finished sessions in the cycle toward the long break, or the whole cycle a long break closed while it lasts. */
+  finishedInCycle: number;
+  /** When the focus under way started, in wall-clock milliseconds; null without one. */
+  focusStartedAt: number | null;
   durations: PomodoroDurations;
   limits: DurationLimits;
   /** The Task the next focus after a break is for. */
@@ -59,14 +66,19 @@ export interface HistorySession {
    * time stay there wherever the Mac is now.
    */
   utcOffsetSeconds: number;
-  outcome: "finished" | "stopped";
+  /**
+   * Finished counts as a session; Ended Early (a focus ended with Start break
+   * before its end) counts only its minutes; Stopped counts nothing.
+   */
+  outcome: "finished" | "ended_early" | "stopped";
   /** Whole minutes, rounded as the session's Progress Entry says them. */
   plannedMinutes: number;
   /** The Overtime the person counted, in whole minutes; 0 for a Stopped session. */
   overtimeMinutes: number;
   /**
-   * A Stopped session's focus before Stop in whole minutes, sleep never included;
-   * null for a Finished one and for a Stopped one stored before this was kept.
+   * A Stopped session's focus before Stop, or an Ended Early one's before Start
+   * break, in whole minutes, sleep and pauses never included; null for a Finished
+   * one and for a Stopped one stored before this was kept.
    */
   stoppedAfterMinutes: number | null;
   taskId: string | null;
@@ -77,7 +89,8 @@ export interface HistorySession {
 
 /**
  * One local day with sessions, as the core counts it: only Finished sessions
- * count, and focus is their planned length plus counted Overtime.
+ * count as sessions; focus is their planned length plus counted Overtime, plus
+ * the minutes of the Ended Early ones.
  */
 export interface PomodoroDay {
   /** YYYY-MM-DD on the clock its sessions started on; a session belongs to the day it started. */
@@ -95,6 +108,12 @@ export interface PomodoroHistoryPage {
   nextCursor: string | null;
 }
 
+/** Every session ever stored, counted as the days are (batch 3, Q42). */
+export interface PomodoroTotals {
+  finishedSessions: number;
+  focusMinutes: number;
+}
+
 /** Days the history page reads at a time. */
 export const HISTORY_PAGE_DAYS = 14;
 
@@ -104,6 +123,11 @@ export type PomodoroCommand =
   | { action: "start_next_focus" }
   | { action: "start_break" }
   | { action: "count_overtime" }
+  /** Holds a running focus or break; Resume lets it run again. */
+  | { action: "pause" }
+  | { action: "resume" }
+  /** Before the planned end: the focus ends early (its minutes count) and the break starts. */
+  | { action: "break_early" }
   | { action: "stop" }
   | { action: "retry_save" }
   | { action: "discard_unsaved" };
@@ -114,6 +138,8 @@ export const pomodoroApi = {
   history: (cursor: string | null = null) => invoke<PomodoroHistoryPage>(
     "pomodoro_history", { limit: HISTORY_PAGE_DAYS, cursor },
   ),
+  /** Every session ever stored, counted as the days are. */
+  totals: () => invoke<PomodoroTotals>("pomodoro_totals"),
   command: (command: PomodoroCommand) => invoke<PomodoroView>("pomodoro_command", { command }),
   setDurations: (durations: PomodoroDurations) =>
     invoke<PomodoroView>("set_pomodoro_durations", { durations }),
