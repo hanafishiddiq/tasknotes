@@ -47,12 +47,18 @@ Tujuan akhir: Tasknotes di /Applications berisi 5 perubahan batch 3 (tombol Remo
   - [x] Inti: hitungan Task belum selesai per tempat
   - [x] Sidebar dan pilihan di Settings (1553 tes window hijau)
   - [x] Draft PR #42, review dua sumbu, temuan diperbaiki (kontras angka saat hover), merge 58f8026 (Q49 tanpa angka nol, Q50 label "folder")
-- [ ] Semua tiket di main dan lolos CI gabungan
-- [ ] Satu build dipasang ke /Applications (setelah Han konfirmasi)
+- [x] Semua tiket di main dan lolos CI gabungan (CI PR #42 dan #43 hijau, 14/14)
+- [x] Satu build dipasang ke /Applications (setelah Han konfirmasi)
+  - [x] Backup data dan program lama: store.adamaja.tasknotes.pre-batch3-20261111 (checksum sama, integritas ok)
+  - [x] Build 58f8026 crash saat dibuka (macOS menjawab NULL ke deliveredNotifications); data sudah versi 24 dan utuh
+  - [x] Perbaikan PR #43 (Han OK), merge 891c9ee, app dipasang ulang: jalan, jendela terbuka, data utuh (152 Task, 4 Note, 8 List)
 - [ ] Han mengecek app asli batch 3
 - [ ] Cache build dan worktree yang sudah selesai dihapus (batch 2 dan 3)
 
 ## Perlu Han lakukan
+
+- Cek app asli batch 3 (daftar cek di laporan sesi 2026-11-11), termasuk tombol di notifikasi Pomodoro; sampai itu, cache build dan worktree belum dihapus.
+- Sambung ulang MCP Tasknotes di sesi Claude lain: proses MCP lama menolak data versi 24.
 
 
 
