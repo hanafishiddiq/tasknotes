@@ -19,7 +19,7 @@ Five tickets, one at a time, each settled with the owner before it is built: the
 2. **New Task yellow mark** — Ticket 02, settled (Q4–Q16, 2026-11-11), replacing the 2026-11-09 decision (Q3/Q14/Q25: a toast instead of a lasting yellow mark). Whatever replaces the toast's flash must keep the red Move to Removed readable: on today's flash (`--selection` over the open Task) it measures about 2.66:1 dark and 4.29:1 light (PR #38 review).
 3. **Task right-click menu** — Ticket 03, settled (Q20–Q24, 2026-11-11).
 4. **Complete Pomodoro page** — Ticket 04, settled (Q25–Q44 and Q47, 2026-11-11).
-5. **Sidebar counts of unfinished Tasks** — Ticket 05, asked during Ticket 04 (Q45–Q46); worked after Ticket 04.
+5. **Sidebar counts of unfinished Tasks** — Ticket 05, asked during Ticket 04 (Q45–Q46), settled with Q48–Q50.
 
 ## User Stories
 
@@ -83,6 +83,8 @@ Owner request and answers, 2026-11-11, during Ticket 04:
 - Q46 (changed from the recommendation, every folder): every folder shows its count, and Settings can change it; the option's form is asked when the ticket starts.
 - Q48 (owner answer 2026-11-11, "Three choices", changed from the recommended on/off switch): Settings offers where counts show: every folder (the default, Q46), only the open folder, or none.
 - A List counts only its own Tasks, never those of the Lists inside it, as GLOSSARY "List" already says; All tasks counts every unfinished Task not in Removed.
+- Q49 (raised by the review, owner answer 2026-11-11): a place with no unfinished Task shows no number, not "0".
+- Q50 (raised by the review, owner answer 2026-11-11): the Settings labels keep the owner's word, "Every folder" and "Open folder only", as DESIGN.md names the sidebar rows "Sidebar Folders", although GLOSSARY "Note Folder" avoids "folder" where a List could be meant.
 
 ## Implementation Decisions
 

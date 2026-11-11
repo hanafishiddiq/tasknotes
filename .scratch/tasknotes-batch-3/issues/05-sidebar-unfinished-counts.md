@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** in progress — Draft PR #42 on `feat/batch3-sidebar-counts`; two-axis review done and its findings fixed; two choices and the merge wait for the owner
+**Implementation:** merged to main in PR #42 (`58f8026`, owner OK 2026-11-11 after green CI); the owner's native check waits for the batch-3 install build
 
 ## Acceptance criteria
 
@@ -38,4 +38,6 @@
 - New tests: a List inside a Removed List counts nothing until restored (core); an MCP client moving a List to Removed lowers All tasks (window).
 - Left as is, by judgement: the counts are read again when the Tasks or Lists on hand change, after a restore and after outside changes, which the reviewers traced through every write path; no CLI or MCP command reads the counts (the spec asks for none; the rule is in the core for them); while the Task view shows a load error, outside changes wait, counts included, as they did before; the page Headline keeps its own count of the rows listed (Completed included).
 - For the owner: (1) a place with no unfinished Task shows no number rather than "0"; (2) the Settings labels say "Every folder" and "Open folder only", the owner's word, while GLOSSARY "Note Folder" avoids "folder" where a List could be meant.
+
+**2026-11-11 — owner answers:** Q49 no number where there is none (kept); Q50 keep the "folder" labels (kept); merge once CI is green: all 14 checks passed on `5db3cee` and PR #42 merged as `58f8026`.
 

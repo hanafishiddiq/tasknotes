@@ -41,12 +41,12 @@ Tujuan akhir: Tasknotes di /Applications berisi 5 perubahan batch 3 (tombol Remo
     - [x] Temuan review diperbaiki (cincin jeda redup lagi, garis hari, pemilih Task semua halaman, satu aturan hitung)
     - [x] Han memutuskan tombol Resume di blok sidebar: dipertahankan (Q47)
     - [x] CI hijau (14 cek), di-merge setelah Han konfirmasi (PR #41, commit 27f6749)
-- [ ] Angka Task belum selesai di sidebar (tiket 05) di main
+- [x] Angka Task belum selesai di sidebar (tiket 05) di main
   - [x] Diminta Han dan dijawab (Q45 Ready + In Progress; Q46 semua folder, bisa diatur di Settings)
   - [x] Bentuk pengaturan di Settings: tiga pilihan, semua folder / folder yang dibuka / tidak ada (Q48)
   - [x] Inti: hitungan Task belum selesai per tempat
   - [x] Sidebar dan pilihan di Settings (1553 tes window hijau)
-  - [ ] Draft PR, review dua sumbu, merge setelah Han konfirmasi
+  - [x] Draft PR #42, review dua sumbu, temuan diperbaiki (kontras angka saat hover), merge 58f8026 (Q49 tanpa angka nol, Q50 label "folder")
 - [ ] Semua tiket di main dan lolos CI gabungan
 - [ ] Satu build dipasang ke /Applications (setelah Han konfirmasi)
 - [ ] Han mengecek app asli batch 3
