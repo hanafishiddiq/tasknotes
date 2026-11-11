@@ -11,7 +11,7 @@ After using Tasknotes v1 daily, the owner listed friction points in the "Tasknot
 
 ## Solution
 
-Ship twelve changes in one build: two finished Draft PRs (#23 outside changes appear live, #24 manual sidebar order) and nine features, each a vertical slice through the shared Rust core, the desktop UI, the CLI and MCP where it touches data.
+Ship twelve changes in one build: two finished Draft PRs (#23 outside changes appear live, #24 manual sidebar order) and ten features (the tenth, completing from the check, added on 2026-11-10), each a vertical slice through the shared Rust core, the desktop UI, the CLI and MCP where it touches data.
 
 ## User Stories
 
