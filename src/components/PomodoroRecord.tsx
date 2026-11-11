@@ -2,24 +2,13 @@ import { useId } from "react";
 import { LoaderCircle, Timer } from "lucide-react";
 import { localCalendarDay } from "../lib/deadlines";
 import type { HistorySession, PomodoroDay } from "../lib/pomodoro-api";
+import { focusTime, sessionOutcome, sessionTask, sessionTimes } from "../lib/pomodoro-format";
 import type { PomodoroHistory } from "../lib/use-pomodoro-history";
 
 const DAY = new Intl.DateTimeFormat("en", { weekday: "long", month: "short", day: "numeric" });
 const DAY_WITH_YEAR = new Intl.DateTimeFormat("en", {
   weekday: "long", month: "short", day: "numeric", year: "numeric",
 });
-// Read on UTC after the session's own offset is added: the clock it started on.
-const CLOCK = new Intl.DateTimeFormat("en", { timeStyle: "short", timeZone: "UTC" });
-
-/** Milliseconds on the clock the session started on, read as UTC. */
-const onItsClock = (session: HistorySession, time: number) => time + session.utcOffsetSeconds * 1000;
-
-/** "9:00 AM – 9:25 AM" on the clock the session started on, wherever this Mac is now. */
-export function sessionTimes(session: HistorySession): string {
-  const start = onItsClock(session, session.startedAt);
-  const end = Math.max(start, onItsClock(session, session.endedAt));
-  return `${CLOCK.format(start)} – ${CLOCK.format(end)}`;
-}
 
 /** Noon on a YYYY-MM-DD date on this computer's clock, never near a midnight. */
 function noonOf(date: string, shiftDays = 0): Date {
@@ -32,12 +21,6 @@ function dayLabel(date: string, today: string): string {
   if (date === today) return "Today";
   if (date === localCalendarDay(noonOf(today, -1))) return "Yesterday";
   return (date.slice(0, 4) === today.slice(0, 4) ? DAY : DAY_WITH_YEAR).format(noonOf(date));
-}
-
-/** "57m", "1h 07m". */
-export function focusTime(minutes: number): string {
-  if (minutes < 60) return `${minutes}m`;
-  return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, "0")}m`;
 }
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
@@ -62,15 +45,6 @@ function sessionLength(session: HistorySession): string {
   const after = session.stoppedAfterMinutes;
   if (after === null) return "";
   return after === 0 ? "<1m" : `${after}m`;
-}
-
-/** How it ended, in words: the dot's name and the row's tooltip. */
-export function sessionOutcome(session: HistorySession): string {
-  if (session.outcome === "finished") return "Finished";
-  const after = session.stoppedAfterMinutes;
-  if (session.outcome === "ended_early") return `Break started early, ${after ?? 0} min counted`;
-  if (after === null) return "Stopped";
-  return after === 0 ? "Stopped after <1 min" : `Stopped after ${after} min`;
 }
 
 interface PomodoroRecordProps {
@@ -156,7 +130,7 @@ function RecordDay({ day, label, onOpenTask }: {
                   <button type="button" className="pomo-task-link"
                     onClick={() => onOpenTask(taskId)}>{taskTitle}</button>
                 ) : (
-                  <span className="pomo-no-task">{session.taskRemoved ? "Task removed" : "No Task"}</span>
+                  <span className="pomo-no-task">{sessionTask(session)}</span>
                 )}
               </span>
               <span className="pomo-session-length">{sessionLength(session)}</span>

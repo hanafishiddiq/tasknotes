@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronRight, SlidersHorizontal, Square } from "lucide-react";
 import { clock, type PomodoroCommand, type PomodoroView } from "../lib/pomodoro-api";
+import { runningTime } from "../lib/pomodoro-format";
 import { taskApi, type TaskList } from "../lib/task-api";
 import type { PomodoroControl } from "../lib/use-pomodoro";
 import { useLocalCalendarDay } from "../lib/use-local-calendar-day";
@@ -32,21 +33,13 @@ function stateWord(view: PomodoroView): string {
   }
 }
 
-/** The time in the ring and what screen readers hear for it. */
+/** The time in the ring and what screen readers hear for it: the focus length while Idle. */
 function shownTime(view: PomodoroView): { text: string; label: string } {
-  switch (view.phase) {
-    case "idle": {
-      const minutes = view.durations.focusMinutes;
-      return { text: clock(minutes * 60), label: `${minutes} minute focus` };
-    }
-    case "focus":
-    case "break":
-      return { text: clock(view.remainingSeconds), label: `${clock(view.remainingSeconds)} left` };
-    case "focus_done":
-      return { text: `+${clock(view.overtimeSeconds)}`, label: `Overtime ${clock(view.overtimeSeconds)}` };
-    case "break_done":
-      return { text: "00:00", label: "Break over" };
+  if (view.phase === "idle") {
+    const minutes = view.durations.focusMinutes;
+    return { text: clock(minutes * 60), label: `${minutes} minute focus` };
   }
+  return runningTime(view) ?? { text: "00:00", label: "Break over" };
 }
 
 /** How much of the focus or break is spent, 0 to 1, and the Overtime's own lap. */
@@ -98,12 +91,10 @@ function Ring({ view }: { view: PomodoroView }) {
   );
 }
 
-/** One bead per focus before the long break: done, now, or still to come. */
+/** One bead per focus before the long break: done, now, or still to come, as the shell counts the cycle. */
 function Beads({ view }: { view: PomodoroView }) {
   const total = view.durations.sessionsBeforeLongBreak;
-  // A long break begins a new cycle in the shell; until it ends, the beads still show the cycle it closed.
-  const longBreak = (view.phase === "break" || view.phase === "break_done") && view.long;
-  const done = longBreak ? total : Math.min(view.finishedInCycle, total);
+  const done = Math.min(view.finishedInCycle, total);
   const now = RUNNING_FOCUS.includes(view.phase) && done < total;
   const label = now ? `Session ${done + 1} of ${total} before the long break`
     : `${done} of ${total} sessions before the long break`;
@@ -239,7 +230,7 @@ export default function PomodoroPage({ hidden, refreshKey, pomodoro, lists, know
       data-paused={"paused" in view && view.paused ? "" : undefined}>
       <h1 className="sr-only">Pomodoro</h1>
       <button ref={lengthsButton} type="button" className="icon-button pomo-lengths-button"
-        aria-label="Pomodoro lengths" title="Lengths and Silent" aria-haspopup="dialog"
+        aria-label="Pomodoro lengths" title="Pomodoro lengths" aria-haspopup="dialog"
         aria-expanded={sheet === "lengths"} onClick={() => setSheet(sheet === "lengths" ? null : "lengths")}>
         <SlidersHorizontal size={16} aria-hidden="true" />
       </button>
@@ -287,7 +278,7 @@ export default function PomodoroPage({ hidden, refreshKey, pomodoro, lists, know
           )}
           {error && <p className="pomo-error" role="alert">{error}</p>}
         </section>
-        <PomodoroDayRail day={todayDay} view={view} now={new Date()} />
+        <PomodoroDayRail day={todayDay} view={view} />
         {record}
       </div>
       {sheet === "picker" && taskLine.current && (

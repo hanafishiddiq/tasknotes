@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Timer } from "lucide-react";
 import { clock, type PomodoroView } from "../lib/pomodoro-api";
+import { runningTime } from "../lib/pomodoro-format";
 import type { PomodoroControl as Control } from "../lib/use-pomodoro";
 import type { Task } from "../lib/task-api";
 
@@ -25,19 +26,9 @@ function statusText(view: PomodoroView, taskTitle: string | null): string {
   }
 }
 
-/** The time as the shell counts it, with what it means for screen readers. */
+/** The time as the shell counts it, with what it means for screen readers; "Done" once a break is over. */
 function shownTime(view: PomodoroView): { text: string; label: string } | null {
-  switch (view.phase) {
-    case "focus":
-    case "break":
-      return { text: clock(view.remainingSeconds), label: `${clock(view.remainingSeconds)} left` };
-    case "focus_done":
-      return { text: `+${clock(view.overtimeSeconds)}`, label: `Overtime ${clock(view.overtimeSeconds)}` };
-    case "break_done":
-      return { text: "Done", label: "Break done" };
-    default:
-      return null;
-  }
+  return view.phase === "break_done" ? { text: "Done", label: "Break done" } : runningTime(view);
 }
 
 /**

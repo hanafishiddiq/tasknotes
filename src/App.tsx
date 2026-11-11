@@ -128,7 +128,7 @@ export default function App() {
   // Bumped after something is moved to Removed, so the Removed view asks again.
   const [removedKey, setRemovedKey] = useState(0);
   // Bumped when the shell stores a Pomodoro Session or something changed outside, so the history asks again.
-  const [pomodoroHistoryKey, setPomodoroHistoryKey] = useState(0);
+  const [pomodoroPageKey, setPomodoroPageKey] = useState(0);
   // The Pomodoro page names a focus's Task from these before it asks the core.
   const taskTitles = useMemo(() => new Map(tasks.map((task) => [task.id, task.title])), [tasks]);
   // Recent moves to Removed, which Undo (or ⌘Z) brings back newest first.
@@ -234,7 +234,7 @@ export default function App() {
   // Silent is the Pomodoro's own setting, kept by the shell; sound settings play no part.
   const pomodoro = usePomodoro({
     onTaskChanged: () => void showOutsideChanges(),
-    onSessionStored: () => setPomodoroHistoryKey((key) => key + 1),
+    onSessionStored: () => setPomodoroPageKey((key) => key + 1),
   });
 
   // Before paint, so the rows never show in their new place.
@@ -503,7 +503,7 @@ export default function App() {
     setWorkspace("removed");
   }
 
-  function openPomodoroHistory() {
+  function openPomodoroPage() {
     if (busy) return;
     undo.hideNotice();
     newTaskToast.clearReveal();
@@ -623,7 +623,7 @@ export default function App() {
   async function showOutsideChanges(): Promise<boolean> {
     if (busy || loading || loadError || !(await readTaskViewAgain())) return false;
     setRemovedKey((key) => key + 1);
-    setPomodoroHistoryKey((key) => key + 1);
+    setPomodoroPageKey((key) => key + 1);
     setNotesRefresh((key) => key + 1);
     if (notesOpened) void noteFolders.refresh();
     return true;
@@ -1313,7 +1313,7 @@ export default function App() {
   const taskListOptions = useMemo(() => listOptions(lists), [lists]);
   const commands = buildCommands({
     lists, undoTitle: undo.next?.title ?? null, appearance: appearance.preference,
-    navigate, openNotes: () => openNotes(), openRemoved, openPomodoroHistory, openSettings, focusInTasks,
+    navigate, openNotes: () => openNotes(), openRemoved, openPomodoroPage, openSettings, focusInTasks,
     undo: undo.run, setAppearance: appearance.setPreference,
   });
   const searchCommand = (text: string): Command => ({
@@ -1362,7 +1362,7 @@ export default function App() {
         hasMoreLists={Boolean(listCursor)} busy={busy}
         theme={appearance.theme} onToggleTheme={appearance.toggle}
         settingsActive={workspace === "settings"} onOpenSettings={openSettings}
-        pomodoroHistoryActive={workspace === "pomodoro"} onOpenPomodoroHistory={openPomodoroHistory}
+        pomodoroPageActive={workspace === "pomodoro"} onOpenPomodoroPage={openPomodoroPage}
         onNavigate={navigate} onCreateList={createList} onCreateSubList={createListIn} onRenameList={renameList}
         onReorderList={reorderList} onPlaceList={placeList} onMoveList={moveList} onStyleList={styleList}
         onRemoveList={(list) => setListRemoved(list, true)}
@@ -1720,12 +1720,12 @@ export default function App() {
             <h2 className="settings-heading" id="settings-pomodoro">Pomodoro</h2>
             <p className="settings-hint">Focus and break lengths and Silent notifications are on the Pomodoro page.</p>
             <button type="button" className="button button-small settings-pomodoro-open"
-              onClick={openPomodoroHistory}>Open Pomodoro</button>
+              onClick={openPomodoroPage}>Open Pomodoro</button>
           </>
         )}
       </SettingsView>
       <RemovedView hidden={workspace !== "removed"} refreshKey={removedKey} onRestored={restored} />
-      <PomodoroPage hidden={workspace !== "pomodoro"} refreshKey={pomodoroHistoryKey} pomodoro={pomodoro}
+      <PomodoroPage hidden={workspace !== "pomodoro"} refreshKey={pomodoroPageKey} pomodoro={pomodoro}
         lists={lists} knownTitles={taskTitles}
         onOpenTask={(taskId) => showTaskAlone(taskId, "pomodoro")} />
       <ApprovalsView hidden={workspace !== "approvals"} refreshKey={approvals.count}

@@ -37,7 +37,7 @@ const openSettings = async (user: User) => {
   await screen.findByRole("heading", { name: /Quick Capture$/ }, eventually);
 };
 const openRemoved = async (user: User) => user.click(await screen.findByRole("button", { name: "Removed" }));
-const openPomodoroHistory = async (user: User) =>
+const openPomodoroPage = async (user: User) =>
   user.click(await screen.findByRole("button", { name: "Pomodoro" }));
 /**
  * A day, oldest first, with a counted Overtime, a session without a Task and a
@@ -61,7 +61,7 @@ const pomodoroDays = () => [{
 const pomodoroView = (phase: Record<string, unknown>): PomodoroView => {
   const minutes = { min: 1, max: 60 };
   return {
-    title: null, plannedSeconds: null, finishedInCycle: 0, lastTaskId: null, silent: false, saveError: null,
+    title: null, plannedSeconds: null, finishedInCycle: 0, focusStartedAt: null, lastTaskId: null, silent: false, saveError: null,
     durations: { focusMinutes: 25, shortBreakMinutes: 5, longBreakMinutes: 15, sessionsBeforeLongBreak: 4 },
     limits: { focusMinutes: { min: 1, max: 180 }, shortBreakMinutes: minutes, longBreakMinutes: minutes, sessionsBeforeLongBreak: { min: 1, max: 12 } },
     ...phase,
@@ -290,7 +290,7 @@ export const SCENES: Record<string, Scene> = {
   "Pomodoro history: days": {
     given: () => { world.pomodoroDays = pomodoroDays(); },
     show: async (user) => {
-      await openPomodoroHistory(user);
+      await openPomodoroPage(user);
       await screen.findByRole("button", { name: "Synthetic focus Task" }, eventually);
     },
   },
@@ -302,7 +302,7 @@ export const SCENES: Record<string, Scene> = {
       });
     },
     show: async (user) => {
-      await openPomodoroHistory(user);
+      await openPomodoroPage(user);
       // The sidebar block and the page each offer Resume.
       expect(await screen.findAllByRole("button", { name: "Resume" }, eventually)).toHaveLength(2);
       await screen.findByRole("button", { name: "Synthetic focus Task" }, eventually);
@@ -311,7 +311,7 @@ export const SCENES: Record<string, Scene> = {
   "Pomodoro page: choosing the Task": {
     given: () => { world.pomodoroView = pomodoroView({ phase: "idle" }); },
     show: async (user) => {
-      await openPomodoroHistory(user);
+      await openPomodoroPage(user);
       await user.click(await screen.findByRole("button", { name: /choose a Task$/ }, eventually));
       await screen.findByRole("dialog", { name: "Task for the focus" });
       await screen.findAllByRole("option", {}, eventually);
@@ -320,14 +320,14 @@ export const SCENES: Record<string, Scene> = {
   "Pomodoro page: lengths": {
     given: () => { world.pomodoroView = pomodoroView({ phase: "idle" }); },
     show: async (user) => {
-      await openPomodoroHistory(user);
+      await openPomodoroPage(user);
       await user.click(await screen.findByRole("button", { name: "Pomodoro lengths" }, eventually));
       await screen.findByRole("dialog", { name: "Pomodoro lengths" });
     },
   },
   "Pomodoro history: empty": {
     show: async (user) => {
-      await openPomodoroHistory(user);
+      await openPomodoroPage(user);
       await screen.findByText("No Pomodoro sessions yet", {}, eventually);
     },
   },

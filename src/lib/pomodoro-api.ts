@@ -34,8 +34,10 @@ export type PomodoroView = PomodoroPhase & {
   title: string | null;
   /** The length of the focus or break under way as it was planned when it started; null otherwise. */
   plannedSeconds: number | null;
-  /** Finished sessions since the last long break was earned. */
+  /** The beads: Finished sessions in the cycle toward the long break, or the whole cycle a long break closed while it lasts. */
   finishedInCycle: number;
+  /** When the focus under way started, in wall-clock milliseconds; null without one. */
+  focusStartedAt: number | null;
   durations: PomodoroDurations;
   limits: DurationLimits;
   /** The Task the next focus after a break is for. */

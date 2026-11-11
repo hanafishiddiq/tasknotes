@@ -12,7 +12,7 @@ export interface CommandSources {
   navigate: (view: TaskView) => void;
   openNotes: () => void;
   openRemoved: () => void;
-  openPomodoroHistory: () => void;
+  openPomodoroPage: () => void;
   openSettings: () => void;
   focusInTasks: (field: "capture" | "search") => void;
   undo: () => void;
@@ -33,7 +33,7 @@ export function buildCommands(from: CommandSources): Command[] {
     { id: "go-removed", label: "Removed", group: "Go to", keywords: "trash restore", run: from.openRemoved },
     {
       id: "go-pomodoro", label: "Pomodoro", group: "Go to", keywords: "history focus timer sessions",
-      run: from.openPomodoroHistory,
+      run: from.openPomodoroPage,
     },
     { id: "go-settings", label: "Settings", group: "Go to", keywords: "preferences", run: from.openSettings },
     {

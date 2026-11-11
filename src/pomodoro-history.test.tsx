@@ -81,7 +81,7 @@ const rowTexts = (rows: HTMLElement[]) => rows.map((row) => row.textContent?.rep
 function shellView(phase: PomodoroPhase): PomodoroView {
   const minutes = { min: 1, max: 60 };
   return {
-    ...phase, title: null, lastTaskId: null, silent: false, saveError: null, plannedSeconds: null, finishedInCycle: 0,
+    ...phase, title: null, lastTaskId: null, silent: false, saveError: null, plannedSeconds: null, finishedInCycle: 0, focusStartedAt: null,
     durations: { focusMinutes: 25, shortBreakMinutes: 5, longBreakMinutes: 15, sessionsBeforeLongBreak: 4 },
     limits: { focusMinutes: minutes, shortBreakMinutes: minutes, longBreakMinutes: minutes, sessionsBeforeLongBreak: minutes },
   };
@@ -218,12 +218,16 @@ describe("Pomodoro page: the focus record (Ticket 14, batch 3 layout A)", () => 
     ]);
     expect(within(rail).getByText("57m")).toBeInTheDocument();
     expect(within(rail).getByText("57 minutes of focus today")).toHaveClass("sr-only");
-    // A focus running now is a mark of its own, up to now.
+    // A focus running now is a mark of its own, from when it started, whatever pauses moved its end.
+    const nineOClock = within(rail).getAllByRole("img")[0].style.left;
     await act(() => tauriEvents.emit(POMODORO_CHANGED, {
-      view: { ...shellView({ phase: "focus", taskId: null, remainingSeconds: 15 * 60, paused: false }), plannedSeconds: 25 * 60 },
+      view: {
+        ...shellView({ phase: "focus", taskId: null, remainingSeconds: 15 * 60, paused: true }),
+        plannedSeconds: 25 * 60, focusStartedAt: todayAt(9),
+      },
       taskChanged: null, sessionStored: false,
     }));
-    expect(within(rail).getByRole("img", { name: "The focus running now" })).toBeInTheDocument();
+    expect(within(rail).getByRole("img", { name: "The focus running now" }).style.left).toBe(nineOClock);
   });
 
   it("heads the record with the all-time totals the core counted", async () => {

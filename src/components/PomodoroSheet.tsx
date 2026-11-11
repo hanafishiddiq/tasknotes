@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { fitInWindow } from "../lib/fit-in-window";
 
 /** Space kept between a sheet and the window's edges, and under what opened it. */
 const EDGE = 8;
@@ -20,6 +21,8 @@ interface PomodoroSheetProps {
  * under a control: on the sidebar gray with a hairline edge, no shadow and no
  * backdrop, kept inside the window. A click elsewhere, the window losing
  * focus or Escape closes it; Escape gives focus back to what opened it.
+ * Unlike the Task menu it stays open while something scrolls: the picker's
+ * own list scrolls inside it.
  */
 export default function PomodoroSheet({ anchor, align, label, className, onClose, children }: PomodoroSheetProps) {
   const sheet = useRef<HTMLDivElement>(null);
@@ -33,10 +36,7 @@ export default function PomodoroSheet({ anchor, align, label, className, onClose
     const box = anchor.getBoundingClientRect();
     const width = element.offsetWidth;
     const wanted = align === "center" ? box.left + box.width / 2 - width / 2 : box.right - width;
-    setPlace({
-      left: Math.max(EDGE, Math.min(wanted, window.innerWidth - width - EDGE)),
-      top: Math.max(EDGE, Math.min(box.bottom + GAP, window.innerHeight - element.offsetHeight - EDGE)),
-    });
+    setPlace(fitInWindow(wanted, box.bottom + GAP, width, element.offsetHeight, EDGE));
   }, [anchor, align]);
 
   useEffect(() => {

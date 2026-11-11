@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
 import App from "./App";
@@ -48,7 +48,7 @@ let shellMissing: boolean;
 let failNextCommand: string | null;
 
 const common = () => ({
-  title: null, plannedSeconds: null, finishedInCycle: 0,
+  title: null, plannedSeconds: null, finishedInCycle: 0, focusStartedAt: null,
   durations: view?.durations ?? { ...DEFAULTS }, limits: view?.limits ?? LIMITS,
   lastTaskId: view?.lastTaskId ?? null, silent: view?.silent ?? false, saveError: null,
 });
@@ -121,11 +121,13 @@ beforeEach(() => {
     switch (command) {
       case "list_lists": return { items: [], nextCursor: null };
       case "list_tasks": {
-        // As the core filters them: by status, search text or one Task.
+        // As the core filters them (by status, search text or one Task) and pages them.
         const text = (body.text ?? "").toLowerCase();
         const items = tasks.filter((task) => (!body.status || task.status === body.status)
           && task.title.toLowerCase().includes(text) && (!body.taskId || task.id === body.taskId));
-        return { items: items.map((task) => ({ ...task })), nextCursor: null };
+        const from = Number(body.cursor ?? 0);
+        const to = from + (body.limit ?? items.length);
+        return { items: items.slice(from, to).map((task) => ({ ...task })), nextCursor: to < items.length ? String(to) : null };
       }
       case "pomodoro_history": return { items: [], nextCursor: null };
       case "pomodoro_totals": return { finishedSessions: 0, focusMinutes: 0 };
@@ -379,6 +381,29 @@ describe("Pomodoro page timer (batch 3, Ticket 04)", () => {
 
     await user.click(within(page).getByRole("button", { name: "Start" }));
     expect(last(commands("pomodoro_command"))).toEqual({ command: { action: "start_focus", taskId: "task-3" } });
+  });
+
+  it("opens on the chosen Task past the first page, and reads on as the list is scrolled", async () => {
+    const user = userEvent.setup();
+    for (let n = 1; n <= 120; n += 1) {
+      tasks.push({ ...base, id: `ready-${n}`, title: `Synthetic step ${n}`, status: "ready", progress: 0 });
+    }
+    const page = await openPage(user);
+    // The last focus was for a Task the first page of Ready does not hold.
+    await shellChanged({ ...idle(), lastTaskId: "ready-75" });
+    await user.click(within(page).getByRole("button", { name: /choose a Task/ }));
+    const sheet = screen.getByRole("dialog", { name: "Task for the focus" });
+    const chosen = await within(sheet).findByRole("option", { name: /Synthetic step 75(?!\d)/ });
+    expect(chosen).toHaveAttribute("aria-selected", "true");
+    expect(chosen).toHaveAttribute("data-active", "true");
+    expect(within(sheet).getByRole("combobox")).toHaveAttribute("aria-activedescendant", chosen.id);
+
+    // Scrolling to the end of the list reads the rest.
+    const list = within(sheet).getByRole("listbox");
+    expect(within(list).queryByRole("option", { name: /Synthetic step 120(?!\d)/ })).not.toBeInTheDocument();
+    fireEvent.scroll(list);
+    expect(await within(list).findByRole("option", { name: /Synthetic step 120(?!\d)/ })).toBeInTheDocument();
+    expect(within(list).getAllByRole("option")).toHaveLength(1 + 1 + 120);
   });
 
   it("closes the Task sheet with Escape and gives focus back", async () => {

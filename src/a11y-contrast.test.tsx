@@ -134,7 +134,6 @@ const TEXT: Record<string, Placement> = {
   ".approval-title": { on: ["bg"] },
   ".approval-meta": { on: ["bg"] },
   ".approval-stale": { on: ["bg"] },
-  // Pomodoro history: hairline rows on the canvas, like Removed.
   // The Pomodoro page (batch 3, Ticket 04): the timer, today's rail and the focus record.
   ".pomo-task": { on: ["bg", "hover"] },
   "button.pomo-task:hover": { on: ["hover"] },
@@ -297,12 +296,18 @@ const INDICATORS: { selector: string; property: string; means: string; place: Pl
   { selector: ".pomo-ring-arc", property: "stroke", means: "spent focus", place: { on: ["bg"] } },
   { selector: '.pomo-page[data-phase="break"] .pomo-ring-arc', property: "stroke", means: "spent break", place: { on: ["bg"] } },
   { selector: ".pomo-ring-lap", property: "stroke", means: "Overtime lap", place: { on: ["bg"] } },
+  { selector: '.pomo-page[data-phase="break_done"] .pomo-ring-arc', property: "stroke", means: "a break spent", place: { on: ["bg"] } },
   { selector: ".pomo-ring-knob", property: "fill", means: "where the time is", place: { on: ["bg"] } },
-  { selector: '.pomo-page[data-paused] .pomo-ring-knob', property: "stroke", means: "paused knob", place: { on: ["bg"] } },
+  { selector: '.pomo-page[data-phase="break"] .pomo-ring-knob', property: "fill", means: "where the break is", place: { on: ["bg"] } },
+  { selector: '.pomo-page[data-phase="break"][data-paused] .pomo-ring-knob', property: "stroke", means: "a paused break's knob", place: { on: ["bg"] } },
   { selector: '.pomo-bead[data-state="done"]', property: "background", means: "finished in the cycle", place: { on: ["bg"] } },
+  { selector: '.pomo-bead[data-state="now"]', property: "box-shadow", means: "the focus under way in the cycle", place: { on: ["bg"] } },
   { selector: ".pomo-mark", property: "background", means: "a counted session today", place: { on: ["bg"] } },
+  { selector: '.pomo-mark[data-outcome="stopped"]', property: "box-shadow", means: "a Stopped session today", place: { on: ["bg"] } },
   { selector: ".pomo-rail-now", property: "border-left", means: "now on today's rail", place: { on: ["bg"] } },
   { selector: ".pomo-dot", property: "background", means: "a counted session", place: { on: ["bg"] } },
+  { selector: '.pomo-session[data-outcome="stopped"] .pomo-dot', property: "box-shadow", means: "a Stopped session", place: { on: ["bg"] } },
+  { selector: ".pomo-picker-search:focus-within", property: "box-shadow", means: "focus underline", place: { on: ["field"] } },
   { selector: ".pomo-stop", property: "color", means: "Stop button", place: { on: ["bg"] } },
   { selector: ".pomo-stop:hover", property: "color", means: "Stop button", place: { on: ["hover"] } },
   { selector: ".pomo-stepper button", property: "color", means: "length step button", place: { on: ["field"] } },
@@ -348,10 +353,22 @@ const NO_PAIR_NEEDED: Record<string, string> = {
   ".task-card--expanded .task-row .task-check--completed svg": "the tick sits on the disc; the disc is checked",
 };
 
+/**
+ * Marks dimmed on purpose (the owner's layout A) that repeat what words beside
+ * them say, so WCAG 1.4.11 asks no 3:1 of them; each with the words that say it.
+ */
+const SAID_IN_WORDS: Record<string, string> = {
+  ".pomo-page[data-paused] .pomo-ring-arc": "a paused focus: the time and \"Paused\" under it",
+  ".pomo-page[data-paused] .pomo-ring-knob": "a paused focus: the time and \"Paused\" under it",
+  ".pomo-mark--now": "the focus under way: the ring and time above, and the mark's own name",
+};
+
 /** Lines and fills that separate or decorate and say nothing by themselves. */
 const DECORATIVE_LINES = [
   ".undo-bar", ".task-toast", ".sidebar", ".toolbar", ".settings-shortcut", ".settings-backup", ".palette", ".palette-field",
-  ".removed-item", ".pomo-session", ".pomo-rail-line::before", ".approval", ".task-menu", ".task-slot + .task-slot .task-card::before", ".history-entry", ".linked-item",
+  ".removed-item", ".pomo-session", ".pomo-rail-line::before", ".pomo-ring-track", ".approval",
+  // A hover outline beside a hover fill, which is what shows the pointer.
+  ".progress-number:hover", ".pomo-pill:hover", ".task-menu", ".task-slot + .task-slot .task-card::before", ".history-entry", ".linked-item",
   ".note-list-pane", ".next-step-input", ".note-quote", ".style-picker", ".pomodoro", ".pomodoro-tip",
   // The sidebar's resize edge lights up under the pointer; its separator role and focus ring carry the meaning.
   ".sidebar-resizer:hover::after", "body.sidebar-resizing .sidebar-resizer::after",
@@ -481,11 +498,40 @@ describe("the contrast check itself", () => {
   });
 
   it("knows every rule that draws a line or a filled mark in a token colour", () => {
-    const inColor = rules.filter((rule) => rule.media === null && ["border", "border-top", "border-right", "border-bottom", "border-left", "border-color", "border-bottom-color", "outline", "accent-color"]
+    const inColor = rules.filter((rule) => rule.media === null && ["border", "border-top", "border-right", "border-bottom", "border-left", "border-color", "border-bottom-color", "outline", "accent-color", "stroke", "fill", "box-shadow"]
       .some((property) => /var\(--|currentColor/.test(declared(rule, property) ?? "")))
       .flatMap((rule) => selectorsOf(rule));
-    const placed = new Set([...DECORATIVE_LINES, ...INDICATORS.map((item) => item.selector), ...OUTLINED_LIKE_THE_RING]);
+    const placed = new Set([
+      ...DECORATIVE_LINES, ...INDICATORS.map((item) => item.selector), ...OUTLINED_LIKE_THE_RING, ...Object.keys(SAID_IN_WORDS),
+    ]);
     expect(inColor.filter((selector) => !placed.has(selector))).toEqual([]);
+  });
+
+  it("knows every rule that dims something with opacity", () => {
+    // A dimmed mark or text is measured as it shows, or is here with why it needs no measure.
+    const dimmedOnPurpose = new Set([
+      ...Object.keys(SAID_IN_WORDS),
+      // Disabled controls are exempt from WCAG contrast.
+      "button:disabled", "input:disabled", "select:disabled", "textarea:disabled",
+      ".folder-row[data-dragging]", ".task-slot[data-dragging]", // what is being dragged: its drop place shows where
+    ]);
+    const measured = new Set(Object.keys(TEXT));
+    const dimmed = rules.filter((rule) => rule.media === null && /^0?\.\d+$/.test(declared(rule, "opacity") ?? ""))
+      .flatMap((rule) => selectorsOf(rule));
+    expect(dimmed.filter((selector) => !dimmedOnPurpose.has(selector) && !measured.has(selector))).toEqual([]);
+    expect(Object.keys(SAID_IN_WORDS).filter((selector) => !rules.some((rule) => selectorsOf(rule).includes(selector))))
+      .toEqual([]);
+  });
+
+  it("lets the paused time breathe no dimmer than large text allows", () => {
+    // The 68px time fades and returns while paused; at its faintest it still reads at 3:1.
+    const faintest = Number(declared(rules.find((rule) => rule.media === "@keyframes pomo-rest" && rule.selector === "to")!, "opacity"));
+    for (const theme of THEMES) {
+      const { color, resolve } = palette(theme);
+      const time = resolve(declared(ruleDeclaring(".pomo-clock", "color")!, "color")!, { on: ["bg"] }, null);
+      const [foreground, under] = shown(time, color("bg"), faintest);
+      expect(contrast(foreground, under), theme).toBeGreaterThanOrEqual(AA_LARGE);
+    }
   });
 
   it("uses no fill it does not check text against", () => {
