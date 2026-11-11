@@ -59,11 +59,12 @@ Tujuan akhir: Tasknotes di /Applications berisi 5 perubahan batch 3 (tombol Remo
     - [x] Uji native kode final dengan identitas Tasknotes: terkirim, tampil, ditarik, tanpa penolakan
     - [x] Merge dan pasang ulang setelah CI hijau (Han konfirmasi): PR #44 merge 8a9d072, backup store.adamaja.tasknotes.pre-issue06-20261111, app terpasang dan data utuh
     - [x] Cek di app terpasang: "Focus done" muncul (20:21:27), tombol Start break yang diklik Han memulai break dan notifikasi hilang; Focus dikembalikan ke 25 menit
-- [ ] Cache build dan worktree yang sudah selesai dihapus (batch 2 dan 3)
+- [x] Cache build dan worktree yang sudah selesai dihapus (batch 2 dan 3), atas izin Han
+  - [x] 7 worktree bersih dan ter-merge dihapus beserta cache build-nya (sekitar 31 GB dibebaskan); salinan data sementara di scratchpad dihapus
+  - [x] Dibiarkan: integration dan sidebar-order (ada perubahan belum di-commit), batch2-docs (PR #37 belum di-merge), worktree arsip, youthful-elion, checkout utama
 
 ## Perlu Han lakukan
 
-- Izinkan penghapusan cache build dan worktree yang sudah selesai (batch 2 dan 3).
 - Sambung ulang MCP Tasknotes di sesi Claude lain: proses MCP lama menolak data versi 24.
 
 ## Riwayat sesi
