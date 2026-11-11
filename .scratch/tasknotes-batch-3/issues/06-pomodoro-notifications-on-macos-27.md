@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** in progress, on `fix/batch3-modern-notifications`
+**Implementation:** in progress — Draft PR #44 on `fix/batch3-modern-notifications`; two-axis review done and its findings fixed; the merge, the install build and the native check wait for the owner
 
 ## Acceptance criteria
 
