@@ -1,6 +1,6 @@
 # Tasknotes batch 2
 
-Tujuan akhir: Tasknotes di /Applications berisi 12 isi batch ini (PR #23, PR #24, Cmd+Enter, toast Task baru, Difficulty, Won't do, drag sort + Custom, nested List, sidebar baru + ikon/warna, Pomodoro + riwayatnya, klik lingkaran Task, hasil cek mute), dipasang dengan satu build, lalu cache build dihapus.
+Tujuan akhir: Tasknotes di /Applications berisi 12 isi batch ini (PR #23, PR #24, Cmd+Enter, toast Task baru, Difficulty, Won't do, drag sort + Custom, nested List, sidebar baru + ikon/warna, Pomodoro + riwayatnya, klik lingkaran Task, hasil cek mute), dipasang dengan satu build. Cache build dihapus setelah build batch 3 (keputusan Han Q1, 2026-11-11; lihat progress/tasknotes-batch-3.md).
 
 ## Progres
 
@@ -17,7 +17,6 @@ Tujuan akhir: Tasknotes di /Applications berisi 12 isi batch ini (PR #23, PR #24
 - [x] Semua fitur di-merge ke main dan lolos cek gabungan (main 1bf9fe3, CI hijau)
 - [x] Satu build dipasang ke /Applications (2026-11-11, setelah Han konfirmasi; database 15 → 23, 143 Task / 4 Note / 8 List utuh)
 - [ ] Han mengecek app asli (daftar 10 langkah)
-- [ ] Cache build dan worktree yang sudah selesai dihapus (Han: tunggu cek app selesai)
 
 ## Perlu Han lakukan
 
