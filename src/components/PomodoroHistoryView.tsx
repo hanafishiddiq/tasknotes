@@ -9,7 +9,13 @@ const DAY = new Intl.DateTimeFormat("en", { weekday: "long", month: "short", day
 const DAY_WITH_YEAR = new Intl.DateTimeFormat("en", {
   weekday: "long", month: "short", day: "numeric", year: "numeric",
 });
-const START = new Intl.DateTimeFormat("en", { timeStyle: "short" });
+// Read on UTC after the session's own offset is added: the clock it started on.
+const START = new Intl.DateTimeFormat("en", { timeStyle: "short", timeZone: "UTC" });
+
+/** "9:00 AM" on the clock the session started on, wherever this Mac is now. */
+function startTime(session: HistorySession): string {
+  return START.format(session.startedAt + session.utcOffsetSeconds * 1000);
+}
 
 /** Noon on a YYYY-MM-DD date on this computer's clock, never near a midnight. */
 function noonOf(date: string, shiftDays = 0): Date {
@@ -39,6 +45,14 @@ function sessionLength(session: HistorySession): string {
     : `${session.plannedMinutes} min`;
 }
 
+/** "Finished"; "Stopped after 12 min", or "Stopped" for one stored before that time was kept. */
+function sessionOutcome(session: HistorySession): string {
+  if (session.outcome === "finished") return "Finished";
+  const after = session.stoppedAfterMinutes;
+  if (after === null) return "Stopped";
+  return after === 0 ? "Stopped after <1 min" : `Stopped after ${after} min`;
+}
+
 interface PomodoroHistoryViewProps {
   hidden: boolean;
   /** Read again whenever this changes: a session was stored, or something changed outside. */
@@ -48,8 +62,9 @@ interface PomodoroHistoryViewProps {
 
 /**
  * The Pomodoro page (Ticket 14): one section per local day, newest first,
- * with what the core counts for it and every session of it. It only shows
- * the core's numbers and keeps no rule of its own. Older days load on request.
+ * with what the core counts for it and every session of it, oldest first. It
+ * only shows the core's numbers and keeps no rule of its own. Older days load
+ * on request.
  */
 export default function PomodoroHistoryView({ hidden, refreshKey, onOpenTask }: PomodoroHistoryViewProps) {
   const today = useLocalCalendarDay();
@@ -114,8 +129,9 @@ export default function PomodoroHistoryView({ hidden, refreshKey, onOpenTask }: 
           <div className="page-title"><h1>Pomodoro</h1></div>
           <p className="pomodoro-history-hint">
             Each day counts its finished sessions: the planned focus plus any Overtime you counted.
-            Stopped sessions are listed but not counted. Days follow this Mac&rsquo;s time zone, and
-            a session that runs past midnight stays on the day it started.
+            Stopped sessions are listed but not counted. A session keeps the day and time of the
+            clock it started on, even after you travel, and a session that runs past midnight
+            stays on the day it started.
           </p>
           {error && <div role="alert" className="error-banner"><span>{error}</span></div>}
           {loading ? (
@@ -160,7 +176,7 @@ function HistoryDay({ day, label, onOpenTask }: {
           const { taskId, taskTitle } = session;
           return (
             <li key={session.id} className="pomodoro-session" data-outcome={session.outcome}>
-              <span className="pomodoro-session-time">{START.format(session.startedAt)}</span>
+              <span className="pomodoro-session-time">{startTime(session)}</span>
               <span className="pomodoro-session-task">
                 {taskId !== null && taskTitle !== null ? (
                   <button type="button" className="pomodoro-task-link"
@@ -170,9 +186,7 @@ function HistoryDay({ day, label, onOpenTask }: {
                 )}
               </span>
               <span className="pomodoro-session-length">{sessionLength(session)}</span>
-              <span className="pomodoro-session-outcome">
-                {session.outcome === "finished" ? "Finished" : "Stopped"}
-              </span>
+              <span className="pomodoro-session-outcome">{sessionOutcome(session)}</span>
             </li>
           );
         })}

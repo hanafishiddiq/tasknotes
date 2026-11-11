@@ -54,13 +54,21 @@ export interface HistorySession {
   id: string;
   startedAt: number;
   endedAt: number;
+  /**
+   * Seconds east of UTC of the clock the session started on: its day and start
+   * time stay there wherever the Mac is now.
+   */
+  utcOffsetSeconds: number;
   outcome: "finished" | "stopped";
-  plannedSeconds: number;
-  overtimeSeconds: number;
   /** Whole minutes, rounded as the session's Progress Entry says them. */
   plannedMinutes: number;
   /** The Overtime the person counted, in whole minutes; 0 for a Stopped session. */
   overtimeMinutes: number;
+  /**
+   * A Stopped session's focus before Stop in whole minutes, sleep never included;
+   * null for a Finished one and for a Stopped one stored before this was kept.
+   */
+  stoppedAfterMinutes: number | null;
   taskId: string | null;
   /** Null without a Task, or while its Task is in Removed (`taskRemoved`). */
   taskTitle: string | null;
@@ -72,12 +80,12 @@ export interface HistorySession {
  * count, and focus is their planned length plus counted Overtime.
  */
 export interface PomodoroDay {
-  /** YYYY-MM-DD on this Mac's clock; a session belongs to the day it started. */
+  /** YYYY-MM-DD on the clock its sessions started on; a session belongs to the day it started. */
   date: string;
   finishedSessions: number;
   focusMinutes: number;
   stoppedSessions: number;
-  /** Newest first. */
+  /** In the order they started: the day reads as a log. */
   sessions: HistorySession[];
 }
 

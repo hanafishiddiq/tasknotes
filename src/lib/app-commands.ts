@@ -32,7 +32,7 @@ export function buildCommands(from: CommandSources): Command[] {
     { id: "go-notes", label: "All notes", group: "Go to", run: from.openNotes },
     { id: "go-removed", label: "Removed", group: "Go to", keywords: "trash restore", run: from.openRemoved },
     {
-      id: "go-pomodoro", label: "Pomodoro history", group: "Go to", keywords: "focus timer sessions",
+      id: "go-pomodoro", label: "Pomodoro", group: "Go to", keywords: "history focus timer sessions",
       run: from.openPomodoroHistory,
     },
     { id: "go-settings", label: "Settings", group: "Go to", keywords: "preferences", run: from.openSettings },

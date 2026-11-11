@@ -27,7 +27,7 @@ interface TaskSidebarProps {
   onOpenApprovals: () => void;
   settingsActive: boolean;
   onOpenSettings: () => void;
-  /** The Pomodoro history page is showing. */
+  /** The Pomodoro page (the daily history) is showing. */
   pomodoroHistoryActive: boolean;
   onOpenPomodoroHistory: () => void;
   /** Notes are showing every Note rather than one folder. */
@@ -442,9 +442,9 @@ export default function TaskSidebar({
       <div className="sidebar-spacer" />
       {pomodoro}
       <button type="button" className="folder folder--quiet" disabled={busy}
-        aria-label="Pomodoro history" aria-current={pomodoroHistoryActive ? "page" : undefined}
+        aria-label="Pomodoro" aria-current={pomodoroHistoryActive ? "page" : undefined}
         onClick={onOpenPomodoroHistory}>
-        <History size={16} aria-hidden="true" /><span className="folder-name">Pomodoro history</span>
+        <History size={16} aria-hidden="true" /><span className="folder-name">Pomodoro</span>
       </button>
       <button type="button" className="folder folder--quiet" disabled={busy}
         aria-label="Settings" aria-current={settingsActive ? "page" : undefined} onClick={onOpenSettings}>

@@ -16,8 +16,8 @@ const call = vi.mocked(invoke);
 
 /**
  * The core groups and counts the sessions (Rust tests cover the rules:
- * Overtime, Stopped, time zone, midnight); the window shows what it gets.
- * This fake answers `pomodoro_history` with pages of made-up days.
+ * Overtime, Stopped, time zones, midnight, paging); the window shows what it
+ * gets. This fake answers `pomodoro_history` with pages of made-up days.
  */
 const base: Task = {
   id: "task-1", title: "Synthetic plan", description: "", status: "in_progress", priority: "medium", difficulty: null,
@@ -31,33 +31,47 @@ function todayAt(hour: number, minute = 0) {
   return new Date(year, month - 1, day, hour, minute).getTime();
 }
 
+/** Seconds east of UTC of this computer's clock at `time`, as the shell stores it. */
+const offsetAt = (time: number) => -new Date(time).getTimezoneOffset() * 60;
+
+/** A session started on this computer's clock, unless `utcOffsetSeconds` says otherwise. */
 function session(overrides: Partial<HistorySession>): HistorySession {
+  const startedAt = overrides.startedAt ?? todayAt(9);
   return {
-    id: `session-${Math.random()}`, startedAt: todayAt(9), endedAt: todayAt(9, 25), outcome: "finished",
-    plannedSeconds: 1500, overtimeSeconds: 0, plannedMinutes: 25, overtimeMinutes: 0,
+    id: `session-${Math.random()}`, startedAt, endedAt: startedAt + 1_500_000, utcOffsetSeconds: offsetAt(startedAt),
+    outcome: "finished", plannedMinutes: 25, overtimeMinutes: 0, stoppedAfterMinutes: null,
     taskId: null, taskTitle: null, taskRemoved: false, ...overrides,
   };
 }
 
+/** Oldest first within a day, as the core sends them. */
 const TODAY: PomodoroDay = {
   date: today, finishedSessions: 2, focusMinutes: 57, stoppedSessions: 1,
   sessions: [
-    session({ startedAt: todayAt(11), outcome: "stopped", taskId: "task-gone", taskRemoved: true }),
+    session({ startedAt: todayAt(9), overtimeMinutes: 7, taskId: "task-1", taskTitle: "Synthetic plan" }),
     session({ startedAt: todayAt(10) }),
     session({
-      startedAt: todayAt(9), overtimeSeconds: 432, overtimeMinutes: 7,
-      taskId: "task-1", taskTitle: "Synthetic plan",
+      startedAt: todayAt(11), outcome: "stopped", stoppedAfterMinutes: 12, taskId: "task-gone", taskRemoved: true,
     }),
   ],
 };
+/** 14:05 in Jakarta (07:05 UTC), wherever this computer is; then two Stopped ones. */
 const MARCH_4: PomodoroDay = {
-  date: "2025-03-04", finishedSessions: 1, focusMinutes: 50, stoppedSessions: 0,
-  sessions: [session({ startedAt: new Date(2025, 2, 4, 14, 5).getTime(), plannedSeconds: 3000, plannedMinutes: 50 })],
+  date: "2025-03-04", finishedSessions: 1, focusMinutes: 50, stoppedSessions: 2,
+  sessions: [
+    session({ startedAt: Date.UTC(2025, 2, 4, 7, 5), utcOffsetSeconds: 7 * 3600, plannedMinutes: 50 }),
+    session({ startedAt: Date.UTC(2025, 2, 4, 8, 0), utcOffsetSeconds: 7 * 3600, outcome: "stopped", stoppedAfterMinutes: 0 }),
+    // Stored before the time until Stop was kept.
+    session({ startedAt: Date.UTC(2025, 2, 4, 9, 0), utcOffsetSeconds: 7 * 3600, outcome: "stopped" }),
+  ],
 };
 const FEB_2: PomodoroDay = {
   date: "2025-02-02", finishedSessions: 1, focusMinutes: 25, stoppedSessions: 0,
   sessions: [session({ startedAt: new Date(2025, 1, 2, 8, 0).getTime() })],
 };
+
+/** The text of each row, with the narrow space Intl may put before AM. */
+const rowTexts = (rows: HTMLElement[]) => rows.map((row) => row.textContent?.replace(/\s/g, " "));
 
 /** What the shell sends on `tasknotes://pomodoro`. */
 function shellView(phase: PomodoroPhase): PomodoroView {
@@ -128,17 +142,19 @@ async function openHistory() {
   render(<App />);
   await screen.findByRole("article", { name: "Synthetic plan" });
   expect(historyReads()).toHaveLength(0);
-  await user.click(screen.getByRole("button", { name: "Pomodoro history" }));
+  await user.click(screen.getByRole("button", { name: "Pomodoro" }));
   const page = await screen.findByRole("region", { name: "Pomodoro history" });
   await within(page).findByRole("heading", { name: /^Today/ });
   return { user, page };
 }
 
 describe("Pomodoro history page (Ticket 14)", () => {
-  it("is a page of the sidebar, like Settings", async () => {
+  it("is a page of the sidebar named like its heading, like Settings", async () => {
     const { page } = await openHistory();
     expect(within(page).getByRole("heading", { level: 1 })).toHaveTextContent("Pomodoro");
-    expect(screen.getByRole("button", { name: "Pomodoro history" })).toHaveAttribute("aria-current", "page");
+    const row = screen.getByRole("button", { name: "Pomodoro" });
+    expect(row).toHaveTextContent(/^Pomodoro$/);
+    expect(row).toHaveAttribute("aria-current", "page");
     expect(historyReads()[0][1]).toMatchObject({ limit: 14, cursor: null });
   });
 
@@ -149,6 +165,7 @@ describe("Pomodoro history page (Ticket 14)", () => {
     await user.keyboard("{Meta>}k{/Meta}");
     const palette = screen.getByRole("dialog", { name: "Command palette" });
     await user.type(within(palette).getByRole("combobox", { name: "Command" }), "pomodoro");
+    expect(within(palette).getByRole("option", { name: "Pomodoro" })).toBeInTheDocument();
     await user.keyboard("{Enter}");
     const page = await screen.findByRole("region", { name: "Pomodoro history" });
     expect(await within(page).findByRole("heading", { name: /^Today/ })).toBeVisible();
@@ -161,23 +178,29 @@ describe("Pomodoro history page (Ticket 14)", () => {
     expect(within(day).getByText("2 sessions · 57 min focus · 1 stopped")).toBeInTheDocument();
 
     const rows = within(day).getAllByRole("listitem");
-    // Times are formatted on this computer's clock; Intl may put a narrow space before AM.
-    expect(rows.map((row) => row.textContent?.replace(/\s/g, " "))).toEqual([
-      "11:00 AMTask removed25 min plannedStopped",
-      "10:00 AMNo Task25 minFinished",
+    // Oldest first: the day reads as a log.
+    expect(rowTexts(rows)).toEqual([
       "9:00 AMSynthetic plan25 + 7 minFinished",
+      "10:00 AMNo Task25 minFinished",
+      "11:00 AMTask removed25 min plannedStopped after 12 min",
     ]);
-    expect(within(rows[2]).getByRole("button", { name: "Synthetic plan" })).toBeInTheDocument();
-    expect(within(rows[0]).queryByRole("button")).not.toBeInTheDocument();
+    expect(within(rows[0]).getByRole("button", { name: "Synthetic plan" })).toBeInTheDocument();
+    expect(within(rows[2]).queryByRole("button")).not.toBeInTheDocument();
 
     const older = within(page).getByRole("region", { name: "Tuesday, Mar 4, 2025" });
-    expect(within(older).getByText("1 session · 50 min focus")).toBeInTheDocument();
-    expect(within(older).getByText("50 min")).toBeInTheDocument();
+    expect(within(older).getByText("1 session · 50 min focus · 2 stopped")).toBeInTheDocument();
+    // On the clock each session started on (Jakarta), whatever this computer's time zone is.
+    expect(rowTexts(within(older).getAllByRole("listitem"))).toEqual([
+      "2:05 PMNo Task50 minFinished",
+      "3:00 PMNo Task25 min plannedStopped after <1 min",
+      "4:00 PMNo Task25 min plannedStopped",
+    ]);
   });
 
-  it("says how days are counted, midnight included", async () => {
+  it("says how days are counted, travel and midnight included", async () => {
     const { page } = await openHistory();
     expect(page).toHaveTextContent("Stopped sessions are listed but not counted");
+    expect(page).toHaveTextContent("A session keeps the day and time of the clock it started on, even after you travel");
     expect(page).toHaveTextContent("a session that runs past midnight stays on the day it started");
   });
 
@@ -205,7 +228,7 @@ describe("Pomodoro history page (Ticket 14)", () => {
     const user = userEvent.setup();
     render(<App />);
     await screen.findByRole("article", { name: "Synthetic plan" });
-    await user.click(screen.getByRole("button", { name: "Pomodoro history" }));
+    await user.click(screen.getByRole("button", { name: "Pomodoro" }));
     const page = await screen.findByRole("region", { name: "Pomodoro history" });
     expect(await within(page).findByRole("heading", { name: "No Pomodoro sessions yet" })).toBeInTheDocument();
     expect(within(page).queryByText(/min focus/)).not.toBeInTheDocument();
@@ -270,7 +293,7 @@ describe("Pomodoro history page (Ticket 14)", () => {
     const user = userEvent.setup();
     render(<App />);
     await screen.findByRole("article", { name: "Synthetic plan" });
-    await user.click(screen.getByRole("button", { name: "Pomodoro history" }));
+    await user.click(screen.getByRole("button", { name: "Pomodoro" }));
     const page = await screen.findByRole("region", { name: "Pomodoro history" });
     expect(await within(page).findByRole("alert")).toHaveTextContent("Couldn't load the Pomodoro history");
     expect(within(page).queryByRole("heading", { name: "No Pomodoro sessions yet" })).not.toBeInTheDocument();

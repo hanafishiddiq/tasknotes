@@ -1348,14 +1348,20 @@ kbd {
   font-variant-numeric: tabular-nums;
   color: var(--text-3);
 }
+/* One grid per day and every row on it (subgrid), so lengths and outcomes
+   ("Stopped after 12 min") line up whatever their width. */
 .pomodoro-sessions {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) auto auto;
+  column-gap: 12px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 .pomodoro-session {
   display: grid;
-  grid-template-columns: 72px minmax(0, 1fr) auto 64px;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
   align-items: center;
   gap: 12px;
   min-height: 32px;
@@ -2482,8 +2488,10 @@ kbd {
     width: 140px;
   }
   /* The length and outcome move under the Task. */
-  .pomodoro-session {
+  .pomodoro-sessions {
     grid-template-columns: 64px minmax(0, 1fr) auto;
+  }
+  .pomodoro-session {
     row-gap: 2px;
   }
   .pomodoro-session-length {
