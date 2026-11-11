@@ -37,8 +37,9 @@ Owner answers, 2026-11-11 (Q5–Q8):
 - Q13: no toast for Tasks added by AI.
 - Q11/Q14: an AI-added Task's mark goes 10 seconds after it is seen (window in front, row on screen), or when it is opened; the others stay.
 - Q12/Q15: nothing is stored: a Task added while the app is closed gets no mark, and quitting clears every mark.
+- Q17: a window hidden to the menu bar is not closed: a Task an AI adds then is marked when the window comes back. Q15 is about quitting (⌘Q).
 - Q16: the owner's own adds keep Q6, not 10 seconds.
-- Colour: half the sidebar hover yellow over the canvas, the strongest mix that keeps row text and the status ring at WCAG AA (Ticket 02).
+- Colour (Q18, owner-approved after a side-by-side picture): half the sidebar hover yellow over the canvas, the strongest mix that keeps row text and the status ring at WCAG AA.
 
 ## Implementation Decisions
 

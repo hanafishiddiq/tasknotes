@@ -17,7 +17,7 @@ Tujuan akhir: Tasknotes di /Applications berisi 4 perubahan batch 3 (tombol Remo
   - [x] Bagian 1: toast 10 detik + tombol X, tanpa kilatan (commit fb65e02, tes lokal hijau)
   - [x] Bagian 2: tanda kuning Task sendiri dan Task dari AI (kuning 50% demi kontras)
   - [x] Draft PR #39, review dua sumbu, temuan diperbaiki (commit 154824d)
-  - [ ] Jendela tersembunyi lewat menu bar: diputuskan Han, lalu dikerjakan
+  - [x] Jendela tersembunyi lewat menu bar: diputuskan Han (Q17: tetap diberi tanda, tanpa ubah kode)
   - [ ] Di-merge setelah CI hijau dan Han konfirmasi
 - [ ] Menu klik kanan Task (tiket 03) di main
 - [ ] Halaman Pomodoro lengkap (tiket 04) di main
@@ -28,9 +28,6 @@ Tujuan akhir: Tasknotes di /Applications berisi 4 perubahan batch 3 (tombol Remo
 
 ## Perlu Han lakukan
 
-- [ ] Putuskan: Task dari AI saat jendela Tasknotes disembunyikan (menu bar menyala) diberi tanda atau tidak
-  - Cara: jawab Q17 di chat
-  - Menahan: Jendela tersembunyi lewat menu bar: diputuskan Han, lalu dikerjakan
 
 ## Riwayat sesi
 

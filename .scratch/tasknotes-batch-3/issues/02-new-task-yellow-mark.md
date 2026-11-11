@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** in progress — built on `feat/batch3-new-task-mark`; review and the owner's native check remain
+**Implementation:** in progress — reviewed in PR #39; merge after green CI (owner Q19); the owner's native check remains
 
 ## Acceptance criteria
 
@@ -36,4 +36,6 @@
 
 **2026-11-11 — colour (technical call, reported to the owner):** Q7 asked for the sidebar hover yellow; the mark uses half of it over the canvas (dark `#353121`, light `#fdf6d0`), the strongest mix that keeps every row text and the status ring at WCAG AA.
 
-**2026-11-11 — review on PR #39:** fixed: the core bounds both outside queries by `latest`, so a Task created between its reads is named once (it could have been marked a second time); every way of opening a Task goes through `openTask`, so re-opening the Task already open also ends the owner's marks; a Task open already when the check names it is not marked; "Just added" also describes the open button; `rowProps` keeps the row wiring in the hook; `createdTasks` is required (test mocks send it); `.task-toast--closable` replaces `.task-toast--new`, which read like the mark; DESIGN.md's Sidebar Hover Yellow names its new use. Accepted: a Task the CLI creates and removes before the next check keeps a waiting mark in memory; if it is restored, it shows the mark until seen for 10 seconds. Open for the owner: with the menu-bar item on, closing the window only hides it and the checks go on, so a Task an AI adds then is marked when the window comes back; Q15 said a Task added while Tasknotes is closed gets none.
+**2026-11-11 — review on PR #39:** fixed: the core bounds both outside queries by `latest`, so a Task created between its reads is named once (it could have been marked a second time); every way of opening a Task goes through `openTask`, so re-opening the Task already open also ends the owner's marks; a Task open already when the check names it is not marked; "Just added" also describes the open button; `rowProps` keeps the row wiring in the hook; `createdTasks` is required (test mocks send it); `.task-toast--closable` replaces `.task-toast--new`, which read like the mark; DESIGN.md's Sidebar Hover Yellow names its new use. Accepted: a Task the CLI creates and removes before the next check keeps a waiting mark in memory; if it is restored, it shows the mark until seen for 10 seconds. Raised to the owner as Q17 (below).
+
+**2026-11-11 — owner decisions (Han), Q17–Q19:** Q17: with the menu-bar item on, closing the window only hides Tasknotes; a Task an AI adds then is marked and counts its 10 seconds once seen; Q15 (no mark) applies to quitting with ⌘Q. Q18: the mark stays at half the sidebar hover yellow. Q19: merge after green CI.
