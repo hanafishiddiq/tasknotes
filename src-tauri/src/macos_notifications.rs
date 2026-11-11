@@ -63,15 +63,34 @@ pub fn persistent() -> Option<bool> {
 #[cfg(target_os = "macos")]
 #[allow(deprecated)]
 pub fn withdraw_delivered(titles: &[&str]) {
-    use objc2_foundation::{NSBundle, NSUserNotificationCenter};
+    use objc2::rc::Retained;
+    use objc2::{ClassType, msg_send};
+    use objc2_foundation::{NSArray, NSBundle, NSUserNotification, NSUserNotificationCenter};
 
     // Without a bundle identifier there is no center, and nothing of ours
     // was delivered (a bare development run before its first notification).
     if NSBundle::mainBundle().bundleIdentifier().is_none() {
         return;
     }
-    let center = NSUserNotificationCenter::defaultUserNotificationCenter();
-    for delivered in center.deliveredNotifications().to_vec() {
+    // macOS may answer either question with nil although the bindings
+    // promise an object, and the bindings then abort the app: the installed
+    // batch-3 build did so at every launch on macOS 27.2 (2026-11-11), from
+    // the withdrawal that runs at start-up. Asked so that nil means nothing
+    // to withdraw.
+    // SAFETY: both selectors exist on these classes and take no arguments;
+    // each returns an object or nil, which `Option<Retained<_>>` accepts.
+    let center: Option<Retained<NSUserNotificationCenter>> = unsafe {
+        msg_send![
+            NSUserNotificationCenter::class(),
+            defaultUserNotificationCenter
+        ]
+    };
+    let Some(center) = center else {
+        return;
+    };
+    let delivered: Option<Retained<NSArray<NSUserNotification>>> =
+        unsafe { msg_send![&center, deliveredNotifications] };
+    for delivered in delivered.map(|list| list.to_vec()).unwrap_or_default() {
         let ours = delivered
             .title()
             .is_some_and(|title| titles.contains(&title.to_string().as_str()));
