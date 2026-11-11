@@ -2,7 +2,7 @@
 
 **What to build:** The number beside All tasks, Inbox and every List in the sidebar counts that place's unfinished Tasks (Ready and In Progress), shown on every folder, not only the open one; a Settings option controls it (spec, "Sidebar counts", Q45–Q46).
 
-**Blocked by:** Ticket 04 (worked one at a time, owner 2026-11-11)
+**Blocked by:** None (Ticket 04 merged in PR #41)
 
 **Status:** needs-triage
 

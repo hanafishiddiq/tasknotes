@@ -24,7 +24,7 @@ Tujuan akhir: Tasknotes di /Applications berisi 5 perubahan batch 3 (tombol Remo
   - [x] Dikerjakan dengan TDD (15 tes menu)
   - [x] Draft PR #40, review dua sumbu, temuan diperbaiki
   - [x] Di-merge setelah CI hijau (Q24)
-- [ ] Halaman Pomodoro lengkap (tiket 04) di main
+- [x] Halaman Pomodoro lengkap (tiket 04) di main
   - [x] Tanya jawab Q25–Q30 (Q28: dropdown Task bergaya menu klik kanan; Q29: Pause/Resume)
   - [x] Han menyetujui pratinjau halaman (Q25): susunan A
     - [x] Pratinjau 1 dan 2 ditolak: terlalu ramai, Han minta gaya contoh dua panel
@@ -36,11 +36,11 @@ Tujuan akhir: Tasknotes di /Applications berisi 5 perubahan batch 3 (tombol Remo
   - [x] Shell: perintah baru, menu bar, notifikasi (commit 3280e46)
   - [x] Halaman A: timer, pilihan Task, durasi, garis hari, riwayat (commit 8133fc4; 1534 tes window hijau)
   - [x] Dicek di app debug dengan data contoh (tombol Pause tetap kuning, sudah diperbaiki)
-  - [ ] Draft PR, review dua sumbu, merge setelah Han konfirmasi
+  - [x] Draft PR, review dua sumbu, merge setelah Han konfirmasi
     - [x] Draft PR #41 dibuka, review dua sumbu selesai
     - [x] Temuan review diperbaiki (cincin jeda redup lagi, garis hari, pemilih Task semua halaman, satu aturan hitung)
     - [x] Han memutuskan tombol Resume di blok sidebar: dipertahankan (Q47)
-    - [ ] CI hijau, lalu merge setelah Han konfirmasi
+    - [x] CI hijau (14 cek), di-merge setelah Han konfirmasi (PR #41, commit 27f6749)
 - [ ] Angka Task belum selesai di sidebar (tiket 05) di main
   - [x] Diminta Han dan dijawab (Q45 Ready + In Progress; Q46 semua folder, bisa diatur di Settings)
   - [ ] Bentuk pengaturan di Settings ditanyakan saat tiket dimulai

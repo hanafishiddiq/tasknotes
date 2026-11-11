@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** in progress — Draft PR open; native look waits for the batch-3 install build
+**Implementation:** merged to main in PR #38 (`eae7390`); the owner's native check waits for the batch-3 install build
 
 ## Acceptance criteria
 

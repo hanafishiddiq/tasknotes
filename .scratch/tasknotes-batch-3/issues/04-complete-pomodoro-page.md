@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** in progress — Draft PR #41 on `feat/batch3-pomodoro-page`; two-axis review done and its findings fixed; merge waits for the owner
+**Implementation:** merged to main in PR #41 (`27f6749`, owner OK 2026-11-11 after green CI); the owner's native check waits for the batch-3 install build
 
 ## Acceptance criteria
 
