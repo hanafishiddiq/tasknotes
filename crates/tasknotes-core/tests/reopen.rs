@@ -84,8 +84,22 @@ fn a_task_completed_from_ready_reopens_to_ready_at_zero() {
         (WorkStatus::Completed, WorkStatus::Ready, 100, 0)
     );
 
-    // Lowering the progress to 0 is a reopen too, and lands on Ready.
+    // The window's Undo names both, the status and the 0% it had.
     let done = apply(&store, &reopened, status(WorkStatus::Completed)).unwrap();
+    let undone = apply(
+        &store,
+        &done,
+        ChangeTask {
+            status: Some(WorkStatus::Ready),
+            progress: Some(0),
+            ..ChangeTask::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(state(&undone), (WorkStatus::Ready, 0, None));
+
+    // Lowering the progress to 0 is a reopen too, and lands on Ready.
+    let done = apply(&store, &undone, status(WorkStatus::Completed)).unwrap();
     let lowered = apply(&store, &done, progress(0)).unwrap();
     assert_eq!(state(&lowered), (WorkStatus::Ready, 0, None));
     // Any other progress has started it.

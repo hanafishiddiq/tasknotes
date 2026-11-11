@@ -501,6 +501,8 @@ describe("reopening returns a Task to the work status it was completed from (Q48
 
 describe("one check at a time", () => {
   it("ignores the second click of a double click, and a click on the row that slid under the pointer", async () => {
+    // The clock stands still, so a slow machine never lets the pause run out by itself.
+    vi.setSystemTime(Date.now());
     const user = userEvent.setup();
     render(<App />);
     const draftCheck = within(await screen.findByRole("article", { name: "Synthetic draft" }))
