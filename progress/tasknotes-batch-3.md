@@ -16,7 +16,9 @@ Tujuan akhir: Tasknotes di /Applications berisi 4 perubahan batch 3 (tombol Remo
     - [x] Klarifikasi Q14–Q16 (10 detik sejak terlihat; tidak disimpan; Task sendiri ikut Q6)
   - [x] Bagian 1: toast 10 detik + tombol X, tanpa kilatan (commit fb65e02, tes lokal hijau)
   - [x] Bagian 2: tanda kuning Task sendiri dan Task dari AI (kuning 50% demi kontras)
-  - [ ] Draft PR, review dua sumbu, merge setelah Han konfirmasi
+  - [x] Draft PR #39, review dua sumbu, temuan diperbaiki (commit 154824d)
+  - [ ] Jendela tersembunyi lewat menu bar: diputuskan Han, lalu dikerjakan
+  - [ ] Di-merge setelah CI hijau dan Han konfirmasi
 - [ ] Menu klik kanan Task (tiket 03) di main
 - [ ] Halaman Pomodoro lengkap (tiket 04) di main
 - [ ] Semua tiket di main dan lolos CI gabungan
@@ -25,6 +27,10 @@ Tujuan akhir: Tasknotes di /Applications berisi 4 perubahan batch 3 (tombol Remo
 - [ ] Cache build dan worktree yang sudah selesai dihapus (batch 2 dan 3)
 
 ## Perlu Han lakukan
+
+- [ ] Putuskan: Task dari AI saat jendela Tasknotes disembunyikan (menu bar menyala) diberi tanda atau tidak
+  - Cara: jawab Q17 di chat
+  - Menahan: Jendela tersembunyi lewat menu bar: diputuskan Han, lalu dikerjakan
 
 ## Riwayat sesi
 
