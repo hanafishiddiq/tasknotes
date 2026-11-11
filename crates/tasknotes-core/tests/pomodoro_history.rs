@@ -7,7 +7,7 @@ use std::path::Path;
 use rusqlite::Connection;
 use tasknotes_core::audit::Interface;
 use tasknotes_core::calendar::TimeZone;
-use tasknotes_core::pomodoro::{EndedSession, HistoryRange, SessionOutcome};
+use tasknotes_core::pomodoro::{EndedSession, HistoryRange, PomodoroTotals, SessionOutcome};
 use tasknotes_core::removed::SetRemoved;
 use tasknotes_core::tasks::{
     CreateList, CreateTask, PatchTask, SetListRemoved, Task, TaskError, TaskStore,
@@ -446,6 +446,96 @@ fn a_day_of_only_stopped_sessions_is_listed_with_nothing_counted() {
     assert_eq!(day.sessions[0].outcome, SessionOutcome::Stopped);
     assert_eq!(day.sessions[0].planned_minutes, 50);
     assert_eq!(day.sessions[0].stopped_after_minutes, Some(12));
+}
+
+/// A focus of `planned` minutes the person ended with Start break after
+/// `after_seconds` (batch 3, Q43).
+fn ended_early(started_at: i64, planned: i64, after_seconds: i64) -> EndedSession {
+    EndedSession {
+        outcome: SessionOutcome::EndedEarly,
+        stopped_after_seconds: Some(after_seconds),
+        ended_at: started_at + after_seconds * 1000,
+        ..stopped(started_at, planned, 0)
+    }
+}
+
+#[test]
+fn a_focus_ended_early_adds_its_minutes_to_the_day_but_is_not_a_session() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("t.db"));
+    store
+        .record_pomodoro_session(finished(NOV_10_JAKARTA + 9 * HOUR, 25, 0))
+        .unwrap();
+    // 10 min 40 s shows as 11 min, as its Progress Entry says it.
+    store
+        .record_pomodoro_session(ended_early(NOV_10_JAKARTA + 10 * HOUR, 25, 10 * 60 + 40))
+        .unwrap();
+    store
+        .record_pomodoro_session(stopped(NOV_10_JAKARTA + 11 * HOUR, 25, 12))
+        .unwrap();
+    let day = store
+        .pomodoro_history(&everything(JAKARTA), 10, None)
+        .unwrap()
+        .items
+        .remove(0);
+    assert_eq!(
+        (
+            day.finished_sessions,
+            day.focus_minutes,
+            day.stopped_sessions
+        ),
+        (1, 36, 1)
+    );
+    let early = &day.sessions[1];
+    assert_eq!(early.outcome, SessionOutcome::EndedEarly);
+    assert_eq!(early.stopped_after_minutes, Some(11));
+}
+
+#[test]
+fn the_all_time_totals_count_as_the_days_do() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("t.db"));
+    assert_eq!(
+        store.pomodoro_totals().unwrap(),
+        PomodoroTotals {
+            finished_sessions: 0,
+            focus_minutes: 0
+        }
+    );
+    // Two days: 25 + 1 min and 25 min Finished, 11 min ended early, one Stopped.
+    store
+        .record_pomodoro_session(finished(NOV_10_JAKARTA + 9 * HOUR, 25, 40))
+        .unwrap();
+    store
+        .record_pomodoro_session(ended_early(NOV_10_JAKARTA + 10 * HOUR, 25, 10 * 60 + 40))
+        .unwrap();
+    store
+        .record_pomodoro_session(finished(NOV_10_JAKARTA + 33 * HOUR, 25, 20))
+        .unwrap();
+    store
+        .record_pomodoro_session(stopped(NOV_10_JAKARTA + 34 * HOUR, 25, 12))
+        .unwrap();
+    let totals = store.pomodoro_totals().unwrap();
+    assert_eq!(
+        totals,
+        PomodoroTotals {
+            finished_sessions: 2,
+            focus_minutes: 62
+        }
+    );
+    let days = store
+        .pomodoro_history(&everything(JAKARTA), 10, None)
+        .unwrap()
+        .items;
+    assert_eq!(
+        days.iter().map(|day| day.focus_minutes).sum::<i64>(),
+        totals.focus_minutes
+    );
+    // Every interface may read them: sessions hold no user text.
+    for interface in [Interface::Cli, Interface::Mcp] {
+        let other = TaskStore::open_as(&dir.path().join("t.db"), interface).unwrap();
+        assert_eq!(other.pomodoro_totals().unwrap(), totals);
+    }
 }
 
 #[test]

@@ -234,7 +234,8 @@ pub fn pomodoro_day(day: &PomodoroDay) -> Value {
 /// A session in the history, in the whole minutes its day adds up (the
 /// seconds are not repeated). `utc_offset_seconds` is the clock its day and
 /// start are on; `stopped_after_minutes` is a Stopped session's focus before
-/// Stop (null for a Finished one, or one stored before it was kept);
+/// Stop or an `ended_early` one's before Start break (null for a Finished
+/// one, or a Stopped one stored before it was kept);
 /// `task_title` is null without a Task or while it is in Removed
 /// (`task_removed`). A session holds no Note text.
 pub fn history_session(entry: &HistorySession) -> Value {

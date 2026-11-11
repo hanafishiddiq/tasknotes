@@ -57,6 +57,34 @@ fn stopped(task_id: Option<&str>) -> EndedSession {
     }
 }
 
+/// A focus the person ended with Start break after 10 min 20 s (batch 3, Q43).
+fn ended_early(task_id: Option<&str>) -> EndedSession {
+    EndedSession {
+        outcome: SessionOutcome::EndedEarly,
+        stopped_after_seconds: Some(10 * 60 + 20),
+        ended_at: START + 10 * MINUTE + 20_000,
+        ..stopped(task_id)
+    }
+}
+
+#[test]
+fn a_focus_ended_early_adds_its_minutes_as_a_progress_entry() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("t.db"));
+    let created = task(&store, "Sketch the page");
+    let recorded = store
+        .record_pomodoro_session(ended_early(Some(&created.id)))
+        .unwrap();
+    assert_eq!(recorded.session.outcome, SessionOutcome::EndedEarly);
+    assert_eq!(recorded.session.stopped_after_seconds, Some(620));
+    let after = recorded.task.unwrap();
+    assert_eq!(after.revision, created.revision + 1);
+    assert_eq!(after.status, created.status);
+    let history = store.list_progress_entries(&created.id, 10, None).unwrap();
+    assert_eq!(history.items.len(), 1);
+    assert_eq!(history.items[0].note, "Pomodoro: 10 min focus");
+}
+
 #[test]
 fn a_session_without_a_task_is_stored_with_its_start_length_overtime_and_outcome() {
     let dir = tempfile::tempdir().unwrap();
@@ -330,6 +358,22 @@ fn impossible_sessions_are_refused() {
         utc_offset_seconds: 18 * 3600 + 1,
         ..finished(None, 0)
     };
+    let ended_early_in_the_first_minute = EndedSession {
+        stopped_after_seconds: Some(59),
+        ..ended_early(None)
+    };
+    let ended_early_without_its_time = EndedSession {
+        stopped_after_seconds: None,
+        ..ended_early(None)
+    };
+    let ended_early_with_overtime = EndedSession {
+        overtime_seconds: 30,
+        ..ended_early(None)
+    };
+    let ended_early_past_its_plan = EndedSession {
+        stopped_after_seconds: Some(25 * 60 + 1),
+        ..ended_early(None)
+    };
     for session in [
         stopped_with_overtime,
         ends_before_start,
@@ -340,6 +384,10 @@ fn impossible_sessions_are_refused() {
         stopped_before_it_started,
         finished_with_a_stop_time,
         beyond_any_time_zone,
+        ended_early_in_the_first_minute,
+        ended_early_without_its_time,
+        ended_early_with_overtime,
+        ended_early_past_its_plan,
     ] {
         let error = store.record_pomodoro_session(session).unwrap_err();
         assert_eq!(error.code(), "invalid_input", "{error}");
@@ -433,7 +481,91 @@ fn stored_sessions_cannot_be_rewritten() {
     assert!(insert(64_801, "finished", None).is_err());
     assert!(insert(0, "finished", Some(60)).is_err());
     assert!(insert(0, "stopped", Some(1501)).is_err());
+    assert!(insert(0, "ended_early", None).is_err());
+    assert!(insert(0, "ended_early", Some(59)).is_err());
+    assert!(insert(0, "ended_early", Some(1501)).is_err());
+    assert!(insert(0, "paused", None).is_err());
     assert!(insert(-64_800, "stopped", Some(1500)).is_ok());
+    assert!(insert(0, "ended_early", Some(60)).is_ok());
+}
+
+#[test]
+fn a_v23_database_keeps_its_sessions_and_learns_ended_early() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("t.db");
+    drop(store_at(&path));
+    {
+        // Back to v23, as batch 2 left it, with one session of each kind.
+        let db = Connection::open(&path).unwrap();
+        db.execute_batch(
+            "DROP TABLE pomodoro_sessions;
+             CREATE TABLE pomodoro_sessions (
+                sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                id TEXT NOT NULL UNIQUE,
+                task_id TEXT REFERENCES tasks(id) ON DELETE RESTRICT,
+                started_at INTEGER NOT NULL,
+                planned_seconds INTEGER NOT NULL CHECK (planned_seconds BETWEEN 60 AND 10800),
+                overtime_seconds INTEGER NOT NULL DEFAULT 0 CHECK (overtime_seconds >= 0),
+                outcome TEXT NOT NULL CHECK (outcome IN ('finished', 'stopped')),
+                ended_at INTEGER NOT NULL CHECK (ended_at >= started_at),
+                created_at INTEGER NOT NULL,
+                CHECK (outcome = 'finished' OR overtime_seconds = 0)
+             );
+             CREATE INDEX pomodoro_sessions_started ON pomodoro_sessions(started_at, sequence);
+             CREATE INDEX pomodoro_sessions_task ON pomodoro_sessions(task_id, started_at)
+               WHERE task_id IS NOT NULL;
+             CREATE TRIGGER pomodoro_sessions_append_only_update BEFORE UPDATE ON pomodoro_sessions
+             BEGIN SELECT RAISE(ABORT, 'pomodoro sessions are append-only'); END;
+             CREATE TRIGGER pomodoro_sessions_append_only_delete BEFORE DELETE ON pomodoro_sessions
+             BEGIN SELECT RAISE(ABORT, 'pomodoro sessions are append-only'); END;
+             ALTER TABLE pomodoro_sessions ADD COLUMN utc_offset_seconds INTEGER
+               CHECK (utc_offset_seconds BETWEEN -64800 AND 64800);
+             ALTER TABLE pomodoro_sessions ADD COLUMN stopped_after_seconds INTEGER
+               CHECK (stopped_after_seconds IS NULL
+                      OR (outcome = 'stopped' AND stopped_after_seconds BETWEEN 0 AND planned_seconds));
+             PRAGMA user_version = 23;",
+        )
+        .unwrap();
+        for (id, outcome, after) in [
+            ("v23-finished", "finished", None),
+            ("v23-stopped", "stopped", Some(600)),
+        ] {
+            db.execute(
+                "INSERT INTO pomodoro_sessions
+                   (id, started_at, planned_seconds, outcome, ended_at, created_at,
+                    utc_offset_seconds, stopped_after_seconds)
+                 VALUES (?1, ?2, 1500, ?3, ?2 + 600000, ?2, 25200, ?4)",
+                rusqlite::params![id, START, outcome, after],
+            )
+            .unwrap();
+        }
+    }
+    let store = store_at(&path);
+    let db = Connection::open(&path).unwrap();
+    let version: i64 = db
+        .pragma_query_value(None, "user_version", |row| row.get(0))
+        .unwrap();
+    assert_eq!(version, SCHEMA_VERSION);
+    let finished = store.get_pomodoro_session("v23-finished").unwrap().unwrap();
+    assert_eq!(finished.outcome, SessionOutcome::Finished);
+    assert_eq!(finished.utc_offset_seconds, Some(JAKARTA));
+    let stopped = store.get_pomodoro_session("v23-stopped").unwrap().unwrap();
+    assert_eq!(stopped.stopped_after_seconds, Some(600));
+    // Still append-only, and the next session continues after the kept ones.
+    assert!(db.execute("DELETE FROM pomodoro_sessions", []).is_err());
+    assert!(
+        db.execute("UPDATE pomodoro_sessions SET outcome = 'ended_early'", [])
+            .is_err()
+    );
+    let recorded = store.record_pomodoro_session(ended_early(None)).unwrap();
+    assert_eq!(recorded.session.outcome, SessionOutcome::EndedEarly);
+    let order: Vec<String> = store
+        .list_pomodoro_sessions(START, START + 60 * MINUTE)
+        .unwrap()
+        .into_iter()
+        .map(|session| session.id)
+        .collect();
+    assert_eq!(&order[..2], ["v23-finished", "v23-stopped"]);
 }
 
 #[test]

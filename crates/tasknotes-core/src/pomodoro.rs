@@ -21,7 +21,9 @@ use uuid::Uuid;
 use crate::audit::AuditAction;
 use crate::tasks::{ChangeTask, Task, TaskError, TaskStore, current_millis};
 
-pub use crate::pomodoro_history::{HistoryRange, HistorySession, PomodoroDay, PomodoroHistoryPage};
+pub use crate::pomodoro_history::{
+    HistoryRange, HistorySession, PomodoroDay, PomodoroHistoryPage, PomodoroTotals,
+};
 
 /// The adjustable lengths, in whole minutes, and how many finished sessions
 /// earn a long break.
@@ -118,12 +120,15 @@ impl PomodoroDurations {
     }
 }
 
-/// How a session ended. Only a session that reached its planned end is
-/// Finished and counts toward focus time.
+/// How a session ended. One that reached its planned end is Finished and
+/// counts as a session and toward focus time; one ended with Start break
+/// before its end is Ended Early and counts only its minutes toward focus
+/// time (batch 3, Q43–Q44); a Stopped one counts nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionOutcome {
     Finished,
+    EndedEarly,
     Stopped,
 }
 
@@ -131,6 +136,7 @@ impl SessionOutcome {
     fn as_sql(self) -> &'static str {
         match self {
             Self::Finished => "finished",
+            Self::EndedEarly => "ended_early",
             Self::Stopped => "stopped",
         }
     }
@@ -138,6 +144,7 @@ impl SessionOutcome {
     fn from_sql(value: &str) -> Option<Self> {
         match value {
             "finished" => Some(Self::Finished),
+            "ended_early" => Some(Self::EndedEarly),
             "stopped" => Some(Self::Stopped),
             _ => None,
         }
@@ -159,11 +166,16 @@ pub struct EndedSession {
     /// click; zero otherwise (Start break, Stop, quitting, Stopped).
     pub overtime_seconds: i64,
     pub outcome: SessionOutcome,
-    /// A Stopped session's focus before Stop, on the clock that stops while
-    /// the Mac sleeps; `None` for a Finished one.
+    /// The focus before Stop (Stopped) or before Start break (Ended Early),
+    /// on the clock that stops while the Mac sleeps, paused time never
+    /// included; `None` for a Finished one.
     pub stopped_after_seconds: Option<i64>,
     pub ended_at: i64,
 }
+
+/// A focus ended early by Start break counts from a whole minute of focus;
+/// under that it is Stopped, as Stop would make it (batch 3, Q44).
+pub const MIN_COUNTED_EARLY_SECONDS: i64 = 60;
 
 /// A stored Pomodoro Session.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -178,8 +190,8 @@ pub struct PomodoroSession {
     pub planned_seconds: i64,
     pub overtime_seconds: i64,
     pub outcome: SessionOutcome,
-    /// A Stopped session's focus before Stop; `None` for a Finished one and
-    /// for a Stopped one stored before schema v23.
+    /// A Stopped or Ended Early session's focus before it ended; `None` for
+    /// a Finished one and for a Stopped one stored before schema v23.
     pub stopped_after_seconds: Option<i64>,
     pub ended_at: i64,
 }
@@ -217,6 +229,12 @@ impl EndedSession {
         let max_planned = i64::from(MAX_FOCUS_MINUTES) * 60;
         let outcome_fits = match self.outcome {
             SessionOutcome::Finished => self.stopped_after_seconds.is_none(),
+            SessionOutcome::EndedEarly => {
+                self.overtime_seconds == 0
+                    && self.stopped_after_seconds.is_some_and(|after| {
+                        (MIN_COUNTED_EARLY_SECONDS..=self.planned_seconds).contains(&after)
+                    })
+            }
             SessionOutcome::Stopped => {
                 self.overtime_seconds == 0
                     && self
@@ -286,6 +304,56 @@ pub(crate) fn migrate_v23(migration: &Transaction) -> Result<(), TaskError> {
     Ok(())
 }
 
+/// Schema v24 (batch 3, Q43–Q44): a third outcome, `ended_early`, for a
+/// focus ended with Start break before its planned end; it keeps its focus
+/// so far in `stopped_after_seconds`, a whole minute at least. SQLite cannot
+/// change a CHECK in place, so the table is rebuilt with every row, its
+/// `sequence` included, then its indexes and append-only triggers come
+/// back. The triggers go first, so copying and dropping touch no row
+/// through them; each CHECK on a column stays on that column.
+pub(crate) fn migrate_v24(migration: &Transaction) -> Result<(), TaskError> {
+    migration.execute_batch(
+        "DROP TRIGGER pomodoro_sessions_append_only_update;
+         DROP TRIGGER pomodoro_sessions_append_only_delete;
+         CREATE TABLE pomodoro_sessions_v24 (
+            sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+            id TEXT NOT NULL UNIQUE,
+            task_id TEXT REFERENCES tasks(id) ON DELETE RESTRICT,
+            started_at INTEGER NOT NULL,
+            planned_seconds INTEGER NOT NULL CHECK (planned_seconds BETWEEN 60 AND 10800),
+            overtime_seconds INTEGER NOT NULL DEFAULT 0 CHECK (overtime_seconds >= 0),
+            outcome TEXT NOT NULL CHECK (outcome IN ('finished', 'ended_early', 'stopped')),
+            ended_at INTEGER NOT NULL CHECK (ended_at >= started_at),
+            created_at INTEGER NOT NULL,
+            utc_offset_seconds INTEGER CHECK (utc_offset_seconds BETWEEN -64800 AND 64800),
+            stopped_after_seconds INTEGER CHECK (CASE outcome
+                WHEN 'ended_early' THEN stopped_after_seconds IS NOT NULL
+                    AND stopped_after_seconds BETWEEN 60 AND planned_seconds
+                WHEN 'stopped' THEN stopped_after_seconds IS NULL
+                    OR stopped_after_seconds BETWEEN 0 AND planned_seconds
+                ELSE stopped_after_seconds IS NULL END),
+            CHECK (outcome = 'finished' OR overtime_seconds = 0)
+         );
+         INSERT INTO pomodoro_sessions_v24
+           (sequence, id, task_id, started_at, planned_seconds, overtime_seconds, outcome,
+            ended_at, created_at, utc_offset_seconds, stopped_after_seconds)
+         SELECT sequence, id, task_id, started_at, planned_seconds, overtime_seconds, outcome,
+                ended_at, created_at, utc_offset_seconds, stopped_after_seconds
+         FROM pomodoro_sessions;
+         DROP TABLE pomodoro_sessions;
+         ALTER TABLE pomodoro_sessions_v24 RENAME TO pomodoro_sessions;
+         CREATE INDEX pomodoro_sessions_started ON pomodoro_sessions(started_at, sequence);
+         CREATE INDEX pomodoro_sessions_task ON pomodoro_sessions(task_id, started_at)
+           WHERE task_id IS NOT NULL;
+         CREATE TRIGGER pomodoro_sessions_append_only_update BEFORE UPDATE ON pomodoro_sessions
+         BEGIN SELECT RAISE(ABORT, 'pomodoro sessions are append-only'); END;
+         CREATE TRIGGER pomodoro_sessions_append_only_delete BEFORE DELETE ON pomodoro_sessions
+         BEGIN SELECT RAISE(ABORT, 'pomodoro sessions are append-only'); END;
+         PRAGMA user_version = 24;",
+    )?;
+    Ok(())
+}
+
 const SESSION_COLUMNS: &str = "id, task_id, started_at, planned_seconds, overtime_seconds, \
      outcome, ended_at, utc_offset_seconds, stopped_after_seconds";
 
@@ -309,8 +377,9 @@ pub(crate) fn read_session(row: &rusqlite::Row<'_>) -> rusqlite::Result<Pomodoro
 }
 
 impl TaskStore {
-    /// Stores a session the desktop timer ended. A finished one tied to a
-    /// Task adds one Progress Entry ("Pomodoro: 25 + 7 min focus") in the
+    /// Stores a session the desktop timer ended. A Finished or Ended Early
+    /// one tied to a Task adds one Progress Entry ("Pomodoro: 25 + 7 min
+    /// focus", "Pomodoro: 10 min focus") in the
     /// same transaction and never changes its status; a Task in Removed
     /// keeps the session but gets no entry. A Task that no longer exists
     /// (the person restored a backup from before it during the session) does
@@ -356,10 +425,20 @@ impl TaskStore {
             ],
             read_session,
         )?;
-        let task = match current {
-            Some(task)
-                if input.outcome == SessionOutcome::Finished
-                    && crate::removed::require_writable_task(&tx, &task.id).is_ok() =>
+        // The focus time it counts, as its Progress Entry names it; a Stopped
+        // session counts none and adds no entry.
+        let note = match input.outcome {
+            SessionOutcome::Finished => {
+                Some(progress_note(input.planned_seconds, input.overtime_seconds))
+            }
+            SessionOutcome::EndedEarly => input
+                .stopped_after_seconds
+                .map(|focused| progress_note(focused, 0)),
+            SessionOutcome::Stopped => None,
+        };
+        let task = match (current, note) {
+            (Some(task), Some(note))
+                if crate::removed::require_writable_task(&tx, &task.id).is_ok() =>
             {
                 Some(self.apply_task_change_in(
                     &tx,
@@ -370,10 +449,10 @@ impl TaskStore {
                         ..ChangeTask::default()
                     },
                     None,
-                    progress_note(input.planned_seconds, input.overtime_seconds),
+                    note,
                 )?)
             }
-            other => other,
+            (other, _) => other,
         };
         self.audit_applied(&tx, AuditAction::PomodoroRecord, &session.id, None)?;
         tx.commit()?;
@@ -441,13 +520,16 @@ pub struct Moment {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PomodoroPhase {
     Idle,
-    /// Counting down to the planned end.
+    /// Counting down to the planned end; held while `paused_at` is set.
     Focus {
         task_id: Option<String>,
         started_at: i64,
         utc_offset_seconds: i32,
         planned_seconds: i64,
         ends_at: i64,
+        /// The awake time Pause was clicked at; Resume moves `ends_at` on by
+        /// the time held, so paused time never counts.
+        paused_at: Option<i64>,
     },
     /// The planned end passed: Overtime runs from `ends_at` until Start break
     /// (not counted), Count overtime (counted) or Stop (not counted).
@@ -461,6 +543,7 @@ pub enum PomodoroPhase {
     Break {
         long: bool,
         ends_at: i64,
+        paused_at: Option<i64>,
     },
     /// The break is over; waiting for the next focus to be started.
     BreakDone {
@@ -482,6 +565,7 @@ pub enum TimerState {
         task_id: Option<String>,
         /// Rounded up, so 00:00 never shows before the end.
         remaining_seconds: i64,
+        paused: bool,
     },
     FocusDone {
         task_id: Option<String>,
@@ -491,6 +575,7 @@ pub enum TimerState {
     Break {
         long: bool,
         remaining_seconds: i64,
+        paused: bool,
     },
     BreakDone {
         long: bool,
@@ -560,6 +645,7 @@ impl PomodoroTimer {
                 utc_offset_seconds,
                 planned_seconds,
                 ends_at,
+                paused_at: None,
             } if now.awake >= *ends_at => {
                 self.phase = PomodoroPhase::FocusDone {
                     task_id: task_id.clone(),
@@ -570,7 +656,11 @@ impl PomodoroTimer {
                 };
                 Some(TimerEvent::FocusEnded)
             }
-            PomodoroPhase::Break { long, ends_at } if now.awake >= *ends_at => {
+            PomodoroPhase::Break {
+                long,
+                ends_at,
+                paused_at: None,
+            } if now.awake >= *ends_at => {
                 self.phase = PomodoroPhase::BreakDone { long: *long };
                 Some(TimerEvent::BreakEnded)
             }
@@ -591,7 +681,39 @@ impl PomodoroTimer {
                     utc_offset_seconds: now.utc_offset_seconds,
                     planned_seconds: minutes * 60,
                     ends_at: now.awake + minutes * MILLIS_PER_MINUTE,
+                    paused_at: None,
                 };
+                Ok(())
+            }
+            _ => Err(NotNow),
+        }
+    }
+
+    /// Holds a running focus or break: its time stops until Resume.
+    pub fn pause(&mut self, now: Moment) -> Result<(), NotNow> {
+        self.tick(now);
+        match &mut self.phase {
+            PomodoroPhase::Focus { paused_at, .. } | PomodoroPhase::Break { paused_at, .. }
+                if paused_at.is_none() =>
+            {
+                *paused_at = Some(now.awake);
+                Ok(())
+            }
+            _ => Err(NotNow),
+        }
+    }
+
+    /// Lets a paused focus or break run again from the time it held.
+    pub fn resume(&mut self, now: Moment) -> Result<(), NotNow> {
+        match &mut self.phase {
+            PomodoroPhase::Focus {
+                ends_at, paused_at, ..
+            }
+            | PomodoroPhase::Break {
+                ends_at, paused_at, ..
+            } => {
+                let held_since = paused_at.take().ok_or(NotNow)?;
+                *ends_at += (now.awake - held_since).max(0);
                 Ok(())
             }
             _ => Err(NotNow),
@@ -603,6 +725,26 @@ impl PomodoroTimer {
     pub fn start_break(&mut self, now: Moment) -> Result<EndedSession, NotNow> {
         self.tick(now);
         let ended = self.finish(now, false).ok_or(NotNow)?;
+        self.begin_break(now);
+        Ok(ended)
+    }
+
+    /// Before the planned end, while a focus counts down or is paused: the
+    /// person rests now. The session is Ended Early with its focus so far,
+    /// which counts as focus time but not as a session, so the cycle toward
+    /// the long break does not move; under a minute it is Stopped. The
+    /// (short) break starts at once.
+    pub fn break_early(&mut self, now: Moment) -> Result<EndedSession, NotNow> {
+        self.tick(now);
+        let mut ended = self
+            .cut_short(now, SessionOutcome::EndedEarly)
+            .ok_or(NotNow)?;
+        if ended
+            .stopped_after_seconds
+            .is_some_and(|focused| focused < MIN_COUNTED_EARLY_SECONDS)
+        {
+            ended.outcome = SessionOutcome::Stopped;
+        }
         self.begin_break(now);
         Ok(ended)
     }
@@ -624,27 +766,41 @@ impl PomodoroTimer {
     /// Overtime. Stopping a break ends nothing to store.
     pub fn stop(&mut self, now: Moment) -> Option<EndedSession> {
         self.tick(now);
-        let ended = match &self.phase {
-            PomodoroPhase::Focus {
-                task_id,
-                started_at,
-                utc_offset_seconds,
-                planned_seconds,
-                ends_at,
-            } => Some(EndedSession {
-                task_id: task_id.clone(),
-                started_at: *started_at,
-                utc_offset_seconds: *utc_offset_seconds,
-                planned_seconds: *planned_seconds,
-                overtime_seconds: 0,
-                outcome: SessionOutcome::Stopped,
-                stopped_after_seconds: Some(planned_seconds - remaining(now, *ends_at)),
-                ended_at: now.wall.max(*started_at),
-            }),
+        let ended = match self.phase {
+            PomodoroPhase::Focus { .. } => self.cut_short(now, SessionOutcome::Stopped),
             _ => self.finish(now, false),
         };
         self.phase = PomodoroPhase::Idle;
         ended
+    }
+
+    /// The session of a focus ended before its planned end, with the whole
+    /// seconds it ran on the awake clock (the planned length minus what the
+    /// timer showed as left, paused time excluded).
+    fn cut_short(&self, now: Moment, outcome: SessionOutcome) -> Option<EndedSession> {
+        let PomodoroPhase::Focus {
+            task_id,
+            started_at,
+            utc_offset_seconds,
+            planned_seconds,
+            ends_at,
+            paused_at,
+        } = &self.phase
+        else {
+            return None;
+        };
+        Some(EndedSession {
+            task_id: task_id.clone(),
+            started_at: *started_at,
+            utc_offset_seconds: *utc_offset_seconds,
+            planned_seconds: *planned_seconds,
+            overtime_seconds: 0,
+            outcome,
+            stopped_after_seconds: Some(
+                planned_seconds - remaining(held(now, *paused_at), *ends_at),
+            ),
+            ended_at: now.wall.max(*started_at),
+        })
     }
 
     /// The Finished session of a focus that reached its planned end, counted
@@ -688,6 +844,7 @@ impl PomodoroTimer {
         self.phase = PomodoroPhase::Break {
             long,
             ends_at: now.awake + i64::from(minutes) * MILLIS_PER_MINUTE,
+            paused_at: None,
         };
     }
 
@@ -696,10 +853,14 @@ impl PomodoroTimer {
         match &self.phase {
             PomodoroPhase::Idle => TimerState::Idle,
             PomodoroPhase::Focus {
-                task_id, ends_at, ..
+                task_id,
+                ends_at,
+                paused_at,
+                ..
             } => TimerState::Focus {
                 task_id: task_id.clone(),
-                remaining_seconds: remaining(now, *ends_at),
+                remaining_seconds: remaining(held(now, *paused_at), *ends_at),
+                paused: paused_at.is_some(),
             },
             PomodoroPhase::FocusDone {
                 task_id, ends_at, ..
@@ -707,9 +868,14 @@ impl PomodoroTimer {
                 task_id: task_id.clone(),
                 overtime_seconds: overtime(now, *ends_at),
             },
-            PomodoroPhase::Break { long, ends_at } => TimerState::Break {
+            PomodoroPhase::Break {
+                long,
+                ends_at,
+                paused_at,
+            } => TimerState::Break {
                 long: *long,
-                remaining_seconds: remaining(now, *ends_at),
+                remaining_seconds: remaining(held(now, *paused_at), *ends_at),
+                paused: paused_at.is_some(),
             },
             PomodoroPhase::BreakDone { long } => TimerState::BreakDone { long: *long },
         }
@@ -721,6 +887,16 @@ impl PomodoroTimer {
     pub fn title(&self, now: Moment) -> Option<String> {
         Some(match self.state(now) {
             TimerState::Idle => return None,
+            TimerState::Focus {
+                remaining_seconds,
+                paused: true,
+                ..
+            }
+            | TimerState::Break {
+                remaining_seconds,
+                paused: true,
+                ..
+            } => format!("⏸ {}", clock(remaining_seconds)),
             TimerState::Focus {
                 remaining_seconds, ..
             } => format!("🍅 {}", clock(remaining_seconds)),
@@ -739,6 +915,12 @@ impl PomodoroTimer {
     /// until a click (Idle, "☕ Done").
     pub fn next_change_in(&self, now: Moment) -> Option<i64> {
         match &self.phase {
+            PomodoroPhase::Focus {
+                paused_at: Some(_), ..
+            }
+            | PomodoroPhase::Break {
+                paused_at: Some(_), ..
+            } => None,
             PomodoroPhase::Focus { ends_at, .. } | PomodoroPhase::Break { ends_at, .. } => {
                 let left = ends_at - now.awake;
                 Some(if left <= 0 {
@@ -753,6 +935,15 @@ impl PomodoroTimer {
             }
             PomodoroPhase::Idle | PomodoroPhase::BreakDone { .. } => None,
         }
+    }
+}
+
+/// `now`, or while paused the moment Pause was clicked: the time a held
+/// focus or break is measured at.
+fn held(now: Moment, paused_at: Option<i64>) -> Moment {
+    Moment {
+        awake: paused_at.unwrap_or(now.awake),
+        ..now
     }
 }
 
@@ -892,7 +1083,8 @@ mod tests {
             t.state(at(12 * MIN + 26 * SEC)),
             TimerState::Focus {
                 task_id: None,
-                remaining_seconds: 12 * 60 + 34
+                remaining_seconds: 12 * 60 + 34,
+                paused: false
             }
         );
         assert_eq!(
@@ -948,7 +1140,8 @@ mod tests {
             t.state(at(35 * MIN)),
             TimerState::Break {
                 long: false,
-                remaining_seconds: 5 * 60
+                remaining_seconds: 5 * 60,
+                paused: false
             }
         );
     }
@@ -974,7 +1167,8 @@ mod tests {
             t.state(at(32 * MIN + 12 * SEC)),
             TimerState::Break {
                 long: false,
-                remaining_seconds: 5 * 60
+                remaining_seconds: 5 * 60,
+                paused: false
             }
         );
     }
@@ -1136,6 +1330,7 @@ mod tests {
             let TimerState::Break {
                 long,
                 remaining_seconds,
+                ..
             } = t.state(at(now))
             else {
                 panic!("a break")
@@ -1169,7 +1364,8 @@ mod tests {
                 t.state(at(now)),
                 TimerState::Break {
                     long: false,
-                    remaining_seconds: 5 * 60
+                    remaining_seconds: 5 * 60,
+                    paused: false
                 }
             );
             t.stop(at(now));
@@ -1235,7 +1431,8 @@ mod tests {
             t.state(after_sleep(28 * MIN, 2 * hour)),
             TimerState::Break {
                 long: false,
-                remaining_seconds: 4 * 60
+                remaining_seconds: 4 * 60,
+                paused: false
             }
         );
         assert_eq!(t.tick(after_sleep(32 * MIN - 1, 3 * hour)), None);
@@ -1262,6 +1459,139 @@ mod tests {
         t.tick(at(30 * MIN + 250));
         // "☕ Done" waits for a click without changing.
         assert_eq!(t.next_change_in(at(31 * MIN)), None);
+    }
+
+    #[test]
+    fn a_paused_focus_holds_its_time_and_resumes_from_there() {
+        let mut t = focused(None);
+        t.pause(at(10 * MIN)).unwrap();
+        assert_eq!(
+            t.state(at(30 * MIN)),
+            TimerState::Focus {
+                task_id: None,
+                remaining_seconds: 15 * 60,
+                paused: true
+            }
+        );
+        // The planned end never passes while paused.
+        assert_eq!(t.tick(at(30 * MIN)), None);
+        t.resume(at(30 * MIN)).unwrap();
+        assert_eq!(
+            t.state(at(35 * MIN)),
+            TimerState::Focus {
+                task_id: None,
+                remaining_seconds: 10 * 60,
+                paused: false
+            }
+        );
+        assert_eq!(t.tick(at(45 * MIN - 1)), None);
+        assert_eq!(t.tick(at(45 * MIN)), Some(TimerEvent::FocusEnded));
+    }
+
+    #[test]
+    fn a_paused_break_shows_the_pause_in_the_menu_bar_and_waits() {
+        let mut t = at_the_end(None);
+        t.start_break(at(25 * MIN)).unwrap();
+        t.pause(at(26 * MIN)).unwrap();
+        assert_eq!(t.title(at(40 * MIN)).as_deref(), Some("⏸ 04:00"));
+        // Nothing changes on screen until Resume, so the shell need not wake.
+        assert_eq!(t.next_change_in(at(40 * MIN)), None);
+        assert_eq!(t.tick(at(40 * MIN)), None);
+        assert_eq!(t.pause(at(40 * MIN)), Err(NotNow));
+        t.resume(at(40 * MIN)).unwrap();
+        assert_eq!(t.title(at(40 * MIN)).as_deref(), Some("☕ 04:00"));
+        assert_eq!(t.tick(at(44 * MIN)), Some(TimerEvent::BreakEnded));
+        assert_eq!(t.resume(at(44 * MIN)), Err(NotNow));
+    }
+
+    #[test]
+    fn stopping_a_paused_focus_keeps_the_focus_before_the_pause() {
+        let mut t = focused(Some("task-1"));
+        t.pause(at(10 * MIN)).unwrap();
+        let ended = t.stop(at(50 * MIN)).unwrap();
+        assert_eq!(ended.outcome, SessionOutcome::Stopped);
+        assert_eq!(ended.stopped_after_seconds, Some(10 * 60));
+        assert_eq!(ended.ended_at, T0 + 50 * MIN);
+    }
+
+    #[test]
+    fn a_break_started_before_the_end_ends_the_focus_early() {
+        let mut t = focused(Some("task-1"));
+        let ended = t.break_early(at(10 * MIN + 20 * SEC)).unwrap();
+        assert_eq!(
+            ended,
+            EndedSession {
+                task_id: Some("task-1".into()),
+                started_at: T0,
+                utc_offset_seconds: JAKARTA,
+                planned_seconds: 1500,
+                overtime_seconds: 0,
+                outcome: SessionOutcome::EndedEarly,
+                stopped_after_seconds: Some(10 * 60 + 20),
+                ended_at: T0 + 10 * MIN + 20 * SEC,
+            }
+        );
+        assert_eq!(
+            t.state(at(11 * MIN)),
+            TimerState::Break {
+                long: false,
+                remaining_seconds: 4 * 60 + 20,
+                paused: false
+            }
+        );
+    }
+
+    #[test]
+    fn a_focus_ended_early_does_not_move_the_cycle_toward_the_long_break() {
+        let mut t = timer();
+        let mut now = 0;
+        let finish = |t: &mut PomodoroTimer, now: &mut i64| {
+            t.start_focus(at(*now), None).unwrap();
+            *now += 25 * MIN;
+            t.tick(at(*now));
+            t.start_break(at(*now)).unwrap();
+            *now += 5 * MIN;
+        };
+        for _ in 0..3 {
+            finish(&mut t, &mut now);
+        }
+        t.start_focus(at(now), None).unwrap();
+        t.break_early(at(now + 10 * MIN)).unwrap();
+        assert!(matches!(
+            t.phase(),
+            PomodoroPhase::Break { long: false, .. }
+        ));
+        now += 15 * MIN;
+        finish(&mut t, &mut now);
+        assert!(matches!(t.phase(), PomodoroPhase::Break { long: true, .. }));
+    }
+
+    #[test]
+    fn a_break_started_early_from_a_pause_counts_the_focus_before_the_pause() {
+        let mut t = focused(None);
+        t.pause(at(12 * MIN)).unwrap();
+        let ended = t.break_early(at(40 * MIN)).unwrap();
+        assert_eq!(ended.stopped_after_seconds, Some(12 * 60));
+        assert_eq!(ended.outcome, SessionOutcome::EndedEarly);
+    }
+
+    #[test]
+    fn a_break_started_in_the_first_minute_counts_nothing_as_stop_does() {
+        let mut t = focused(None);
+        let ended = t.break_early(at(59 * SEC)).unwrap();
+        assert_eq!(ended.outcome, SessionOutcome::Stopped);
+        assert_eq!(ended.stopped_after_seconds, Some(59));
+        assert!(matches!(t.phase(), PomodoroPhase::Break { .. }));
+    }
+
+    #[test]
+    fn a_break_can_start_early_only_while_a_focus_counts_down() {
+        let mut t = at_the_end(None);
+        // Past the planned end it is Start break, which finishes the session.
+        assert_eq!(t.break_early(at(26 * MIN)), Err(NotNow));
+        t.start_break(at(26 * MIN)).unwrap();
+        assert_eq!(t.break_early(at(27 * MIN)), Err(NotNow));
+        assert_eq!(timer().break_early(at(0)), Err(NotNow));
     }
 
     #[test]

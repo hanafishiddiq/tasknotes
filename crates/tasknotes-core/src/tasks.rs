@@ -959,7 +959,7 @@ const WONT_DO_FROM_COLUMN: usize = 15;
 pub(crate) const COLUMN_COUNT: usize = 16;
 
 /// The database schema this core reads and writes.
-pub const SCHEMA_VERSION: i64 = 23;
+pub const SCHEMA_VERSION: i64 = 24;
 
 /// How long a write waits for another process (the CLI, MCP) holding the database lock.
 pub const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -1203,6 +1203,11 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), TaskError> {
     if version < 23 {
         let migration = connection.transaction()?;
         crate::pomodoro::migrate_v23(&migration)?;
+        migration.commit()?;
+    }
+    if version < 24 {
+        let migration = connection.transaction()?;
+        crate::pomodoro::migrate_v24(&migration)?;
         migration.commit()?;
     }
     Ok(())
