@@ -210,7 +210,7 @@ impl TaskStore {
             read_task,
         )?;
         self.audit_applied(&tx, AuditAction::TaskReorder, &updated.id, updated.revision)?;
-        crate::organization::hydrate_tags(&tx, std::slice::from_mut(&mut updated))?;
+        crate::tasks::hydrate(&tx, std::slice::from_mut(&mut updated))?;
         tx.commit()?;
         Ok(updated)
     }
