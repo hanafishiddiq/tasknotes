@@ -35,8 +35,8 @@ tauri-plugin-global-shortcut = "=2.4.1"
 # Issue 06): posting with Start break / Count overtime / Start focus, the
 # clicks, withdrawing an answered one, and the alert style for the one-time
 # tip. No notification plugin: its macOS path is the older
-# NSUserNotificationCenter, which macOS 27 refuses to an app that also uses
-# this one.
+# NSUserNotificationCenter, which macOS 27.2 refused for Tasknotes after the
+# batch-3 install while this one kept working.
 [target.'cfg(target_os = "macos")'.dependencies]
 block2 = "0.6"
 objc2 = "0.6"

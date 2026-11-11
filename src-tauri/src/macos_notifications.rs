@@ -1,18 +1,21 @@
 //! Tasknotes' notifications on macOS, all through `UNUserNotificationCenter`:
-//! posting a Pomodoro notification with its buttons, hearing which one was
-//! clicked, taking it away once it is answered elsewhere, and reading how
+//! showing a notification with its buttons, hearing which one was clicked,
+//! taking it away once it is answered elsewhere, and reading how
 //! notifications are shown (for the one-time Pomodoro tip; read, never
 //! changed).
 //!
-//! Only this center, never the older `NSUserNotificationCenter`: once macOS
-//! counts an app as a client of this one, it refuses every call the app makes
-//! to the older one ("You can't mix modern clients with legacy clients", in
-//! `usernoted`'s log on macOS 27.2). The batch-3 install lost its Pomodoro
-//! notifications that way while the style read here kept working (batch 3,
-//! Issue 06).
+//! Only this center, never the older `NSUserNotificationCenter`: on macOS
+//! 27.2 the batch-3 install had every call to the older one refused ("You
+//! can't mix modern clients with legacy clients", in `usernoted`'s log) while
+//! the style read through this one kept working, so no Pomodoro notification
+//! appeared (batch 3, Issue 06).
+//!
+//! Any thread: the timer, the commands and quitting call in from their own
+//! threads, and the native check of Issue 06 added a request from macOS's own
+//! completion queue, which was delivered.
 //!
 //! Outside a bundled app (`cargo run`, the tests) there is no center: the
-//! style is unknown, and posting, listening and withdrawing do nothing.
+//! style is unknown, and listening, showing and withdrawing do nothing.
 
 /// One button of a notification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,18 +25,26 @@ pub struct Button {
     pub title: &'static str,
 }
 
+/// One kind of notification: its buttons are registered under its identifier
+/// at launch ([`listen`]), and a notification of this kind is shown and
+/// taken away by the same identifier, so one replaces the one before.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Kind {
+    pub identifier: &'static str,
+    /// In the order macOS lists them.
+    pub buttons: &'static [Button],
+}
+
 /// One notification to show.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Post {
-    /// Its request identifier, and the identifier of its buttons: posting
-    /// under it again replaces it, and [`withdraw`] takes it away by it.
-    pub identifier: &'static str,
-    /// Handed back with a click, so a click on an older one is recognised.
-    pub notice: i32,
+    /// Must be one of the kinds given to [`listen`], for its buttons.
+    pub kind: Kind,
+    /// A number handed back with a click, so a click on an older
+    /// notification can be told apart.
+    pub tag: i32,
     pub title: &'static str,
     pub body: &'static str,
-    /// In the order macOS lists them.
-    pub buttons: &'static [Button],
     /// The system's notification sound.
     pub sound: bool,
 }
@@ -51,48 +62,42 @@ pub enum Clicked {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Click {
     pub clicked: Clicked,
-    /// The [`Post::notice`] of the clicked notification.
-    pub notice: Option<i32>,
+    /// The [`Post::tag`] of the clicked notification.
+    pub tag: Option<i32>,
 }
 
-/// Registers the buttons of each kind of notification, as `(identifier,
-/// buttons)`, and who hears the clicks. Once, at launch; `on_click` runs on
-/// the main thread.
+/// Once, at launch: registers each kind's buttons, hears the clicks
+/// (`on_click` runs on a thread macOS chooses), and asks macOS whether
+/// Tasknotes may show notifications. macOS asks the person only the first
+/// time; the older center asked at launch too.
 #[cfg(target_os = "macos")]
-pub fn listen(
-    kinds: &[(&'static str, &'static [Button])],
-    on_click: impl Fn(Click) + Send + Sync + 'static,
-) {
+pub fn listen(kinds: &[Kind], on_click: impl Fn(Click) + Send + Sync + 'static) {
     mac::listen(kinds, Box::new(on_click));
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn listen(
-    _kinds: &[(&'static str, &'static [Button])],
-    _on_click: impl Fn(Click) + Send + Sync + 'static,
-) {
-}
+pub fn listen(_kinds: &[Kind], _on_click: impl Fn(Click) + Send + Sync + 'static) {}
 
-/// Shows a notification. The first time, macOS asks the person whether
-/// Tasknotes may show notifications; when it may not, nothing is shown.
+/// Shows a notification, unless Tasknotes may not show notifications. While
+/// Tasknotes is in front it goes to Notification Center without a banner or
+/// sound, as with the older center.
 #[cfg(target_os = "macos")]
-pub fn post(post: Post) {
-    mac::post(post);
+pub fn show(post: Post) {
+    mac::show(post);
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn post(_post: Post) {}
+pub fn show(_post: Post) {}
 
-/// Takes away the notifications with these identifiers, shown or about to be,
-/// so their buttons do not linger once answered from the menu bar or the
-/// window.
+/// Takes away the notifications of these kinds, shown or about to be, so
+/// their buttons do not linger once answered from the menu bar or the window.
 #[cfg(target_os = "macos")]
-pub fn withdraw(identifiers: &[&str]) {
-    mac::withdraw(identifiers);
+pub fn withdraw(kinds: &[Kind]) {
+    mac::withdraw(kinds);
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn withdraw(_identifiers: &[&str]) {}
+pub fn withdraw(_kinds: &[Kind]) {}
 
 /// Whether notifications stay on screen until the person acts on them
 /// ("Persistent", the Alerts style). `None` when it cannot be read: outside a
@@ -132,14 +137,14 @@ mod mac {
         UNUserNotificationCenter, UNUserNotificationCenterDelegate,
     };
 
-    use super::{Button, Click, Clicked, Post};
+    use super::{Click, Clicked, Kind, Post};
 
-    /// Where a notification carries its [`Post::notice`].
-    const NOTICE: &str = "tasknotes.notice";
+    /// The key of [`Post::tag`] in a notification's user info.
+    const TAG_KEY: &str = "tasknotes.tag";
 
     type OnClick = Box<dyn Fn(Click) + Send + Sync>;
     static ON_CLICK: OnceLock<OnClick> = OnceLock::new();
-    /// macOS said Tasknotes may show notifications, so a post needs no asking.
+    /// macOS said Tasknotes may show notifications.
     static ALLOWED: AtomicBool = AtomicBool::new(false);
 
     /// The center, only in a bundled app: `currentNotificationCenter` ends
@@ -154,8 +159,8 @@ mod mac {
     }
 
     define_class!(
-        /// Hears the clicks, and shows a notification while Tasknotes is in
-        /// front too (without it macOS shows nothing then).
+        /// Hears the clicks, and decides how a notification shows while
+        /// Tasknotes is in front.
         #[unsafe(super(NSObject))]
         #[name = "TasknotesNotificationDelegate"]
         struct Delegate;
@@ -170,9 +175,9 @@ mod mac {
                 _notification: &UNNotification,
                 completion_handler: &block2::DynBlock<dyn Fn(UNNotificationPresentationOptions)>,
             ) {
-                completion_handler.call((UNNotificationPresentationOptions::Banner
-                    | UNNotificationPresentationOptions::List
-                    | UNNotificationPresentationOptions::Sound,));
+                // The window already says so; as with the older center, no
+                // banner or sound while Tasknotes is in front.
+                completion_handler.call((UNNotificationPresentationOptions::List,));
             }
 
             #[unsafe(method(userNotificationCenter:didReceiveNotificationResponse:withCompletionHandler:))]
@@ -215,18 +220,18 @@ mod mac {
         } else {
             Clicked::Button(action.to_string())
         };
-        let notice = response
+        let tag = response
             .notification()
             .request()
             .content()
             .userInfo()
-            .objectForKey(&NSString::from_str(NOTICE))
+            .objectForKey(&NSString::from_str(TAG_KEY))
             .and_then(|value| value.downcast::<NSNumber>().ok())
             .map(|number| number.intValue());
-        Some(Click { clicked, notice })
+        Some(Click { clicked, tag })
     }
 
-    pub fn listen(kinds: &[(&'static str, &'static [Button])], on_click: OnClick) {
+    pub fn listen(kinds: &[Kind], on_click: OnClick) {
         let Some(center) = center() else {
             return;
         };
@@ -235,8 +240,9 @@ mod mac {
         }
         let categories: Vec<Retained<UNNotificationCategory>> = kinds
             .iter()
-            .map(|(identifier, buttons)| {
-                let actions: Vec<Retained<UNNotificationAction>> = buttons
+            .map(|kind| {
+                let actions: Vec<Retained<UNNotificationAction>> = kind
+                    .buttons
                     .iter()
                     .map(|button| {
                         UNNotificationAction::actionWithIdentifier_title_options(
@@ -247,7 +253,7 @@ mod mac {
                     })
                     .collect();
                 UNNotificationCategory::categoryWithIdentifier_actions_intentIdentifiers_options(
-                    &NSString::from_str(identifier),
+                    &NSString::from_str(kind.identifier),
                     &NSArray::from_retained_slice(&actions),
                     &NSArray::new(),
                     UNNotificationCategoryOptions::empty(),
@@ -259,48 +265,66 @@ mod mac {
         center.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
         // The center holds its delegate weakly; this one lives as long as the app.
         std::mem::forget(delegate);
+        ask(&center, None);
     }
 
-    pub fn post(post: Post) {
+    pub fn show(post: Post) {
         let Some(center) = center() else {
             return;
         };
         let content = UNMutableNotificationContent::new();
         content.setTitle(&NSString::from_str(post.title));
         content.setBody(&NSString::from_str(post.body));
-        content.setCategoryIdentifier(&NSString::from_str(post.identifier));
+        content.setCategoryIdentifier(&NSString::from_str(post.kind.identifier));
         if post.sound {
             content.setSound(Some(&UNNotificationSound::defaultSound()));
         }
         let info = NSDictionary::from_retained_objects(
-            &[&*NSString::from_str(NOTICE)],
-            &[NSNumber::new_i32(post.notice)],
+            &[&*NSString::from_str(TAG_KEY)],
+            &[NSNumber::new_i32(post.tag)],
         );
-        // SAFETY: an NSString key and an NSNumber, property-list types as a
+        // SAFETY: reading this immutable NSDictionary<NSString, NSNumber> as
+        // NSDictionary<AnyObject, AnyObject> only widens its generics, and
+        // NSString keys with NSNumber values are the property-list types a
         // notification's user info requires.
         unsafe { content.setUserInfo(info.cast_unchecked::<AnyObject, AnyObject>()) };
         let request = UNNotificationRequest::requestWithIdentifier_content_trigger(
-            &NSString::from_str(post.identifier),
+            &NSString::from_str(post.kind.identifier),
             &content,
             None,
         );
         if ALLOWED.load(Ordering::Relaxed) {
             add(&center, &request);
-            return;
+        } else {
+            // macOS has not said yes since launch (it had not answered yet,
+            // or the person said no): ask again and show it if the answer is yes.
+            ask(&center, Some(request));
         }
-        // macOS asks the person only the first time; afterwards it answers at
-        // once with what they chose. Until it has answered in this launch, the
-        // post waits for that answer (milliseconds), so a withdrawal in that
-        // moment would come before it.
-        let asked = RcBlock::new(move |granted: Bool, _error: *mut NSError| {
-            if granted.as_bool() {
-                ALLOWED.store(true, Ordering::Relaxed);
-                add(
-                    &UNUserNotificationCenter::currentNotificationCenter(),
-                    &request,
+    }
+
+    /// Asks macOS whether Tasknotes may show notifications, then shows `then`
+    /// if it may.
+    fn ask(center: &UNUserNotificationCenter, then: Option<Retained<UNNotificationRequest>>) {
+        let asked = RcBlock::new(move |granted: Bool, error: *mut NSError| {
+            let granted = granted.as_bool();
+            ALLOWED.store(granted, Ordering::Relaxed);
+            if let Some(error) = NonNull::new(error) {
+                // SAFETY: macOS hands the handler a valid error for the call.
+                let error = unsafe { error.as_ref() };
+                eprintln!(
+                    "Tasknotes could not ask macOS about notifications: {}",
+                    error.localizedDescription()
                 );
-            } else {
-                eprintln!("Tasknotes may not show notifications (System Settings › Notifications)");
+            }
+            match (&then, granted) {
+                (Some(request), true) => add(
+                    &UNUserNotificationCenter::currentNotificationCenter(),
+                    request,
+                ),
+                (Some(_), false) => eprintln!(
+                    "Tasknotes may not show notifications (System Settings › Notifications)"
+                ),
+                (None, _) => {}
             }
         });
         center.requestAuthorizationWithOptions_completionHandler(
@@ -323,13 +347,13 @@ mod mac {
         center.addNotificationRequest_withCompletionHandler(request, Some(&added));
     }
 
-    pub fn withdraw(identifiers: &[&str]) {
+    pub fn withdraw(kinds: &[Kind]) {
         let Some(center) = center() else {
             return;
         };
-        let identifiers: Vec<Retained<NSString>> = identifiers
+        let identifiers: Vec<Retained<NSString>> = kinds
             .iter()
-            .map(|id| NSString::from_str(id))
+            .map(|kind| NSString::from_str(kind.identifier))
             .collect();
         let identifiers = NSArray::from_retained_slice(&identifiers);
         center.removeDeliveredNotificationsWithIdentifiers(&identifiers);
@@ -393,15 +417,19 @@ mod tests {
     #[test]
     fn outside_an_app_bundle_the_style_is_unknown_and_nothing_crashes() {
         // The test binary is not in an app bundle: no center is asked.
-        assert_eq!(persistent(), None);
-        withdraw(&["tasknotes-test"]);
-        post(Post {
+        let kind = Kind {
             identifier: "tasknotes-test",
-            notice: 1,
+            buttons: &[],
+        };
+        listen(&[kind], |_| {});
+        assert_eq!(persistent(), None);
+        show(Post {
+            kind,
+            tag: 1,
             title: "Synthetic",
             body: "Synthetic",
-            buttons: &[],
             sound: false,
         });
+        withdraw(&[kind]);
     }
 }
