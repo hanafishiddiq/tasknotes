@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
@@ -19,6 +19,9 @@ vi.mock("./components/TaskRow", async (original) => {
   };
 });
 const call = vi.mocked(invoke);
+// Notes load lazily: load them once up front, as the other suites do, so a busy
+// machine never runs a test's one-second wait out on the first import.
+beforeAll(() => import("./components/NotesWorkspace"));
 
 /**
  * A stand-in for the core behind the Tauri seam. Only synthetic fixtures; the
