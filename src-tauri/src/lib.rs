@@ -8,7 +8,7 @@ use tasknotes_core::note_folders::{
 use tasknotes_core::notes::{
     CreateNote, MoveNote, Note, NotePage, NoteQuery, NoteScope, SetNotePinned, UpdateNote,
 };
-use tasknotes_core::pomodoro::{HistoryRange, PomodoroHistoryPage};
+use tasknotes_core::pomodoro::{HistoryRange, PomodoroHistoryPage, PomodoroTotals};
 use tasknotes_core::privacy::SetNoteExcludeFromAi;
 use tasknotes_core::removed::{RemovedPage, SetRemoved};
 use tasknotes_core::style::SetStyle;
@@ -450,6 +450,13 @@ fn pomodoro_history(
         .map_err(|error| error.to_string())
 }
 
+/// Every stored session, counted as the history's days are: the Pomodoro
+/// page's all-time totals (batch 3, Q42).
+#[tauri::command]
+fn pomodoro_totals(store: State<'_, TaskStore>) -> Result<PomodoroTotals, String> {
+    store.pomodoro_totals().map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 fn outside_changes(
     store: State<'_, TaskStore>,
@@ -555,6 +562,7 @@ pub fn run() {
             set_note_folder_removed,
             list_removed,
             pomodoro_history,
+            pomodoro_totals,
             list_pending_bulk_requests,
             count_pending_bulk_requests,
             outside_changes,
