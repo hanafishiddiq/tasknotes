@@ -8,7 +8,9 @@
 //! sleeps (measured 2026-11-10 with Rust 1.98.1: `Instant` matched
 //! `CLOCK_UPTIME_RAW` and trailed `CLOCK_MONOTONIC_RAW` by the 9774 s the Mac
 //! had slept since boot). So sleep counts as no focus, break or Overtime; a
-//! few seconds of Power Nap dark wake may. Stored times are wall times.
+//! few seconds of Power Nap dark wake may. Stored times are wall times, with
+//! the Mac's offset from UTC (`localtime_r`) read with each; a session keeps
+//! the one of its start.
 //!
 //! The tick thread sleeps until the shown time next changes, and while
 //! nothing counts (Idle, "☕ Done") until a click wakes it.
@@ -24,6 +26,7 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
+use tasknotes_core::calendar::TimeZone;
 use tasknotes_core::pomodoro::{EndedSession, Moment, PomodoroDurations};
 use tasknotes_core::tasks::TaskStore;
 use tauri::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
@@ -64,7 +67,11 @@ impl PomodoroShell {
             .map(|elapsed| i64::try_from(elapsed.as_millis()).unwrap_or(i64::MAX))
             .unwrap_or(0);
         let awake = i64::try_from(self.started.elapsed().as_millis()).unwrap_or(i64::MAX);
-        Moment { wall, awake }
+        Moment {
+            wall,
+            awake,
+            utc_offset_seconds: TimeZone::Local.offset_seconds(wall),
+        }
     }
 
     fn lock(&self) -> MutexGuard<'_, Pomodoro> {
@@ -465,6 +472,7 @@ mod tests {
         let view = Pomodoro::new(PomodoroDurations::default(), false).view(Moment {
             wall: 1_794_243_600_000,
             awake: 0,
+            utc_offset_seconds: 7 * 3600,
         });
         let sent = |stored: Stored| {
             serde_json::to_value(Changed {

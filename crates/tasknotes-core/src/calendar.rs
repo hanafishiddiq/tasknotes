@@ -17,18 +17,30 @@ pub enum TimeZone {
 impl TimeZone {
     pub const UTC: Self = Self::Fixed { minutes: 0 };
 
+    /// The offset east of UTC, in seconds, at the instant `utc_ms`.
+    pub fn offset_seconds(self, utc_ms: i64) -> i32 {
+        match self {
+            // A real offset lies within a day, so it always fits.
+            Self::Local => i32::try_from(local_offset_seconds(utc_ms)).unwrap_or(0),
+            Self::Fixed { minutes } => minutes * 60,
+        }
+    }
+
     /// The offset east of UTC, in milliseconds, at the instant `utc_ms`.
     pub fn offset_ms(self, utc_ms: i64) -> i64 {
-        match self {
-            Self::Local => local_offset_seconds(utc_ms) * 1000,
-            Self::Fixed { minutes } => i64::from(minutes) * 60_000,
-        }
+        i64::from(self.offset_seconds(utc_ms)) * 1000
     }
 
     /// The calendar day (counted from 1970-01-01) on this wall clock.
     pub fn day_of(self, utc_ms: i64) -> i64 {
-        (utc_ms + self.offset_ms(utc_ms)).div_euclid(DAY_MS)
+        day_at(utc_ms, self.offset_seconds(utc_ms))
     }
+}
+
+/// The calendar day (counted from 1970-01-01) of the instant `utc_ms` on a
+/// wall clock `utc_offset_seconds` east of UTC.
+pub fn day_at(utc_ms: i64, utc_offset_seconds: i32) -> i64 {
+    (utc_ms + i64::from(utc_offset_seconds) * 1000).div_euclid(DAY_MS)
 }
 
 #[cfg(unix)]

@@ -432,7 +432,8 @@ fn count_pending_bulk_requests(store: State<'_, TaskStore>) -> Result<i64, Strin
         .map_err(|error| error.to_string())
 }
 
-/// The whole Pomodoro daily history on this Mac's local days, newest first.
+/// The whole Pomodoro daily history, newest day first, each session on the
+/// clock it started on (one stored before schema v23 on this Mac's).
 #[tauri::command]
 fn pomodoro_history(
     store: State<'_, TaskStore>,

@@ -216,7 +216,7 @@ pub fn progress_entry(entry: &ProgressEntry) -> Value {
 
 /// One local day of the Pomodoro history (Ticket 14): what it counts (only
 /// Finished sessions; `focus_minutes` is their planned length plus counted
-/// Overtime) and every session that started that day, newest first.
+/// Overtime) and every session that started that day, oldest first.
 pub fn pomodoro_day(day: &PomodoroDay) -> Value {
     json!({
         "date": day.date,
@@ -227,20 +227,23 @@ pub fn pomodoro_day(day: &PomodoroDay) -> Value {
     })
 }
 
-/// A session in the history. `task_title` is null without a Task or while
-/// it is in Removed (`task_removed`); a session holds no Note text.
+/// A session in the history, in the whole minutes its day adds up (the
+/// seconds are not repeated). `utc_offset_seconds` is the clock its day and
+/// start are on; `stopped_after_minutes` is a Stopped session's focus before
+/// Stop (null for a Finished one, or one stored before it was kept);
+/// `task_title` is null without a Task or while it is in Removed
+/// (`task_removed`). A session holds no Note text.
 pub fn history_session(entry: &HistorySession) -> Value {
-    let session = &entry.session;
     json!({
-        "id": session.id,
-        "started_at": session.started_at,
-        "ended_at": session.ended_at,
-        "outcome": to_value(&session.outcome),
-        "planned_seconds": session.planned_seconds,
-        "overtime_seconds": session.overtime_seconds,
+        "id": entry.id,
+        "started_at": entry.started_at,
+        "ended_at": entry.ended_at,
+        "utc_offset_seconds": entry.utc_offset_seconds,
+        "outcome": to_value(&entry.outcome),
         "planned_minutes": entry.planned_minutes,
         "overtime_minutes": entry.overtime_minutes,
-        "task_id": session.task_id,
+        "stopped_after_minutes": entry.stopped_after_minutes,
+        "task_id": entry.task_id,
         "task_title": entry.task_title,
         "task_removed": entry.task_removed,
     })

@@ -1,7 +1,8 @@
 //! Ticket 14: `tasknotes pomodoro history` reads the core's daily history
-//! through the real process, on the Mac's own time zone (set here with `TZ`).
-//! The desktop side is the core store opened directly, as the window opens
-//! it: only the desktop records sessions. Synthetic data only.
+//! through the real process: each session on the clock it started on, and a
+//! session stored before schema v23 on the Mac's own time zone (set here
+//! with `TZ`). The desktop side is the core store opened directly, as the
+//! window opens it: only the desktop records sessions. Synthetic data only.
 
 mod common;
 
@@ -30,13 +31,16 @@ fn ok_in(cli: &Cli, tz: &str, args: &[&str]) -> Value {
     run.json
 }
 
+/// A Finished 25-minute session started in Jakarta.
 fn session(task: Option<&Task>, started_at: i64, overtime_seconds: i64) -> EndedSession {
     EndedSession {
         task_id: task.map(|task| task.id.clone()),
         started_at,
+        utc_offset_seconds: 7 * 3600,
         planned_seconds: 25 * 60,
         overtime_seconds,
         outcome: SessionOutcome::Finished,
+        stopped_after_seconds: None,
         ended_at: started_at + 25 * MINUTE + overtime_seconds * 1000,
     }
 }
@@ -45,9 +49,23 @@ fn stopped(started_at: i64) -> EndedSession {
     EndedSession {
         overtime_seconds: 0,
         outcome: SessionOutcome::Stopped,
+        stopped_after_seconds: Some(10 * 60),
         ended_at: started_at + 10 * MINUTE,
         ..session(None, started_at, 0)
     }
+}
+
+/// A Finished 25-minute session as schema v22 stored it: no offset.
+fn stored_before_offsets(cli: &Cli, started_at: i64) {
+    rusqlite::Connection::open(cli.db())
+        .unwrap()
+        .execute(
+            "INSERT INTO pomodoro_sessions
+               (id, started_at, planned_seconds, outcome, ended_at, created_at)
+             VALUES (lower(hex(randomblob(8))), ?1, 1500, 'finished', ?1 + 1500000, ?1)",
+            [started_at],
+        )
+        .unwrap();
 }
 
 /// A Task with sessions on 11-10 (two, one Stopped) and 11-11 (one with
@@ -89,7 +107,10 @@ fn history_lists_days_newest_first_with_what_each_counts() {
     assert_eq!(counted["outcome"], "finished");
     assert_eq!(counted["planned_minutes"], 25);
     assert_eq!(counted["overtime_minutes"], 7);
-    assert_eq!(counted["overtime_seconds"], 432);
+    assert_eq!(counted["utc_offset_seconds"], 7 * 3600);
+    // Minutes only: the seconds would say the same thing twice.
+    assert!(counted.get("overtime_seconds").is_none());
+    assert!(counted.get("planned_seconds").is_none());
     assert_eq!(counted["task_id"], Value::Null);
     assert_eq!(counted["task_title"], Value::Null);
     assert_eq!(counted["task_removed"], false);
@@ -106,36 +127,85 @@ fn history_lists_days_newest_first_with_what_each_counts() {
         .as_array()
         .unwrap()
         .iter()
-        .map(|s| (s["outcome"].clone(), s["task_title"].clone()))
+        .map(|s| {
+            (
+                s["outcome"].clone(),
+                s["task_title"].clone(),
+                s["stopped_after_minutes"].clone(),
+            )
+        })
         .collect();
     assert_eq!(
         outcomes,
         vec![
-            (json!("stopped"), Value::Null),
-            (json!("finished"), json!("Synthetic chapter draft")),
-        ]
+            (
+                json!("finished"),
+                json!("Synthetic chapter draft"),
+                Value::Null
+            ),
+            (json!("stopped"), Value::Null, json!(10)),
+        ],
+        "oldest first within a day"
     );
-    assert_eq!(older["sessions"][1]["task_id"], json!(task.id));
+    assert_eq!(older["sessions"][0]["task_id"], json!(task.id));
+}
+
+fn dates(page: &Value) -> Vec<Value> {
+    page["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|day| day["date"].clone())
+        .collect()
 }
 
 #[test]
-fn days_are_the_macs_local_days() {
+fn sessions_keep_the_days_of_the_clock_they_started_on_wherever_the_mac_is_now() {
     let (cli, _) = world();
-    // 09:00 and 10:00 in Jakarta on 11-10 are 02:00 and 03:00 UTC that day;
-    // 09:00 on 11-11 is 02:00 UTC. In UTC-12 all three fall a day earlier.
-    let dates = |tz| -> Vec<Value> {
-        ok_in(&cli, tz, &["pomodoro", "history"])["items"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|day| day["date"].clone())
-            .collect()
-    };
+    // Started in Jakarta at 09:00 and 10:00 on 11-10 and 09:00 on 11-11
+    // (02:00 and 03:00 UTC); read after flying to UTC-12, where those
+    // instants are still the day before.
+    for tz in [JAKARTA_TZ, "XST+12", "UTC0"] {
+        let page = ok_in(&cli, tz, &["pomodoro", "history"]);
+        assert_eq!(
+            dates(&page),
+            [json!("2026-11-11"), json!("2026-11-10")],
+            "{tz}"
+        );
+        let only = ok_in(
+            &cli,
+            tz,
+            &[
+                "pomodoro",
+                "history",
+                "--from",
+                "2026-11-10",
+                "--to",
+                "2026-11-10",
+            ],
+        );
+        assert_eq!(dates(&only), [json!("2026-11-10")], "{tz}");
+    }
+}
+
+#[test]
+fn sessions_stored_before_offsets_were_kept_follow_the_macs_time_zone() {
+    let cli = Cli::trusted();
+    drop(TaskStore::open(&cli.db()).unwrap());
+    // 09:00 in Jakarta on 11-10: 02:00 UTC, the day before in UTC-12.
+    stored_before_offsets(&cli, NOV_10_JAKARTA + 9 * HOUR);
+    let jakarta = ok_in(&cli, JAKARTA_TZ, &["pomodoro", "history"]);
+    assert_eq!(dates(&jakarta), [json!("2026-11-10")]);
     assert_eq!(
-        dates(JAKARTA_TZ),
-        [json!("2026-11-11"), json!("2026-11-10")]
+        jakarta["items"][0]["sessions"][0]["utc_offset_seconds"],
+        7 * 3600
     );
-    assert_eq!(dates("XST+12"), [json!("2026-11-10"), json!("2026-11-09")]);
+    let far_west = ok_in(&cli, "XST+12", &["pomodoro", "history"]);
+    assert_eq!(dates(&far_west), [json!("2026-11-09")]);
+    assert_eq!(
+        far_west["items"][0]["sessions"][0]["utc_offset_seconds"],
+        -12 * 3600
+    );
 }
 
 #[test]
@@ -153,13 +223,7 @@ fn from_and_to_choose_the_days_and_limit_pages_them() {
             "2026-11-10",
         ],
     );
-    let dates: Vec<_> = only["items"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|day| day["date"].clone())
-        .collect();
-    assert_eq!(dates, [json!("2026-11-10")]);
+    assert_eq!(dates(&only), [json!("2026-11-10")]);
 
     let first = ok_in(&cli, JAKARTA_TZ, &["pomodoro", "history", "--limit", "1"]);
     assert_eq!(first["items"][0]["date"], "2026-11-11");
@@ -244,19 +308,20 @@ fn history_shows_task_titles_but_never_note_text() {
 /// is a day earlier than a moment before it.
 const FALL_BACK_TZ: &str = "XST5XDT,M3.2.0,M11.1.0/0:30";
 
+/// Sessions stored before schema v23 (no offset of their own) on a Mac
+/// whose clock goes back past midnight: the core's fallback to the Mac's
+/// zone follows its daylight-saving rules, as `localtime_r` gives them.
 #[test]
 fn days_follow_daylight_saving_even_when_the_clock_goes_back_past_midnight() {
     let cli = Cli::trusted();
-    let desktop = TaskStore::open(&cli.db()).unwrap();
+    drop(TaskStore::open(&cli.db()).unwrap());
     for started_at in [
         1_793_458_800_000, // 10-31 11:00 daylight time
         1_793_506_500_000, // 11-01 00:15 daylight time
         1_793_508_300_000, // 10-31 23:45 standard time, after the change
         1_793_541_600_000, // 11-01 09:00 standard time
     ] {
-        desktop
-            .record_pomodoro_session(session(None, started_at, 0))
-            .unwrap();
+        stored_before_offsets(&cli, started_at);
     }
     let days = |page: &Value| -> Vec<(Value, Vec<Value>)> {
         page["items"]
@@ -276,11 +341,11 @@ fn days_follow_daylight_saving_even_when_the_clock_goes_back_past_midnight() {
     };
     let nov_1 = (
         json!("2026-11-01"),
-        vec![json!(1_793_541_600_000_i64), json!(1_793_506_500_000_i64)],
+        vec![json!(1_793_506_500_000_i64), json!(1_793_541_600_000_i64)],
     );
     let oct_31 = (
         json!("2026-10-31"),
-        vec![json!(1_793_508_300_000_i64), json!(1_793_458_800_000_i64)],
+        vec![json!(1_793_458_800_000_i64), json!(1_793_508_300_000_i64)],
     );
     let all = ok_in(&cli, FALL_BACK_TZ, &["pomodoro", "history"]);
     assert_eq!(days(&all), vec![nov_1.clone(), oct_31.clone()]);

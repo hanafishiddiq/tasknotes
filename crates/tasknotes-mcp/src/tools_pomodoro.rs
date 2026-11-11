@@ -31,7 +31,7 @@ pub fn tools() -> Vec<ToolDef> {
     vec![tool(
         "pomodoro_history",
         Kind::Read,
-        "The person's Pomodoro history by local calendar day (this Mac's time zone), newest day first, in pages of days. Each day gives finished_sessions and focus_minutes (planned length plus the Overtime the person counted, of Finished sessions only) and lists every session that started that day, newest first, including Stopped ones, which never count. A session that runs past midnight belongs to the day it started. task_title is null without a Task or while its Task is in Removed (task_removed).",
+        "The person's Pomodoro history by local calendar day, newest day first, in pages of days. Each session's day and start are on the clock it started on: started_at (Unix ms) plus utc_offset_seconds, so travelling never moves it. Each day gives finished_sessions and focus_minutes (planned length plus the Overtime the person counted, of Finished sessions only) and lists every session that started that day, oldest first, including Stopped ones, which never count (stopped_after_minutes: the focus before Stop). A session that runs past midnight belongs to the day it started. task_title is null without a Task or while its Task is in Removed (task_removed).",
         |c, a: HistoryPage| {
             let range = HistoryRange {
                 from: a.from,

@@ -452,6 +452,7 @@ mod tests {
         Moment {
             wall: T0 + offset,
             awake: offset,
+            utc_offset_seconds: 7 * 3600,
         }
     }
 
@@ -578,8 +579,16 @@ mod tests {
     #[test]
     fn stop_before_the_end_is_stopped_and_after_it_finished_without_overtime() {
         let mut pomodoro = start(Some("task-1"));
-        let step = pomodoro.apply(Command::Stop, at(3 * MIN));
+        // Stopped three minutes in, after the Mac moved to New York: the
+        // session keeps the Jakarta clock it started on.
+        let in_new_york = Moment {
+            utc_offset_seconds: -5 * 3600,
+            ..at(3 * MIN)
+        };
+        let step = pomodoro.apply(Command::Stop, in_new_york);
         assert_eq!(step.record[0].outcome, SessionOutcome::Stopped);
+        assert_eq!(step.record[0].stopped_after_seconds, Some(3 * 60));
+        assert_eq!(step.record[0].utc_offset_seconds, 7 * 3600);
         assert_eq!(pomodoro.menu(at(3 * MIN)), None);
         assert_eq!(pomodoro.title(at(3 * MIN)), None);
 
@@ -668,6 +677,7 @@ mod tests {
         let step = pomodoro.quit(at(10 * MIN));
         assert_eq!(step.record[0].outcome, SessionOutcome::Stopped);
         assert_eq!(step.record[0].ended_at, T0 + 10 * MIN);
+        assert_eq!(step.record[0].stopped_after_seconds, Some(10 * 60));
         // After it: Finished without Overtime, and its notification goes.
         let mut pomodoro = start(Some("task-1"));
         at_the_end(&mut pomodoro);
@@ -834,6 +844,7 @@ mod tests {
                         move || Moment {
                             wall: T0,
                             awake: i64::try_from(started.elapsed().as_millis()).unwrap(),
+                            utc_offset_seconds: 0,
                         },
                         |_| {
                             ticks.fetch_add(1, Ordering::SeqCst);
@@ -853,6 +864,7 @@ mod tests {
             Moment {
                 wall: T0,
                 awake: i64::try_from(self.started.elapsed().as_millis()).unwrap(),
+                utc_offset_seconds: 0,
             }
         }
 

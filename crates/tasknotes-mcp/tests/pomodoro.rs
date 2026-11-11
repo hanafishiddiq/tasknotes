@@ -1,6 +1,7 @@
 //! Ticket 14: the `pomodoro_history` tool reads the core's daily history in
-//! the CLI's envelope, on the Mac's own time zone (set here with `TZ`).
-//! Only the desktop records sessions. Synthetic data only.
+//! the CLI's envelope, each session on the clock it started on (the server
+//! runs in Jakarta here, `TZ`). Only the desktop records sessions.
+//! Synthetic data only.
 
 mod common;
 
@@ -24,9 +25,11 @@ fn session(task: Option<&Task>, started_at: i64, outcome: SessionOutcome) -> End
     EndedSession {
         task_id: task.map(|task| task.id.clone()),
         started_at,
+        utc_offset_seconds: 7 * 3600,
         planned_seconds: 25 * 60,
         overtime_seconds: if finished { 3 * 60 } else { 0 },
         outcome,
+        stopped_after_seconds: (!finished).then_some(10 * 60),
         ended_at: started_at + if finished { 28 } else { 10 } * MINUTE,
     }
 }
@@ -113,12 +116,46 @@ fn history_counts_finished_sessions_per_local_day_newest_first() {
     let removed = &days[0]["sessions"][0];
     assert_eq!(removed["task_title"], Value::Null);
     assert_eq!(removed["task_removed"], true);
-    let shown = &days[1]["sessions"][1];
+    // Oldest first within a day.
+    let shown = &days[1]["sessions"][0];
     assert_eq!(shown["task_id"], json!(task.id));
     assert_eq!(shown["task_title"], "Synthetic outline");
     assert_eq!(shown["planned_minutes"], 25);
     assert_eq!(shown["overtime_minutes"], 3);
-    assert_eq!(days[1]["sessions"][0]["outcome"], "stopped");
+    assert_eq!(shown["stopped_after_minutes"], Value::Null);
+    assert_eq!(shown["utc_offset_seconds"], 7 * 3600);
+    let stopped = &days[1]["sessions"][1];
+    assert_eq!(stopped["outcome"], "stopped");
+    assert_eq!(stopped["stopped_after_minutes"], 10);
+}
+
+#[test]
+fn a_session_says_each_thing_once_in_the_minutes_its_day_adds_up() {
+    let (_data, _, mut server) = world();
+    let page = server.ok("pomodoro_history", json!({}));
+    let mut fields: Vec<_> = page["items"][0]["sessions"][0]
+        .as_object()
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect();
+    fields.sort();
+    assert_eq!(
+        fields,
+        [
+            "ended_at",
+            "id",
+            "outcome",
+            "overtime_minutes",
+            "planned_minutes",
+            "started_at",
+            "stopped_after_minutes",
+            "task_id",
+            "task_removed",
+            "task_title",
+            "utc_offset_seconds",
+        ]
+    );
 }
 
 #[test]

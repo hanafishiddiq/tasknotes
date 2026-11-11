@@ -171,7 +171,7 @@ pub(crate) const USAGE: &str = "Usage: tasknotes [--data-dir DIR] \
     list|folder style ID --revision N [--icon NAME|none] [--color NAME|none]; style options; \
     folder reorder ID --revision N (--after ID | --first) [--parent ID | --top]; \
     bulk preview --action A --id ID... [--status S [--wont-do]] | bulk status REQUEST_ID (approved only in the app); \
-    pomodoro history [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--limit DAYS] [--cursor C] (local days, newest first); \
+    pomodoro history [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--limit DAYS] [--cursor C] (local days, newest first; sessions oldest first); \
     access grant|revoke [--mcp]";
 
 pub(crate) const NO_FLAGS: Spec = flags(&[], 0);
@@ -511,9 +511,10 @@ fn style_command(verb: &str, words: &[String]) -> Result<Value, CliError> {
     Ok(contract::success_item(contract::to_value(style::options())))
 }
 
-/// `pomodoro history`: the daily history on this Mac's local days, newest
-/// first, a page of `--limit` days (50 when left out). Read-only: only the
-/// desktop records sessions.
+/// `pomodoro history`: the daily history, newest day first, each session on
+/// the clock it started on (one stored before schema v23 on this Mac's), a
+/// page of `--limit` days (50 when left out). Read-only: only the desktop
+/// records sessions.
 fn pomodoro_command(store: &TaskStore, verb: &str, words: &[String]) -> Result<Value, CliError> {
     if verb != "history" {
         return Err(CliError::invalid(USAGE));
