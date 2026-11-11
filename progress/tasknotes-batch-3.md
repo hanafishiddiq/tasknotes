@@ -41,20 +41,30 @@ Tujuan akhir: Tasknotes di /Applications berisi 5 perubahan batch 3 (tombol Remo
     - [x] Temuan review diperbaiki (cincin jeda redup lagi, garis hari, pemilih Task semua halaman, satu aturan hitung)
     - [x] Han memutuskan tombol Resume di blok sidebar: dipertahankan (Q47)
     - [x] CI hijau (14 cek), di-merge setelah Han konfirmasi (PR #41, commit 27f6749)
-- [ ] Angka Task belum selesai di sidebar (tiket 05) di main
+- [x] Angka Task belum selesai di sidebar (tiket 05) di main
   - [x] Diminta Han dan dijawab (Q45 Ready + In Progress; Q46 semua folder, bisa diatur di Settings)
   - [x] Bentuk pengaturan di Settings: tiga pilihan, semua folder / folder yang dibuka / tidak ada (Q48)
   - [x] Inti: hitungan Task belum selesai per tempat
   - [x] Sidebar dan pilihan di Settings (1553 tes window hijau)
-  - [ ] Draft PR, review dua sumbu, merge setelah Han konfirmasi
-- [ ] Semua tiket di main dan lolos CI gabungan
-- [ ] Satu build dipasang ke /Applications (setelah Han konfirmasi)
-- [ ] Han mengecek app asli batch 3
+  - [x] Draft PR #42, review dua sumbu, temuan diperbaiki (kontras angka saat hover), merge 58f8026 (Q49 tanpa angka nol, Q50 label "folder")
+- [x] Semua tiket di main dan lolos CI gabungan (CI PR #42 dan #43 hijau, 14/14)
+- [x] Satu build dipasang ke /Applications (setelah Han konfirmasi)
+  - [x] Backup data dan program lama: store.adamaja.tasknotes.pre-batch3-20261111 (checksum sama, integritas ok)
+  - [x] Build 58f8026 crash saat dibuka (macOS menjawab NULL ke deliveredNotifications); data sudah versi 24 dan utuh
+  - [x] Perbaikan PR #43 (Han OK), merge 891c9ee, app dipasang ulang: jalan, jendela terbuka, data utuh (152 Task, 4 Note, 8 List)
+- [x] App asli batch 3 dicek (atas permintaan Han, dicek AI lewat Cua dengan data asli)
+  - [x] Lolos: angka sidebar sama dengan database, tiga pilihan Settings, menu klik kanan, Remove merah, tanda kuning dan toast, Pause, Start break lebih awal, fokus 1 menit, Start break dan Stop di app; pengaturan dikembalikan (Focus 25 menit, angka di semua folder)
+  - [x] Notifikasi Pomodoro tidak muncul sejak build batch 3: macOS 27.2 menolak jalur notifikasi lama (Issue 06)
+    - [x] Penyebab dibuktikan dengan app uji; diperbaiki dengan TDD ke API notifikasi baru; review dua sumbu, temuan diperbaiki; Draft PR #44
+    - [x] Uji native kode final dengan identitas Tasknotes: terkirim, tampil, ditarik, tanpa penolakan
+    - [x] Merge dan pasang ulang setelah CI hijau (Han konfirmasi): PR #44 merge 8a9d072, backup store.adamaja.tasknotes.pre-issue06-20261111, app terpasang dan data utuh
+    - [x] Cek di app terpasang: "Focus done" muncul (20:21:27), tombol Start break yang diklik Han memulai break dan notifikasi hilang; Focus dikembalikan ke 25 menit
 - [ ] Cache build dan worktree yang sudah selesai dihapus (batch 2 dan 3)
 
 ## Perlu Han lakukan
 
-
+- Izinkan penghapusan cache build dan worktree yang sudah selesai (batch 2 dan 3).
+- Sambung ulang MCP Tasknotes di sesi Claude lain: proses MCP lama menolak data versi 24.
 
 ## Riwayat sesi
 

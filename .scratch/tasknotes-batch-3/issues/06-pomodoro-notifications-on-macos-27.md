@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** in progress — Draft PR #44 on `fix/batch3-modern-notifications`; two-axis review done and its findings fixed; the merge, the install build and the native check wait for the owner
+**Implementation:** completed — merged in PR #44 (8a9d072) with the owner's confirmation and installed; native check passed for delivery, the Start break button and withdrawal (the rest of the native list below is still unchecked)
 
 ## Acceptance criteria
 
@@ -16,7 +16,8 @@
 - [x] A button's id names the click it answers, and the notification itself shows the window (unit tests on `reply`; a click on an older notification changes nothing, `pomodoro_state`'s existing tests).
 - [x] Outside a bundled app (tests, `cargo run`) nothing is asked of macOS and nothing crashes.
 - [x] On macOS 27.2, under Tasknotes' identifier, a notification shown by this module is delivered and presented (no "Denying" in `usernoted`'s log) and withdrawn.
-- [ ] Native, in the installed app: a 1-minute focus shows "Focus done" with its sound; Start break and Count overtime on it answer the timer; a click on it shows the window; answering from the window or the menu bar takes it away; quitting with one shown takes it away.
+- [x] Native, in the installed app: a 1-minute focus shows "Focus done", and its Start break button starts the break and takes the notification away.
+- [ ] Native, still unchecked: the sound, Count overtime on the notification, a click on the notification itself, answering from the window or the menu bar while it is shown, quitting with one shown.
 
 ## Delivery guardrails
 
@@ -38,3 +39,7 @@
 - Criteria above were ticked only where a test or the native harness backs them; clicks, sound and the withdrawal at quit wait for the installed app.
 - Left as in batch 2 (Ticket 02 accepted it): the notification's button reads "Count overtime", not the live "Count +07:12" of spec 17–18; the live Overtime is in the window and the menu bar.
 - Native check of the final code (same harness): delivered and presented at once, withdrawn 8 s later, no "Denying".
+
+**2026-11-11 — merged and installed (owner: "Ya, merge & pasang"):** CI 14/14 green, PR #44 merged as 8a9d072; release build of that tree (`tauri build --bundles app`, signed ad hoc), installed after a backup of the data and the old app (`store.adamaja.tasknotes.pre-issue06-20261111`: checksums equal, `integrity_check` ok, schema 24). At launch `usernoted` logged the modern connection from `/Applications/Tasknotes.app`, both kinds' buttons (`setNotificationCategories: 2`) and the start-up withdrawal; no "Denying".
+
+**2026-11-11 — native check in the installed app:** with Focus set to 1 minute, the focus started at 20:20:29 and `usernoted` logged `Delivering` and `Presenting` for `req:"tasknotes-pomodoro-focus-end"` at 20:21:27. The owner clicked Start break on it in Notification Center: the timer went to Break, the session was stored Finished (1 min, Overtime not counted, as Start break means), and the notification was removed (`_removeDelivered: Removed` at 20:22:55; no Tasknotes record left in the notification database). The break was then stopped and Focus set back to 25 minutes.
