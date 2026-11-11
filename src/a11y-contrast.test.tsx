@@ -21,12 +21,13 @@ const AA_NON_TEXT = 3;
 /** Where things sit: tokens used as fills, and the colour-mixes in MIXED. */
 type Surface =
   | "bg" | "sidebar" | "hover" | "side-hover" | "side-selected" | "field" | "row-selected" | "accent"
-  | "filter-chip" | "remove-hover";
+  | "filter-chip" | "remove-hover" | "new-mark";
 
 /** Surfaces App.css mixes from two tokens, by the rule whose background each is. */
 const MIXED: Partial<Record<Surface, string>> = {
   "filter-chip": ".property.filter-chip--active",
   "remove-hover": ".button-remove:hover:not(:disabled)",
+  "new-mark": ".task-card--new:not(.task-card--expanded) .task-row",
 };
 
 interface Placement {
@@ -36,12 +37,14 @@ interface Placement {
 }
 
 const ROW: Surface[] = ["bg", "hover"];
+/** A Task row: also the new Task mark (batch 3, Ticket 02), half the sidebar hover yellow over the canvas. */
+const TASK_ROW: Surface[] = ["bg", "hover", "new-mark"];
 const SELECTED: Placement = { on: ["row-selected"], through: "row-selected-text" };
 
 /** Text, by the selector that gives it its colour. 4.5:1, or 3:1 when the rule makes it large. */
 const TEXT: Record<string, Placement> = {
   // Text with no colour of its own: headings, row titles, palette rows, code, the "%" sign.
-  ":root": { on: ["bg", "hover", "sidebar", "field"] },
+  ":root": { on: ["bg", "hover", "sidebar", "field", "new-mark"] },
   // Shell and sidebar
   ".undo-bar": { on: ["hover"] },
   ".undo-bar--error": { on: ["hover"] },
@@ -145,17 +148,17 @@ const TEXT: Record<string, Placement> = {
   ".note-hit": { on: ROW },
   ".note-hits-empty": { on: ["bg"] },
   ".task-card--expanded .task-row": { on: ["row-selected"] },
-  ".task-card--completed .task-row-title": { on: ROW },
-  ".task-row-subtitle": { on: ROW },
-  ".progress-readout": { on: ROW },
-  ".task-row-meta": { on: ROW },
-  ".priority-pill--high": { on: ROW },
-  ".priority-pill--very_high": { on: ROW },
-  ".deadline-pill--overdue": { on: ROW },
-  ".deadline-pill--today": { on: ROW },
-  ".unsaved-marker": { on: ROW },
-  ".tag-pill": { on: ROW },
-  ".tag-pill--more": { on: ROW },
+  ".task-card--completed .task-row-title": { on: TASK_ROW },
+  ".task-row-subtitle": { on: TASK_ROW },
+  ".progress-readout": { on: TASK_ROW },
+  ".task-row-meta": { on: TASK_ROW },
+  ".priority-pill--high": { on: TASK_ROW },
+  ".priority-pill--very_high": { on: TASK_ROW },
+  ".deadline-pill--overdue": { on: TASK_ROW },
+  ".deadline-pill--today": { on: TASK_ROW },
+  ".unsaved-marker": { on: TASK_ROW },
+  ".tag-pill": { on: TASK_ROW },
+  ".tag-pill--more": { on: TASK_ROW },
   ".task-card--expanded .task-row-title": SELECTED,
   ".task-card--expanded .task-row-subtitle": SELECTED,
   ".task-card--expanded .progress-readout": SELECTED,
@@ -226,15 +229,14 @@ const INDICATORS: { selector: string; property: string; means: string; place: Pl
   { selector: ":focus-visible", property: "outline", means: "focus ring", place: { on: ["bg", "sidebar", "hover", "side-hover", "side-selected", "field", "row-selected"] } },
   { selector: ".palette-field:focus-within", property: "border-bottom-color", means: "focus underline", place: { on: ["sidebar"] } },
   { selector: ".next-step-input:focus", property: "border-bottom-color", means: "focus underline", place: { on: ["bg"] } },
-  { selector: ".task-check", property: "border", means: "Ready ring", place: { on: ["bg", "hover", "field"] } },
-  { selector: ".task-check--in_progress", property: "border-color", means: "In Progress ring", place: { on: ["bg", "hover", "field"] } },
-  { selector: ".task-check--in_progress::after", property: "background", means: "In Progress dot", place: { on: ["bg", "hover", "field"] } },
-  { selector: ".task-check--completed", property: "background", means: "Completed disc", place: { on: ["bg", "hover", "field"] } },
+  { selector: ".task-check", property: "border", means: "Ready ring", place: { on: ["bg", "hover", "field", "new-mark"] } },
+  { selector: ".task-check--in_progress", property: "border-color", means: "In Progress ring", place: { on: ["bg", "hover", "field", "new-mark"] } },
+  { selector: ".task-check--in_progress::after", property: "background", means: "In Progress dot", place: { on: ["bg", "hover", "field", "new-mark"] } },
+  { selector: ".task-check--completed", property: "background", means: "Completed disc", place: { on: ["bg", "hover", "field", "new-mark"] } },
   { selector: ".task-check--completed", property: "color", means: "Completed tick", place: { on: ["accent"] } },
   { selector: ".task-card--expanded .task-row .task-check", property: "border-color", means: "ring on the open row", place: SELECTED },
   { selector: ".task-card--expanded .task-row .task-check--in_progress::after", property: "background", means: "dot on the open row", place: SELECTED },
   { selector: ".task-card--expanded .task-row .task-check--completed", property: "background", means: "disc on the open row", place: { on: ["row-selected"] } },
-  { selector: ".task-slot--flash", property: "outline", means: "Task opened from the new Task toast", place: { on: ["bg", "hover"] } },
   { selector: ".capture-ring", property: "border", means: "New task ring", place: { on: ["bg", "hover"] } },
   { selector: ".note-check::before", property: "border", means: "open checklist circle", place: { on: ["bg"] } },
   { selector: ".note-check--done::before", property: "background", means: "done checklist circle", place: { on: ["bg"] } },
@@ -254,6 +256,9 @@ const INDICATORS: { selector: string; property: string; means: string; place: Pl
   { selector: "button.folder-disclosure:hover:not(:disabled)", property: "color", means: "folder disclosure arrow", place: { on: ["sidebar"] } },
   { selector: ".linked-unlink", property: "color", means: "unlink button", place: { on: ["bg", "hover"] } },
   { selector: ".settings-mute", property: "color", means: "mute button", place: { on: ["bg", "hover"] } },
+  // The new Task toast's X (batch 3, Ticket 02), on the toast's hover-gray box.
+  { selector: ".task-toast-close", property: "color", means: "toast dismiss button", place: { on: ["hover"] } },
+  { selector: ".task-toast-close:hover", property: "color", means: "toast dismiss button", place: { on: ["hover"] } },
 ];
 
 /** Rules with a colour that deliberately need no pair here, each with why. */
@@ -435,9 +440,13 @@ describe("the contrast check itself", () => {
 
   it("checks text on every fill mixed from two tokens", () => {
     // A new colour-mix fill must become a MIXED surface, so the text on it is paired above.
-    const mixedFills = rules.filter((rule) => /color-mix\(/.test(declared(rule, "background") ?? ""))
-      .flatMap((rule) => selectorsOf(rule));
-    expect(mixedFills.sort()).toEqual(Object.values(MIXED).sort());
+    // A rule may give one fill to several selectors (a resting row and its hover): one of them is measured.
+    const mixedRules = rules.filter((rule) => /color-mix\(/.test(declared(rule, "background") ?? ""));
+    const measured = new Set(Object.values(MIXED));
+    expect(mixedRules.filter((rule) => !selectorsOf(rule).some((selector) => measured.has(selector)))
+      .map((rule) => rule.selector)).toEqual([]);
+    expect([...measured].filter((selector) => !mixedRules.some((rule) => selectorsOf(rule).includes(selector))))
+      .toEqual([]);
   });
 
 });

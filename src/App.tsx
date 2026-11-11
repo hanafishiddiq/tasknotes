@@ -35,6 +35,7 @@ import { flushSync } from "react-dom";
 import { useUndo } from "./lib/use-undo";
 import { useCompletionUndo } from "./lib/use-completion-undo";
 import { useNewTaskToast } from "./lib/use-new-task-toast";
+import { useNewTaskMarks } from "./lib/use-new-task-marks";
 import { useBriefNotice } from "./lib/use-brief-notice";
 import { errorMessage, isListRemoved } from "./lib/error-message";
 import { listenForQuit } from "./lib/quit";
@@ -135,6 +136,8 @@ export default function App() {
   const completionUndo = useCompletionUndo(tasks);
   // "Task added · Click to edit" after a Task is created here; view state only.
   const newTaskToast = useNewTaskToast();
+  // The pale-yellow mark on Tasks just added, here or by an AI; view state only.
+  const newTaskMarks = useNewTaskMarks();
   // Why a Task cannot be moved here, said when the person tries; view state only.
   const reorderNotice = useBriefNotice();
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -221,7 +224,9 @@ export default function App() {
   // Only the newest re-read of an outside change may show what it read.
   const outsideRead = useRef(0);
 
-  useOutsideChanges(showOutsideChanges);
+  // A Task open already when the check names it is not marked: opening ends a mark.
+  useOutsideChanges(showOutsideChanges, (taskIds) =>
+    newTaskMarks.addedOutside(taskIds.filter((taskId) => taskId !== expandedNow.current)));
   // Silent is the Pomodoro's own setting, kept by the shell; sound settings play no part.
   const pomodoro = usePomodoro({
     onTaskChanged: () => void showOutsideChanges(),
@@ -408,6 +413,15 @@ export default function App() {
     openNotes(ALL_NOTES);
   }
 
+  /**
+   * Opens a Task: every way of opening one comes here. Opening any Task, even the
+   * one open already, ends the person's own new Task marks, and this Task's mark.
+   */
+  function openTask(taskId: string) {
+    setExpandedId(taskId);
+    newTaskMarks.opened(taskId);
+  }
+
   /** Shows one Task on its own and expanded, under the banner for `reason`. */
   function showTaskAlone(taskId: string, reason: AloneReason) {
     if (busy) {
@@ -425,7 +439,7 @@ export default function App() {
     setSearchDraft("");
     setTagDraft("");
     applyFilters({ ...NO_FILTERS, taskId });
-    setExpandedId(taskId);
+    openTask(taskId);
     // After navigate and applyFilters, which drop any earlier scroll request.
     if (reason === "added") newTaskToast.revealTask(taskId);
   }
@@ -433,7 +447,7 @@ export default function App() {
   /** The new Task toast was clicked: open the Task where it is, or on its own when this view hides it. */
   function openNewTask(taskId: string) {
     if (workspace === "tasks" && tasks.some((task) => task.id === taskId)) {
-      setExpandedId(taskId);
+      openTask(taskId);
       newTaskToast.revealTask(taskId);
     } else showTaskAlone(taskId, "added");
   }
@@ -834,6 +848,7 @@ export default function App() {
       );
       sound.play("create");
       newTaskToast.added(created.id);
+      newTaskMarks.addedHere(created.id);
       const generation = ++requestGeneration.current;
       const { sort: latestSort, view: latestView, filters: latestFilters } = currentQuery.current;
       // Clear only after the actual write succeeds; retry must not create a
@@ -1030,6 +1045,7 @@ export default function App() {
     if (removed) {
       setExpandedId(null);
       newTaskToast.forget(task.id);
+      newTaskMarks.forget(task.id);
       undo.push({
         key: `task:${removed.id}`, title: removed.title,
         undo: async () => {
@@ -1573,7 +1589,6 @@ export default function App() {
                     keepMounted={keepMounted}
                     expandedId={expandedId}
                     onCollapse={() => setExpandedId(null)}
-                    flashId={newTaskToast.flashId}
                     reveal={newTaskToast.reveal}
                     onRevealed={newTaskToast.clearReveal}
                     onPlace={canPlace ? placeTask : undefined}
@@ -1586,7 +1601,10 @@ export default function App() {
                         task={task}
                         expanded={expandedId === task.id}
                         saving={savingId === task.id}
-                        onToggle={() => setExpandedId((current) => current === task.id ? null : task.id)}
+                        onToggle={() => {
+                          if (expandedNow.current === task.id) setExpandedId(null);
+                          else openTask(task.id);
+                        }}
                         onSave={(nextTitle, nextDescription, base) => updateTask(task, nextTitle, nextDescription, base)}
                         onChange={(change, base) => changeTask(task, change, base)}
                         onRecordProgress={(update, base) => recordProgress(task, update, base)}
@@ -1602,6 +1620,7 @@ export default function App() {
                         edits={drafts.get(task.id)}
                         onEdits={(edits) => drafts.set(task.id, edits)}
                         reorderable={canPlace}
+                        {...newTaskMarks.rowProps(task.id)}
                       />
                     )}
                   />

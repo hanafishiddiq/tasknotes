@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useHoldTimer, type HoldReason } from "./use-hold-timer";
 
-/** How long the toast stays before it fades, not counting time held under the pointer or focus. */
-export const TOAST_MS = 6000;
+/** How long the toast stays before it fades, not counting time held under the pointer or focus (owner decision 2026-11-11). */
+export const TOAST_MS = 10_000;
 /** The fade out, matching DESIGN.md's 120ms fades. */
 export const TOAST_FADE_MS = 120;
-/** How long an opened Task keeps its yellow flash. */
-export const FLASH_MS = 1500;
 
 export interface NewTaskToastState {
   /** The Task the toast points to, or null when no toast shows. */
@@ -15,16 +13,16 @@ export interface NewTaskToastState {
   seq: number;
   /** Fading out; it leaves after TOAST_FADE_MS. */
   leaving: boolean;
-  /** The Task flashing yellow after the toast opened it. */
-  flashId: string | null;
   /** The Task the toast just opened, for the list to scroll to on its next try only. */
   reveal: { taskId: string } | null;
   /** A Task was just created in this window: point the toast at it. */
   added(taskId: string): void;
   /** The pointer or keyboard focus is on the toast (true) or left it (false). */
   hold(reason: HoldReason, held: boolean): void;
-  /** Closes the toast and flashes its Task; returns that Task, for the view to open. */
+  /** Closes the toast; returns its Task, for the view to open. */
   open(): string | null;
+  /** The toast's X: it goes at once, and nothing opens. */
+  dismiss(): void;
   /** The view now shows this Task: the list scrolls to it once, if it is there. */
   revealTask(taskId: string): void;
   /**
@@ -32,7 +30,7 @@ export interface NewTaskToastState {
    * so the list does not move by itself. Stable across renders.
    */
   clearReveal(): void;
-  /** This Task was moved to Removed: a toast, flash or scroll for it goes, as there is nothing to open. */
+  /** This Task was moved to Removed: a toast or scroll for it goes, as there is nothing to open. */
   forget(taskId: string): void;
 }
 
@@ -42,13 +40,11 @@ export interface NewTaskToastState {
  */
 export function useNewTaskToast(): NewTaskToastState {
   const [shown, setShown] = useState<{ taskId: string; seq: number; leaving: boolean } | null>(null);
-  const [flashId, setFlashId] = useState<string | null>(null);
   const [reveal, setReveal] = useState<{ taskId: string } | null>(null);
   const current = useRef(shown);
   current.current = shown;
   const seq = useRef(0);
   const fadeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const flashTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   // Time up: the toast fades, then leaves, unless the pointer or focus catches it.
   const timer = useHoldTimer(() => {
     setShown((now) => now && { ...now, leaving: true });
@@ -58,10 +54,7 @@ export function useNewTaskToast(): NewTaskToastState {
     }, TOAST_FADE_MS);
   });
 
-  useEffect(() => () => {
-    clearTimeout(fadeTimer.current);
-    clearTimeout(flashTimer.current);
-  }, []);
+  useEffect(() => () => clearTimeout(fadeTimer.current), []);
 
   /** The toast goes now, and its time with it. */
   function close() {
@@ -92,10 +85,6 @@ export function useNewTaskToast(): NewTaskToastState {
   function open(): string | null {
     const taskId = current.current?.taskId ?? null;
     close();
-    if (!taskId) return null;
-    clearTimeout(flashTimer.current);
-    setFlashId(taskId);
-    flashTimer.current = setTimeout(() => setFlashId(null), FLASH_MS);
     return taskId;
   }
 
@@ -103,12 +92,11 @@ export function useNewTaskToast(): NewTaskToastState {
 
   function forget(taskId: string) {
     if (current.current?.taskId === taskId) close();
-    setFlashId((now) => now === taskId ? null : now);
     setReveal((now) => now?.taskId === taskId ? null : now);
   }
 
   return {
     taskId: shown?.taskId ?? null, seq: shown?.seq ?? 0, leaving: shown?.leaving ?? false,
-    flashId, reveal, added, hold, open, revealTask: (taskId) => setReveal({ taskId }), clearReveal, forget,
+    reveal, added, hold, open, dismiss: close, revealTask: (taskId) => setReveal({ taskId }), clearReveal, forget,
   };
 }

@@ -590,6 +590,61 @@ fn the_window_learns_of_changes_only_from_other_interfaces() {
 }
 
 #[test]
+fn the_window_learns_which_tasks_were_created_outside() {
+    // Batch 3, Ticket 02 (Q10): a Task the CLI or an MCP client creates gets the
+    // new Task mark; the window's own Tasks and other outside changes do not.
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("t.db");
+    let desktop = store_at(&db);
+    let cli = TaskStore::open_as(&db, Interface::Cli).unwrap();
+    let mcp = TaskStore::open_as(&db, Interface::Mcp).unwrap();
+    let draft = |title: &str| CreateTask {
+        title: title.into(),
+        description: String::new(),
+    };
+
+    let before_open = cli
+        .create_task(draft("Created while the window was closed"))
+        .unwrap();
+    let start = desktop.outside_changes(None).unwrap();
+    assert!(
+        start.created_tasks.is_empty(),
+        "the first look only learns where the log ends: nothing made before it is new"
+    );
+
+    desktop.create_task(draft("Made in the window")).unwrap();
+    let by_cli = cli.create_task(draft("Made by the CLI")).unwrap();
+    cli.update_task(UpdateTask {
+        id: before_open.id.clone(),
+        title: "Only changed by the CLI".into(),
+        description: String::new(),
+        expected_revision: before_open.revision,
+    })
+    .unwrap();
+    mcp.create_list(CreateList {
+        name: "Synthetic list".into(),
+    })
+    .unwrap();
+    let by_mcp = mcp.create_task(draft("Made by an MCP client")).unwrap();
+
+    let after = desktop.outside_changes(Some(start.latest)).unwrap();
+    assert!(after.changed);
+    assert_eq!(
+        after.created_tasks,
+        vec![by_cli.id.clone(), by_mcp.id.clone()],
+        "only Tasks created outside, in the order they were made"
+    );
+    assert!(
+        desktop
+            .outside_changes(Some(after.latest))
+            .unwrap()
+            .created_tasks
+            .is_empty(),
+        "each is reported once"
+    );
+}
+
+#[test]
 fn only_the_window_may_ask_about_outside_changes() {
     let dir = tempfile::tempdir().unwrap();
     let db = dir.path().join("t.db");

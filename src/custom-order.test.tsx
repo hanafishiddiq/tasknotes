@@ -137,7 +137,7 @@ beforeEach(() => {
       await held;
     }
     switch (command) {
-      case "outside_changes": return { latest: outsideLatest, changed: body.seen != null && outsideLatest > body.seen };
+      case "outside_changes": return { latest: outsideLatest, changed: body.seen != null && outsideLatest > body.seen, createdTasks: [] };
       case "list_lists": return { items: lists.map((item) => ({ ...item })), nextCursor: null };
       case "list_tasks": return { items: listed(body), nextCursor: null };
       case "view_sorts": return Object.entries(sorts).map(([view, sort]) => ({

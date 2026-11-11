@@ -1,5 +1,5 @@
 import {
-  useLayoutEffect, useRef, type ButtonHTMLAttributes, type FormEvent, type KeyboardEvent,
+  useId, useLayoutEffect, useRef, type ButtonHTMLAttributes, type FormEvent, type KeyboardEvent,
 } from "react";
 import { CalendarDays, Check, Folder, LoaderCircle, Tag, Trash2 } from "lucide-react";
 import {
@@ -15,6 +15,7 @@ import {
 } from "../lib/task-api";
 import TaskProgressHistory from "./TaskProgressHistory";
 import TaskLinkedNotes from "./TaskLinkedNotes";
+import { useSeenOnScreen } from "../lib/use-seen-on-screen";
 import { deadlineStatus } from "../lib/deadlines";
 import type { ListOption } from "../lib/list-tree";
 import type { EditableFields, UnsavedTaskEdits } from "../lib/use-task-drafts";
@@ -79,6 +80,10 @@ interface TaskRowProps {
   onEdits: (edits: UnsavedTaskEdits | undefined) => void;
   /** Alt+Up/Down (and a drag) move it within its group of the List's Custom Order. */
   reorderable?: boolean;
+  /** Just added, here or by an AI: the row takes the pale-yellow new Task mark. */
+  justAdded?: boolean;
+  /** Given while the mark waits to be seen: called when the row is on screen with the window in front. */
+  onSeen?: () => void;
 }
 
 /** ⌘↵, with Ctrl+Return as a quiet alias (as in use-shortcuts.ts): save the edit group the key was pressed in. */
@@ -163,7 +168,12 @@ export default function TaskRow({
   edits,
   onEdits,
   reorderable = false,
+  justAdded = false,
+  onSeen,
 }: TaskRowProps) {
+  const card = useRef<HTMLElement>(null);
+  useSeenOnScreen(card, onSeen);
+  const justAddedId = useId();
   const saved = savedFields(task);
   const typed = edits?.fields ?? {};
   const draft: EditableFields = { ...saved, ...typed };
@@ -283,7 +293,8 @@ export default function TaskRow({
 
   return (
     <article
-      className={`task-card task-card--${task.status} ${wontDo ? "task-card--wont-do" : ""} ${expanded ? "task-card--expanded" : ""}`}
+      ref={card}
+      className={`task-card task-card--${task.status} ${wontDo ? "task-card--wont-do" : ""} ${expanded ? "task-card--expanded" : ""} ${justAdded ? "task-card--new" : ""}`}
       aria-label={task.title}
     >
       <div className="task-row">
@@ -306,6 +317,7 @@ export default function TaskRow({
           onClick={onToggle}
           aria-label={`${expanded ? "Close" : "Open"} ${task.title}`}
           aria-expanded={expanded}
+          aria-describedby={justAdded ? justAddedId : undefined}
           aria-keyshortcuts={reorderable ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
         >
           <span className="task-row-title">{task.title}</span>
@@ -319,6 +331,8 @@ export default function TaskRow({
           </span>
         </button>
         <div className="task-row-meta">
+          {/* Also the open button's description, so moving between titles says it too. */}
+          {justAdded && <span className="sr-only" id={justAddedId}>Just added</span>}
           {dirty && !expanded && <span className="unsaved-marker">Unsaved edits</span>}
           <span className={`status-pill status-pill--${task.status} sr-only`}>
             {STATUS_VIEW[task.status].label}
