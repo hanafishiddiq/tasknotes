@@ -433,6 +433,13 @@ describe("the contrast check itself", () => {
     expect([...tokensAsFills].sort()).toEqual(["accent", "bg", "field", "hover", "row-selected", "row-selected-text", "selection", "sep", "side-hover", "side-selected", "sidebar"]);
   });
 
+  it("checks text on every fill mixed from two tokens", () => {
+    // A new colour-mix fill must become a MIXED surface, so the text on it is paired above.
+    const mixedFills = rules.filter((rule) => /color-mix\(/.test(declared(rule, "background") ?? ""))
+      .flatMap((rule) => selectorsOf(rule));
+    expect(mixedFills.sort()).toEqual(Object.values(MIXED).sort());
+  });
+
 });
 
 /** The stylesheet does not decide these, so only the owner's on-screen check can. */

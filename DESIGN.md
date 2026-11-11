@@ -113,6 +113,11 @@ components:
     typography: "{typography.label}"
     padding: "0 10px"
     height: "26px"
+  button-remove:
+    textColor: "{colors.alert-red}"
+  button-remove-hover:
+    backgroundColor: "color-mix(in srgb, {colors.alert-red} 8%, {colors.ink-gray-canvas})"
+    textColor: "{colors.alert-red}"
   button-primary:
     backgroundColor: "{colors.notes-yellow}"
     textColor: "{colors.accent-ink}"
@@ -219,7 +224,7 @@ Twelve named colours a person may give a List's or Note Folder's sidebar icon (`
 - **Focus Ring** (`focus-ring`; light `light-focus-ring`): translucent yellow for every `:focus-visible` outline.
 
 ### Named Rules
-**The One Voice Rule.** Yellow is the only hue that appears without a state reason. It marks folders, status, tags, progress, the selected row and the one primary button. Never use it for decoration, headings or borders. The one exception is a Style the person chose: a List's or Note Folder's sidebar icon may take one of twelve Style colours (owner decision 2026-11-09); the app never colours anything else with them.
+**The One Voice Rule.** Yellow is the only hue that appears without a state reason. It marks folders, status, tags, progress, the selected row and the one primary button. Never use it for decoration, headings or borders. Two exceptions: a Style the person chose, as a List's or Note Folder's sidebar icon may take one of twelve Style colours (owner decision 2026-11-09), and the app never colours anything else with them; and Move to Removed on an open Task, whose label and icon are Alert Red at rest so it stands apart from Save (owner decision 2026-11-11).
 
 **The Split Accent Rule.** In light appearance the accent has three jobs with three values: fills and rings use the ochre accent, accent-colored text uses the darker ochre text, and anything placed on a yellow fill uses near-black accent ink. Never set small text in the fill value.
 
@@ -268,7 +273,7 @@ The app icon is a Notes-yellow status ring and check on graphite, with a slight 
 ## Components
 
 ### Buttons
-Quiet until needed; only the primary button carries a fill, and only Move to Removed carries red text.
+Quiet until needed; only the primary button carries a fill at rest, and only Move to Removed carries red text.
 - **Shape:** gently rounded (6px), 28px tall (26px small).
 - **Default:** transparent with secondary-gray text; hover steps to hover gray and primary text.
 - **Primary:** Notes yellow fill with accent ink, weight 600. Hover keeps the fill and brightens it slightly (`brightness(1.05)`). Disabled primary becomes a field-gray box with tertiary text at weight 500 rather than a faded yellow.
@@ -355,7 +360,7 @@ A quiet list, styled like the progress history: a Label Strong heading ("Notes" 
 ## Do's and Don'ts
 
 ### Do:
-- **Do** keep the canvas, sidebar, hover and field grays as the only surface steps, separated by 1px hairlines.
+- **Do** keep the canvas, sidebar, hover and field grays as the only surface steps, separated by 1px hairlines. The two tinted steps are mixes of a token into one of them, each checked for contrast: the active filter chip (accent into field gray) and Move to Removed under the pointer (Alert Red into the canvas).
 - **Do** reserve Notes yellow for folder icons, status rings, tags, progress fill, focus, the selected row and the single primary action.
 - **Do** use the darker accent-text value for any yellow text in light appearance and accent ink on any yellow fill.
 - **Do** show priority and difficulty as icon plus label, deadlines as words ("Overdue", "Due today", "Due Oct 22"), tags as `#name`.

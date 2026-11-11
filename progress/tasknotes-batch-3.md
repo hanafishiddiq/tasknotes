@@ -7,7 +7,7 @@ Tujuan akhir: Tasknotes di /Applications berisi 4 perubahan batch 3 (tombol Remo
 - [x] Fitur baru dibaca dan urutan kerja disepakati (Q1–Q3, 2026-11-11)
 - [ ] Tombol Remove merah (tiket 01) di main
   - [x] Dikerjakan dengan TDD
-  - [ ] Draft PR, review dua sumbu, temuan diperbaiki
+  - [x] Draft PR #38, review dua sumbu, temuan diperbaiki
   - [ ] Di-merge setelah Han konfirmasi
 - [ ] Tanda kuning Task baru (tiket 02) di main
   - [ ] Tanya jawab, termasuk konflik dengan keputusan 9 Nov
@@ -21,3 +21,5 @@ Tujuan akhir: Tasknotes di /Applications berisi 4 perubahan batch 3 (tombol Remo
 ## Perlu Han lakukan
 
 ## Riwayat sesi
+
+- 2026-11-11 · 17451773
