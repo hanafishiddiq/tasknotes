@@ -54,6 +54,7 @@ describe("Stylesheet accessibility", () => {
     // The hidden outline → where focus shows instead (DESIGN.md: outline, accent underline, or the hover step).
     const replacements: Record<string, [string, RegExp]> = {
       ".folder-form input": [".folder-form:focus-within", /background:/],
+      ".task-menu-item": [".task-menu-item:focus", /background:/],
       ".toolbar-search input": [".toolbar-search:focus-within", /outline: 2px/],
       ".toolbar-sort select": [".toolbar-sort:focus-within", /outline: 2px/],
       ".capture-title": [".capture:focus-within", /background:/],

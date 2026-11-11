@@ -31,10 +31,8 @@ import {
   WONT_DO_ICON,
   WONT_DO_LABEL,
   checkActionLabel,
+  statusChoiceState,
 } from "../lib/task-visuals";
-
-/** Why a finished Task's Won't do choice is closed (ADR 0008). */
-const FINISHED_CANNOT_BE_SET_ASIDE = "Reopen it first: a finished Task can't be set aside";
 
 const dateFormatter = new Intl.DateTimeFormat("en", {
   month: "short",
@@ -84,6 +82,8 @@ interface TaskRowProps {
   justAdded?: boolean;
   /** Given while the mark waits to be seen: called when the row is on screen with the window in front. */
   onSeen?: () => void;
+  /** Right-click, Shift+F10 or the menu key on the row: open the Task menu here (batch 3, Ticket 03). */
+  onMenu?: (x: number, y: number) => void;
 }
 
 /** ⌘↵, with Ctrl+Return as a quiet alias (as in use-shortcuts.ts): save the edit group the key was pressed in. */
@@ -170,6 +170,7 @@ export default function TaskRow({
   reorderable = false,
   justAdded = false,
   onSeen,
+  onMenu,
 }: TaskRowProps) {
   const card = useRef<HTMLElement>(null);
   useSeenOnScreen(card, onSeen);
@@ -297,7 +298,18 @@ export default function TaskRow({
       className={`task-card task-card--${task.status} ${wontDo ? "task-card--wont-do" : ""} ${expanded ? "task-card--expanded" : ""} ${justAdded ? "task-card--new" : ""}`}
       aria-label={task.title}
     >
-      <div className="task-row">
+      {/* The row, not the open Task's fields, takes the Task menu: they keep the system's copy and paste. */}
+      <div className="task-row"
+        onContextMenu={onMenu && ((event) => {
+          event.preventDefault();
+          onMenu(event.clientX, event.clientY);
+        })}
+        onKeyDown={onMenu && ((event) => {
+          if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+          event.preventDefault();
+          const box = event.currentTarget.getBoundingClientRect();
+          onMenu(box.left + 38, box.bottom);
+        })}>
         {/* Outside the open button, so a click never opens the row or starts a drag. */}
         <button
           type="button"
@@ -465,20 +477,14 @@ export default function TaskRow({
                 }
               >
                 {STATUS_CHOICES.map((choice) => {
-                  // Ready is for work not yet started, which a Task completed or set aside
-                  // before it started still is (Q48, ADR 0008).
-                  const readyClosed = choice === "ready" && task.status !== "ready"
-                    && (task.completedFrom ?? task.wontDoFrom) !== "ready";
-                  // A finished Task is reopened first; the core refuses it too.
-                  const finishedNote = choice === "wont_do" && task.status === "completed" && !wontDo
-                    ? FINISHED_CANNOT_BE_SET_ASIDE : undefined;
+                  const { disabled, reason } = statusChoiceState(task, choice);
                   return (
                     <option
                       key={choice}
                       value={choice}
-                      disabled={readyClosed || finishedNote !== undefined}
-                      title={finishedNote}
-                      aria-description={finishedNote}
+                      disabled={disabled}
+                      title={reason}
+                      aria-description={reason}
                     >
                       {statusChoiceLabel(choice)}
                     </option>

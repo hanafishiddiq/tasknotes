@@ -9,7 +9,7 @@ Tujuan akhir: Tasknotes di /Applications berisi 4 perubahan batch 3 (tombol Remo
   - [x] Dikerjakan dengan TDD
   - [x] Draft PR #38, review dua sumbu, temuan diperbaiki
   - [x] Di-merge setelah Han konfirmasi (Q9)
-- [ ] Tanda kuning Task baru (tiket 02) di main
+- [x] Tanda kuning Task baru (tiket 02) di main (PR #39, merge 83aa171, CI 14/14 hijau)
   - [x] Tanya jawab, termasuk konflik dengan keputusan 9 Nov
     - [x] Q5–Q8 dijawab (Q8: Task dari AI juga diberi tanda)
     - [x] Q4, Q10, Q13 dijawab (toast tetap, 10 detik + tombol X; AI lewat CLI/MCP; tanpa toast untuk AI)
@@ -18,8 +18,12 @@ Tujuan akhir: Tasknotes di /Applications berisi 4 perubahan batch 3 (tombol Remo
   - [x] Bagian 2: tanda kuning Task sendiri dan Task dari AI (kuning 50% demi kontras)
   - [x] Draft PR #39, review dua sumbu, temuan diperbaiki (commit 154824d)
   - [x] Jendela tersembunyi lewat menu bar: diputuskan Han (Q17: tetap diberi tanda, tanpa ubah kode)
-  - [ ] Di-merge setelah CI hijau dan Han konfirmasi
+  - [x] Di-merge setelah CI hijau dan Han konfirmasi (Q19)
 - [ ] Menu klik kanan Task (tiket 03) di main
+  - [x] Tanya jawab Q20–Q24 (Q21: menu custom sesuai desain app)
+  - [x] Dikerjakan dengan TDD (15 tes menu)
+  - [ ] Draft PR, review dua sumbu, temuan diperbaiki
+  - [ ] Di-merge setelah CI hijau (Q24)
 - [ ] Halaman Pomodoro lengkap (tiket 04) di main
 - [ ] Semua tiket di main dan lolos CI gabungan
 - [ ] Satu build dipasang ke /Applications (setelah Han konfirmasi)

@@ -17,7 +17,7 @@ Four tickets, one at a time, each settled with the owner before it is built: the
 
 1. **Red Move to Removed** — Ticket 01. Settled (Q3, 2026-11-11); merged in PR #38.
 2. **New Task yellow mark** — Ticket 02, settled (Q4–Q16, 2026-11-11), replacing the 2026-11-09 decision (Q3/Q14/Q25: a toast instead of a lasting yellow mark). Whatever replaces the toast's flash must keep the red Move to Removed readable: on today's flash (`--selection` over the open Task) it measures about 2.66:1 dark and 4.29:1 light (PR #38 review).
-3. **Task right-click menu** — a few actions (Move to Removed, change work status, …). Later round.
+3. **Task right-click menu** — Ticket 03, settled (Q20–Q24, 2026-11-11).
 4. **Complete Pomodoro page** — controls and lengths on the page, not only history. Later round.
 
 ## User Stories
@@ -40,6 +40,16 @@ Owner answers, 2026-11-11 (Q5–Q8):
 - Q17: a window hidden to the menu bar is not closed: a Task an AI adds then is marked when the window comes back. Q15 is about quitting (⌘Q).
 - Q16: the owner's own adds keep Q6, not 10 seconds.
 - Colour (Q18, owner-approved after a side-by-side picture): half the sidebar hover yellow over the canvas, the strongest mix that keeps row text and the status ring at WCAG AA.
+
+### Task right-click menu (Ticket 03, settled)
+
+Owner answers, 2026-11-11 (Q20–Q24, after a sketch):
+
+- Q20: the menu holds Open (Close on the open Task); Ready, In Progress, Completed, Won't Do with the current one ticked and the ones the status control refuses dimmed; a Priority submenu with the five levels; Move to Removed. Lists, Difficulty, Tags and Deadline stay in the open Task.
+- Q21 (changed from the recommendation): a custom menu in the app's own look, not the macOS one, so it matches the design (and Move to Removed can be red).
+- Q22: each choice is the existing control's change: Completed on a Ready or In Progress Task is the round check (completion sound and Undo bar); Move to Removed is the red button (Undo, restorable); choices that change the Task are dimmed while it has unsaved edits, like the check.
+- Q23: only on Task rows in the Task view; not in Removed, Pomodoro history, Notes or the sidebar.
+- Q24: merge after green CI without asking again, then the Pomodoro page.
 
 ## Implementation Decisions
 

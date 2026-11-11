@@ -3,7 +3,7 @@ import {
   Circle, LoaderCircle, Minus, Signal, SignalHigh, SignalLow, SignalMedium, SignalZero,
   SquareDashed, X, type LucideIcon,
 } from "lucide-react";
-import type { CheckAction, Difficulty, Priority, StatusChoice, WorkStatus } from "./task-api";
+import type { CheckAction, Difficulty, Priority, StatusChoice, Task, WorkStatus } from "./task-api";
 
 export const STATUS_ORDER: WorkStatus[] = ["in_progress", "ready", "completed"];
 /** Tasks in the order the list shows them: grouped In Progress, Ready, Completed, each group in page order. */
@@ -42,6 +42,26 @@ export const WONT_DO_ICON: LucideIcon = X;
 export const STATUS_CHOICES: StatusChoice[] = [...STATUS_ORDER, "wont_do"];
 export function statusChoiceLabel(choice: StatusChoice): string {
   return choice === "wont_do" ? WONT_DO_LABEL : STATUS_VIEW[choice].label;
+}
+/** Why a finished Task's Won't Do choice is closed (ADR 0008). */
+export const FINISHED_CANNOT_BE_SET_ASIDE = "Reopen it first: a finished Task can't be set aside";
+/**
+ * Whether a status choice is open for a Task now, and why not when the reason is
+ * worth saying. Ready is for work not yet started, which a Task completed or set
+ * aside before it started still is (Q48, ADR 0008); a finished Task is reopened
+ * before it is set aside. The core refuses both too; the status control and the
+ * Task menu both ask here, so they never offer different choices.
+ */
+export function statusChoiceState(
+  task: Pick<Task, "status" | "wontDo" | "completedFrom" | "wontDoFrom">, choice: StatusChoice,
+): { disabled: boolean; reason?: string } {
+  if (choice === "ready" && task.status !== "ready" && (task.completedFrom ?? task.wontDoFrom) !== "ready") {
+    return { disabled: true };
+  }
+  if (choice === "wont_do" && task.status === "completed" && !task.wontDo) {
+    return { disabled: true, reason: FINISHED_CANNOT_BE_SET_ASIDE };
+  }
+  return { disabled: false };
 }
 /**
  * After a check click, the checks wait this long: the second click of a double

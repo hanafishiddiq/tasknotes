@@ -21,7 +21,7 @@ const AA_NON_TEXT = 3;
 /** Where things sit: tokens used as fills, and the colour-mixes in MIXED. */
 type Surface =
   | "bg" | "sidebar" | "hover" | "side-hover" | "side-selected" | "field" | "row-selected" | "accent"
-  | "filter-chip" | "remove-hover" | "new-mark";
+  | "filter-chip" | "remove-hover" | "new-mark" | "red";
 
 /** Surfaces App.css mixes from two tokens, by the rule whose background each is. */
 const MIXED: Partial<Record<Surface, string>> = {
@@ -124,6 +124,10 @@ const TEXT: Record<string, Placement> = {
   '.palette-option[aria-selected="true"]': { on: ["row-selected"] },
   ".palette-group": { on: ["sidebar"] },
   '.palette-option[aria-selected="true"] .palette-group': SELECTED,
+  // The Task menu (batch 3, Ticket 03): a sheet on the sidebar gray, like the palette.
+  ".task-menu-item:focus": { on: ["row-selected"] },
+  ".task-menu-item--remove": { on: ["sidebar"] },
+  ".task-menu-item--remove:focus": { on: ["red"] },
   ".palette-empty": { on: ["sidebar"] },
   // Removed and approvals
   ".removed-hint": { on: ["bg"] },
@@ -271,6 +275,7 @@ const NO_PAIR_NEEDED: Record<string, string> = {
   ".toolbar-sort select": "says inherit: checked as .toolbar-sort",
   ".save-shortcut": "says inherit: checked as the Save button it sits in",
   ".button-primary:disabled": "disabled controls are exempt from WCAG contrast",
+  '.task-menu-item[aria-disabled="true"]': "disabled controls are exempt from WCAG contrast",
   ".folder-row--removed": "no component uses this class any more",
   // Decorative icons beside a text label that says the same thing.
   ".folder svg": "decorative icon beside its name",
@@ -295,7 +300,7 @@ const NO_PAIR_NEEDED: Record<string, string> = {
 /** Lines and fills that separate or decorate and say nothing by themselves. */
 const DECORATIVE_LINES = [
   ".undo-bar", ".task-toast", ".sidebar", ".toolbar", ".settings-shortcut", ".settings-backup", ".palette", ".palette-field",
-  ".removed-item", ".pomodoro-session", ".approval", ".task-slot + .task-slot .task-card::before", ".history-entry", ".linked-item",
+  ".removed-item", ".pomodoro-session", ".approval", ".task-menu", ".task-slot + .task-slot .task-card::before", ".history-entry", ".linked-item",
   ".note-list-pane", ".next-step-input", ".note-quote", ".style-picker", ".pomodoro", ".pomodoro-tip",
   // The sidebar's resize edge lights up under the pointer; its separator role and focus ring carry the meaning.
   ".sidebar-resizer:hover::after", "body.sidebar-resizing .sidebar-resizer::after",
@@ -435,7 +440,7 @@ describe("the contrast check itself", () => {
   it("uses no fill it does not check text against", () => {
     const tokensAsFills = new Set(rules.filter((rule) => rule.media === null)
       .flatMap((rule) => [...(declared(rule, "background") ?? "").matchAll(/^var\(--([\w-]+)\)$/g)].map((match) => match[1])));
-    expect([...tokensAsFills].sort()).toEqual(["accent", "bg", "field", "hover", "row-selected", "row-selected-text", "selection", "sep", "side-hover", "side-selected", "sidebar"]);
+    expect([...tokensAsFills].sort()).toEqual(["accent", "bg", "field", "hover", "red", "row-selected", "row-selected-text", "selection", "sep", "side-hover", "side-selected", "sidebar"]);
   });
 
   it("checks text on every fill mixed from two tokens", () => {
