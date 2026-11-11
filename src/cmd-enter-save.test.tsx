@@ -32,7 +32,7 @@ function Row({ initialEdits, saving = false }: { initialEdits?: UnsavedTaskEdits
       onSave={onSave} onChange={onChange} onRecordProgress={onRecordProgress}
       lists={[]} today="2026-11-09" onMove={async () => undefined}
       onUpdateDetails={onUpdateDetails} onOpenNote={() => undefined}
-      onRemove={async () => undefined} shown edits={edits} onEdits={setEdits}
+      onRemove={async () => undefined} onCheck={async () => undefined} shown edits={edits} onEdits={setEdits}
     />
   );
 }

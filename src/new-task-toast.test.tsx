@@ -289,7 +289,7 @@ describe("the list never moves by itself after the toast", () => {
         <div ref={scrollRef} style={{ height: 500, overflow: "auto" }}>
           <VirtualTaskList tasks={shown} hasMore={false} scrollRef={scrollRef} keepMounted={new Set()}
             renderTask={(item) => <article aria-label={item.title} />} expandedId={null}
-            onCollapse={() => undefined} reveal={reveal} onRevealed={onRevealed} />
+            onCollapse={() => undefined} reveal={reveal} onRevealed={onRevealed} onAnnounce={() => undefined} />
         </div>
       );
     }

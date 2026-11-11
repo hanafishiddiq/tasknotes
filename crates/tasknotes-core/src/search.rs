@@ -260,7 +260,7 @@ impl TaskStore {
         }
         drop(rows);
         drop(stmt);
-        crate::organization::hydrate_tags(&conn, &mut items)?;
+        crate::tasks::hydrate(&conn, &mut items)?;
 
         let next_cursor = if items.len() > limit as usize {
             items.pop();

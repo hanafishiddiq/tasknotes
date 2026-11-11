@@ -555,6 +555,70 @@ fn icons_and_colours_are_read_set_and_cleared_through_mcp() {
     );
 }
 
+/// Owner decision Q48: a Completed Task names the work status it was completed
+/// from, and an AI client reopens it there.
+#[test]
+fn reopening_returns_a_task_to_the_status_it_was_completed_from_through_mcp() {
+    let data = Data::trusted();
+    let mut s = data.server();
+    let change = s
+        .tools()
+        .into_iter()
+        .find(|tool| tool["name"] == "task_change")
+        .unwrap();
+    assert!(
+        change["description"]
+            .as_str()
+            .unwrap()
+            .contains("completed_from"),
+        "{change}"
+    );
+
+    let ready = s.ok("task_create", json!({"title": "Synthetic idea"}));
+    assert_eq!(ready["item"]["completed_from"], Value::Null);
+    let done = s.ok(
+        "task_change",
+        json!({"id": id(&ready), "revision": rev(&ready), "status": "completed"}),
+    );
+    assert_eq!(done["item"]["completed_from"], "ready");
+    let listed = s.ok("task_list", json!({"status": "completed"}));
+    assert_eq!(listed["items"][0]["completed_from"], "ready");
+    let reopened = s.ok(
+        "task_change",
+        json!({"id": id(&done), "revision": rev(&done), "status": "ready"}),
+    );
+    assert_eq!(
+        (
+            reopened["item"]["status"].clone(),
+            reopened["item"]["progress"].clone(),
+            reopened["item"]["completed_from"].clone()
+        ),
+        (json!("ready"), json!(0), Value::Null)
+    );
+
+    let draft = s.ok("task_create", json!({"title": "Synthetic draft"}));
+    let started = s.ok(
+        "task_change",
+        json!({"id": id(&draft), "revision": rev(&draft), "progress": 40}),
+    );
+    let done = s.ok(
+        "task_change",
+        json!({"id": id(&started), "revision": rev(&started), "status": "completed"}),
+    );
+    assert_eq!(done["item"]["completed_from"], "in_progress");
+    let reopened = s.ok(
+        "task_change",
+        json!({"id": id(&done), "revision": rev(&done), "status": "in_progress"}),
+    );
+    assert_eq!(
+        (
+            reopened["item"]["status"].clone(),
+            reopened["item"]["progress"].clone()
+        ),
+        (json!("in_progress"), json!(40))
+    );
+}
+
 /// Ticket 10: an AI client sets, clears and filters Won't Do; the history
 /// records the transition.
 #[test]

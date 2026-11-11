@@ -80,6 +80,12 @@ export interface Task {
   wontDo: boolean;
   /** While Won't Do: the work status reopening returns it to. Absent otherwise. */
   wontDoFrom?: Exclude<WorkStatus, "completed">;
+  /**
+   * While Completed (finished or Won't Do), the work status it had before it was
+   * completed, where reopening returns it (Q48). Absent when its history does
+   * not say, as for a Task completed before Progress Entries: it has started.
+   */
+  completedFrom?: Exclude<WorkStatus, "completed">;
   nextStep: string;
   listId: string | null;
   dueDate: string | null;
@@ -186,6 +192,30 @@ export function statusChoiceOf(task: Pick<Task, "status" | "wontDo">): StatusCho
 /** What the core is sent for a choice, as a change or as a list filter. */
 export function statusChoiceArgs(choice: StatusChoice): { wontDo: true } | { status: WorkStatus } {
   return choice === "wont_do" ? { wontDo: true } : { status: choice };
+}
+
+/**
+ * What a click on a Task's round check does (Ticket 16): complete a Ready or
+ * In Progress Task, reopen a Completed one, or clear Won't Do. Each is the
+ * status control's own change; the core decides the progress that follows.
+ */
+export type CheckAction = "complete" | "reopen" | "clear_wont_do";
+
+/** The check's action for a Task as it shows now. */
+export function checkActionOf(task: Pick<Task, "status" | "wontDo">): CheckAction {
+  if (task.wontDo) return "clear_wont_do";
+  return task.status === "completed" ? "reopen" : "complete";
+}
+
+/**
+ * What the core is sent for a check action. Reopening returns the Task to the
+ * work status it was completed from, as the core names it (Q48): Ready at 0%, or
+ * In Progress at the progress it had. Without that history, In Progress.
+ */
+export function checkActionArgs(action: CheckAction, task: Pick<Task, "completedFrom">): TaskChange {
+  return action === "clear_wont_do" ? { wontDo: false }
+    : action === "reopen" ? { status: task.completedFrom ?? "in_progress" }
+    : { status: "completed" };
 }
 
 function queryArgs(view: TaskView, filters: TaskFilters) {

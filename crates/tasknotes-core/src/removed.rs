@@ -350,7 +350,7 @@ impl TaskStore {
             ],
             read_task,
         )?;
-        crate::organization::hydrate_tags(tx, std::slice::from_mut(&mut changed))?;
+        crate::tasks::hydrate(tx, std::slice::from_mut(&mut changed))?;
         self.audit_applied(tx, action, &changed.id, changed.revision)?;
         Ok(changed)
     }

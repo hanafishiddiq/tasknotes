@@ -522,6 +522,13 @@ pub struct Task {
     /// (Ready or In Progress): reopening returns it there (ADR 0006).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wont_do_from: Option<WorkStatus>,
+    /// While Completed (finished or Won't Do), the work status the Task had
+    /// before it was completed: reopening returns it there (owner decision
+    /// Q48, ADR 0006). Read from the Progress Entry that completed it, never
+    /// stored; `None` for a Task completed before Progress Entries existed,
+    /// which counts as started.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completed_from: Option<WorkStatus>,
     pub next_step: String,
     pub list_id: Option<String>,
     pub due_date: Option<String>,
@@ -669,9 +676,47 @@ fn read_task_with_tags(conn: &Connection, id: &str) -> Result<Option<Task>, Task
     let sql = format!("SELECT {COLUMNS} FROM tasks WHERE id = ?1");
     let mut task = conn.query_row(&sql, params![id], read_task).optional()?;
     if let Some(ref mut item) = task {
-        crate::organization::hydrate_tags(conn, std::slice::from_mut(item))?;
+        hydrate(conn, std::slice::from_mut(item))?;
     }
     Ok(task)
+}
+
+/// Fills in what a Task's row does not hold: its Tags and, while it is
+/// Completed, the work status it was completed from.
+pub(crate) fn hydrate(conn: &Connection, tasks: &mut [Task]) -> Result<(), TaskError> {
+    crate::organization::hydrate_tags(conn, tasks)?;
+    for task in tasks.iter_mut() {
+        task.completed_from = completed_from(conn, task)?;
+    }
+    Ok(())
+}
+
+/// The work status a Completed Task had before it was completed (Q48). While
+/// it is Won't Do that is `wont_do_from`. Otherwise it is the status before
+/// the latest Progress Entry that came from outside Completed: every status
+/// change writes one, so while the Task stays Completed that entry is the one
+/// that completed it, whatever notes or a real completion came after. A Task
+/// completed before Progress Entries existed (schema v3) has none: `None`.
+fn completed_from(conn: &Connection, task: &Task) -> Result<Option<WorkStatus>, TaskError> {
+    if task.status != WorkStatus::Completed {
+        return Ok(None);
+    }
+    if task.wont_do_from.is_some() {
+        return Ok(task.wont_do_from);
+    }
+    let mut stmt = conn.prepare_cached(
+        "SELECT previous_status, status FROM progress_entries
+         WHERE task_id = ?1 AND previous_status <> 'completed'
+         ORDER BY sequence DESC LIMIT 1",
+    )?;
+    let entry = stmt
+        .query_row(params![task.id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .optional()?;
+    Ok(entry
+        .filter(|(_, status)| status == WorkStatus::Completed.as_sql())
+        .and_then(|(previous, _)| WorkStatus::from_sql(&previous)))
 }
 
 /// The checks a status, priority, progress or Next Step change needs before
@@ -744,6 +789,8 @@ struct WorkState {
 /// Task as the one it was before it was set aside (`wont_do_from`): a
 /// started Task stays In Progress even at 0% (ADR 0006), and only one that
 /// never started may go back to Ready. A normal Complete (100%) clears it.
+/// A finished Task is reopened the same way, as the one it was before it was
+/// completed (`completed_from`, Q48): Ready at 0% again if it never started.
 fn next_work_state(
     before: &Task,
     input: &ChangeTask,
@@ -771,8 +818,11 @@ fn next_work_state(
             wont_do_from: Some(wont_do_from.unwrap_or(before.status)),
         });
     }
-    // The status the usual rules see: a Won't Do Task is the Task it was.
-    let lifecycle = wont_do_from.unwrap_or(before.status);
+    // The status the usual rules see: a Completed Task, set aside or
+    // finished, is the Task it was before; without history, it has started.
+    let lifecycle = wont_do_from
+        .or(before.completed_from)
+        .unwrap_or(before.status);
     if input.wont_do == Some(false)
         && before.wont_do
         && input.status.is_none()
@@ -801,6 +851,11 @@ fn next_work_state(
         match status {
             WorkStatus::Ready => {
                 let not_started = lifecycle == WorkStatus::Ready;
+                // Reopened to Ready: the work it never started is at 0% again.
+                if not_started && before.status == WorkStatus::Completed && input.progress.is_none()
+                {
+                    next_progress = 0;
+                }
                 if !not_started || next_progress != 0 {
                     return Err(TaskError::InvalidTransition(
                         "Ready is only available for work that has not started",
@@ -874,6 +929,8 @@ pub(crate) fn read_task(row: &Row<'_>) -> rusqlite::Result<Task> {
                     .ok_or_else(|| invalid_db_text(WONT_DO_FROM_COLUMN, value))
             })
             .transpose()?,
+        // Not a column: `hydrate` reads it from the Progress Entries.
+        completed_from: None,
         next_step: row.get(9)?,
         list_id: row.get(10)?,
         due_date: row.get(11)?,
@@ -1332,6 +1389,7 @@ impl TaskStore {
             progress: 0,
             wont_do: false,
             wont_do_from: None,
+            completed_from: None,
             next_step: String::new(),
             list_id: list_id.map(str::to_owned),
             due_date: None,
@@ -1400,7 +1458,7 @@ impl TaskStore {
             )
             .optional()?
             .ok_or(TaskError::RevisionConflict)?;
-        crate::organization::hydrate_tags(&tx, std::slice::from_mut(&mut task))?;
+        hydrate(&tx, std::slice::from_mut(&mut task))?;
         self.audit_applied(&tx, AuditAction::TaskUpdate, &task.id, task.revision)?;
         tx.commit()?;
         Ok(task)
@@ -1488,11 +1546,14 @@ impl TaskStore {
                 Ok((read_task(row)?, row.get::<_, u8>(COLUMN_COUNT)?))
             })
             .optional()?;
-        let (before, mut previous_incomplete) = current.ok_or(TaskError::NotFound)?;
+        let (mut before, mut previous_incomplete) = current.ok_or(TaskError::NotFound)?;
         crate::removed::require_writable_task(transaction, &before.id)?;
         if before.revision != input.expected_revision {
             return Err(TaskError::RevisionConflict);
         }
+        // Read under the revision just checked, so it is the completion this
+        // change reopens, never one made since.
+        before.completed_from = completed_from(transaction, &before)?;
 
         let next = next_work_state(&before, &input, previous_incomplete)?;
         let (next_status, next_progress) = (next.status, next.progress);
@@ -1568,7 +1629,7 @@ impl TaskStore {
         }
         self.audit_applied(transaction, action, &updated.id, updated.revision)?;
         let mut updated = updated;
-        crate::organization::hydrate_tags(transaction, std::slice::from_mut(&mut updated))?;
+        hydrate(transaction, std::slice::from_mut(&mut updated))?;
         Ok(updated)
     }
 

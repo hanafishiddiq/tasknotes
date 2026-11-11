@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useHoldTimer, type HoldReason } from "./use-hold-timer";
 
 /** How long the toast stays before it fades, not counting time held under the pointer or focus. */
 export const TOAST_MS = 6000;
@@ -6,10 +7,6 @@ export const TOAST_MS = 6000;
 export const TOAST_FADE_MS = 120;
 /** How long an opened Task keeps its yellow flash. */
 export const FLASH_MS = 1500;
-/** Time left once the pointer or focus lets go of a toast whose time was already up. */
-const RELEASE_GRACE_MS = 1000;
-
-type HoldReason = "hover" | "focus";
 
 export interface NewTaskToastState {
   /** The Task the toast points to, or null when no toast shows. */
@@ -50,60 +47,51 @@ export function useNewTaskToast(): NewTaskToastState {
   const current = useRef(shown);
   current.current = shown;
   const seq = useRef(0);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const fadeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  // Time left on the toast, and when it last started counting down.
-  const remaining = useRef(TOAST_MS);
-  const startedAt = useRef(0);
-  const held = useRef(new Set<HoldReason>());
+  // Time up: the toast fades, then leaves, unless the pointer or focus catches it.
+  const timer = useHoldTimer(() => {
+    setShown((now) => now && { ...now, leaving: true });
+    fadeTimer.current = setTimeout(() => {
+      timer.stop();
+      setShown(null);
+    }, TOAST_FADE_MS);
+  });
 
   useEffect(() => () => {
-    clearTimeout(timer.current);
+    clearTimeout(fadeTimer.current);
     clearTimeout(flashTimer.current);
   }, []);
 
-  function countDown(ms: number) {
-    clearTimeout(timer.current);
-    remaining.current = ms;
-    startedAt.current = Date.now();
-    timer.current = setTimeout(() => {
-      remaining.current = 0;
-      setShown((now) => now && { ...now, leaving: true });
-      timer.current = setTimeout(() => setShown(null), TOAST_FADE_MS);
-    }, ms);
+  /** The toast goes now, and its time with it. */
+  function close() {
+    clearTimeout(fadeTimer.current);
+    timer.stop();
+    setShown(null);
   }
 
   function added(taskId: string) {
     seq.current += 1;
-    // The previous toast is replaced, and with it any pointer or focus on it.
-    held.current.clear();
     // A scroll still waiting for an earlier Task is dropped, so it never fires by itself later.
     setReveal(null);
     setShown({ taskId, seq: seq.current, leaving: false });
-    countDown(TOAST_MS);
+    // The previous toast is replaced, and with it any pointer or focus on it.
+    clearTimeout(fadeTimer.current);
+    timer.start(TOAST_MS);
   }
 
   function hold(reason: HoldReason, isHeld: boolean) {
     if (!current.current) return;
-    const wasHeld = held.current.size > 0;
-    if (isHeld) held.current.add(reason);
-    else held.current.delete(reason);
-    const nowHeld = held.current.size > 0;
-    if (nowHeld && !wasHeld) {
-      clearTimeout(timer.current);
-      remaining.current = Math.max(0, remaining.current - (Date.now() - startedAt.current));
+    if (timer.hold(reason, isHeld) && current.current.leaving) {
       // Caught while fading: it stays.
-      if (current.current.leaving) setShown((now) => now && { ...now, leaving: false });
-    } else if (!nowHeld && wasHeld) {
-      countDown(remaining.current > 0 ? remaining.current : RELEASE_GRACE_MS);
+      clearTimeout(fadeTimer.current);
+      setShown((now) => now && { ...now, leaving: false });
     }
   }
 
   function open(): string | null {
     const taskId = current.current?.taskId ?? null;
-    clearTimeout(timer.current);
-    held.current.clear();
-    setShown(null);
+    close();
     if (!taskId) return null;
     clearTimeout(flashTimer.current);
     setFlashId(taskId);
@@ -114,11 +102,7 @@ export function useNewTaskToast(): NewTaskToastState {
   const clearReveal = useCallback(() => setReveal(null), []);
 
   function forget(taskId: string) {
-    if (current.current?.taskId === taskId) {
-      clearTimeout(timer.current);
-      held.current.clear();
-      setShown(null);
-    }
+    if (current.current?.taskId === taskId) close();
     setFlashId((now) => now === taskId ? null : now);
     setReveal((now) => now?.taskId === taskId ? null : now);
   }
