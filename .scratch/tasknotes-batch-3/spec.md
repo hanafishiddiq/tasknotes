@@ -16,7 +16,7 @@ Four tickets, one at a time, each settled with the owner before it is built: the
 ## Features, in working order
 
 1. **Red Move to Removed** — Ticket 01. Settled (Q3, 2026-11-11); merged in PR #38.
-2. **New Task yellow mark** — soft yellow without a border when opened from the toast, and a mark that lasts on a newly added Task. Next round. Conflicts with the 2026-11-09 decision (Q3/Q14/Q25: a toast instead of a lasting yellow mark); the owner decides before any change. Whatever replaces the toast's flash must keep the red Move to Removed readable: on today's flash (`--selection` over the open Task) it measures about 2.66:1 dark and 4.29:1 light (PR #38 review).
+2. **New Task yellow mark** — Ticket 02, settled (Q4–Q16, 2026-11-11), replacing the 2026-11-09 decision (Q3/Q14/Q25: a toast instead of a lasting yellow mark). Whatever replaces the toast's flash must keep the red Move to Removed readable: on today's flash (`--selection` over the open Task) it measures about 2.66:1 dark and 4.29:1 light (PR #38 review).
 3. **Task right-click menu** — a few actions (Move to Removed, change work status, …). Later round.
 4. **Complete Pomodoro page** — controls and lengths on the page, not only history. Later round.
 

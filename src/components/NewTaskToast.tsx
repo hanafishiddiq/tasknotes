@@ -21,7 +21,7 @@ export default function NewTaskToast({ toast, onOpen }: NewTaskToastProps) {
     <div className="toast-region" aria-live="polite">
       {toast.taskId && (
         <div key={toast.seq}
-          className={`task-toast task-toast--new ${toast.leaving ? "task-toast--leaving" : ""}`}
+          className={`task-toast task-toast--closable ${toast.leaving ? "task-toast--leaving" : ""}`}
           onMouseEnter={() => toast.hold("hover", true)}
           onMouseLeave={() => toast.hold("hover", false)}
           onFocus={() => toast.hold("focus", true)}

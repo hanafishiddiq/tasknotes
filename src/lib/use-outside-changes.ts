@@ -8,7 +8,7 @@ interface OutsideChanges {
   latest: number;
   changed: boolean;
   /** Tasks another process created since `seen`; never any on the first answer. */
-  createdTasks?: string[];
+  createdTasks: string[];
 }
 
 /**
@@ -38,7 +38,7 @@ export function useOutsideChanges(
       if (checking) return;
       checking = true;
       try {
-        const { latest, changed, createdTasks = [] } = await invoke<OutsideChanges>("outside_changes", { seen });
+        const { latest, changed, createdTasks } = await invoke<OutsideChanges>("outside_changes", { seen });
         if ((seen !== null && !changed) || await latestShow.current()) {
           // Only once shown: a check that could not show them offers them again.
           if (createdTasks.length > 0) latestCreated.current?.(createdTasks);

@@ -224,12 +224,9 @@ export default function App() {
   // Only the newest re-read of an outside change may show what it read.
   const outsideRead = useRef(0);
 
-  useOutsideChanges(showOutsideChanges, newTaskMarks.addedOutside);
-  // Opening any Task ends the person's own new Task marks, and that Task's mark.
-  const { opened: markOpened } = newTaskMarks;
-  useEffect(() => {
-    if (expandedId) markOpened(expandedId);
-  }, [expandedId, markOpened]);
+  // A Task open already when the check names it is not marked: opening ends a mark.
+  useOutsideChanges(showOutsideChanges, (taskIds) =>
+    newTaskMarks.addedOutside(taskIds.filter((taskId) => taskId !== expandedNow.current)));
   // Silent is the Pomodoro's own setting, kept by the shell; sound settings play no part.
   const pomodoro = usePomodoro({
     onTaskChanged: () => void showOutsideChanges(),
@@ -416,6 +413,15 @@ export default function App() {
     openNotes(ALL_NOTES);
   }
 
+  /**
+   * Opens a Task: every way of opening one comes here. Opening any Task, even the
+   * one open already, ends the person's own new Task marks, and this Task's mark.
+   */
+  function openTask(taskId: string) {
+    setExpandedId(taskId);
+    newTaskMarks.opened(taskId);
+  }
+
   /** Shows one Task on its own and expanded, under the banner for `reason`. */
   function showTaskAlone(taskId: string, reason: AloneReason) {
     if (busy) {
@@ -433,7 +439,7 @@ export default function App() {
     setSearchDraft("");
     setTagDraft("");
     applyFilters({ ...NO_FILTERS, taskId });
-    setExpandedId(taskId);
+    openTask(taskId);
     // After navigate and applyFilters, which drop any earlier scroll request.
     if (reason === "added") newTaskToast.revealTask(taskId);
   }
@@ -441,7 +447,7 @@ export default function App() {
   /** The new Task toast was clicked: open the Task where it is, or on its own when this view hides it. */
   function openNewTask(taskId: string) {
     if (workspace === "tasks" && tasks.some((task) => task.id === taskId)) {
-      setExpandedId(taskId);
+      openTask(taskId);
       newTaskToast.revealTask(taskId);
     } else showTaskAlone(taskId, "added");
   }
@@ -1595,7 +1601,10 @@ export default function App() {
                         task={task}
                         expanded={expandedId === task.id}
                         saving={savingId === task.id}
-                        onToggle={() => setExpandedId((current) => current === task.id ? null : task.id)}
+                        onToggle={() => {
+                          if (expandedNow.current === task.id) setExpandedId(null);
+                          else openTask(task.id);
+                        }}
                         onSave={(nextTitle, nextDescription, base) => updateTask(task, nextTitle, nextDescription, base)}
                         onChange={(change, base) => changeTask(task, change, base)}
                         onRecordProgress={(update, base) => recordProgress(task, update, base)}
@@ -1611,8 +1620,7 @@ export default function App() {
                         edits={drafts.get(task.id)}
                         onEdits={(edits) => drafts.set(task.id, edits)}
                         reorderable={canPlace}
-                        justAdded={newTaskMarks.marked.has(task.id)}
-                        onSeen={newTaskMarks.waitingToBeSeen.has(task.id) ? () => newTaskMarks.seen(task.id) : undefined}
+                        {...newTaskMarks.rowProps(task.id)}
                       />
                     )}
                   />

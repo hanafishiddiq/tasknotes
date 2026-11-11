@@ -21,6 +21,8 @@ export interface NewTaskMarks {
   seen(taskId: string): void;
   /** This Task was moved to Removed. */
   forget(taskId: string): void;
+  /** What a Task's row shows: the mark, and while its 10 seconds wait, how it reports being seen. */
+  rowProps(taskId: string): { justAdded: boolean; onSeen?: () => void };
 }
 
 /**
@@ -78,6 +80,7 @@ export function useNewTaskMarks(): NewTaskMarks {
   }, [dropOutside]);
 
   const seen = useCallback((taskId: string) => {
+    // The state says what renders; the timer guards a second report in the same tick, before it renders.
     if (outsideNow.current.get(taskId) !== "waiting" || timers.current.has(taskId)) return;
     timers.current.set(taskId, setTimeout(() => dropOutside(taskId), OUTSIDE_MARK_MS));
     setOutside((now) => now.get(taskId) === "waiting" ? new Map(now).set(taskId, "counting") : now);
@@ -99,5 +102,10 @@ export function useNewTaskMarks(): NewTaskMarks {
     [outside],
   );
 
-  return { marked, waitingToBeSeen, addedHere, addedOutside, opened, seen, forget };
+  const rowProps = useCallback((taskId: string) => ({
+    justAdded: marked.has(taskId),
+    onSeen: waitingToBeSeen.has(taskId) ? () => seen(taskId) : undefined,
+  }), [marked, waitingToBeSeen, seen]);
+
+  return { marked, waitingToBeSeen, addedHere, addedOutside, opened, seen, forget, rowProps };
 }

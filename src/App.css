@@ -691,7 +691,7 @@ button.folder-disclosure:hover:not(:disabled) {
   color: var(--accent-text);
 }
 /* The new Task toast: the open button and its X share the box. */
-.task-toast--new {
+.task-toast--closable {
   display: flex;
   align-items: center;
   gap: 2px;
@@ -1581,7 +1581,7 @@ kbd {
   color: var(--row-selected-text);
   background: var(--row-selected);
 }
-/* A Task just added, here or by an AI (batch 3, Ticket 02): the sidebar hover yellow on its row,
+/* A Task just added, here or by an AI (batch 3, Ticket 02): half the sidebar hover yellow on its row,
    no border, and it stays under the pointer. Opening it ends the mark, so it never meets the open row's yellow. */
 .task-card--new:not(.task-card--expanded) .task-row,
 .task-card--new:not(.task-card--expanded) .task-row:hover {

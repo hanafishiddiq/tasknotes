@@ -370,38 +370,29 @@ impl TaskStore {
             [],
             |row| row.get(0),
         )?;
+        // Applied entries another interface wrote after `seen`, up to `latest`:
+        // one written meanwhile is left for the next look, so nothing is named twice.
+        const OUTSIDE: &str =
+            "sequence > ?1 AND sequence <= ?2 AND interface <> ?3 AND outcome = ?4";
+        let (desktop, applied) = (Interface::Desktop.as_str(), AuditOutcome::Applied.as_str());
         let changed = match seen {
             Some(seen) => conn.query_row(
-                "SELECT EXISTS(SELECT 1 FROM audit_entries
-                               WHERE sequence > ?1 AND interface <> ?2 AND outcome = ?3)",
-                params![
-                    seen,
-                    Interface::Desktop.as_str(),
-                    AuditOutcome::Applied.as_str()
-                ],
+                &format!("SELECT EXISTS(SELECT 1 FROM audit_entries WHERE {OUTSIDE})"),
+                params![seen, latest, desktop, applied],
                 |row| row.get(0),
             )?,
             None => false,
         };
         let created_tasks = match seen {
-            Some(seen) if changed => {
-                let mut statement = conn.prepare(
-                    "SELECT entity_id FROM audit_entries
-                     WHERE sequence > ?1 AND interface <> ?2 AND outcome = ?3 AND action = ?4
-                     ORDER BY sequence",
-                )?;
-                statement
-                    .query_map(
-                        params![
-                            seen,
-                            Interface::Desktop.as_str(),
-                            AuditOutcome::Applied.as_str(),
-                            AuditAction::TaskCreate.as_str()
-                        ],
-                        |row| row.get(0),
-                    )?
-                    .collect::<Result<Vec<String>, _>>()?
-            }
+            Some(seen) if changed => conn
+                .prepare(&format!(
+                    "SELECT entity_id FROM audit_entries WHERE {OUTSIDE} AND action = ?5 ORDER BY sequence"
+                ))?
+                .query_map(
+                    params![seen, latest, desktop, applied, AuditAction::TaskCreate.as_str()],
+                    |row| row.get(0),
+                )?
+                .collect::<Result<Vec<String>, _>>()?,
             _ => Vec::new(),
         };
         Ok(OutsideChanges {

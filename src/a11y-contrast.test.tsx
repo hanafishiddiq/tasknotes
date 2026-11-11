@@ -37,7 +37,7 @@ interface Placement {
 }
 
 const ROW: Surface[] = ["bg", "hover"];
-/** A Task row: also the pale-yellow new Task mark (batch 3, Ticket 02), the sidebar hover yellow. */
+/** A Task row: also the new Task mark (batch 3, Ticket 02), half the sidebar hover yellow over the canvas. */
 const TASK_ROW: Surface[] = ["bg", "hover", "new-mark"];
 const SELECTED: Placement = { on: ["row-selected"], through: "row-selected-text" };
 

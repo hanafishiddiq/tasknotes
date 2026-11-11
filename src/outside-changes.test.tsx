@@ -103,7 +103,7 @@ async function answer(command: string, args: unknown): Promise<unknown> {
     const body = (args ?? {}) as Record<string, any>;
     switch (command) {
       case "outside_changes":
-        return { latest: latestEntry, changed: body.seen != null && latestOutside > body.seen };
+        return { latest: latestEntry, changed: body.seen != null && latestOutside > body.seen, createdTasks: [] };
       case "list_lists": {
         const start = body.cursor ? Number(body.cursor) : 0;
         const end = start + body.limit;

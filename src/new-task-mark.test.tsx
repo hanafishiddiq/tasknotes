@@ -190,8 +190,9 @@ describe("a Task the person adds in the window", () => {
     expect(isMarked("First new")).toBe(true);
     expect(isMarked("Second new")).toBe(true);
     expect(isMarked("Older task")).toBe(false);
-    // Screen readers hear it too, not only the colour.
+    // Screen readers hear it too, not only the colour, and also when moving between titles.
     expect(within(row("Second new")).getByText(JUST_ADDED)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open Second new" })).toHaveAccessibleDescription(JUST_ADDED);
 
     await user.click(screen.getByRole("button", { name: "Open Older task" }));
     expect(isMarked("First new")).toBe(false);
@@ -274,6 +275,23 @@ describe("a Task another process adds", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open AI task one" }));
     expect(isMarked("AI task one")).toBe(false);
     expect(isMarked("AI task two")).toBe(true);
+  });
+
+  it("gets no mark when it is open already by the time the check names it", async () => {
+    tasks = [task(1, { title: "Older task" })];
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(<App />);
+    await screen.findByRole("article", { name: "Older task" });
+    await windowHasLookedOnce();
+
+    // The list shows it before the next check: the read after the person's own add finds it.
+    createdByAnotherProcess(task(2, { title: "AI task seen early" }));
+    await addTask(user, "Mine");
+    await user.click(await screen.findByRole("button", { name: "Open AI task seen early" }));
+    await windowHasLookedOnce();
+    expect(isMarked("AI task seen early")).toBe(false);
+    expect(screen.queryByText(JUST_ADDED)).toBeNull();
   });
 
   it("gets no mark when it was added before the window opened", async () => {

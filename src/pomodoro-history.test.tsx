@@ -114,7 +114,7 @@ beforeEach(() => {
         if (!page) throw new Error("History cursor is invalid");
         return structuredClone(page);
       }
-      case "outside_changes": return { latest: outsideLatest, changed: body.seen != null && outsideLatest > body.seen };
+      case "outside_changes": return { latest: outsideLatest, changed: body.seen != null && outsideLatest > body.seen, createdTasks: [] };
       case "list_lists": return { items: [], nextCursor: null };
       case "list_tasks": {
         const items = [{ ...base }].filter((task) => !body.taskId || task.id === body.taskId);

@@ -1,5 +1,5 @@
 import {
-  useLayoutEffect, useRef, type ButtonHTMLAttributes, type FormEvent, type KeyboardEvent,
+  useId, useLayoutEffect, useRef, type ButtonHTMLAttributes, type FormEvent, type KeyboardEvent,
 } from "react";
 import { CalendarDays, Check, Folder, LoaderCircle, Tag, Trash2 } from "lucide-react";
 import {
@@ -173,6 +173,7 @@ export default function TaskRow({
 }: TaskRowProps) {
   const card = useRef<HTMLElement>(null);
   useSeenOnScreen(card, onSeen);
+  const justAddedId = useId();
   const saved = savedFields(task);
   const typed = edits?.fields ?? {};
   const draft: EditableFields = { ...saved, ...typed };
@@ -316,6 +317,7 @@ export default function TaskRow({
           onClick={onToggle}
           aria-label={`${expanded ? "Close" : "Open"} ${task.title}`}
           aria-expanded={expanded}
+          aria-describedby={justAdded ? justAddedId : undefined}
           aria-keyshortcuts={reorderable ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
         >
           <span className="task-row-title">{task.title}</span>
@@ -329,7 +331,8 @@ export default function TaskRow({
           </span>
         </button>
         <div className="task-row-meta">
-          {justAdded && <span className="sr-only">Just added</span>}
+          {/* Also the open button's description, so moving between titles says it too. */}
+          {justAdded && <span className="sr-only" id={justAddedId}>Just added</span>}
           {dirty && !expanded && <span className="unsaved-marker">Unsaved edits</span>}
           <span className={`status-pill status-pill--${task.status} sr-only`}>
             {STATUS_VIEW[task.status].label}
