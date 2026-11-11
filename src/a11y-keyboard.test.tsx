@@ -492,16 +492,6 @@ describe("waiting for the owner: focus falls to the body when the control used d
     await fallsToBody();
   });
 
-  it("the check of a Task that leaves for another group (Ticket 16)", async () => {
-    world.tasks = everyRowKind();
-    const user = userEvent.setup();
-    render(<App />);
-    const draft = await screen.findByRole("article", { name: "Synthetic draft" });
-    await user.click(within(draft).getByRole("button", { name: "Complete “Synthetic draft”" }));
-    await screen.findByRole("status", { name: "Task completed" });
-    await fallsToBody();
-  });
-
   it("Undo in the Undo bar", async () => {
     world.tasks = [fixtureTask("a")];
     const user = userEvent.setup();

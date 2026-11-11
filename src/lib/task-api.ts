@@ -80,6 +80,12 @@ export interface Task {
   wontDo: boolean;
   /** While Won't Do: the work status reopening returns it to. Absent otherwise. */
   wontDoFrom?: Exclude<WorkStatus, "completed">;
+  /**
+   * While Completed (finished or Won't Do), the work status it had before it was
+   * completed, where reopening returns it (Q48). Absent when its history does
+   * not say, as for a Task completed before Progress Entries: it has started.
+   */
+  completedFrom?: Exclude<WorkStatus, "completed">;
   nextStep: string;
   listId: string | null;
   dueDate: string | null;
@@ -201,10 +207,14 @@ export function checkActionOf(task: Pick<Task, "status" | "wontDo">): CheckActio
   return task.status === "completed" ? "reopen" : "complete";
 }
 
-/** What the core is sent for a check action. Reopening restores the progress the Task had before. */
-export function checkActionArgs(action: CheckAction): TaskChange {
+/**
+ * What the core is sent for a check action. Reopening returns the Task to the
+ * work status it was completed from, as the core names it (Q48): Ready at 0%, or
+ * In Progress at the progress it had. Without that history, In Progress.
+ */
+export function checkActionArgs(action: CheckAction, task: Pick<Task, "completedFrom">): TaskChange {
   return action === "clear_wont_do" ? { wontDo: false }
-    : action === "reopen" ? { status: "in_progress" }
+    : action === "reopen" ? { status: task.completedFrom ?? "in_progress" }
     : { status: "completed" };
 }
 

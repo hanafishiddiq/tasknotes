@@ -5,12 +5,18 @@ import {
   defaultRangeExtractor, measureElement, observeElementRect, useVirtualizer, type Range, type Virtualizer,
 } from "@tanstack/react-virtual";
 import { TASK_PAGE_SIZE, type Task, type TaskPlace, type WorkStatus } from "../lib/task-api";
-import { STATUS_ORDER, STATUS_VIEW } from "../lib/task-visuals";
+import { STATUS_ORDER, STATUS_VIEW, shownOrder } from "../lib/task-visuals";
 import { useRowDrag, watchRefusedDrag, type RowDrop } from "../lib/use-row-drag";
 
 type Item =
   | { kind: "heading"; status: WorkStatus; count: number }
   | { kind: "task"; task: Task };
+
+/** A Task its check just sent to another group, and the place it showed at in `shownOrder`. */
+export interface CheckedTask {
+  taskId: string;
+  slot: number;
+}
 
 interface VirtualTaskListProps {
   /** One page of Tasks; the list groups them In Progress, Ready, Completed. */
@@ -47,6 +53,15 @@ interface VirtualTaskListProps {
    * by a drag or Alt+Up/Down, calls this instead, and nothing moves.
    */
   onMoveBlocked?: () => void;
+  /** Says a move to screen readers, through the Task view's polite live region. */
+  onAnnounce: (text: string) => void;
+  /**
+   * A Task whose check moved it to another group: focus, left behind, goes to the
+   * title of the row now in its place (the last row, past the end), without a
+   * scroll. One try only: `onCheckSettled` drops it.
+   */
+  checked?: CheckedTask | null;
+  onCheckSettled?: () => void;
 }
 
 /**
@@ -94,12 +109,14 @@ const TaskSlotContent = memo(function TaskSlotContent({ task, renderTask }: {
  */
 export default function VirtualTaskList({
   tasks, hasMore, scrollRef, keepMounted, renderTask, expandedId, onCollapse,
-  flashId = null, reveal = null, onRevealed, onPlace, onMoveBlocked,
+  flashId = null, reveal = null, onRevealed, onPlace, onMoveBlocked, onAnnounce, checked = null, onCheckSettled,
 }: VirtualTaskListProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const [scrollMargin, setScrollMargin] = useState(0);
-  // The row keyboard focus is moving to, until focus lands there.
+  // The row keyboard focus is moving to, until focus lands there, and which of its
+  // controls takes it: the title, or the check when the arrows started on a check.
   const [focusTarget, setFocusTarget] = useState<string | null>(null);
+  const focusPart = useRef<"task-open" | "task-check">("task-open");
   // The row holding focus now; it stays mounted however far the list scrolls.
   const [focusedId, setFocusedId] = useState<string | null>(null);
 
@@ -112,8 +129,6 @@ export default function VirtualTaskList({
     ];
   }), [tasks]);
 
-  // What a screen reader hears after a move.
-  const [moved, setMoved] = useState("");
   const byId = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);
 
   /** The Tasks of one group, in order: what a move is placed among. */
@@ -125,7 +140,7 @@ export default function VirtualTaskList({
     const anchor = anchorId === null ? undefined : byId.get(anchorId);
     void onPlace(task, where).then((placed) => {
       if (!placed) return;
-      setMoved(anchor === undefined ? `${task.title} moved to the top of ${STATUS_VIEW[task.status].label}`
+      onAnnounce(anchor === undefined ? `${task.title} moved to the top of ${STATUS_VIEW[task.status].label}`
         : `${task.title} moved ${"beforeId" in where ? "before" : "after"} ${anchor.title}`);
     });
   }
@@ -192,15 +207,23 @@ export default function VirtualTaskList({
     if (margin !== scrollMargin) setScrollMargin(margin);
   });
 
-  function focusTask(id: string) {
+  function focusTask(id: string, part: "task-open" | "task-check" = "task-open") {
     const index = items.findIndex((item) => item.kind === "task" && item.task.id === id);
     if (index < 0) return;
     // Always instant: a smooth scroll would ignore Reduce Motion, which CSS cannot reach here.
     virtualizer.scrollToIndex(index, { align: "auto", behavior: "auto" });
+    focusPart.current = part;
     setFocusTarget(id);
   }
 
-  // Up/Down/Home/End move between rows (headings are skipped); Escape closes the open Task.
+  /** Focus goes to a row's title, the usual way in. */
+  function focusTitle(id: string) {
+    focusPart.current = "task-open";
+    setFocusTarget(id);
+  }
+
+  // Up/Down/Home/End move between rows (headings are skipped), from a row's title or
+  // its check to the same control in the next row; Escape closes the open Task.
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     const target = event.target as HTMLElement;
     const id = target.closest<HTMLElement>("[data-task-id]")?.dataset.taskId;
@@ -208,10 +231,13 @@ export default function VirtualTaskList({
     if (event.key === "Escape" && id === expandedId) {
       event.preventDefault();
       onCollapse();
-      setFocusTarget(id);
+      focusTitle(id);
       return;
     }
-    if (!target.classList.contains("task-open")) return;
+    const onCheck = target.classList.contains("task-check");
+    if (!target.classList.contains("task-open") && !onCheck) return;
+    // Alt with the arrows moves a Task from its title only, never from its check.
+    if (onCheck && event.altKey) return;
     if (!onPlace && onMoveBlocked && event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
       // Not here: say why, and leave the list and focus where they are.
       event.preventDefault();
@@ -229,7 +255,7 @@ export default function VirtualTaskList({
       if (!neighbour) return;
       place(task, event.key === "ArrowUp" ? { beforeId: neighbour.id } : { afterId: neighbour.id });
       // The row moves in the page; focus follows it.
-      setFocusTarget(id);
+      focusTitle(id);
       return;
     }
     const order = items.flatMap((item) => item.kind === "task" ? [item.task.id] : []);
@@ -241,7 +267,7 @@ export default function VirtualTaskList({
       : undefined;
     if (next === undefined) return;
     event.preventDefault();
-    focusTask(next);
+    focusTask(next, onCheck ? "task-check" : "task-open");
   }
 
   // Asked for from the new Task toast, so moving the list is the person's doing. A
@@ -253,7 +279,7 @@ export default function VirtualTaskList({
     if (index >= 0) {
       // Always instant, as in focusTask; the top of the open Task lands at the top of the view.
       virtualizer.scrollToIndex(index, { align: "start", behavior: "auto" });
-      setFocusTarget(reveal.taskId);
+      focusTitle(reveal.taskId);
     }
     onRevealed?.();
   }, [reveal, items, virtualizer, onRevealed]);
@@ -265,8 +291,26 @@ export default function VirtualTaskList({
   useLayoutEffect(() => {
     const closed = wasExpanded.current;
     wasExpanded.current = expandedId;
-    if (closed && !expandedId && document.activeElement === document.body) setFocusTarget(closed);
+    if (closed && !expandedId && document.activeElement === document.body) focusTitle(closed);
   }, [expandedId]);
+
+  // A check sent its Task to another group, so its row left. Focus that was left
+  // behind (on the page, or still in that row) goes to the title of the row now in
+  // its place, or the last row past the end; never a scroll (PR #21), as the
+  // person did not move the list. Focus put elsewhere since stays where it is.
+  useLayoutEffect(() => {
+    if (!checked) return;
+    onCheckSettled?.();
+    const active = document.activeElement;
+    const leftBehind = active === null || active === document.body ||
+      active.closest(`[data-task-id="${CSS.escape(checked.taskId)}"]`) !== null;
+    if (!leftBehind) return;
+    const order = shownOrder(tasks);
+    const now = order[Math.min(checked.slot, order.length - 1)];
+    if (!now) return;
+    listRef.current?.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(now.id)}"] .task-open`)
+      ?.focus({ preventScroll: true });
+  }, [checked, tasks, onCheckSettled]);
 
   const virtualItems = virtualizer.getVirtualItems();
   const total = virtualizer.getTotalSize();
@@ -275,8 +319,11 @@ export default function VirtualTaskList({
   // being asked for; once focus lands there it is let go.
   useLayoutEffect(() => {
     if (!focusTarget) return;
-    const row = listRef.current
-      ?.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(focusTarget)}"] .task-open`);
+    const slot = listRef.current?.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(focusTarget)}"]`);
+    if (!slot) return;
+    // A check that is held (a save on its way) cannot take focus: the title does.
+    const row = (focusPart.current === "task-check" ? slot.querySelector<HTMLElement>(".task-check:not(:disabled)") : null)
+      ?? slot.querySelector<HTMLElement>(".task-open");
     if (!row) return;
     row.focus();
     setFocusTarget(null);
@@ -349,7 +396,6 @@ export default function VirtualTaskList({
         </section>
       ))}
       {tail > 0 && <div aria-hidden="true" style={{ height: tail }} />}
-      <span className="sr-only" aria-live="polite">{moved}</span>
     </div>
   );
 }

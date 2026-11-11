@@ -70,6 +70,8 @@ interface TaskRowProps {
   onRemove: () => Promise<void>;
   /** The round check: completes, reopens or clears Won't Do, as `checkActionOf` says. */
   onCheck: () => Promise<void>;
+  /** Another Task's save or a move is on its way: the check waits, rather than drop a click. */
+  checkHeld?: boolean;
   /** False while the Notes workspace covers the Task view. */
   shown: boolean;
   /** What was typed and not saved, kept above the row so it outlives it. */
@@ -156,6 +158,7 @@ export default function TaskRow({
   onOpenNote,
   onRemove,
   onCheck,
+  checkHeld = false,
   shown,
   edits,
   onEdits,
@@ -193,8 +196,9 @@ export default function TaskRow({
   const canChangeDetails = !saving && !hasUnsavedText && !hasUnsavedProgressUpdate;
   const canChangeMetadata = !saving && !hasUnsavedText && !hasUnsavedDetails;
   const canChangeSelectors = canChangeMetadata && !hasUnsavedProgressUpdate;
-  // The check changes the status, so it waits for typed edits and a save in flight like the status control.
-  const canCheck = !saving && !dirty;
+  // The check changes the status, so it waits for typed edits and a save in flight like the
+  // status control, and for any other save or move, which would refuse it.
+  const canCheck = !saving && !dirty && !checkHeld;
   const numericProgress =
     draftProgress.trim() === "" ? NaN : Number(draftProgress);
   const validProgress =
@@ -289,7 +293,8 @@ export default function TaskRow({
           className={`task-check task-check--${checkKind}`}
           aria-label={checkActionLabel(checkActionOf(task), task.title)}
           disabled={!canCheck}
-          onClick={() => void onCheck()}
+          // The second click of a double click is not a second check.
+          onClick={(event) => { if (event.detail <= 1) void onCheck(); }}
         >
           {wontDo
             ? <WONT_DO_ICON size={11} strokeWidth={3} aria-hidden="true" />
@@ -446,9 +451,10 @@ export default function TaskRow({
                 }
               >
                 {STATUS_CHOICES.map((choice) => {
-                  // Ready is for work not yet started, which a Task set aside before it started still is.
+                  // Ready is for work not yet started, which a Task completed or set aside
+                  // before it started still is (Q48, ADR 0008).
                   const readyClosed = choice === "ready" && task.status !== "ready"
-                    && !(wontDo && task.wontDoFrom === "ready");
+                    && (task.completedFrom ?? task.wontDoFrom) !== "ready";
                   // A finished Task is reopened first; the core refuses it too.
                   const finishedNote = choice === "wont_do" && task.status === "completed" && !wontDo
                     ? FINISHED_CANNOT_BE_SET_ASIDE : undefined;

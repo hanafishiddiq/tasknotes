@@ -460,6 +460,26 @@ describe("Custom Order", () => {
     expect(reorders()).toEqual([]);
   });
 
+  it("holds every check while a move is on its way, so a check never names the revision the move replaces (Ticket 16)", async () => {
+    const user = await showList("Work");
+    const answer = hold("reorder_task");
+    act(() => openButton("Two").focus());
+    await user.keyboard("{Alt>}{ArrowUp}{/Alt}");
+    await eventually(() => expect(titles()).toEqual(["Doing", "Two", "One", "Three"]));
+    const check = (title: string) => within(screen.getByRole("article", { name: title }))
+      .getByRole("button", { name: `Complete “${title}”` });
+    expect(check("Two")).toBeDisabled();
+    expect(check("Three")).toBeDisabled();
+    fireEvent.click(check("Two"));
+    await answer.release();
+    await eventually(() => expect(check("Two")).toBeEnabled());
+    expect(calls.filter((call) => call.command === "change_task")).toEqual([]);
+
+    await user.click(check("Two"));
+    await eventually(() => expect(calls.filter((call) => call.command === "change_task").map((call) => call.body.input))
+      .toEqual([{ id: "Two", expectedRevision: 2, status: "completed" }]));
+  });
+
   it("shows the core's order again when it refuses a move", async () => {
     await showList("Work");
     tasks.find((item) => item.id === "Three")!.revision = 5;

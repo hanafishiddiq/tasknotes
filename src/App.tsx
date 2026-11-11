@@ -1,4 +1,6 @@
-import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
+import {
+  lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent,
+} from "react";
 import {
   ArrowDownWideNarrow, CheckCircle2, LoaderCircle, LockKeyhole, NotebookText, Search, SearchX, SquarePen,
   Tag,
@@ -12,13 +14,13 @@ import {
 import { addList, listOptions, listTree, moveSubtree, parentOf } from "./lib/list-tree";
 import {
   DIFFICULTY_ORDER, DIFFICULTY_VIEW, PRIORITY_ORDER, PRIORITY_VIEW, STATUS_CHOICES,
-  statusChoiceLabel,
+  CHECK_PAUSE_MS, shownOrder, statusChoiceLabel,
 } from "./lib/task-visuals";
 import TaskRow from "./components/TaskRow";
 import TaskSidebar from "./components/TaskSidebar";
 import SidebarResizer from "./components/SidebarResizer";
 import { useSidebarWidth } from "./lib/use-sidebar-width";
-import VirtualTaskList from "./components/VirtualTaskList";
+import VirtualTaskList, { type CheckedTask } from "./components/VirtualTaskList";
 import NewTaskToast from "./components/NewTaskToast";
 import { useLocalCalendarDay } from "./lib/use-local-calendar-day";
 import { useTheme } from "./lib/use-theme";
@@ -119,8 +121,9 @@ export default function App() {
   const [removedKey, setRemovedKey] = useState(0);
   // Recent moves to Removed, which Undo (or ⌘Z) brings back newest first.
   const undo = useUndo();
-  // "Task completed · Undo" for a few seconds after a check completes a Task; view state only.
-  const completionUndo = useCompletionUndo();
+  // "Task completed · Undo" for a few seconds after a check completes a Task; it goes
+  // once the Task shows another revision. View state only.
+  const completionUndo = useCompletionUndo(tasks);
   // "Task added · Click to edit" after a Task is created here; view state only.
   const newTaskToast = useNewTaskToast();
   // Why a Task cannot be moved here, said when the person tries; view state only.
@@ -174,6 +177,11 @@ export default function App() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [creating, setCreating] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
+  // The Task a check just sent to another group, for focus to stay in its place; one try.
+  const [checked, setChecked] = useState<CheckedTask | null>(null);
+  const settleChecked = useCallback(() => setChecked(null), []);
+  // What the Task view's polite live region says: a move, a completion, a reopen.
+  const [listSaid, setListSaid] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   // Unsaved Task edits live here, not in the rows, so they outlive a row leaving the page.
   const drafts = useTaskDrafts();
@@ -213,14 +221,6 @@ export default function App() {
     if (scrollAnchor.current && taskScroll.current) holdScrollAnchor(taskScroll.current, scrollAnchor.current);
     scrollAnchor.current = null;
   }, [tasks]);
-
-  // Undo names the revision its completion made: once the Task shows another (changed
-  // here, elsewhere, or reopened), the offer is gone rather than refused.
-  const { taskId: undoTaskId, revision: undoRevision, hide: hideCompletionUndo } = completionUndo;
-  useEffect(() => {
-    const shown = tasks.find((task) => task.id === undoTaskId);
-    if (shown && shown.revision !== undoRevision) hideCompletionUndo(shown.id);
-  }, [tasks, undoTaskId, undoRevision, hideCompletionUndo]);
 
   // Once the text is saved or given up, the list is what the core says again.
   const keptWithoutEdits = [...keptForEdits.current].some((id) => !drafts.get(id));
@@ -358,6 +358,15 @@ export default function App() {
     target?.focus();
     setFocusRequest(null);
   }, [focusRequest, workspace, loading, creating, savingId]);
+
+  // A check that left the view empty: focus left behind goes to New task, without a scroll.
+  // A list still showing rows settles it itself (VirtualTaskList).
+  useLayoutEffect(() => {
+    if (!checked || tasks.length > 0) return;
+    setChecked(null);
+    const active = document.activeElement;
+    if (active === null || active === document.body) titleInput.current?.focus({ preventScroll: true });
+  }, [checked, tasks.length]);
 
   /** Leaving the Task view: the bars go; moves to Removed stay undoable with ⌘Z. */
   function hideUndoBars() {
@@ -872,11 +881,12 @@ export default function App() {
   }
 
   /**
-   * Resolves true once the mutation itself succeeded. Rejects when the core
-   * refuses, so Undo can say so in whatever view is showing.
+   * Resolves to the Task the core answered once the mutation itself succeeded,
+   * or null when another save was on its way. Rejects when the core refuses,
+   * so Undo can say so in whatever view is showing.
    */
-  async function applyTaskMutation(task: Task, mutate: () => Promise<Task>): Promise<boolean> {
-    if (savingId) return false;
+  async function applyTaskMutation(task: Task, mutate: () => Promise<Task>): Promise<Task | null> {
+    if (savingId) return null;
     setSavingId(task.id);
     setError(null);
     // Paging is disabled while saving, so this stays the visible page.
@@ -899,7 +909,7 @@ export default function App() {
         const { page, stayOnPage } = await readPageAgain(
           pageCursor, { sort: latestSort, view: latestView, filters: latestFilters },
         );
-        if (generation !== requestGeneration.current) return true;
+        if (generation !== requestGeneration.current) return updated;
         setLoading(false);
         setTasks(page.items);
         if (!stayOnPage) {
@@ -909,26 +919,26 @@ export default function App() {
         setNextCursor(page.nextCursor);
         setRefreshError(false);
       } catch (reason) {
-        if (generation !== requestGeneration.current) return true;
+        if (generation !== requestGeneration.current) return updated;
         setLoading(false);
         setNextCursor(null);
         resetTaskPages();
         setRefreshError(true);
         setError("Change saved, but the ordered list could not refresh: " + errorMessage(reason));
       }
-      return true;
+      return updated;
     } finally {
       setSavingId(null);
     }
   }
 
-  /** A change made in the Task view: a refusal shows in its banner. */
-  async function commitTaskMutation(task: Task, mutate: () => Promise<Task>): Promise<boolean> {
+  /** A change made in the Task view: a refusal shows in its banner, and it resolves to null. */
+  async function commitTaskMutation(task: Task, mutate: () => Promise<Task>): Promise<Task | null> {
     try {
       return await applyTaskMutation(task, mutate);
     } catch (reason) {
       setError(errorMessage(reason));
-      return false;
+      return null;
     }
   }
 
@@ -949,26 +959,34 @@ export default function App() {
     await saveEdits(task, () => taskApi.change({ id: task.id, expectedRevision, ...change }));
   }
 
+  // A double click, or a second click as the next row slides under the pointer
+  // once the first Task leaves for its group, must not check that row too.
+  const lastCheckAt = useRef(-Infinity);
+
   /**
    * The round check: the status control's own change, named against the Task on
    * screen. A completion offers Undo for a few seconds, which takes the Task back
-   * to the progress it had, named against the revision the completion made.
+   * to the status and progress it had, named against the revision the completion made.
    */
   async function checkTask(task: Task) {
+    if (savingId || placing.current || Date.now() - lastCheckAt.current < CHECK_PAUSE_MS) return;
+    lastCheckAt.current = Date.now();
     const action = checkActionOf(task);
-    const done: { task?: Task } = {};
-    const saved = await commitTaskMutation(task, async () => (done.task = await taskApi.change({
-      id: task.id, expectedRevision: task.revision, ...checkActionArgs(action),
-    })));
-    const completed = done.task;
-    if (!saved || !completed || action !== "complete") return;
+    // Where the Task showed, so focus can stay there once it leaves for its new group.
+    const slot = shownOrder(tasks).findIndex((item) => item.id === task.id);
+    const changed = await commitTaskMutation(task, () => taskApi.change({
+      id: task.id, expectedRevision: task.revision, ...checkActionArgs(action, task),
+    }));
+    if (!changed) return;
+    setChecked({ taskId: changed.id, slot });
+    setListSaid(`“${changed.title}” ${action === "complete" ? "completed" : "reopened"}`);
+    if (action !== "complete") return;
     // The newer bar takes the place of the Removed notice; ⌘Z still takes that move back.
     undo.hideNotice();
-    completionUndo.offer(completed.id, completed.revision, async () => {
-      // Back to In Progress with the progress it had. The core opens Ready only to
-      // work that has not started, so a Task completed from Ready comes back at 0%.
-      await commitTaskMutation(completed, () => taskApi.change({
-        id: completed.id, expectedRevision: completed.revision, status: "in_progress", progress: task.progress,
+    completionUndo.offer(changed.id, changed.revision, async () => {
+      // Back to the status and progress it had (Q48), named against the completion's revision.
+      await commitTaskMutation(changed, () => taskApi.change({
+        id: changed.id, expectedRevision: changed.revision, status: task.status, progress: task.progress,
       }));
     });
   }
@@ -988,12 +1006,10 @@ export default function App() {
   }
 
   async function removeTask(task: Task) {
-    const done: { task?: Task } = {};
-    const saved = await commitTaskMutation(task, async () => (done.task = await removedApi.remove<Task>("task", task)));
-    if (saved && done.task) {
+    const removed = await commitTaskMutation(task, () => removedApi.remove<Task>("task", task));
+    if (removed) {
       setExpandedId(null);
       newTaskToast.forget(task.id);
-      const removed = done.task;
       undo.push({
         key: `task:${removed.id}`, title: removed.title,
         undo: async () => {
@@ -1051,7 +1067,9 @@ export default function App() {
   }
 
   // One move at a time: a second would name the revision the first is replacing.
+  // The ref answers at once; the state holds the checks, which would race the move.
   const placing = useRef(false);
+  const [placingTask, setPlacingTask] = useState(false);
 
   /**
    * Moves a Task within its group, showing the new order at once. Sorted by
@@ -1067,6 +1085,7 @@ export default function App() {
     const shownSort = sort;
     const shownView = view;
     placing.current = true;
+    setPlacingTask(true);
     // What an outside re-read brought back in the meantime must not undo this.
     requestGeneration.current += 1;
     setError(null);
@@ -1100,6 +1119,7 @@ export default function App() {
       return false;
     } finally {
       placing.current = false;
+      setPlacingTask(false);
     }
   }
 
@@ -1536,6 +1556,9 @@ export default function App() {
                     reveal={newTaskToast.reveal}
                     onRevealed={newTaskToast.clearReveal}
                     onPlace={canPlace ? placeTask : undefined}
+                    onAnnounce={setListSaid}
+                    checked={checked}
+                    onCheckSettled={settleChecked}
                     onMoveBlocked={moveBlocked === null ? undefined : () => reorderNotice.show(moveBlocked)}
                     renderTask={(task) => (
                       <TaskRow
@@ -1553,6 +1576,7 @@ export default function App() {
                         onOpenNote={openLinkedNote}
                         onRemove={() => removeTask(task)}
                         onCheck={() => checkTask(task)}
+                        checkHeld={Boolean(savingId) || placingTask}
                         shown={workspace === "tasks"}
                         edits={drafts.get(task.id)}
                         onEdits={(edits) => drafts.set(task.id, edits)}
@@ -1581,6 +1605,8 @@ export default function App() {
                   )}
                 </>
               )}
+              {/* Always here, so a move, a completion or a reopen is said even when the list empties. */}
+              <span className="sr-only" aria-live="polite">{listSaid}</span>
             </section>
           </div>
         </div>

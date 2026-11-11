@@ -6,6 +6,10 @@ import {
 import type { CheckAction, Difficulty, Priority, StatusChoice, WorkStatus } from "./task-api";
 
 export const STATUS_ORDER: WorkStatus[] = ["in_progress", "ready", "completed"];
+/** Tasks in the order the list shows them: grouped In Progress, Ready, Completed, each group in page order. */
+export function shownOrder<T extends { status: WorkStatus }>(tasks: readonly T[]): T[] {
+  return STATUS_ORDER.flatMap((status) => tasks.filter((task) => task.status === status));
+}
 export const STATUS_VIEW: Record<WorkStatus, { label: string; icon: LucideIcon }> = {
   in_progress: { label: "In Progress", icon: LoaderCircle },
   ready: { label: "Ready", icon: Circle },
@@ -39,6 +43,11 @@ export const STATUS_CHOICES: StatusChoice[] = [...STATUS_ORDER, "wont_do"];
 export function statusChoiceLabel(choice: StatusChoice): string {
   return choice === "wont_do" ? WONT_DO_LABEL : STATUS_VIEW[choice].label;
 }
+/**
+ * After a check click, the checks wait this long: the second click of a double
+ * click, or one landing on the row that slid under the pointer, checks nothing.
+ */
+export const CHECK_PAUSE_MS = 400;
 /** The check's accessible name: what a click on it does, to which Task (Ticket 16). */
 export function checkActionLabel(action: CheckAction, title: string): string {
   return action === "clear_wont_do" ? `Clear ${WONT_DO_LABEL} for “${title}”`
