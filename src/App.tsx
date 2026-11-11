@@ -6,10 +6,10 @@ import {
   Tag,
 } from "lucide-react";
 import {
-  taskApi, NO_FILTERS, TASK_PAGE_SIZE, checkActionArgs, checkActionOf, placeLocally, sortOf, viewKey,
+  taskApi, NO_FILTERS, TASK_PAGE_SIZE, checkActionArgs, checkActionOf, placeLocally, sortOf, statusChoiceArgs, viewKey,
   type Task, type TaskList,
   type TaskView, type SortMode, type TaskChange, type ProgressDraft, type TaskFilters,
-  type Priority, type TaskListPage, type TaskPlace,
+  type Priority, type StatusChoice, type TaskListPage, type TaskPlace,
 } from "./lib/task-api";
 import { addList, listOptions, listTree, moveSubtree, parentOf } from "./lib/list-tree";
 import {
@@ -22,6 +22,7 @@ import SidebarResizer from "./components/SidebarResizer";
 import { useSidebarWidth } from "./lib/use-sidebar-width";
 import VirtualTaskList, { type CheckedTask } from "./components/VirtualTaskList";
 import NewTaskToast from "./components/NewTaskToast";
+import TaskContextMenu, { type MenuPoint } from "./components/TaskContextMenu";
 import { useLocalCalendarDay } from "./lib/use-local-calendar-day";
 import { useTheme } from "./lib/use-theme";
 import { useSound } from "./lib/sound/use-sound";
@@ -195,6 +196,8 @@ export default function App() {
   // What the Task view's polite live region says: a move, a completion, a reopen.
   const [listSaid, setListSaid] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // The Task menu (batch 3, Ticket 03): its Task, where it opened, and what had focus then.
+  const [taskMenu, setTaskMenu] = useState<{ taskId: string; at: MenuPoint; returnTo: HTMLElement | null } | null>(null);
   // Unsaved Task edits live here, not in the rows, so they outlive a row leaving the page.
   const drafts = useTaskDrafts();
   const [title, setTitle] = useState("");
@@ -420,6 +423,39 @@ export default function App() {
   function openTask(taskId: string) {
     setExpandedId(taskId);
     newTaskMarks.opened(taskId);
+  }
+
+  const menuTask = taskMenu ? tasks.find((task) => task.id === taskMenu.taskId) : undefined;
+  // Its Task left the page (moved, removed, or changed elsewhere), or the Task view was left:
+  // the menu goes for good, rather than coming back when the Task does.
+  useEffect(() => {
+    if (taskMenu && (!menuTask || workspace !== "tasks")) setTaskMenu(null);
+  }, [taskMenu, menuTask, workspace]);
+
+  function openTaskMenu(taskId: string, at: MenuPoint) {
+    const focused = document.activeElement;
+    setTaskMenu({ taskId, at, returnTo: focused instanceof HTMLElement ? focused : null });
+  }
+
+  /** The row's open button and the menu's Open: open the Task, or close it when it is the open one. */
+  function toggleTask(taskId: string) {
+    if (expandedNow.current === taskId) setExpandedId(null);
+    else openTask(taskId);
+  }
+
+  function closeTaskMenu(refocus: boolean) {
+    const returnTo = taskMenu?.returnTo;
+    setTaskMenu(null);
+    if (refocus) returnTo?.focus();
+  }
+
+  /**
+   * A status chosen in the Task menu: completing a Ready or In Progress Task is the
+   * round check (cue and Undo bar, Q22); any other choice is the status control's change.
+   */
+  function chooseStatusFromMenu(task: Task, choice: StatusChoice) {
+    if (choice === "completed" && checkActionOf(task) === "complete") void checkTask(task);
+    else void changeTask(task, statusChoiceArgs(choice), task.revision);
   }
 
   /** Shows one Task on its own and expanded, under the banner for `reason`. */
@@ -1601,10 +1637,7 @@ export default function App() {
                         task={task}
                         expanded={expandedId === task.id}
                         saving={savingId === task.id}
-                        onToggle={() => {
-                          if (expandedNow.current === task.id) setExpandedId(null);
-                          else openTask(task.id);
-                        }}
+                        onToggle={() => toggleTask(task.id)}
                         onSave={(nextTitle, nextDescription, base) => updateTask(task, nextTitle, nextDescription, base)}
                         onChange={(change, base) => changeTask(task, change, base)}
                         onRecordProgress={(update, base) => recordProgress(task, update, base)}
@@ -1621,6 +1654,7 @@ export default function App() {
                         onEdits={(edits) => drafts.set(task.id, edits)}
                         reorderable={canPlace}
                         {...newTaskMarks.rowProps(task.id)}
+                        onMenu={(at) => openTaskMenu(task.id, at)}
                       />
                     )}
                   />
@@ -1662,6 +1696,20 @@ export default function App() {
           </div>
           <NewTaskToast toast={newTaskToast} onOpen={openNewTask} />
         </div>
+        {menuTask && taskMenu && (
+          <TaskContextMenu
+            key={`${taskMenu.taskId}:${taskMenu.at.x}:${taskMenu.at.y}`}
+            task={menuTask}
+            at={taskMenu.at}
+            expanded={expandedId === menuTask.id}
+            changesHeld={Boolean(savingId) || placingTask || drafts.get(menuTask.id) !== undefined}
+            onOpenToggle={() => toggleTask(menuTask.id)}
+            onStatus={(choice) => chooseStatusFromMenu(menuTask, choice)}
+            onPriority={(priority) => void changeTask(menuTask, { priority }, menuTask.revision)}
+            onRemove={() => void removeTask(menuTask)}
+            onClose={closeTaskMenu}
+          />
+        )}
       </main>
       <SettingsView hidden={workspace !== "settings"} preference={appearance.preference}
         onPreference={appearance.setPreference}>
