@@ -1,6 +1,6 @@
 # Tasknotes batch 3
 
-Tujuan akhir: Tasknotes di /Applications berisi 4 perubahan batch 3 (tombol Remove merah, tanda kuning Task baru, menu klik kanan Task, halaman Pomodoro lengkap), dipasang dengan satu build dan dicek Han, lalu cache build dan worktree yang sudah selesai dihapus.
+Tujuan akhir: Tasknotes di /Applications berisi 5 perubahan batch 3 (tombol Remove merah, tanda kuning Task baru, menu klik kanan Task, halaman Pomodoro lengkap, angka Task belum selesai di sidebar), dipasang dengan satu build dan dicek Han, lalu cache build dan worktree yang sudah selesai dihapus.
 
 ## Progres
 
@@ -19,18 +19,33 @@ Tujuan akhir: Tasknotes di /Applications berisi 4 perubahan batch 3 (tombol Remo
   - [x] Draft PR #39, review dua sumbu, temuan diperbaiki (commit 154824d)
   - [x] Jendela tersembunyi lewat menu bar: diputuskan Han (Q17: tetap diberi tanda, tanpa ubah kode)
   - [x] Di-merge setelah CI hijau dan Han konfirmasi (Q19)
-- [ ] Menu klik kanan Task (tiket 03) di main
+- [x] Menu klik kanan Task (tiket 03) di main (PR #40, merge d9f0c22, CI 14/14 hijau)
   - [x] Tanya jawab Q20–Q24 (Q21: menu custom sesuai desain app)
   - [x] Dikerjakan dengan TDD (15 tes menu)
   - [x] Draft PR #40, review dua sumbu, temuan diperbaiki
-  - [ ] Di-merge setelah CI hijau (Q24)
+  - [x] Di-merge setelah CI hijau (Q24)
 - [ ] Halaman Pomodoro lengkap (tiket 04) di main
+  - [x] Tanya jawab Q25–Q30 (Q28: dropdown Task bergaya menu klik kanan; Q29: Pause/Resume)
+  - [x] Han menyetujui pratinjau halaman (Q25): susunan A
+    - [x] Pratinjau 1 dan 2 ditolak: terlalu ramai, Han minta gaya contoh dua panel
+    - [x] Pratinjau 3: tiga susunan A/B/C, semua keadaan, tema gelap dan terang
+    - [x] Han memilih susunan A (Q39)
+    - [x] Start break saat fokus berjalan, menitnya tetap dihitung (Q43)
+    - [x] Q40–Q42 dan Q44 dijawab "ya semua" (menit saja, bukan sesi)
+  - [ ] Inti: Pause/Resume, Start break lebih awal, total sepanjang waktu
+  - [ ] Shell: perintah baru, menu bar, notifikasi
+  - [ ] Halaman A: timer, pilihan Task, durasi, garis hari, riwayat
+  - [ ] Draft PR, review dua sumbu, merge setelah Han konfirmasi
+- [ ] Angka Task belum selesai di sidebar (tiket 05) di main
+  - [x] Diminta Han dan dijawab (Q45 Ready + In Progress; Q46 semua folder, bisa diatur di Settings)
+  - [ ] Bentuk pengaturan di Settings ditanyakan saat tiket dimulai
 - [ ] Semua tiket di main dan lolos CI gabungan
 - [ ] Satu build dipasang ke /Applications (setelah Han konfirmasi)
 - [ ] Han mengecek app asli batch 3
 - [ ] Cache build dan worktree yang sudah selesai dihapus (batch 2 dan 3)
 
 ## Perlu Han lakukan
+
 
 
 ## Riwayat sesi

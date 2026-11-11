@@ -59,7 +59,14 @@ A note-level privacy control that prevents access to that note via AI-facing int
 An immutable dated record of a Task's progress update or work-status transition.
 
 **Pomodoro Session**:
-One timed stretch of focus, optionally for one Task, followed by a break the person starts. Only a session that reaches its end counts toward focus time; a stopped one is kept as Stopped.
+One timed stretch of focus, optionally for one Task, followed by a break the person starts. A session that reaches its end is Finished and counts as a session and toward focus time; one the person ends with Start break before its end is Ended Early and counts only its minutes toward focus time; a stopped one is kept as Stopped and counts nothing.
+
+**Ended Early**:
+A Pomodoro Session whose focus the person ended with Start break before its planned end, because they stopped to rest rather than quit. Its minutes of focus count toward focus time and its Task's Progress Entry, but it is not counted as a session and does not move the cycle toward the long break.
+_Avoid_: Partial, short session.
+
+**Pause**:
+A hold on a running Pomodoro focus or break: its time stops until Resume, and paused time never counts as focus, break or Overtime.
 
 **Overtime**:
 Focus time after a Pomodoro Session's planned end that the person chooses to count because they kept focusing; it is added to that session.
