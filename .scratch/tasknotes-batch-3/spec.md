@@ -81,6 +81,8 @@ Owner request and answers, 2026-11-11, during Ticket 04:
 - The number beside a sidebar folder should count only active Tasks, not every Task.
 - Q45: active means unfinished: Ready and In Progress. Completed (Won't Do included) and Removed do not count.
 - Q46 (changed from the recommendation, every folder): every folder shows its count, and Settings can change it; the option's form is asked when the ticket starts.
+- Q48 (owner answer 2026-11-11, "Three choices", changed from the recommended on/off switch): Settings offers where counts show: every folder (the default, Q46), only the open folder, or none.
+- A List counts only its own Tasks, never those of the Lists inside it, as GLOSSARY "List" already says; All tasks counts every unfinished Task not in Removed.
 
 ## Implementation Decisions
 
