@@ -23,6 +23,8 @@ export interface PomodoroControl {
 interface Options {
   /** A Task gained a Pomodoro Progress Entry. */
   onTaskChanged: (taskId: string) => void;
+  /** The shell stored an ended session. */
+  onSessionStored?: () => void;
 }
 
 /**
@@ -32,13 +34,15 @@ interface Options {
  * the view and sends clicks. It never touches sound: Ambient rain and the
  * interaction sounds are independent.
  */
-export function usePomodoro({ onTaskChanged }: Options): PomodoroControl {
+export function usePomodoro({ onTaskChanged, onSessionStored }: Options): PomodoroControl {
   const [view, setView] = useState<PomodoroView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tip, setTip] = useState(false);
   const tipAsked = useRef(false);
   const taskChanged = useRef(onTaskChanged);
   taskChanged.current = onTaskChanged;
+  const sessionStored = useRef(onSessionStored);
+  sessionStored.current = onSessionStored;
 
   useEffect(() => {
     let active = true;
@@ -47,6 +51,7 @@ export function usePomodoro({ onTaskChanged }: Options): PomodoroControl {
       if (!active) return;
       setView(changed.view);
       if (changed.taskChanged) taskChanged.current(changed.taskChanged);
+      if (changed.sessionStored) sessionStored.current?.();
     }).then((stop) => {
       if (active) unlisten = stop; else stop();
     }).catch(() => {});

@@ -28,6 +28,7 @@ import { useSound } from "./lib/sound/use-sound";
 import { usePomodoro } from "./lib/use-pomodoro";
 import PomodoroControl from "./components/PomodoroControl";
 import PomodoroSettings from "./components/PomodoroSettings";
+import PomodoroHistoryView from "./components/PomodoroHistoryView";
 import { useShortcuts } from "./lib/use-shortcuts";
 import { useTaskDrafts } from "./lib/use-task-drafts";
 import { flushSync } from "react-dom";
@@ -77,8 +78,8 @@ interface TaskQueryNow {
   filters: TaskFilters;
 }
 
-/** Why one Task shows on its own: opened from a Note it is linked to, or from the new Task toast. */
-type AloneReason = "linked" | "added";
+/** Why one Task shows on its own: opened from a Note it is linked to, the new Task toast or the Pomodoro history. */
+type AloneReason = "linked" | "added" | "pomodoro";
 
 /** What the Task view says while, and once, a Task shows on its own, by reason. */
 const ALONE_BANNER: Record<AloneReason, { opening: string; openingText: string; shown: string; shownText: string }> = {
@@ -89,6 +90,11 @@ const ALONE_BANNER: Record<AloneReason, { opening: string; openingText: string; 
   added: {
     opening: "Opening added Task", openingText: "Opening the Task you just added once the current change is saved…",
     shown: "Added Task", shownText: "Showing the Task you just added",
+  },
+  pomodoro: {
+    opening: "Opening Pomodoro Task",
+    openingText: "Opening the Task of the Pomodoro Session once the current change is saved…",
+    shown: "Pomodoro Task", shownText: "Showing the Task of a Pomodoro Session",
   },
 };
 
@@ -114,11 +120,14 @@ async function readPageAgain(cursor: string | null, { sort, view, filters }: Tas
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [view, setView] = useState<TaskView>({ kind: "all" });
-  const [workspace, setWorkspace] = useState<"tasks" | "notes" | "removed" | "settings" | "approvals">("tasks");
+  const [workspace, setWorkspace] =
+    useState<"tasks" | "notes" | "removed" | "settings" | "approvals" | "pomodoro">("tasks");
   // Bulk Changes an AI client asked for, waiting for the person.
   const approvals = usePendingApprovals();
   // Bumped after something is moved to Removed, so the Removed view asks again.
   const [removedKey, setRemovedKey] = useState(0);
+  // Bumped when the shell stores a Pomodoro Session or something changed outside, so the history asks again.
+  const [pomodoroHistoryKey, setPomodoroHistoryKey] = useState(0);
   // Recent moves to Removed, which Undo (or ⌘Z) brings back newest first.
   const undo = useUndo();
   // "Task completed · Undo" for a few seconds after a check completes a Task; it goes
@@ -214,7 +223,10 @@ export default function App() {
 
   useOutsideChanges(showOutsideChanges);
   // Silent is the Pomodoro's own setting, kept by the shell; sound settings play no part.
-  const pomodoro = usePomodoro({ onTaskChanged: () => void showOutsideChanges() });
+  const pomodoro = usePomodoro({
+    onTaskChanged: () => void showOutsideChanges(),
+    onSessionStored: () => setPomodoroHistoryKey((key) => key + 1),
+  });
 
   // Before paint, so the rows never show in their new place.
   useLayoutEffect(() => {
@@ -440,6 +452,13 @@ export default function App() {
     setWorkspace("removed");
   }
 
+  function openPomodoroHistory() {
+    if (busy) return;
+    undo.hideNotice();
+    newTaskToast.clearReveal();
+    setWorkspace("pomodoro");
+  }
+
   function openApprovals() {
     if (busy) return;
     hideUndoBars();
@@ -553,6 +572,7 @@ export default function App() {
   async function showOutsideChanges(): Promise<boolean> {
     if (busy || loading || loadError || !(await readTaskViewAgain())) return false;
     setRemovedKey((key) => key + 1);
+    setPomodoroHistoryKey((key) => key + 1);
     setNotesRefresh((key) => key + 1);
     if (notesOpened) void noteFolders.refresh();
     return true;
@@ -1240,7 +1260,7 @@ export default function App() {
   const taskListOptions = useMemo(() => listOptions(lists), [lists]);
   const commands = buildCommands({
     lists, undoTitle: undo.next?.title ?? null, appearance: appearance.preference,
-    navigate, openNotes: () => openNotes(), openRemoved, openSettings, focusInTasks,
+    navigate, openNotes: () => openNotes(), openRemoved, openPomodoroHistory, openSettings, focusInTasks,
     undo: undo.run, setAppearance: appearance.setPreference,
   });
   const searchCommand = (text: string): Command => ({
@@ -1289,6 +1309,7 @@ export default function App() {
         hasMoreLists={Boolean(listCursor)} busy={busy}
         theme={appearance.theme} onToggleTheme={appearance.toggle}
         settingsActive={workspace === "settings"} onOpenSettings={openSettings}
+        pomodoroHistoryActive={workspace === "pomodoro"} onOpenPomodoroHistory={openPomodoroHistory}
         onNavigate={navigate} onCreateList={createList} onCreateSubList={createListIn} onRenameList={renameList}
         onReorderList={reorderList} onPlaceList={placeList} onMoveList={moveList} onStyleList={styleList}
         onRemoveList={(list) => setListRemoved(list, true)}
@@ -1629,6 +1650,8 @@ export default function App() {
         <PomodoroSettings pomodoro={pomodoro} />
       </SettingsView>
       <RemovedView hidden={workspace !== "removed"} refreshKey={removedKey} onRestored={restored} />
+      <PomodoroHistoryView hidden={workspace !== "pomodoro"} refreshKey={pomodoroHistoryKey}
+        onOpenTask={(taskId) => showTaskAlone(taskId, "pomodoro")} />
       <ApprovalsView hidden={workspace !== "approvals"} refreshKey={approvals.count}
         onDecided={bulkDecided} />
       {notesOpened && (

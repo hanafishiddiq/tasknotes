@@ -15,6 +15,8 @@ use tasknotes_core::tasks::{
 
 const MINUTE: i64 = 60_000;
 const START: i64 = 1_800_000_000_000;
+/// The Mac's clock in Jakarta when the focus started, UTC+7.
+const JAKARTA: i32 = 7 * 3600;
 
 fn store_at(path: &Path) -> TaskStore {
     TaskStore::open(path).expect("open isolated synthetic Tasknotes DB")
@@ -33,9 +35,11 @@ fn finished(task_id: Option<&str>, overtime_seconds: i64) -> EndedSession {
     EndedSession {
         task_id: task_id.map(str::to_owned),
         started_at: START,
+        utc_offset_seconds: JAKARTA,
         planned_seconds: 25 * 60,
         overtime_seconds,
         outcome: SessionOutcome::Finished,
+        stopped_after_seconds: None,
         ended_at: START + 25 * MINUTE + overtime_seconds * 1000,
     }
 }
@@ -44,9 +48,11 @@ fn stopped(task_id: Option<&str>) -> EndedSession {
     EndedSession {
         task_id: task_id.map(str::to_owned),
         started_at: START,
+        utc_offset_seconds: JAKARTA,
         planned_seconds: 25 * 60,
         overtime_seconds: 0,
         outcome: SessionOutcome::Stopped,
+        stopped_after_seconds: Some(10 * 60),
         ended_at: START + 10 * MINUTE,
     }
 }
@@ -69,6 +75,26 @@ fn a_session_without_a_task_is_stored_with_its_start_length_overtime_and_outcome
     assert_eq!(session.overtime_seconds, 135);
     assert_eq!(session.outcome, SessionOutcome::Finished);
     assert_eq!(session.ended_at, START + 25 * MINUTE + 135_000);
+    assert_eq!(session.utc_offset_seconds, Some(JAKARTA));
+    assert_eq!(session.stopped_after_seconds, None);
+}
+
+#[test]
+fn a_stopped_session_keeps_its_focus_before_stop_and_its_offset() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("t.db"));
+    let new_york = EndedSession {
+        utc_offset_seconds: -5 * 3600,
+        stopped_after_seconds: Some(746),
+        ..stopped(None)
+    };
+    let recorded = store.record_pomodoro_session(new_york).unwrap();
+    assert_eq!(recorded.session.utc_offset_seconds, Some(-5 * 3600));
+    assert_eq!(recorded.session.stopped_after_seconds, Some(746));
+    assert_eq!(
+        store.get_pomodoro_session(&recorded.session.id).unwrap(),
+        Some(recorded.session)
+    );
 }
 
 #[test]
@@ -284,11 +310,36 @@ fn impossible_sessions_are_refused() {
         planned_seconds: 0,
         ..finished(None, 0)
     };
+    let stopped_without_its_time = EndedSession {
+        stopped_after_seconds: None,
+        ..stopped(None)
+    };
+    let stopped_past_its_plan = EndedSession {
+        stopped_after_seconds: Some(25 * 60 + 1),
+        ..stopped(None)
+    };
+    let stopped_before_it_started = EndedSession {
+        stopped_after_seconds: Some(-1),
+        ..stopped(None)
+    };
+    let finished_with_a_stop_time = EndedSession {
+        stopped_after_seconds: Some(60),
+        ..finished(None, 0)
+    };
+    let beyond_any_time_zone = EndedSession {
+        utc_offset_seconds: 18 * 3600 + 1,
+        ..finished(None, 0)
+    };
     for session in [
         stopped_with_overtime,
         ends_before_start,
         negative_overtime,
         zero_length,
+        stopped_without_its_time,
+        stopped_past_its_plan,
+        stopped_before_it_started,
+        finished_with_a_stop_time,
+        beyond_any_time_zone,
     ] {
         let error = store.record_pomodoro_session(session).unwrap_err();
         assert_eq!(error.code(), "invalid_input", "{error}");
@@ -370,6 +421,68 @@ fn stored_sessions_cannot_be_rewritten() {
             .is_err()
     );
     assert!(db.execute("DELETE FROM pomodoro_sessions", []).is_err());
+    // The file refuses what the core refuses, whoever writes it.
+    let insert = |offset: i64, outcome: &str, after: Option<i64>| {
+        db.execute(
+            "INSERT INTO pomodoro_sessions (id, started_at, planned_seconds, outcome, ended_at,
+               utc_offset_seconds, stopped_after_seconds, created_at)
+             VALUES (lower(hex(randomblob(8))), 0, 1500, ?1, 0, ?2, ?3, 0)",
+            rusqlite::params![outcome, offset, after],
+        )
+    };
+    assert!(insert(64_801, "finished", None).is_err());
+    assert!(insert(0, "finished", Some(60)).is_err());
+    assert!(insert(0, "stopped", Some(1501)).is_err());
+    assert!(insert(-64_800, "stopped", Some(1500)).is_ok());
+}
+
+#[test]
+fn a_v22_database_keeps_its_sessions_without_an_offset_or_stop_time() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("t.db");
+    drop(store_at(&path));
+    {
+        // Back to v22, as Ticket 02 left it, with one session of each kind.
+        let db = Connection::open(&path).unwrap();
+        db.execute_batch(
+            "ALTER TABLE pomodoro_sessions DROP COLUMN stopped_after_seconds;
+             ALTER TABLE pomodoro_sessions DROP COLUMN utc_offset_seconds;
+             PRAGMA user_version = 22;",
+        )
+        .unwrap();
+        for (id, outcome) in [("old-finished", "finished"), ("old-stopped", "stopped")] {
+            db.execute(
+                "INSERT INTO pomodoro_sessions
+                   (id, started_at, planned_seconds, outcome, ended_at, created_at)
+                 VALUES (?1, ?2, 1500, ?3, ?2 + 600000, ?2)",
+                rusqlite::params![id, START, outcome],
+            )
+            .unwrap();
+        }
+    }
+    let store = store_at(&path);
+    let db = Connection::open(&path).unwrap();
+    let version: i64 = db
+        .pragma_query_value(None, "user_version", |row| row.get(0))
+        .unwrap();
+    assert_eq!(version, SCHEMA_VERSION);
+    const { assert!(SCHEMA_VERSION >= 23) };
+    for id in ["old-finished", "old-stopped"] {
+        let session = store.get_pomodoro_session(id).unwrap().unwrap();
+        assert_eq!(
+            (session.utc_offset_seconds, session.stopped_after_seconds),
+            (None, None),
+            "{id}"
+        );
+    }
+    // Still append-only, and new sessions keep both.
+    assert!(
+        db.execute("UPDATE pomodoro_sessions SET utc_offset_seconds = 0", [])
+            .is_err()
+    );
+    let recorded = store.record_pomodoro_session(stopped(None)).unwrap();
+    assert_eq!(recorded.session.utc_offset_seconds, Some(JAKARTA));
+    assert_eq!(recorded.session.stopped_after_seconds, Some(600));
 }
 
 #[test]

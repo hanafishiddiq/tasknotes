@@ -120,6 +120,15 @@ const TEXT: Record<string, Placement> = {
   ".approval-title": { on: ["bg"] },
   ".approval-meta": { on: ["bg"] },
   ".approval-stale": { on: ["bg"] },
+  // Pomodoro history: hairline rows on the canvas, like Removed.
+  ".pomodoro-history-hint": { on: ["bg"] },
+  ".pomodoro-day-head h2": { on: ["bg"] },
+  ".pomodoro-day-total": { on: ["bg"] },
+  ".pomodoro-session": { on: ["bg"] },
+  ".pomodoro-task-link": { on: ["bg"] },
+  ".pomodoro-no-task": { on: ["bg"] },
+  ".pomodoro-session-outcome": { on: ["bg"] },
+  '.pomodoro-session[data-outcome="stopped"]': { on: ["bg"] },
   // Task rows
   ".task-group-heading span": { on: ["bg"] },
   ".note-hit": { on: ROW },
@@ -270,7 +279,7 @@ const NO_PAIR_NEEDED: Record<string, string> = {
 /** Lines and fills that separate or decorate and say nothing by themselves. */
 const DECORATIVE_LINES = [
   ".undo-bar", ".task-toast", ".sidebar", ".toolbar", ".settings-shortcut", ".settings-backup", ".palette", ".palette-field",
-  ".removed-item", ".approval", ".task-slot + .task-slot .task-card::before", ".history-entry", ".linked-item",
+  ".removed-item", ".pomodoro-session", ".approval", ".task-slot + .task-slot .task-card::before", ".history-entry", ".linked-item",
   ".note-list-pane", ".next-step-input", ".note-quote", ".style-picker", ".pomodoro", ".pomodoro-tip",
   // The sidebar's resize edge lights up under the pointer; its separator role and focus ring carry the meaning.
   ".sidebar-resizer:hover::after", "body.sidebar-resizing .sidebar-resizer::after",

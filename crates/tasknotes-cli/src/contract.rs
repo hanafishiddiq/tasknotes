@@ -19,6 +19,7 @@ use serde_json::{Value, json};
 use tasknotes_core::links::{LinkedNote, LinkedTask, NoteLink};
 use tasknotes_core::note_folders::{FolderParent, NoteFolder};
 use tasknotes_core::notes::{Note, NoteSummary};
+use tasknotes_core::pomodoro::{HistorySession, PomodoroDay};
 use tasknotes_core::removed::RemovedItem;
 use tasknotes_core::tasks::{List, ListParent, ProgressEntry, Task, TaskError, TaskStore};
 
@@ -214,6 +215,41 @@ pub fn progress_entry(entry: &ProgressEntry) -> Value {
         "note": entry.note,
         "next_step": entry.next_step,
         "created_at": entry.created_at,
+    })
+}
+
+/// One local day of the Pomodoro history (Ticket 14): what it counts (only
+/// Finished sessions; `focus_minutes` is their planned length plus counted
+/// Overtime) and every session that started that day, oldest first.
+pub fn pomodoro_day(day: &PomodoroDay) -> Value {
+    json!({
+        "date": day.date,
+        "finished_sessions": day.finished_sessions,
+        "focus_minutes": day.focus_minutes,
+        "stopped_sessions": day.stopped_sessions,
+        "sessions": day.sessions.iter().map(history_session).collect::<Vec<_>>(),
+    })
+}
+
+/// A session in the history, in the whole minutes its day adds up (the
+/// seconds are not repeated). `utc_offset_seconds` is the clock its day and
+/// start are on; `stopped_after_minutes` is a Stopped session's focus before
+/// Stop (null for a Finished one, or one stored before it was kept);
+/// `task_title` is null without a Task or while it is in Removed
+/// (`task_removed`). A session holds no Note text.
+pub fn history_session(entry: &HistorySession) -> Value {
+    json!({
+        "id": entry.id,
+        "started_at": entry.started_at,
+        "ended_at": entry.ended_at,
+        "utc_offset_seconds": entry.utc_offset_seconds,
+        "outcome": to_value(&entry.outcome),
+        "planned_minutes": entry.planned_minutes,
+        "overtime_minutes": entry.overtime_minutes,
+        "stopped_after_minutes": entry.stopped_after_minutes,
+        "task_id": entry.task_id,
+        "task_title": entry.task_title,
+        "task_removed": entry.task_removed,
     })
 }
 

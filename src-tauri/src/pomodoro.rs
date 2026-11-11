@@ -8,7 +8,9 @@
 //! sleeps (measured 2026-11-10 with Rust 1.98.1: `Instant` matched
 //! `CLOCK_UPTIME_RAW` and trailed `CLOCK_MONOTONIC_RAW` by the 9774 s the Mac
 //! had slept since boot). So sleep counts as no focus, break or Overtime; a
-//! few seconds of Power Nap dark wake may. Stored times are wall times.
+//! few seconds of Power Nap dark wake may. Stored times are wall times, with
+//! the Mac's offset from UTC (`localtime_r`) read with each; a session keeps
+//! the one of its start.
 //!
 //! The tick thread sleeps until the shown time next changes, and while
 //! nothing counts (Idle, "☕ Done") until a click wakes it.
@@ -24,6 +26,7 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
+use tasknotes_core::calendar::TimeZone;
 use tasknotes_core::pomodoro::{EndedSession, Moment, PomodoroDurations};
 use tasknotes_core::tasks::TaskStore;
 use tauri::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
@@ -64,7 +67,11 @@ impl PomodoroShell {
             .map(|elapsed| i64::try_from(elapsed.as_millis()).unwrap_or(i64::MAX))
             .unwrap_or(0);
         let awake = i64::try_from(self.started.elapsed().as_millis()).unwrap_or(i64::MAX);
-        Moment { wall, awake }
+        Moment {
+            wall,
+            awake,
+            utc_offset_seconds: TimeZone::Local.offset_seconds(wall),
+        }
     }
 
     fn lock(&self) -> MutexGuard<'_, Pomodoro> {
@@ -106,8 +113,18 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 #[serde(rename_all = "camelCase")]
 struct Changed {
     view: PomodoroView,
+    #[serde(flatten)]
+    stored: Stored,
+}
+
+/// What storing a step's ended sessions did, for the page.
+#[derive(Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Stored {
     /// A Task that gained a Pomodoro Progress Entry.
     task_changed: Option<String>,
+    /// At least one session was stored, so the history has a new entry.
+    session_stored: bool,
 }
 
 /// At launch, after the shell settings are read: the notifications' buttons,
@@ -166,8 +183,8 @@ pub fn start<R: Runtime>(app: &AppHandle<R>, durations: PomodoroDurations, silen
             shell.shared.run_ticks(
                 || shell.now(),
                 |step| {
-                    let task_changed = perform(&handle, step);
-                    publish(&handle, task_changed);
+                    let stored = perform(&handle, step);
+                    publish(&handle, stored);
                 },
             );
         });
@@ -186,17 +203,17 @@ fn run<R: Runtime>(
     let step = step(&mut shell.lock(), shell.now());
     shell.shared.wake();
     let changed = step.changed;
-    let task_changed = perform(app, step);
-    if changed {
-        publish(app, task_changed)
+    let stored = perform(app, step);
+    if changed || stored.session_stored {
+        publish(app, stored)
     } else {
         shell.lock().view(shell.now())
     }
 }
 
 /// Withdraws and posts notifications (in that order, on the main thread)
-/// and stores the ended sessions. Returns a Task that gained a Progress Entry.
-fn perform<R: Runtime>(app: &AppHandle<R>, step: Step) -> Option<String> {
+/// and stores the ended sessions.
+fn perform<R: Runtime>(app: &AppHandle<R>, step: Step) -> Stored {
     if step.withdraw || step.notify.is_some() {
         let handle = app.clone();
         let (withdraw, notify) = (step.withdraw, step.notify);
@@ -210,12 +227,13 @@ fn perform<R: Runtime>(app: &AppHandle<R>, step: Step) -> Option<String> {
         });
     }
     let shell = app.state::<PomodoroShell>();
-    let mut task_changed = None;
+    let mut stored = Stored::default();
     for session in step.record {
         let result = record(app, session.clone());
-        task_changed = shell.lock().saved(session, result).or(task_changed);
+        stored.session_stored |= result.is_ok();
+        stored.task_changed = shell.lock().saved(session, result).or(stored.task_changed);
     }
-    task_changed
+    stored
 }
 
 /// Stores one ended session in the core.
@@ -227,7 +245,7 @@ fn record<R: Runtime>(app: &AppHandle<R>, session: EndedSession) -> Result<Optio
 }
 
 /// Brings the menu bar up to date and tells the page.
-fn publish<R: Runtime>(app: &AppHandle<R>, task_changed: Option<String>) -> PomodoroView {
+fn publish<R: Runtime>(app: &AppHandle<R>, stored: Stored) -> PomodoroView {
     let shell = app.state::<PomodoroShell>();
     let view = shell.lock().view(shell.now());
     refresh_tray(app);
@@ -235,7 +253,7 @@ fn publish<R: Runtime>(app: &AppHandle<R>, task_changed: Option<String>) -> Pomo
         CHANGED,
         Changed {
             view: view.clone(),
-            task_changed,
+            stored,
         },
     );
     view
@@ -441,4 +459,34 @@ pub fn pomodoro_command(app: AppHandle, command: Command) -> PomodoroView {
 #[tauri::command]
 pub fn open_notification_settings(app: AppHandle) -> Result<(), String> {
     crate::macos_notifications::open_settings(&app.config().identifier)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The page reads the history again on `sessionStored` and on nothing
+    /// else the timer sends each second (`src/lib/pomodoro-api.ts`).
+    #[test]
+    fn the_page_hears_when_a_session_was_stored() {
+        let view = Pomodoro::new(PomodoroDurations::default(), false).view(Moment {
+            wall: 1_794_243_600_000,
+            awake: 0,
+            utc_offset_seconds: 7 * 3600,
+        });
+        let sent = |stored: Stored| {
+            serde_json::to_value(Changed {
+                view: view.clone(),
+                stored,
+            })
+            .unwrap()
+        };
+        let stored = sent(Stored {
+            task_changed: Some("task-1".into()),
+            session_stored: true,
+        });
+        assert_eq!(stored["sessionStored"], true);
+        assert_eq!(stored["taskChanged"], "task-1");
+        assert_eq!(sent(Stored::default())["sessionStored"], false);
+    }
 }

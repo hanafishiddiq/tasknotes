@@ -36,6 +36,26 @@ const openSettings = async (user: User) => {
   await screen.findByRole("heading", { name: /Quick Capture$/ }, eventually);
 };
 const openRemoved = async (user: User) => user.click(await screen.findByRole("button", { name: "Removed" }));
+const openPomodoroHistory = async (user: User) =>
+  user.click(await screen.findByRole("button", { name: "Pomodoro" }));
+/**
+ * A day, oldest first, with a counted Overtime, a session without a Task and a
+ * Stopped one for a Task in Removed, all started in Jakarta.
+ */
+const pomodoroDays = () => [{
+  date: "2026-10-26", finishedSessions: 2, focusMinutes: 57, stoppedSessions: 1,
+  sessions: [
+    { id: "s1", startedAt: FIXTURE_NOW - 10_800_000, endedAt: FIXTURE_NOW - 8_868_000, utcOffsetSeconds: 25_200,
+      outcome: "finished" as const, plannedMinutes: 25, overtimeMinutes: 7, stoppedAfterMinutes: null,
+      taskId: "t1", taskTitle: "Synthetic focus Task", taskRemoved: false },
+    { id: "s2", startedAt: FIXTURE_NOW - 7_200_000, endedAt: FIXTURE_NOW - 5_700_000, utcOffsetSeconds: 25_200,
+      outcome: "finished" as const, plannedMinutes: 25, overtimeMinutes: 0, stoppedAfterMinutes: null,
+      taskId: null, taskTitle: null, taskRemoved: false },
+    { id: "s3", startedAt: FIXTURE_NOW - 3_600_000, endedAt: FIXTURE_NOW - 3_000_000, utcOffsetSeconds: 25_200,
+      outcome: "stopped" as const, plannedMinutes: 25, overtimeMinutes: 0, stoppedAfterMinutes: 10,
+      taskId: "gone", taskTitle: null, taskRemoved: true },
+  ],
+}];
 const searchTasks = async (user: User, text: string) => {
   await screen.findByRole("region", { name: "Your tasks" });
   await user.type(screen.getByRole("searchbox", { name: "Search tasks and notes" }), text);
@@ -252,6 +272,21 @@ export const SCENES: Record<string, Scene> = {
     show: async (user) => {
       await openRemoved(user);
       await screen.findByText(/Couldn't load Removed/);
+    },
+  },
+
+  // Pomodoro history
+  "Pomodoro history: days": {
+    given: () => { world.pomodoroDays = pomodoroDays(); },
+    show: async (user) => {
+      await openPomodoroHistory(user);
+      await screen.findByRole("button", { name: "Synthetic focus Task" }, eventually);
+    },
+  },
+  "Pomodoro history: empty": {
+    show: async (user) => {
+      await openPomodoroHistory(user);
+      await screen.findByText("No Pomodoro sessions yet", {}, eventually);
     },
   },
 

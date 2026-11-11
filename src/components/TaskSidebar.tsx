@@ -2,7 +2,7 @@ import {
   Fragment, useEffect, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type ReactNode,
 } from "react";
 import {
-  Check, ChevronDown, ChevronRight, ClipboardCheck, Inbox, ListChecks, ListPlus, Moon, NotebookText, Palette,
+  Check, ChevronDown, ChevronRight, ClipboardCheck, History, Inbox, ListChecks, ListPlus, Moon, NotebookText, Palette,
   Pencil, Plus, Settings, Sun, Trash2, X,
 } from "lucide-react";
 import StyleIcon from "./StyleIcon";
@@ -27,6 +27,9 @@ interface TaskSidebarProps {
   onOpenApprovals: () => void;
   settingsActive: boolean;
   onOpenSettings: () => void;
+  /** The Pomodoro page (the daily history) is showing. */
+  pomodoroHistoryActive: boolean;
+  onOpenPomodoroHistory: () => void;
   /** Notes are showing every Note rather than one folder. */
   allNotesCurrent: boolean;
   /** The Note Folder tree, once Notes have been opened. */
@@ -66,7 +69,7 @@ interface TaskSidebarProps {
 }
 
 export default function TaskSidebar({
-  view, notesActive, removedActive, onOpenRemoved, pendingApprovals, approvalsActive, onOpenApprovals, settingsActive, onOpenSettings, allNotesCurrent, noteFolders, resizer, pomodoro, lists, listError, shownCount, hasMoreTasks, hasMoreLists, busy,
+  view, notesActive, removedActive, onOpenRemoved, pendingApprovals, approvalsActive, onOpenApprovals, settingsActive, onOpenSettings, pomodoroHistoryActive, onOpenPomodoroHistory, allNotesCurrent, noteFolders, resizer, pomodoro, lists, listError, shownCount, hasMoreTasks, hasMoreLists, busy,
   theme, onToggleTheme, onNavigate, onOpenNotes, onCreateList, onCreateSubList, onRenameList, onReorderList,
   onPlaceList, onMoveList,
   onStyleList, onRemoveList,
@@ -438,6 +441,11 @@ export default function TaskSidebar({
 
       <div className="sidebar-spacer" />
       {pomodoro}
+      <button type="button" className="folder folder--quiet" disabled={busy}
+        aria-label="Pomodoro" aria-current={pomodoroHistoryActive ? "page" : undefined}
+        onClick={onOpenPomodoroHistory}>
+        <History size={16} aria-hidden="true" /><span className="folder-name">Pomodoro</span>
+      </button>
       <button type="button" className="folder folder--quiet" disabled={busy}
         aria-label="Settings" aria-current={settingsActive ? "page" : undefined} onClick={onOpenSettings}>
         <Settings size={16} aria-hidden="true" /><span className="folder-name">Settings</span>

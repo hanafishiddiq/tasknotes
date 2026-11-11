@@ -76,6 +76,7 @@ fn a_trusted_client_completes_the_handshake_and_lists_the_tools() {
             "note_restore",
             "note_tasks",
             "note_update",
+            "pomodoro_history",
             "removed_list",
             "style_options",
             "task_change",
@@ -93,7 +94,7 @@ fn a_trusted_client_completes_the_handshake_and_lists_the_tools() {
             "task_update",
         ]
     );
-    assert_eq!(tools.len(), 47);
+    assert_eq!(tools.len(), 48);
     for tool in &tools {
         assert_eq!(tool["inputSchema"]["type"], "object", "{tool}");
         assert!(tool["inputSchema"].get("oneOf").is_none(), "{tool}");

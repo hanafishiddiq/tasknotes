@@ -173,6 +173,10 @@ pub enum TaskError {
     InvalidPomodoroDurations,
     #[error("This Pomodoro Session cannot be stored: its times or outcome do not fit together")]
     InvalidPomodoroSession,
+    #[error(
+        "Pomodoro history dates must be real calendar dates written YYYY-MM-DD, the first on or before the last"
+    )]
+    InvalidPomodoroRange,
     #[error("Bulk Change request not found")]
     BulkRequestNotFound,
     #[error("This request has already been decided")]
@@ -257,7 +261,8 @@ impl TaskError {
             | InvalidTaskPlace
             | InvalidBulkSelection
             | InvalidPomodoroDurations
-            | InvalidPomodoroSession => "invalid_input",
+            | InvalidPomodoroSession
+            | InvalidPomodoroRange => "invalid_input",
             InvalidCursor
             | InvalidHistoryCursor
             | InvalidRemovedCursor
@@ -954,7 +959,7 @@ const WONT_DO_FROM_COLUMN: usize = 15;
 pub(crate) const COLUMN_COUNT: usize = 16;
 
 /// The database schema this core reads and writes.
-pub const SCHEMA_VERSION: i64 = 22;
+pub const SCHEMA_VERSION: i64 = 23;
 
 /// How long a write waits for another process (the CLI, MCP) holding the database lock.
 pub const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -1193,6 +1198,11 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), TaskError> {
     if version < 22 {
         let migration = connection.transaction()?;
         crate::pomodoro::migrate_v22(&migration)?;
+        migration.commit()?;
+    }
+    if version < 23 {
+        let migration = connection.transaction()?;
+        crate::pomodoro::migrate_v23(&migration)?;
         migration.commit()?;
     }
     Ok(())

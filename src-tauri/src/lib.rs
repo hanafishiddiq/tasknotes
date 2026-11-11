@@ -1,5 +1,6 @@
 use tasknotes_core::audit::OutsideChanges;
 use tasknotes_core::bulk::{BulkRequest, PendingBulkRequest};
+use tasknotes_core::calendar::TimeZone;
 use tasknotes_core::links::{LinkPage, LinkedNote, LinkedTask, NoteLink};
 use tasknotes_core::note_folders::{
     CreateNoteFolder, MoveNoteFolder, NoteFolder, NoteFolderPage, PlaceNoteFolder, RenameNoteFolder,
@@ -7,6 +8,7 @@ use tasknotes_core::note_folders::{
 use tasknotes_core::notes::{
     CreateNote, MoveNote, Note, NotePage, NoteQuery, NoteScope, SetNotePinned, UpdateNote,
 };
+use tasknotes_core::pomodoro::{HistoryRange, PomodoroHistoryPage};
 use tasknotes_core::privacy::SetNoteExcludeFromAi;
 use tasknotes_core::removed::{RemovedPage, SetRemoved};
 use tasknotes_core::style::SetStyle;
@@ -430,6 +432,24 @@ fn count_pending_bulk_requests(store: State<'_, TaskStore>) -> Result<i64, Strin
         .map_err(|error| error.to_string())
 }
 
+/// The whole Pomodoro daily history, newest day first, each session on the
+/// clock it started on (one stored before schema v23 on this Mac's).
+#[tauri::command]
+fn pomodoro_history(
+    store: State<'_, TaskStore>,
+    limit: u32,
+    cursor: Option<String>,
+) -> Result<PomodoroHistoryPage, String> {
+    let range = HistoryRange {
+        from: None,
+        to: None,
+        zone: TimeZone::Local,
+    };
+    store
+        .pomodoro_history(&range, limit, cursor.as_deref())
+        .map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 fn outside_changes(
     store: State<'_, TaskStore>,
@@ -534,6 +554,7 @@ pub fn run() {
             set_note_removed,
             set_note_folder_removed,
             list_removed,
+            pomodoro_history,
             list_pending_bulk_requests,
             count_pending_bulk_requests,
             outside_changes,

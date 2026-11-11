@@ -9,7 +9,10 @@
 //!
 //! A session is stored once it ends (finished or stopped), append-only. A
 //! finished session tied to a Task adds one Progress Entry with a note and
-//! never changes the Task's status or progress.
+//! never changes the Task's status or progress. It keeps the wall clock's
+//! offset from UTC at its start, so its day and start time never move when
+//! the Mac's time zone changes later (travel, daylight saving), and a
+//! Stopped one keeps how long it was focused before Stop.
 
 use rusqlite::{OptionalExtension, Transaction, params};
 use serde::{Deserialize, Serialize};
@@ -17,6 +20,8 @@ use uuid::Uuid;
 
 use crate::audit::AuditAction;
 use crate::tasks::{ChangeTask, Task, TaskError, TaskStore, current_millis};
+
+pub use crate::pomodoro_history::{HistoryRange, HistorySession, PomodoroDay, PomodoroHistoryPage};
 
 /// The adjustable lengths, in whole minutes, and how many finished sessions
 /// earn a long break.
@@ -43,6 +48,9 @@ impl Default for PomodoroDurations {
 
 /// The longest focus a session may plan, in minutes.
 pub const MAX_FOCUS_MINUTES: u32 = 180;
+/// The farthest a wall clock may be from UTC, either way, in seconds (18
+/// hours, beyond every real time zone's 14).
+pub const MAX_UTC_OFFSET_SECONDS: i32 = 18 * 3600;
 /// The longest break, in minutes.
 pub const MAX_BREAK_MINUTES: u32 = 60;
 /// The most sessions before a long break.
@@ -143,11 +151,17 @@ impl SessionOutcome {
 pub struct EndedSession {
     pub task_id: Option<String>,
     pub started_at: i64,
+    /// The Mac's offset east of UTC when the focus started, in seconds: the
+    /// wall clock its day and start time are on.
+    pub utc_offset_seconds: i32,
     pub planned_seconds: i64,
     /// Counted from the planned end up to the person's Count overtime
     /// click; zero otherwise (Start break, Stop, quitting, Stopped).
     pub overtime_seconds: i64,
     pub outcome: SessionOutcome,
+    /// A Stopped session's focus before Stop, on the clock that stops while
+    /// the Mac sleeps; `None` for a Finished one.
+    pub stopped_after_seconds: Option<i64>,
     pub ended_at: i64,
 }
 
@@ -158,9 +172,15 @@ pub struct PomodoroSession {
     pub id: String,
     pub task_id: Option<String>,
     pub started_at: i64,
+    /// Seconds east of UTC at the start; `None` for a session stored before
+    /// schema v23, which kept no offset.
+    pub utc_offset_seconds: Option<i32>,
     pub planned_seconds: i64,
     pub overtime_seconds: i64,
     pub outcome: SessionOutcome,
+    /// A Stopped session's focus before Stop; `None` for a Finished one and
+    /// for a Stopped one stored before schema v23.
+    pub stopped_after_seconds: Option<i64>,
     pub ended_at: i64,
 }
 
@@ -174,12 +194,17 @@ pub struct RecordedSession {
     pub task: Option<Task>,
 }
 
+/// Seconds as the whole minutes a session shows, rounded to the nearest
+/// (half a minute rounds up): the Progress Entry and the history agree.
+pub(crate) fn whole_minutes(seconds: i64) -> i64 {
+    (seconds + 30).div_euclid(60)
+}
+
 /// The Progress Entry note of a finished session: "Pomodoro: 25 min focus",
-/// or "Pomodoro: 25 + 7 min focus" with Overtime, in whole minutes rounded
-/// to the nearest.
+/// or "Pomodoro: 25 + 7 min focus" with Overtime, in [`whole_minutes`].
 pub fn progress_note(planned_seconds: i64, overtime_seconds: i64) -> String {
-    let planned = (planned_seconds + 30) / 60;
-    let overtime = (overtime_seconds + 30) / 60;
+    let planned = whole_minutes(planned_seconds);
+    let overtime = whole_minutes(overtime_seconds);
     if overtime > 0 {
         format!("Pomodoro: {planned} + {overtime} min focus")
     } else {
@@ -190,10 +215,21 @@ pub fn progress_note(planned_seconds: i64, overtime_seconds: i64) -> String {
 impl EndedSession {
     fn check(&self) -> Result<(), TaskError> {
         let max_planned = i64::from(MAX_FOCUS_MINUTES) * 60;
+        let outcome_fits = match self.outcome {
+            SessionOutcome::Finished => self.stopped_after_seconds.is_none(),
+            SessionOutcome::Stopped => {
+                self.overtime_seconds == 0
+                    && self
+                        .stopped_after_seconds
+                        .is_some_and(|after| (0..=self.planned_seconds).contains(&after))
+            }
+        };
         let sound = (60..=max_planned).contains(&self.planned_seconds)
             && self.overtime_seconds >= 0
             && self.ended_at >= self.started_at
-            && (self.outcome == SessionOutcome::Finished || self.overtime_seconds == 0);
+            && (-MAX_UTC_OFFSET_SECONDS..=MAX_UTC_OFFSET_SECONDS)
+                .contains(&self.utc_offset_seconds)
+            && outcome_fits;
         if sound {
             Ok(())
         } else {
@@ -230,13 +266,33 @@ pub(crate) fn migrate_v22(migration: &Transaction) -> Result<(), TaskError> {
     Ok(())
 }
 
-const SESSION_COLUMNS: &str =
-    "id, task_id, started_at, planned_seconds, overtime_seconds, outcome, ended_at";
+/// Schema v23 (Ticket 14, owner decisions 2026-11-11): each session keeps
+/// the wall clock's offset from UTC at its start, so travelling or a
+/// daylight-saving change never moves it to another day, and a Stopped one
+/// keeps its focus before Stop. Sessions stored before keep NULL in both:
+/// the table is append-only, and a guess written now would be no better
+/// than the one made when they are read (the history puts them on the
+/// reading Mac's time zone at their own start, and shows a Stopped one's
+/// planned length). Adding columns fires no UPDATE trigger.
+pub(crate) fn migrate_v23(migration: &Transaction) -> Result<(), TaskError> {
+    migration.execute_batch(
+        "ALTER TABLE pomodoro_sessions ADD COLUMN utc_offset_seconds INTEGER
+           CHECK (utc_offset_seconds BETWEEN -64800 AND 64800);
+         ALTER TABLE pomodoro_sessions ADD COLUMN stopped_after_seconds INTEGER
+           CHECK (stopped_after_seconds IS NULL
+                  OR (outcome = 'stopped' AND stopped_after_seconds BETWEEN 0 AND planned_seconds));
+         PRAGMA user_version = 23;",
+    )?;
+    Ok(())
+}
+
+const SESSION_COLUMNS: &str = "id, task_id, started_at, planned_seconds, overtime_seconds, \
+     outcome, ended_at, utc_offset_seconds, stopped_after_seconds";
 
 /// The most sessions one listing returns; a day holds far fewer.
 const MAX_LISTED: i64 = 1000;
 
-fn read_session(row: &rusqlite::Row<'_>) -> rusqlite::Result<PomodoroSession> {
+pub(crate) fn read_session(row: &rusqlite::Row<'_>) -> rusqlite::Result<PomodoroSession> {
     let outcome: String = row.get(5)?;
     Ok(PomodoroSession {
         id: row.get(0)?,
@@ -247,6 +303,8 @@ fn read_session(row: &rusqlite::Row<'_>) -> rusqlite::Result<PomodoroSession> {
         outcome: SessionOutcome::from_sql(&outcome)
             .ok_or_else(|| crate::tasks::invalid_db_text(5, outcome))?,
         ended_at: row.get(6)?,
+        utc_offset_seconds: row.get(7)?,
+        stopped_after_seconds: row.get(8)?,
     })
 }
 
@@ -280,8 +338,8 @@ impl TaskStore {
             &format!(
                 "INSERT INTO pomodoro_sessions
                    (id, task_id, started_at, planned_seconds, overtime_seconds, outcome,
-                    ended_at, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                    ended_at, utc_offset_seconds, stopped_after_seconds, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
                  RETURNING {SESSION_COLUMNS}"
             ),
             params![
@@ -292,6 +350,8 @@ impl TaskStore {
                 input.overtime_seconds,
                 input.outcome.as_sql(),
                 input.ended_at,
+                input.utc_offset_seconds,
+                input.stopped_after_seconds,
                 current_millis()?
             ],
             read_session,
@@ -357,11 +417,13 @@ impl TaskStore {
 // The timer
 // ---------------------------------------------------------------------------
 
-/// One reading of the two clocks the timer runs on, in milliseconds.
+/// One reading of the two clocks the timer runs on, in milliseconds, and of
+/// the time zone the wall clock is in.
 ///
 /// Every length (focus, break, Overtime) is measured on `awake`, a clock that
 /// stops while the computer sleeps, so sleep never counts as any of them. The
-/// stored session's start and end are `wall` times.
+/// stored session's start and end are `wall` times; it keeps the offset of
+/// its start.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Moment {
     /// Unix milliseconds.
@@ -369,10 +431,13 @@ pub struct Moment {
     /// Milliseconds on a clock that does not advance during sleep; only
     /// differences between readings mean anything.
     pub awake: i64,
+    /// The wall clock's offset east of UTC, in seconds (the Mac's time zone
+    /// at `wall`).
+    pub utc_offset_seconds: i32,
 }
 
-/// Where the timer is. `started_at` is a wall time; `ends_at` is on the
-/// awake clock.
+/// Where the timer is. `started_at` is a wall time, with the offset the wall
+/// clock had then; `ends_at` is on the awake clock.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PomodoroPhase {
     Idle,
@@ -380,6 +445,7 @@ pub enum PomodoroPhase {
     Focus {
         task_id: Option<String>,
         started_at: i64,
+        utc_offset_seconds: i32,
         planned_seconds: i64,
         ends_at: i64,
     },
@@ -388,6 +454,7 @@ pub enum PomodoroPhase {
     FocusDone {
         task_id: Option<String>,
         started_at: i64,
+        utc_offset_seconds: i32,
         planned_seconds: i64,
         ends_at: i64,
     },
@@ -490,12 +557,14 @@ impl PomodoroTimer {
             PomodoroPhase::Focus {
                 task_id,
                 started_at,
+                utc_offset_seconds,
                 planned_seconds,
                 ends_at,
             } if now.awake >= *ends_at => {
                 self.phase = PomodoroPhase::FocusDone {
                     task_id: task_id.clone(),
                     started_at: *started_at,
+                    utc_offset_seconds: *utc_offset_seconds,
                     planned_seconds: *planned_seconds,
                     ends_at: *ends_at,
                 };
@@ -519,6 +588,7 @@ impl PomodoroTimer {
                 self.phase = PomodoroPhase::Focus {
                     task_id,
                     started_at: now.wall,
+                    utc_offset_seconds: now.utc_offset_seconds,
                     planned_seconds: minutes * 60,
                     ends_at: now.awake + minutes * MILLIS_PER_MINUTE,
                 };
@@ -548,22 +618,27 @@ impl PomodoroTimer {
     }
 
     /// Stops whatever runs and goes back to Idle; also what quitting does. A
-    /// focus stopped before its planned end is Stopped; one that reached it
-    /// is Finished without Overtime. Stopping a break ends nothing to store.
+    /// focus stopped before its planned end is Stopped, with the whole
+    /// seconds it ran on the awake clock (the planned length minus what the
+    /// timer showed as left); one that reached it is Finished without
+    /// Overtime. Stopping a break ends nothing to store.
     pub fn stop(&mut self, now: Moment) -> Option<EndedSession> {
         self.tick(now);
         let ended = match &self.phase {
             PomodoroPhase::Focus {
                 task_id,
                 started_at,
+                utc_offset_seconds,
                 planned_seconds,
-                ..
+                ends_at,
             } => Some(EndedSession {
                 task_id: task_id.clone(),
                 started_at: *started_at,
+                utc_offset_seconds: *utc_offset_seconds,
                 planned_seconds: *planned_seconds,
                 overtime_seconds: 0,
                 outcome: SessionOutcome::Stopped,
+                stopped_after_seconds: Some(planned_seconds - remaining(now, *ends_at)),
                 ended_at: now.wall.max(*started_at),
             }),
             _ => self.finish(now, false),
@@ -578,6 +653,7 @@ impl PomodoroTimer {
         let PomodoroPhase::FocusDone {
             task_id,
             started_at,
+            utc_offset_seconds,
             planned_seconds,
             ends_at,
         } = &self.phase
@@ -588,9 +664,11 @@ impl PomodoroTimer {
         let ended = EndedSession {
             task_id: task_id.clone(),
             started_at: *started_at,
+            utc_offset_seconds: *utc_offset_seconds,
             planned_seconds: *planned_seconds,
             overtime_seconds,
             outcome: SessionOutcome::Finished,
+            stopped_after_seconds: None,
             ended_at: now.wall.max(*started_at),
         };
         self.finished_in_cycle += 1;
@@ -703,12 +781,16 @@ mod tests {
     const A0: i64 = 5_000;
     const MIN: i64 = 60_000;
     const SEC: i64 = 1_000;
+    /// The Mac's clock in Jakarta, UTC+7.
+    const JAKARTA: i32 = 7 * 3600;
 
-    /// `offset` ms after the start on both clocks: the Mac stayed awake.
+    /// `offset` ms after the start on both clocks: the Mac stayed awake, in
+    /// Jakarta.
     fn at(offset: i64) -> Moment {
         Moment {
             wall: T0 + offset,
             awake: A0 + offset,
+            utc_offset_seconds: JAKARTA,
         }
     }
 
@@ -716,7 +798,7 @@ mod tests {
     fn after_sleep(offset: i64, slept: i64) -> Moment {
         Moment {
             wall: T0 + offset + slept,
-            awake: A0 + offset,
+            ..at(offset)
         }
     }
 
@@ -854,9 +936,11 @@ mod tests {
             EndedSession {
                 task_id: Some("task-1".into()),
                 started_at: T0,
+                utc_offset_seconds: JAKARTA,
                 planned_seconds: 1500,
                 overtime_seconds: 0,
                 outcome: SessionOutcome::Finished,
+                stopped_after_seconds: None,
                 ended_at: T0 + 35 * MIN,
             }
         );
@@ -878,9 +962,11 @@ mod tests {
             EndedSession {
                 task_id: Some("task-1".into()),
                 started_at: T0,
+                utc_offset_seconds: JAKARTA,
                 planned_seconds: 1500,
                 overtime_seconds: 7 * 60 + 12,
                 outcome: SessionOutcome::Finished,
+                stopped_after_seconds: None,
                 ended_at: T0 + 32 * MIN + 12 * SEC,
             }
         );
@@ -906,6 +992,7 @@ mod tests {
         let ended = t.stop(at(40 * MIN)).unwrap();
         assert_eq!(ended.outcome, SessionOutcome::Finished);
         assert_eq!(ended.overtime_seconds, 0);
+        assert_eq!(ended.stopped_after_seconds, None);
         assert_eq!(ended.ended_at, T0 + 40 * MIN);
         assert_eq!(t.phase(), &PomodoroPhase::Idle);
         assert_eq!(t.title(at(40 * MIN)), None);
@@ -920,13 +1007,69 @@ mod tests {
             EndedSession {
                 task_id: Some("task-1".into()),
                 started_at: T0,
+                utc_offset_seconds: JAKARTA,
                 planned_seconds: 1500,
                 overtime_seconds: 0,
                 outcome: SessionOutcome::Stopped,
+                stopped_after_seconds: Some(10 * 60),
                 ended_at: T0 + 10 * MIN,
             }
         );
         assert!(!t.active());
+    }
+
+    #[test]
+    fn a_stopped_focus_keeps_the_whole_seconds_it_ran_as_the_timer_showed_them() {
+        // 12:26.4 in, the timer shows 12:34 left: 746 seconds ran.
+        let mut t = focused(None);
+        assert_eq!(
+            t.title(at(12 * MIN + 26 * SEC + 400)).as_deref(),
+            Some("🍅 12:34")
+        );
+        let ended = t.stop(at(12 * MIN + 26 * SEC + 400)).unwrap();
+        assert_eq!(ended.stopped_after_seconds, Some(25 * 60 - (12 * 60 + 34)));
+        // At once: nothing ran.
+        let mut t = focused(None);
+        assert_eq!(t.stop(at(0)).unwrap().stopped_after_seconds, Some(0));
+    }
+
+    #[test]
+    fn sleep_never_counts_as_the_focus_before_stop() {
+        let mut t = focused(None);
+        // Ten awake minutes, two hours of sleep, two more awake minutes.
+        let ended = t.stop(after_sleep(12 * MIN, 120 * MIN)).unwrap();
+        assert_eq!(ended.outcome, SessionOutcome::Stopped);
+        assert_eq!(ended.stopped_after_seconds, Some(12 * 60));
+        assert_eq!(
+            ended.ended_at,
+            T0 + 132 * MIN,
+            "the wall clock counts the sleep"
+        );
+    }
+
+    #[test]
+    fn a_session_keeps_the_offset_it_started_with_when_the_time_zone_changes() {
+        let new_york = Moment {
+            utc_offset_seconds: -5 * 3600,
+            ..at(25 * MIN)
+        };
+        let mut t = focused(None);
+        assert_eq!(t.tick(new_york), Some(TimerEvent::FocusEnded));
+        let ended = t.start_break(new_york).unwrap();
+        assert_eq!(ended.utc_offset_seconds, JAKARTA);
+        let mut t = focused(None);
+        let stopped = t
+            .stop(Moment {
+                utc_offset_seconds: -5 * 3600,
+                ..at(5 * MIN)
+            })
+            .unwrap();
+        assert_eq!(stopped.utc_offset_seconds, JAKARTA);
+        // The next focus starts on the new clock.
+        let mut t = timer();
+        t.start_focus(new_york, None).unwrap();
+        let next = t.stop(at(26 * MIN)).unwrap();
+        assert_eq!(next.utc_offset_seconds, -5 * 3600);
     }
 
     #[test]

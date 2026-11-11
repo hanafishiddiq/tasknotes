@@ -15,6 +15,8 @@ use std::path::Path;
 use serde_json::{Value, json};
 use tasknotes_core::ai_access;
 use tasknotes_core::audit::Interface;
+use tasknotes_core::calendar::TimeZone;
+use tasknotes_core::pomodoro::HistoryRange;
 use tasknotes_core::removed::SetRemoved;
 use tasknotes_core::style::{self, SetStyle};
 use tasknotes_core::tasks::{
@@ -132,6 +134,7 @@ fn dispatch(
             | "style"
             | "backup"
             | "export"
+            | "pomodoro"
     ) {
         return Err(CliError::invalid(USAGE));
     }
@@ -153,12 +156,13 @@ fn dispatch(
         "removed" => notes::removed_command(&store, verb, words),
         "bulk" => bulk::bulk_command(&store, verb, words),
         "style" => style_command(verb, words),
+        "pomodoro" => pomodoro_command(&store, verb, words),
         _ => audit_command(&store, verb, words),
     }
 }
 
 pub(crate) const USAGE: &str = "Usage: tasknotes [--data-dir DIR] \
-    <task|list|note|folder|link|removed|audit|bulk|style|backup|export|access> <command> [id] [--options]; \
+    <task|list|note|folder|link|removed|audit|bulk|style|pomodoro|backup|export|access> <command> [id] [--options]; \
     task change ID --revision N [--status S] [--priority P] [--difficulty D|none] [--progress N] [--wont-do true|false] (a Completed Task reopens to its completed_from with --status); \
     task list [--status S] [--priority P] [--difficulty D|none] [--wont-do true|false] [--tag T] [--sort priority|newest|difficulty|custom (with --list ID or --inbox)]; \
     task reorder ID --revision N (--after ID | --first) (within its work-status group of its List's Custom Order; switches its List to Custom in the desktop); \
@@ -167,6 +171,7 @@ pub(crate) const USAGE: &str = "Usage: tasknotes [--data-dir DIR] \
     list|folder style ID --revision N [--icon NAME|none] [--color NAME|none]; style options; \
     folder reorder ID --revision N (--after ID | --first) [--parent ID | --top]; \
     bulk preview --action A --id ID... [--status S [--wont-do]] | bulk status REQUEST_ID (approved only in the app); \
+    pomodoro history [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--limit DAYS] [--cursor C] (local days, newest first; sessions oldest first); \
     access grant|revoke [--mcp]";
 
 pub(crate) const NO_FLAGS: Spec = flags(&[], 0);
@@ -504,6 +509,27 @@ fn style_command(verb: &str, words: &[String]) -> Result<Value, CliError> {
     }
     parse(words, &NO_FLAGS)?;
     Ok(contract::success_item(contract::to_value(style::options())))
+}
+
+/// `pomodoro history`: the daily history, newest day first, each session on
+/// the clock it started on (one stored before schema v23 on this Mac's), a
+/// page of `--limit` days (50 when left out). Read-only: only the desktop
+/// records sessions.
+fn pomodoro_command(store: &TaskStore, verb: &str, words: &[String]) -> Result<Value, CliError> {
+    if verb != "history" {
+        return Err(CliError::invalid(USAGE));
+    }
+    let p = parse(words, &flags(&["from", "to", "limit", "cursor"], 0))?;
+    let range = HistoryRange {
+        from: p.value("from").map(str::to_owned),
+        to: p.value("to").map(str::to_owned),
+        zone: TimeZone::Local,
+    };
+    let page = store.pomodoro_history(&range, p.limit()?, p.value("cursor"))?;
+    Ok(contract::success_page(
+        page.items.iter().map(contract::pomodoro_day).collect(),
+        page.next_cursor,
+    ))
 }
 
 fn audit_command(store: &TaskStore, verb: &str, words: &[String]) -> Result<Value, CliError> {
