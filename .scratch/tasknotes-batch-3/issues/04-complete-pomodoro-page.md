@@ -55,5 +55,5 @@
 - CLI and MCP tests now show a focus ended early as `ended_early` with its minutes counted.
 - Smaller tidy-ups: one module for the Pomodoro formatting the sidebar block, page, rail and record share; one placement helper for the Task menu and the page's sheets; the history-era names (`openPomodoroHistory` …) renamed for the page; DESIGN.md records the exceptions it lacked (accent text on the gray sheets and the Overtime lap, inset outlines, the 1.6s breathing, the 14px pill).
 - Left as is, by judgement: the page, the sidebar block and the menu bar each lay out the timer's choices themselves (each shows a different set, as DESIGN.md says); `stopped_after_seconds` keeps its name, as it is part of the CLI and MCP output.
-- For the owner: the sidebar block shows a Resume button while paused, which the spec did not ask for (Q26 says the block stays as it is).
+- The sidebar block shows a Resume button while paused, which the spec did not ask for (Q26 says the block stays as it is). Raised to the owner as Q47: keep it (2026-11-11).
 

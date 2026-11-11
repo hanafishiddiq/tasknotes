@@ -18,7 +18,7 @@ Five tickets, one at a time, each settled with the owner before it is built: the
 1. **Red Move to Removed** — Ticket 01. Settled (Q3, 2026-11-11); merged in PR #38.
 2. **New Task yellow mark** — Ticket 02, settled (Q4–Q16, 2026-11-11), replacing the 2026-11-09 decision (Q3/Q14/Q25: a toast instead of a lasting yellow mark). Whatever replaces the toast's flash must keep the red Move to Removed readable: on today's flash (`--selection` over the open Task) it measures about 2.66:1 dark and 4.29:1 light (PR #38 review).
 3. **Task right-click menu** — Ticket 03, settled (Q20–Q24, 2026-11-11).
-4. **Complete Pomodoro page** — Ticket 04, settled (Q25–Q44, 2026-11-11).
+4. **Complete Pomodoro page** — Ticket 04, settled (Q25–Q44 and Q47, 2026-11-11).
 5. **Sidebar counts of unfinished Tasks** — Ticket 05, asked during Ticket 04 (Q45–Q46); worked after Ticket 04.
 
 ## User Stories
@@ -72,6 +72,7 @@ Owner answers, 2026-11-11, after three previews (the first two were "too many el
 - Q41: Overtime draws a second, inner lap of the ring; four beads (the sessions before the long break) replace a "Session 2 of 4" line.
 - Q42: all-time totals (sessions and focus minutes) come from a new read-only core query, with the same counting rule as each day.
 - Q44: a focus ended early by Start break adds its minutes only: to the day's and the all-time focus, and as the Task's Progress Entry ("Pomodoro: 10 min focus"); it is not a session in the counts and does not move the cycle toward the long break. Under a minute, nothing is counted, as with Stop.
+- Q47 (raised by the review, owner answer 2026-11-11 "Keep it"): while a focus or break is paused, the sidebar block shows a Resume button, as it shows every choice the timer waits for. Q26's "stays as it is" keeps the block's rules; it does not forbid that button.
 
 ### Sidebar counts (Ticket 05)
 
