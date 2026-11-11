@@ -5,12 +5,14 @@ Tujuan akhir: Tasknotes di /Applications berisi 4 perubahan batch 3 (tombol Remo
 ## Progres
 
 - [x] Fitur baru dibaca dan urutan kerja disepakati (Q1–Q3, 2026-11-11)
-- [ ] Tombol Remove merah (tiket 01) di main
+- [x] Tombol Remove merah (tiket 01) di main (PR #38, merge eae7390, CI 14/14 hijau)
   - [x] Dikerjakan dengan TDD
   - [x] Draft PR #38, review dua sumbu, temuan diperbaiki
-  - [ ] Di-merge setelah Han konfirmasi
+  - [x] Di-merge setelah Han konfirmasi (Q9)
 - [ ] Tanda kuning Task baru (tiket 02) di main
   - [ ] Tanya jawab, termasuk konflik dengan keputusan 9 Nov
+    - [x] Q5–Q8 dijawab (Q8: Task dari AI juga diberi tanda)
+    - [ ] Q4 (toast tetap + tanda kuning) dan pertanyaan lanjutan Task dari AI
 - [ ] Menu klik kanan Task (tiket 03) di main
 - [ ] Halaman Pomodoro lengkap (tiket 04) di main
 - [ ] Semua tiket di main dan lolos CI gabungan

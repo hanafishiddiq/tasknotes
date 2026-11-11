@@ -34,8 +34,6 @@ interface VirtualTaskListProps {
   /** The open Task, which Escape closes. */
   expandedId: string | null;
   onCollapse: () => void;
-  /** A Task flashing yellow for a moment (opened from the new Task toast). */
-  flashId?: string | null;
   /**
    * A Task to scroll to and focus, when the person asked for it. One try only: hit or
    * miss, `onRevealed` drops it, so a Task arriving later never moves the list.
@@ -109,7 +107,7 @@ const TaskSlotContent = memo(function TaskSlotContent({ task, renderTask }: {
  */
 export default function VirtualTaskList({
   tasks, hasMore, scrollRef, keepMounted, renderTask, expandedId, onCollapse,
-  flashId = null, reveal = null, onRevealed, onPlace, onMoveBlocked, onAnnounce, checked = null, onCheckSettled,
+  reveal = null, onRevealed, onPlace, onMoveBlocked, onAnnounce, checked = null, onCheckSettled,
 }: VirtualTaskListProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const [scrollMargin, setScrollMargin] = useState(0);
@@ -355,7 +353,7 @@ export default function VirtualTaskList({
         <span>{item.count}{hasMore ? "+" : ""}</span>
       </h2>
     ) : (
-      <div key={virtual.key} className={`task-slot ${item.task.id === flashId ? "task-slot--flash" : ""}`}
+      <div key={virtual.key} className="task-slot"
         data-index={virtual.index}
         data-drag-row={onPlace ? item.task.id : undefined}
         data-dragging={drag.dragging === item.task.id || undefined}

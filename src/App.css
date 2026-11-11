@@ -690,8 +690,31 @@ button.folder-disclosure:hover:not(:disabled) {
 .task-toast-action {
   color: var(--accent-text);
 }
-.task-toast:hover .task-toast-action {
+/* The new Task toast: the open button and its X share the box. */
+.task-toast--new {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 4px 0 0;
+}
+.task-toast-open {
+  padding: 7px 4px 7px 12px;
+  text-align: left;
+}
+.task-toast-open:hover .task-toast-action {
   text-decoration: underline;
+}
+.task-toast-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  color: var(--text-2);
+}
+.task-toast-close:hover {
+  color: var(--text);
 }
 .task-toast--leaving {
   opacity: 0;
@@ -1529,16 +1552,6 @@ kbd {
 /* Rows: Notes list cells */
 .task-card {
   position: relative;
-}
-/* The Task opened from the new Task toast, for a moment. A highlight, not motion. */
-.task-slot {
-  border-radius: 7px;
-  outline: 2px solid transparent;
-  outline-offset: -2px;
-}
-.task-slot--flash {
-  outline: 2px solid var(--accent);
-  background: var(--selection);
 }
 .task-slot + .task-slot .task-card::before {
   content: "";
@@ -2634,9 +2647,6 @@ button.task-check::before {
   .task-toast {
     animation: page-in 120ms ease-out;
     transition: opacity 120ms ease-out;
-  }
-  .task-slot {
-    transition: outline-color 240ms ease-out, background-color 240ms ease-out;
   }
 }
 @keyframes page-in {

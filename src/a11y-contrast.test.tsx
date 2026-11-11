@@ -234,7 +234,6 @@ const INDICATORS: { selector: string; property: string; means: string; place: Pl
   { selector: ".task-card--expanded .task-row .task-check", property: "border-color", means: "ring on the open row", place: SELECTED },
   { selector: ".task-card--expanded .task-row .task-check--in_progress::after", property: "background", means: "dot on the open row", place: SELECTED },
   { selector: ".task-card--expanded .task-row .task-check--completed", property: "background", means: "disc on the open row", place: { on: ["row-selected"] } },
-  { selector: ".task-slot--flash", property: "outline", means: "Task opened from the new Task toast", place: { on: ["bg", "hover"] } },
   { selector: ".capture-ring", property: "border", means: "New task ring", place: { on: ["bg", "hover"] } },
   { selector: ".note-check::before", property: "border", means: "open checklist circle", place: { on: ["bg"] } },
   { selector: ".note-check--done::before", property: "background", means: "done checklist circle", place: { on: ["bg"] } },
@@ -254,6 +253,9 @@ const INDICATORS: { selector: string; property: string; means: string; place: Pl
   { selector: "button.folder-disclosure:hover:not(:disabled)", property: "color", means: "folder disclosure arrow", place: { on: ["sidebar"] } },
   { selector: ".linked-unlink", property: "color", means: "unlink button", place: { on: ["bg", "hover"] } },
   { selector: ".settings-mute", property: "color", means: "mute button", place: { on: ["bg", "hover"] } },
+  // The new Task toast's X (batch 3, Ticket 02), on the toast's hover-gray box.
+  { selector: ".task-toast-close", property: "color", means: "toast dismiss button", place: { on: ["hover"] } },
+  { selector: ".task-toast-close:hover", property: "color", means: "toast dismiss button", place: { on: ["hover"] } },
 ];
 
 /** Rules with a colour that deliberately need no pair here, each with why. */

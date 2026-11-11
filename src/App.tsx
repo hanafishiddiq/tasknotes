@@ -1573,7 +1573,6 @@ export default function App() {
                     keepMounted={keepMounted}
                     expandedId={expandedId}
                     onCollapse={() => setExpandedId(null)}
-                    flashId={newTaskToast.flashId}
                     reveal={newTaskToast.reveal}
                     onRevealed={newTaskToast.clearReveal}
                     onPlace={canPlace ? placeTask : undefined}

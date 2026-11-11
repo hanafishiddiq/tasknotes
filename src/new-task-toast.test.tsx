@@ -6,7 +6,7 @@ import { useRef, useState } from "react";
 import App from "./App";
 import NewTaskToast from "./components/NewTaskToast";
 import VirtualTaskList from "./components/VirtualTaskList";
-import { TOAST_FADE_MS, TOAST_MS, FLASH_MS, useNewTaskToast } from "./lib/use-new-task-toast";
+import { TOAST_FADE_MS, TOAST_MS, useNewTaskToast } from "./lib/use-new-task-toast";
 import type { Task } from "./lib/task-api";
 import { rules } from "./test/stylesheet";
 
@@ -14,6 +14,10 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 const call = vi.mocked(invoke);
 
 const TOAST = "Task added · Click to edit";
+const DISMISS = "Dismiss";
+
+/** The toast's box, which fades: it holds the open button and the X. */
+const toastBox = () => screen.getByRole("button", { name: TOAST }).closest(".task-toast")!;
 
 /** Synthetic fixtures only, behind the Tauri seam. */
 let tasks: Task[];
@@ -90,14 +94,14 @@ function Harness({ onOpen = () => undefined }: { onOpen?: (taskId: string) => vo
   return (
     <>
       <button type="button" onClick={() => { setN(n + 1); toast.added(`task-${n + 1}`); }}>Add</button>
-      <output data-testid="flash">{toast.flashId ?? ""}</output>
       <NewTaskToast toast={toast} onOpen={onOpen} />
     </>
   );
 }
 
 describe("the new Task toast on its own", () => {
-  it("shows for about 6 seconds, then fades out and leaves", () => {
+  it("shows for 10 seconds, then fades out and leaves", () => {
+    // Batch 3, Ticket 02 (owner decision 2026-11-11, Q4): 10 seconds, up from 6.
     vi.useFakeTimers();
     render(<Harness />);
     expect(screen.queryByRole("button", { name: TOAST })).toBeNull();
@@ -105,38 +109,63 @@ describe("the new Task toast on its own", () => {
     expect(screen.getByRole("button", { name: TOAST })).toBeInTheDocument();
 
     act(() => vi.advanceTimersByTime(TOAST_MS - 1));
-    expect(screen.getByRole("button", { name: TOAST })).not.toHaveClass("task-toast--leaving");
+    expect(toastBox()).not.toHaveClass("task-toast--leaving");
     act(() => vi.advanceTimersByTime(1));
-    expect(screen.getByRole("button", { name: TOAST })).toHaveClass("task-toast--leaving");
+    expect(toastBox()).toHaveClass("task-toast--leaving");
     act(() => vi.advanceTimersByTime(TOAST_FADE_MS));
     expect(screen.queryByRole("button", { name: TOAST })).toBeNull();
-    expect(TOAST_MS).toBe(6000);
+    expect(TOAST_MS).toBe(10_000);
+  });
+
+  it("goes at once from its X, without opening the Task", () => {
+    vi.useFakeTimers();
+    const onOpen = vi.fn();
+    render(<Harness onOpen={onOpen} />);
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    act(() => vi.advanceTimersByTime(1000));
+    fireEvent.click(screen.getByRole("button", { name: DISMISS }));
+    // Gone now, not after a fade, and nothing opened.
+    expect(screen.queryByRole("button", { name: TOAST })).toBeNull();
+    expect(screen.queryByRole("button", { name: DISMISS })).toBeNull();
+    expect(onOpen).not.toHaveBeenCalled();
+    // A later add brings it back with its full time.
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    act(() => vi.advanceTimersByTime(TOAST_MS - 1));
+    expect(toastBox()).not.toHaveClass("task-toast--leaving");
   });
 
   it("pauses while hovered or focused and resumes with the time that was left", () => {
     vi.useFakeTimers();
     render(<Harness />);
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
-    const toast = screen.getByRole("button", { name: TOAST });
+    const toast = toastBox();
+    const open = screen.getByRole("button", { name: TOAST });
+    const dismiss = screen.getByRole("button", { name: DISMISS });
 
     act(() => vi.advanceTimersByTime(4000));
     fireEvent.mouseEnter(toast);
     act(() => vi.advanceTimersByTime(60_000));
     expect(toast).not.toHaveClass("task-toast--leaving");
 
-    fireEvent.focus(toast);
+    fireEvent.focus(open);
     fireEvent.mouseLeave(toast);
     act(() => vi.advanceTimersByTime(60_000));
     expect(toast).not.toHaveClass("task-toast--leaving");
 
-    fireEvent.blur(toast);
-    act(() => vi.advanceTimersByTime(1999));
+    // Moving focus from the open button to the X stays inside the toast: still held.
+    fireEvent.blur(open, { relatedTarget: dismiss });
+    fireEvent.focus(dismiss);
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(toast).not.toHaveClass("task-toast--leaving");
+
+    fireEvent.blur(dismiss);
+    act(() => vi.advanceTimersByTime(5999));
     expect(toast).not.toHaveClass("task-toast--leaving");
     act(() => vi.advanceTimersByTime(1));
     expect(toast).toHaveClass("task-toast--leaving");
   });
 
-  it("keeps one toast for several adds, pointing at the latest, with a fresh 6 seconds", () => {
+  it("keeps one toast for several adds, pointing at the latest, with a fresh 10 seconds", () => {
     vi.useFakeTimers();
     const onOpen = vi.fn();
     render(<Harness onOpen={onOpen} />);
@@ -146,21 +175,19 @@ describe("the new Task toast on its own", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
     expect(screen.getAllByRole("button", { name: TOAST })).toHaveLength(1);
 
-    act(() => vi.advanceTimersByTime(5000));
-    expect(screen.getByRole("button", { name: TOAST })).not.toHaveClass("task-toast--leaving");
+    act(() => vi.advanceTimersByTime(9000));
+    expect(toastBox()).not.toHaveClass("task-toast--leaving");
     fireEvent.click(screen.getByRole("button", { name: TOAST }));
     expect(onOpen).toHaveBeenCalledWith("task-3");
     expect(screen.queryByRole("button", { name: TOAST })).toBeNull();
   });
 
-  it("flashes the opened Task briefly, as view state only", () => {
-    vi.useFakeTimers();
-    render(<Harness />);
+  it("hands the Task over to open, as view state only", () => {
+    const onOpen = vi.fn();
+    render(<Harness onOpen={onOpen} />);
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
     fireEvent.click(screen.getByRole("button", { name: TOAST }));
-    expect(screen.getByTestId("flash")).toHaveTextContent("task-1");
-    act(() => vi.advanceTimersByTime(FLASH_MS));
-    expect(screen.getByTestId("flash")).toHaveTextContent("");
+    expect(onOpen).toHaveBeenCalledWith("task-1");
     expect(window.localStorage.length).toBe(0);
   });
 
@@ -171,6 +198,7 @@ describe("the new Task toast on its own", () => {
     fireEvent.click(add);
     const toast = screen.getByRole("button", { name: TOAST });
     expect(toast.closest("[aria-live]")).toHaveAttribute("aria-live", "polite");
+    expect(screen.getByRole("button", { name: DISMISS }).closest("[aria-live]")).toBe(toast.closest("[aria-live]"));
     expect(add).toHaveFocus();
   });
 });
@@ -193,7 +221,7 @@ describe("the new Task toast in the Task view", () => {
     expect(area.scrollTop).toBe(0);
   });
 
-  it("clicking it scrolls to the new Task, opens it and flashes it", async () => {
+  it("clicking it scrolls to the new Task and opens it, with no outline or flash", async () => {
     tasks = Array.from({ length: 30 }, (_, i) => task(i + 1, { status: "in_progress" }));
     const scrollTo = vi.fn(function (this: HTMLElement, options?: ScrollToOptions | number) {
       if (typeof options === "object" && options.top !== undefined) this.scrollTop = options.top;
@@ -218,7 +246,8 @@ describe("the new Task toast in the Task view", () => {
       await user.click(screen.getByRole("button", { name: TOAST }));
       const row = await screen.findByRole("article", { name: "Second new" });
       expect(within(row).getByRole("region", { name: "Task details" })).toBeInTheDocument();
-      expect(row.closest(".task-slot")).toHaveClass("task-slot--flash");
+      // Q5 (2026-11-11): the open Task shows its usual open-row yellow, nothing over it.
+      expect(document.querySelector(".task-slot--flash")).toBeNull();
       const asked = scrollTo.mock.calls.slice(before).map(([options]) => (options as ScrollToOptions).top ?? 0);
       expect(Math.max(...asked)).toBeGreaterThan(0);
       expect(area.scrollTop).toBeGreaterThan(0);
@@ -350,20 +379,21 @@ describe("the list never moves by itself after the toast", () => {
   });
 });
 
-describe("the toast and flash stylesheet", () => {
+describe("the toast stylesheet", () => {
   const bySelector = (selector: string) => rules.filter((rule) =>
     rule.selector.split(",").map((part) => part.trim()).includes(selector));
 
-  it("fades only when Reduce Motion is off, and still shows the flash when it is on", () => {
-    for (const selector of [".task-toast", ".task-toast--leaving", ".task-slot--flash", ".task-slot"]) {
+  it("fades only when Reduce Motion is off, and lays no flash over the opened Task", () => {
+    for (const selector of [".task-toast", ".task-toast--leaving", ".task-slot"]) {
       for (const rule of bySelector(selector)) {
         if (/\b(transition|animation)\s*:/.test(rule.body) && !/animation:\s*none/.test(rule.body)) {
           expect(rule.media, `${selector} moves outside no-preference`).toContain("prefers-reduced-motion: no-preference");
         }
       }
     }
-    // The highlight itself sits outside any motion query, so Reduce Motion still sees it.
-    expect(bySelector(".task-slot--flash").some((rule) => rule.media === null && /outline:/.test(rule.body))).toBe(true);
+    // Q5 (2026-11-11): no outline and no tint over the Task the toast opens.
+    expect(bySelector(".task-slot--flash")).toEqual([]);
+    expect(bySelector(".task-slot").some((rule) => /outline/.test(rule.body))).toBe(false);
     expect(bySelector(".task-toast").some((rule) => rule.media === null && /box-shadow/.test(rule.body))).toBe(false);
   });
 });
