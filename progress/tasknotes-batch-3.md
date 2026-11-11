@@ -52,21 +52,19 @@ Tujuan akhir: Tasknotes di /Applications berisi 5 perubahan batch 3 (tombol Remo
   - [x] Backup data dan program lama: store.adamaja.tasknotes.pre-batch3-20261111 (checksum sama, integritas ok)
   - [x] Build 58f8026 crash saat dibuka (macOS menjawab NULL ke deliveredNotifications); data sudah versi 24 dan utuh
   - [x] Perbaikan PR #43 (Han OK), merge 891c9ee, app dipasang ulang: jalan, jendela terbuka, data utuh (152 Task, 4 Note, 8 List)
-- [ ] App asli batch 3 dicek (atas permintaan Han, dicek AI lewat Cua dengan data asli)
+- [x] App asli batch 3 dicek (atas permintaan Han, dicek AI lewat Cua dengan data asli)
   - [x] Lolos: angka sidebar sama dengan database, tiga pilihan Settings, menu klik kanan, Remove merah, tanda kuning dan toast, Pause, Start break lebih awal, fokus 1 menit, Start break dan Stop di app; pengaturan dikembalikan (Focus 25 menit, angka di semua folder)
-  - [ ] Notifikasi Pomodoro tidak muncul sejak build batch 3: macOS 27.2 menolak jalur notifikasi lama (Issue 06)
+  - [x] Notifikasi Pomodoro tidak muncul sejak build batch 3: macOS 27.2 menolak jalur notifikasi lama (Issue 06)
     - [x] Penyebab dibuktikan dengan app uji; diperbaiki dengan TDD ke API notifikasi baru; review dua sumbu, temuan diperbaiki; Draft PR #44
     - [x] Uji native kode final dengan identitas Tasknotes: terkirim, tampil, ditarik, tanpa penolakan
-    - [ ] Merge dan pasang ulang setelah CI hijau (Han konfirmasi)
-    - [ ] Cek di app terpasang: notifikasi muncul dengan bunyi, tombolnya menjalankan timer
+    - [x] Merge dan pasang ulang setelah CI hijau (Han konfirmasi): PR #44 merge 8a9d072, backup store.adamaja.tasknotes.pre-issue06-20261111, app terpasang dan data utuh
+    - [x] Cek di app terpasang: "Focus done" muncul (20:21:27), tombol Start break yang diklik Han memulai break dan notifikasi hilang; Focus dikembalikan ke 25 menit
 - [ ] Cache build dan worktree yang sudah selesai dihapus (batch 2 dan 3)
 
 ## Perlu Han lakukan
 
-- Putuskan merge PR #44 dan pasang ulang app setelah CI hijau; sampai itu, notifikasi Pomodoro tetap tidak muncul, dan cache build serta worktree belum dihapus.
+- Izinkan penghapusan cache build dan worktree yang sudah selesai (batch 2 dan 3).
 - Sambung ulang MCP Tasknotes di sesi Claude lain: proses MCP lama menolak data versi 24.
-
-
 
 ## Riwayat sesi
 
