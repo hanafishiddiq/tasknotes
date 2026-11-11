@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** in progress — built on `feat/batch3-pomodoro-page` (core, shell, page); Draft PR and review next
+**Implementation:** in progress — Draft PR #41 on `feat/batch3-pomodoro-page`; two-axis review done and its findings fixed; merge waits for the owner
 
 ## Acceptance criteria
 
@@ -43,3 +43,17 @@
 **2026-11-11 — Q40–Q42 and Q44 answered "ya semua"**: the design is settled (see the spec). Storing a focus ended early needs a third session outcome in the store (schema change).
 
 **2026-11-11 — built (evidence):** core `cargo test` with new timer tests (pause, resume, break early, the cycle, the length under way) and store tests (Ended Early Progress Entry, v23→v24 migration keeping every row, all-time totals counted as the days are); shell tests for the menu (Pause / Resume / Start break) and the view; window tests for the page (timer, picker, lengths, rail, record), contrast for every new colour in both themes (three light-theme pairs on the sheet's gray failed at 2.9:1 and now take accent text), axe and keyboard scenes for the timer, the picker and the lengths sheet. Seen in the debug app on synthetic data: idle, picker, focus, paused and the lengths sheet. One fix from that check: the main button kept the previous yellow while it faded to gray, so it is now a new button per choice with no colour transition. Not decided by this ticket and left as it was: the sidebar keeps All tasks highlighted on other pages; in the debug window the Pomodoro folder also showed no current-page gray, although the code and a browser check give it one (to look at in the installed app).
+
+**2026-11-11 — two-axis review (Standards, Spec) and what changed:**
+- The counting rule lived twice (Rust for the days, SQL for the all-time totals); the totals now count each stored session with the same Rust rule as the days.
+- The contrast check did not see strokes, fills, inset outlines or opacity; it does now, and measures the break knob, the "now" bead, the Stopped marks and the picker's search underline. It caught one real miss: a paused time breathed down to 2.8:1 in light appearance, so it now fades to 60% (3:1 at its faintest) instead of 45%.
+- The paused ring had been kept bright for contrast, which departed from the preview the owner chose; it is dim again (arc 45% into the canvas, hollow knob), recorded as a mark said in words (the time and "Paused") rather than measured.
+- The day rail drew the focus under way from "now minus the seconds focused", so a pause or sleep moved its start; the shell now sends when the focus started (`focusStartedAt`), and the rail reads the wall clock once a minute for "now" (it had frozen while paused).
+- The Task picker read only the first 50 Tasks of each group; it now reads page after page (as the list is scrolled or the highlight reaches its end, and on until the chosen Task is shown), and the highlight stays in view.
+- The beads' long-break rule moved from the page into the core (`finished_in_cycle` keeps the closed cycle during a long break).
+- An early Start break after four Finished sessions with no break between (the fourth was stopped past its end) starts the long break: the four earned it, and Ended Early still never moves the cycle (test `a_break_started_early_is_the_long_one_once_the_cycle_has_earned_it`).
+- CLI and MCP tests now show a focus ended early as `ended_early` with its minutes counted.
+- Smaller tidy-ups: one module for the Pomodoro formatting the sidebar block, page, rail and record share; one placement helper for the Task menu and the page's sheets; the history-era names (`openPomodoroHistory` …) renamed for the page; DESIGN.md records the exceptions it lacked (accent text on the gray sheets and the Overtime lap, inset outlines, the 1.6s breathing, the 14px pill).
+- Left as is, by judgement: the page, the sidebar block and the menu bar each lay out the timer's choices themselves (each shows a different set, as DESIGN.md says); `stopped_after_seconds` keeps its name, as it is part of the CLI and MCP output.
+- For the owner: the sidebar block shows a Resume button while paused, which the spec did not ask for (Q26 says the block stays as it is).
+

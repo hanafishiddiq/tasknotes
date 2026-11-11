@@ -37,6 +37,9 @@ Tujuan akhir: Tasknotes di /Applications berisi 5 perubahan batch 3 (tombol Remo
   - [x] Halaman A: timer, pilihan Task, durasi, garis hari, riwayat (commit 8133fc4; 1534 tes window hijau)
   - [x] Dicek di app debug dengan data contoh (tombol Pause tetap kuning, sudah diperbaiki)
   - [ ] Draft PR, review dua sumbu, merge setelah Han konfirmasi
+    - [x] Draft PR #41 dibuka, review dua sumbu selesai
+    - [x] Temuan review diperbaiki (cincin jeda redup lagi, garis hari, pemilih Task semua halaman, satu aturan hitung)
+    - [ ] Han memutuskan tombol Resume di blok sidebar, lalu merge
 - [ ] Angka Task belum selesai di sidebar (tiket 05) di main
   - [x] Diminta Han dan dijawab (Q45 Ready + In Progress; Q46 semua folder, bisa diatur di Settings)
   - [ ] Bentuk pengaturan di Settings ditanyakan saat tiket dimulai
