@@ -91,6 +91,19 @@ describe("Stylesheet accessibility", () => {
     expect(has("button.task-check", /position: relative/)).toBe(true);
   });
 
+  it("colours Move to Removed Alert Red, with a faint red fill only under the pointer", () => {
+    // Batch 3, Ticket 01 (owner decision 2026-11-11): red text and icon; at rest it stays a quiet button.
+    expect(has(".button-remove", /color: var\(--red\)/)).toBe(true);
+    expect(has(".button-remove", /background/)).toBe(false);
+    expect(has(".button-remove:hover:not(:disabled)", /color: var\(--red\)/)).toBe(true);
+    expect(has(".button-remove:hover:not(:disabled)",
+      /background: color-mix\(in srgb, var\(--red\) \d+%, var\(--bg\)\)/)).toBe(true);
+    // After the plain button's rules, whose hover would otherwise turn it gray again.
+    const at = (selector: string) => all.findIndex((rule) => rule.selector === selector);
+    expect(at(".button-remove")).toBeGreaterThan(at(".button"));
+    expect(at(".button-remove:hover:not(:disabled)")).toBeGreaterThan(at(".button:hover:not(:disabled)"));
+  });
+
   it("only moves anything when Reduce Motion is off", () => {
     const moving = all.filter((rule) => /\b(transition|animation)\s*:/.test(rule.body) && !/animation:\s*none/.test(rule.body));
     expect(moving.length).toBeGreaterThan(0);
