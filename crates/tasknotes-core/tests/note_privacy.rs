@@ -76,7 +76,8 @@ fn a_v10_database_keeps_its_notes_visible_to_ai_after_gaining_the_flag() {
     let kept = note(&fx.desktop(), "# Existing synthetic Note");
     let conn = rusqlite::Connection::open(&fx.db).unwrap();
     conn.execute_batch(
-        "ALTER TABLE notes DROP COLUMN exclude_from_ai;
+        "DROP TABLE pomodoro_sessions;
+         ALTER TABLE notes DROP COLUMN exclude_from_ai;
          ALTER TABLE audit_entries DROP COLUMN hidden_from_ai;
          ALTER TABLE audit_entries DROP COLUMN requested_by;
          DROP TABLE retired_revisions;
@@ -84,7 +85,7 @@ fn a_v10_database_keeps_its_notes_visible_to_ai_after_gaining_the_flag() {
          DROP INDEX tasks_status_difficulty_order; ALTER TABLE tasks DROP COLUMN difficulty; ALTER TABLE lists DROP COLUMN icon; ALTER TABLE lists DROP COLUMN color;
          DROP INDEX tasks_custom_order; ALTER TABLE tasks DROP COLUMN position; DROP TABLE view_sorts; ALTER TABLE tasks DROP COLUMN wont_do_from; ALTER TABLE tasks DROP COLUMN wont_do; ALTER TABLE progress_entries DROP COLUMN previous_wont_do;
          ALTER TABLE progress_entries DROP COLUMN wont_do;
-         DROP INDEX lists_manual_order; ALTER TABLE lists DROP COLUMN position;
+         DROP INDEX lists_manual_order; DROP INDEX lists_parent; DROP INDEX lists_sibling_name; ALTER TABLE lists DROP COLUMN parent_id; ALTER TABLE lists DROP COLUMN position;
              CREATE INDEX lists_created_order ON lists(created_at DESC, id DESC);
              DROP INDEX note_folders_manual_order; ALTER TABLE note_folders DROP COLUMN position; ALTER TABLE note_folders DROP COLUMN icon; ALTER TABLE note_folders DROP COLUMN color;
              PRAGMA user_version = 10;",

@@ -11,16 +11,22 @@ use tasknotes_core::privacy::SetNoteExcludeFromAi;
 use tasknotes_core::removed::{RemovedPage, SetRemoved};
 use tasknotes_core::style::SetStyle;
 use tasknotes_core::tasks::{
-    ChangeTask, CreateList, CreateTask, DifficultyFilter, List, ListPage, MoveTask, Priority,
-    ProgressSequencePage, RecordProgress, RenameList, ReorderList, ReorderTask, SetListRemoved,
-    SortMode, Task, TaskPage, TaskQuery, TaskStore, TaskView, UpdateTask, UpdateTaskDetails,
-    ViewSort, WorkStatus,
+    ChangeTask, CreateList, CreateSubList, CreateTask, DifficultyFilter, List, ListPage, MoveList,
+    MoveTask, PlaceList, Priority, ProgressSequencePage, RecordProgress, RenameList, ReorderList,
+    ReorderTask, SetListRemoved, SortMode, Task, TaskPage, TaskQuery, TaskStore, TaskView,
+    UpdateTask, UpdateTaskDetails, ViewSort, WorkStatus,
 };
 use tauri::{Manager, State};
 
 mod data;
 #[cfg(desktop)]
+mod macos_notifications;
+#[cfg(desktop)]
 mod platform;
+#[cfg(desktop)]
+mod pomodoro;
+#[cfg(desktop)]
+mod pomodoro_state;
 #[cfg(feature = "qa-probe")]
 mod qa_probe;
 #[cfg(desktop)]
@@ -125,6 +131,15 @@ fn create_list(store: State<'_, TaskStore>, input: CreateList) -> Result<List, S
     store.create_list(input).map_err(|error| error.to_string())
 }
 
+/// An empty List inside another, at the bottom there (ADR 0009): the row's
+/// "New List inside", as `list create --parent` and MCP `list_create`.
+#[tauri::command]
+fn create_sub_list(store: State<'_, TaskStore>, input: CreateSubList) -> Result<List, String> {
+    store
+        .create_sub_list(input)
+        .map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 fn rename_list(store: State<'_, TaskStore>, input: RenameList) -> Result<List, String> {
     store.rename_list(input).map_err(|error| error.to_string())
@@ -133,6 +148,19 @@ fn rename_list(store: State<'_, TaskStore>, input: RenameList) -> Result<List, S
 #[tauri::command]
 fn reorder_list(store: State<'_, TaskStore>, input: ReorderList) -> Result<List, String> {
     store.reorder_list(input).map_err(|error| error.to_string())
+}
+
+/// Puts a List, with the Lists inside it, under a parent and after a sibling
+/// there, in one step: a sidebar drop (ADR 0009).
+#[tauri::command]
+fn place_list(store: State<'_, TaskStore>, input: PlaceList) -> Result<List, String> {
+    store.place_list(input).map_err(|error| error.to_string())
+}
+
+/// Moves a List into another (at the bottom there) or to the top level.
+#[tauri::command]
+fn move_list(store: State<'_, TaskStore>, input: MoveList) -> Result<List, String> {
+    store.move_list(input).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -430,7 +458,9 @@ fn decline_bulk_request(store: State<'_, TaskStore>, id: String) -> Result<BulkR
 pub fn run() {
     let builder = tauri::Builder::default();
     #[cfg(desktop)]
-    let builder = builder.plugin(shell::shortcut_plugin());
+    let builder = builder
+        .plugin(shell::shortcut_plugin())
+        .plugin(tauri_plugin_notification::init());
     builder
         .manage(quit::QuitState::default())
         .menu(quit::menu)
@@ -470,8 +500,11 @@ pub fn run() {
             list_progress_entries,
             list_lists,
             create_list,
+            create_sub_list,
             rename_list,
             reorder_list,
+            place_list,
+            move_list,
             set_list_style,
             set_list_removed,
             move_task,
@@ -525,7 +558,19 @@ pub fn run() {
             #[cfg(desktop)]
             shell::take_quick_capture,
             #[cfg(desktop)]
-            shell::take_launch_notice
+            shell::take_launch_notice,
+            #[cfg(desktop)]
+            shell::set_pomodoro_durations,
+            #[cfg(desktop)]
+            shell::take_pomodoro_tip,
+            #[cfg(desktop)]
+            pomodoro::pomodoro_state,
+            #[cfg(desktop)]
+            pomodoro::pomodoro_command,
+            #[cfg(desktop)]
+            shell::set_pomodoro_silent,
+            #[cfg(desktop)]
+            pomodoro::open_notification_settings
         ])
         .build(tauri::generate_context!())
         .expect("Unable to launch Tasknotes")
@@ -533,9 +578,15 @@ pub fn run() {
 }
 
 /// Clicking the Dock icon brings back a window hidden to the menu bar. Other
-/// systems reopen from the tray item, so there is nothing to do there.
-#[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
+/// systems reopen from the tray item, so there is nothing to do there. As the
+/// app ends, however it quits, a running Pomodoro Session is stored.
+#[cfg_attr(not(desktop), allow(unused_variables))]
 fn on_run_event(app: &tauri::AppHandle, event: tauri::RunEvent) {
+    #[cfg(desktop)]
+    if let tauri::RunEvent::Exit = event {
+        pomodoro::save_on_quit(app);
+        return;
+    }
     #[cfg(target_os = "macos")]
     if let tauri::RunEvent::Reopen {
         has_visible_windows: false,

@@ -9,6 +9,7 @@ import {
   type TaskView, type SortMode, type TaskChange, type ProgressDraft, type TaskFilters,
   type Priority, type TaskListPage, type TaskPlace,
 } from "./lib/task-api";
+import { addList, listOptions, listTree, moveSubtree, parentOf } from "./lib/list-tree";
 import {
   DIFFICULTY_ORDER, DIFFICULTY_VIEW, PRIORITY_ORDER, PRIORITY_VIEW, STATUS_CHOICES,
   statusChoiceLabel,
@@ -22,6 +23,9 @@ import NewTaskToast from "./components/NewTaskToast";
 import { useLocalCalendarDay } from "./lib/use-local-calendar-day";
 import { useTheme } from "./lib/use-theme";
 import { useSound } from "./lib/sound/use-sound";
+import { usePomodoro } from "./lib/use-pomodoro";
+import PomodoroControl from "./components/PomodoroControl";
+import PomodoroSettings from "./components/PomodoroSettings";
 import { useShortcuts } from "./lib/use-shortcuts";
 import { useTaskDrafts } from "./lib/use-task-drafts";
 import { flushSync } from "react-dom";
@@ -201,6 +205,8 @@ export default function App() {
   const outsideRead = useRef(0);
 
   useOutsideChanges(showOutsideChanges);
+  // Silent is the Pomodoro's own setting, kept by the shell; sound settings play no part.
+  const pomodoro = usePomodoro({ onTaskChanged: () => void showOutsideChanges() });
 
   // Before paint, so the rows never show in their new place.
   useLayoutEffect(() => {
@@ -614,12 +620,19 @@ export default function App() {
   }
 
   async function createList(name: string): Promise<boolean> {
-    if (busyList) return false;
+    return (await createListIn(null, name)) !== null;
+  }
+
+  /** A new List at the top level or, with `parent`, inside it; it becomes the one showing. Null when refused. */
+  async function createListIn(parent: TaskList | null, name: string): Promise<TaskList | null> {
+    if (busyList) return null;
     setBusyList(true);
     setError(null);
     try {
-      const created = await taskApi.createList(name);
-      setLists((before) => [...before, created]);
+      const created = parent
+        ? await taskApi.createSubList({ name, parentId: parent.id })
+        : await taskApi.createList(name);
+      setLists((before) => addList(before, created));
       // This is a successful mutation, not a user navigation. busyList is still true.
       setTasks([]);
       setNextCursor(null);
@@ -634,11 +647,11 @@ export default function App() {
         setError("List created, but the sidebar could not refresh: " + errorMessage(reason));
       }
       // At the bottom it may be past the first page; the List just made stays in view.
-      setLists((shown) => shown.some((item) => item.id === created.id) ? shown : [...shown, created]);
-      return true;
+      setLists((shown) => shown.some((item) => item.id === created.id) ? shown : addList(shown, created));
+      return created;
     } catch (reason) {
       setError(errorMessage(reason));
-      return false;
+      return null;
     } finally {
       setBusyList(false);
     }
@@ -681,15 +694,33 @@ export default function App() {
    * Shows the new order at once; the sidebar stays usable, so focus stays on
    * the moved row. Resolves false when the core refused it.
    */
-  async function reorderList(list: TaskList, afterId: string | null): Promise<boolean> {
-    setLists((all) => {
-      const others = all.filter((item) => item.id !== list.id);
-      others.splice(afterId === null ? 0 : others.findIndex((item) => item.id === afterId) + 1, 0, list);
-      return others;
-    });
+  function reorderList(list: TaskList, afterId: string | null): Promise<boolean> {
+    return moveListTo(list, parentOf(list), afterId,
+      () => taskApi.reorderList({ id: list.id, expectedRevision: list.revision, afterId }));
+  }
+
+  /** A drop or Alt+arrow that also changes the List's parent (ADR 0009). */
+  function placeList(list: TaskList, parentId: string | null, afterId: string | null): Promise<boolean> {
+    return moveListTo(list, parentId, afterId,
+      () => taskApi.placeList({ id: list.id, expectedRevision: list.revision, parentId, afterId }));
+  }
+
+  /** Into another List, at the bottom there. */
+  function moveList(list: TaskList, parentId: string): Promise<boolean> {
+    const siblings = listTree(lists).children(parentId).filter((id) => id !== list.id);
+    const last = siblings[siblings.length - 1] ?? null;
+    return moveListTo(list, parentId, last,
+      () => taskApi.moveList({ id: list.id, expectedRevision: list.revision, parentId }));
+  }
+
+  async function moveListTo(
+    list: TaskList, parentId: string | null, afterId: string | null, write: () => Promise<TaskList>,
+  ): Promise<boolean> {
+    // The List moves with every List inside it.
+    setLists((all) => moveSubtree(all, list.id, parentId, afterId));
     setError(null);
     try {
-      const updated = await taskApi.reorderList({ id: list.id, expectedRevision: list.revision, afterId });
+      const updated = await write();
       // Committed before this resolves, so the next key press reads the new revision.
       flushSync(() => setLists((all) => all.map((item) => item.id === list.id ? updated : item)));
       return true;
@@ -716,7 +747,8 @@ export default function App() {
       if (removed) {
         undo.push({ key: `list:${updated.id}`, title: updated.name, undo: () => applyListRemoved(updated, false) });
       }
-      if (removed && view.kind === "list" && view.listId === list.id) {
+      // Removing a List hides the Lists inside it too, the one showing among them.
+      if (removed && view.kind === "list" && listTree(lists).within(list.id, view.listId)) {
         showAllTasks();
       } else {
         retryFirstLoad();
@@ -1184,6 +1216,8 @@ export default function App() {
     shellApi.takeLaunchNotice().then(setLaunchNotice).catch(() => {});
   }, []);
 
+  // Names repeat in different parents (owner decision Q33): a picker shows each List's path.
+  const taskListOptions = useMemo(() => listOptions(lists), [lists]);
   const commands = buildCommands({
     lists, undoTitle: undo.next?.title ?? null, appearance: appearance.preference,
     navigate, openNotes: () => openNotes(), openRemoved, openSettings, focusInTasks,
@@ -1217,6 +1251,7 @@ export default function App() {
     <div className="app-shell" inert={paletteOpen} ref={sidebar.shellRef}
       style={{ "--sidebar-width": `${sidebar.width}px` } as CSSProperties}>
       <TaskSidebar
+        pomodoro={<PomodoroControl pomodoro={pomodoro} tasks={tasks} openTaskId={expandedId} />}
         view={view} notesActive={workspace !== "tasks"} onOpenNotes={() => openNotes()}
         removedActive={workspace === "removed"} onOpenRemoved={openRemoved}
         pendingApprovals={approvals.count} approvalsActive={workspace === "approvals"}
@@ -1234,8 +1269,8 @@ export default function App() {
         hasMoreLists={Boolean(listCursor)} busy={busy}
         theme={appearance.theme} onToggleTheme={appearance.toggle}
         settingsActive={workspace === "settings"} onOpenSettings={openSettings}
-        onNavigate={navigate} onCreateList={createList} onRenameList={renameList}
-        onReorderList={reorderList} onStyleList={styleList}
+        onNavigate={navigate} onCreateList={createList} onCreateSubList={createListIn} onRenameList={renameList}
+        onReorderList={reorderList} onPlaceList={placeList} onMoveList={moveList} onStyleList={styleList}
         onRemoveList={(list) => setListRemoved(list, true)}
         onLoadMoreLists={loadMoreLists}
         resizer={<SidebarResizer width={sidebar.width} max={sidebar.max}
@@ -1511,7 +1546,7 @@ export default function App() {
                         onSave={(nextTitle, nextDescription, base) => updateTask(task, nextTitle, nextDescription, base)}
                         onChange={(change, base) => changeTask(task, change, base)}
                         onRecordProgress={(update, base) => recordProgress(task, update, base)}
-                        lists={lists.filter((list) => !list.removed)}
+                        lists={taskListOptions}
                         today={today}
                         onMove={(listId) => moveTask(task, listId)}
                         onUpdateDetails={(tags, dueDate, base) => updateDetails(task, tags, dueDate, base)}
@@ -1565,6 +1600,7 @@ export default function App() {
       <SettingsView hidden={workspace !== "settings"} preference={appearance.preference}
         onPreference={appearance.setPreference}>
         <SoundSettings sound={sound} />
+        <PomodoroSettings pomodoro={pomodoro} />
       </SettingsView>
       <RemovedView hidden={workspace !== "removed"} refreshKey={removedKey} onRestored={restored} />
       <ApprovalsView hidden={workspace !== "approvals"} refreshKey={approvals.count}

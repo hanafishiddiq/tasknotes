@@ -462,7 +462,7 @@ fn v2_database_upgrades_without_losing_completed_task_and_previous_progress() {
                  'Existing completed work', 'Keep this description',
                  'completed', 'very_high', 100, 7, 1000, 1001, 43
              );
-             DROP TABLE IF EXISTS audit_entries; DROP TABLE IF EXISTS bulk_requests; DROP TABLE IF EXISTS retired_revisions;
+             DROP TABLE IF EXISTS audit_entries; DROP TABLE IF EXISTS bulk_requests; DROP TABLE IF EXISTS retired_revisions; DROP TABLE IF EXISTS pomodoro_sessions;
              PRAGMA user_version=2;",
         ).unwrap();
     }

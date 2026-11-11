@@ -291,11 +291,11 @@ fn v8_database(db: &Path) -> (String, String) {
              ALTER TABLE note_folders DROP COLUMN removed_at;
              CREATE UNIQUE INDEX note_folders_sibling_name
                ON note_folders(coalesce(parent_id, ''), name_fold);
-             DROP TABLE IF EXISTS audit_entries; DROP TABLE IF EXISTS bulk_requests; DROP TABLE IF EXISTS retired_revisions;
+             DROP TABLE IF EXISTS audit_entries; DROP TABLE IF EXISTS bulk_requests; DROP TABLE IF EXISTS retired_revisions; DROP TABLE IF EXISTS pomodoro_sessions;
              DROP INDEX tasks_status_difficulty_order; ALTER TABLE tasks DROP COLUMN difficulty; ALTER TABLE lists DROP COLUMN icon; ALTER TABLE lists DROP COLUMN color;
              DROP INDEX tasks_custom_order; ALTER TABLE tasks DROP COLUMN position; DROP TABLE view_sorts; ALTER TABLE tasks DROP COLUMN wont_do_from; ALTER TABLE tasks DROP COLUMN wont_do; ALTER TABLE progress_entries DROP COLUMN previous_wont_do;
              ALTER TABLE progress_entries DROP COLUMN wont_do;
-             DROP INDEX lists_manual_order; ALTER TABLE lists DROP COLUMN position;
+             DROP INDEX lists_manual_order; DROP INDEX lists_parent; DROP INDEX lists_sibling_name; ALTER TABLE lists DROP COLUMN parent_id; ALTER TABLE lists DROP COLUMN position;
              CREATE INDEX lists_created_order ON lists(created_at DESC, id DESC);
              DROP INDEX note_folders_manual_order; ALTER TABLE note_folders DROP COLUMN position; ALTER TABLE note_folders DROP COLUMN icon; ALTER TABLE note_folders DROP COLUMN color;
              PRAGMA user_version = 8;",

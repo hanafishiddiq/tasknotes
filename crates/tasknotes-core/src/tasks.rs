@@ -12,8 +12,8 @@ use uuid::Uuid;
 use crate::audit::{AuditAction, Interface};
 pub use crate::custom_order::{ReorderTask, ViewSort};
 pub use crate::organization::{
-    CreateList, List, ListPage, MoveTask, PatchTaskDetails, RenameList, ReorderList,
-    SetListRemoved, TaskView, UpdateTaskDetails,
+    CreateList, CreateSubList, List, ListPage, ListParent, MoveList, MoveTask, PatchTaskDetails,
+    PlaceList, RenameList, ReorderList, SetListRemoved, TaskView, UpdateTaskDetails,
 };
 pub use crate::search::{TaskQuery, TaskScope};
 
@@ -35,7 +35,7 @@ pub struct TaskStore {
 pub enum TaskError {
     #[error("List name cannot be empty or exceed 100 characters")]
     InvalidListName,
-    #[error("A List with this name already exists")]
+    #[error("A List with this name already exists here")]
     ListNameConflict,
     #[error("List not found")]
     ListNotFound,
@@ -47,6 +47,10 @@ pub enum TaskError {
     InvalidListPage,
     #[error("Invalid List page cursor")]
     InvalidListCursor,
+    #[error("Lists can be nested at most 5 levels deep")]
+    ListTooDeep,
+    #[error("A List can't be moved into itself or a List inside it")]
+    ListCycle,
     #[error("Use at most 16 distinct Tags, each 1–40 characters without control characters")]
     InvalidTags,
     #[error("Deadline must be a real local calendar date in YYYY-MM-DD format")]
@@ -160,6 +164,15 @@ pub enum TaskError {
     InvalidStyleIcon,
     #[error("Unknown colour: choose one of Tasknotes' twelve colour names (style options)")]
     InvalidStyleColor,
+    #[error(
+        "Pomodoro lengths: focus 1–{focus} minutes, breaks 1–{breaks} minutes, a long break after 1–{sessions} sessions",
+        focus = crate::pomodoro::MAX_FOCUS_MINUTES,
+        breaks = crate::pomodoro::MAX_BREAK_MINUTES,
+        sessions = crate::pomodoro::MAX_SESSIONS_BEFORE_LONG_BREAK
+    )]
+    InvalidPomodoroDurations,
+    #[error("This Pomodoro Session cannot be stored: its times or outcome do not fit together")]
+    InvalidPomodoroSession,
     #[error("Bulk Change request not found")]
     BulkRequestNotFound,
     #[error("This request has already been decided")]
@@ -236,11 +249,15 @@ impl TaskError {
             | InvalidNoteFolderName
             | NoteFolderTooDeep
             | NoteFolderCycle
+            | ListTooDeep
+            | ListCycle
             | InvalidStyleIcon
             | InvalidStyleColor
             | CustomOrderNeedsOneList
             | InvalidTaskPlace
-            | InvalidBulkSelection => "invalid_input",
+            | InvalidBulkSelection
+            | InvalidPomodoroDurations
+            | InvalidPomodoroSession => "invalid_input",
             InvalidCursor
             | InvalidHistoryCursor
             | InvalidRemovedCursor
@@ -880,7 +897,7 @@ const WONT_DO_FROM_COLUMN: usize = 15;
 pub(crate) const COLUMN_COUNT: usize = 16;
 
 /// The database schema this core reads and writes.
-pub const SCHEMA_VERSION: i64 = 20;
+pub const SCHEMA_VERSION: i64 = 22;
 
 /// How long a write waits for another process (the CLI, MCP) holding the database lock.
 pub const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -1109,6 +1126,16 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), TaskError> {
     if version < 20 {
         let migration = connection.transaction()?;
         crate::custom_order::migrate_v20(&migration)?;
+        migration.commit()?;
+    }
+    if version < 21 {
+        let migration = connection.transaction()?;
+        crate::organization::migrate_v21(&migration)?;
+        migration.commit()?;
+    }
+    if version < 22 {
+        let migration = connection.transaction()?;
+        crate::pomodoro::migrate_v22(&migration)?;
         migration.commit()?;
     }
     Ok(())

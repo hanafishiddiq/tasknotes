@@ -9,9 +9,9 @@ use tasknotes_core::audit::{AuditAction, AuditOutcome, Interface};
 use tasknotes_core::export::{ExportFormat, ExportRequest};
 use tasknotes_core::removed::SetRemoved;
 use tasknotes_core::tasks::{
-    ChangeTask, CreateList, CreateTask, Difficulty, List, MoveTask, Priority, ReorderTask,
-    SCHEMA_VERSION, SortMode, Task, TaskError, TaskQuery, TaskStore, TaskView, ViewSort,
-    WorkStatus,
+    ChangeTask, CreateList, CreateSubList, CreateTask, Difficulty, List, MoveList, MoveTask,
+    PlaceList, Priority, ReorderTask, SCHEMA_VERSION, SetListRemoved, SortMode, Task, TaskError,
+    TaskQuery, TaskStore, TaskView, ViewSort, WorkStatus,
 };
 
 fn store_at(path: &Path) -> TaskStore {
@@ -505,12 +505,19 @@ fn exports_carry_each_tasks_position() {
     assert!(position(&one.id) < position(&two.id));
 }
 
-/// Puts a database back as schema v19 left it.
+/// Puts a database back as schema v19 left it: without the Pomodoro Sessions
+/// of v22, the nested Lists of v21 and the Custom Order of v20.
 fn back_to_v19(db: &Path) {
     Connection::open(db)
         .unwrap()
         .execute_batch(
-            "DROP INDEX tasks_custom_order; ALTER TABLE tasks DROP COLUMN position;
+            "DROP TABLE pomodoro_sessions;
+             DROP INDEX lists_parent; DROP INDEX lists_manual_order;
+             DROP INDEX lists_sibling_name; ALTER TABLE lists DROP COLUMN parent_id;
+             CREATE UNIQUE INDEX lists_active_name ON lists(name COLLATE NOCASE)
+               WHERE removed_at IS NULL;
+             CREATE INDEX lists_manual_order ON lists(position, id);
+             DROP INDEX tasks_custom_order; ALTER TABLE tasks DROP COLUMN position;
              DROP TABLE view_sorts; PRAGMA user_version = 19;",
         )
         .unwrap();
@@ -840,4 +847,212 @@ fn switching_a_list_of_5000_tasks_to_custom_is_quick() {
     );
     assert!(choose.as_millis() < 2_000, "{choose:?}");
     assert!(drag.as_millis() < 2_000, "{drag:?}");
+}
+
+// Custom Order with Lists inside Lists (ADR 0009, Ticket 12): each List keeps
+// a Custom Order of its own Tasks only, whatever its place in the tree.
+
+fn sub_list(store: &TaskStore, name: &str, parent: &List) -> List {
+    store
+        .create_sub_list(CreateSubList {
+            name: name.into(),
+            parent_id: parent.id.clone(),
+        })
+        .unwrap()
+}
+
+fn list_now(store: &TaskStore, list: &List) -> List {
+    store
+        .list_lists(100, None, true)
+        .unwrap()
+        .items
+        .into_iter()
+        .find(|item| item.id == list.id)
+        .unwrap()
+}
+
+/// Each Task of the List as stored: its place, revision and update time.
+fn stored_tasks(db: &Path, list: &List) -> Vec<(String, i64, i64, i64)> {
+    let conn = Connection::open(db).unwrap();
+    let mut statement = conn
+        .prepare(
+            "SELECT id, position, revision, updated_at FROM tasks WHERE list_id = ?1 ORDER BY id",
+        )
+        .unwrap();
+    statement
+        .query_map(params![list.id], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+        })
+        .unwrap()
+        .collect::<rusqlite::Result<_>>()
+        .unwrap()
+}
+
+#[test]
+fn a_list_inside_a_list_keeps_a_custom_order_of_its_own() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("nested-custom.db");
+    let store = store_at(&db);
+    let work = list(&store, "Synthetic Work");
+    let p1 = task_in(&store, "P1", Some(&work));
+    task_in(&store, "P2", Some(&work));
+    let reports = sub_list(&store, "Synthetic Reports", &work);
+    let c1 = task_in(&store, "C1", Some(&reports));
+    task_in(&store, "C2", Some(&reports));
+    let c3 = task_in(&store, "C3", Some(&reports));
+    assert_eq!(custom(&store, Some(&work)), ["P2", "P1"]);
+    assert_eq!(custom(&store, Some(&reports)), ["C3", "C2", "C1"]);
+    let parent_before = stored_tasks(&db, &work);
+
+    // A move inside the Sub-List rewrites its own sequence only, and only
+    // the Sub-List switches to Custom.
+    after(&store, &c3, Some(&c1)).unwrap();
+    assert_eq!(custom(&store, Some(&reports)), ["C2", "C1", "C3"]);
+    assert_eq!(custom(&store, Some(&work)), ["P2", "P1"]);
+    assert_eq!(stored_tasks(&db, &work), parent_before);
+    assert_eq!(
+        sort_of(&store, &view_of(Some(&reports))),
+        Some(SortMode::Custom)
+    );
+    assert_eq!(sort_of(&store, &view_of(Some(&work))), None);
+
+    // Nesting never rolls Tasks up: a parent's Task is no anchor in its
+    // Sub-List, nor the other way round.
+    for (moving, anchor) in [(&c1, &p1), (&p1, &c1)] {
+        let err = after(&store, moving, Some(anchor)).unwrap_err();
+        assert!(matches!(err, TaskError::TaskOrderAnchorChanged), "{err:?}");
+        let err = reorder(&store, moving, None, Some(anchor), None).unwrap_err();
+        assert_eq!(err.code(), "revision_conflict");
+    }
+
+    // A Task moved from the parent into its Sub-List lands at the top there.
+    store
+        .move_task(MoveTask {
+            id: p1.id.clone(),
+            expected_revision: now(&store, &p1).revision,
+            list_id: Some(reports.id.clone()),
+        })
+        .unwrap();
+    assert_eq!(custom(&store, Some(&reports)), ["P1", "C2", "C1", "C3"]);
+    assert_eq!(custom(&store, Some(&work)), ["P2"]);
+}
+
+#[test]
+fn moving_a_list_to_another_parent_keeps_its_custom_order_and_its_sort() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("moved-custom.db");
+    let store = store_at(&db);
+    let work = list(&store, "Synthetic Work");
+    let home = list(&store, "Synthetic Home");
+    let reports = sub_list(&store, "Synthetic Reports", &work);
+    let r1 = task_in(&store, "R1", Some(&reports));
+    task_in(&store, "R2", Some(&reports));
+    let r3 = task_in(&store, "R3", Some(&reports));
+    after(&store, &r3, Some(&r1)).unwrap();
+    store
+        .set_view_sort(&view_of(Some(&work)), SortMode::Difficulty)
+        .unwrap();
+    let before = stored_tasks(&db, &reports);
+    let sorts_before = store.view_sorts().unwrap();
+
+    // Into another List, then to the top level by a sidebar drop: the List's
+    // id is its view's key, so its remembered sort follows it.
+    store
+        .move_list(MoveList {
+            id: reports.id.clone(),
+            expected_revision: list_now(&store, &reports).revision,
+            parent_id: Some(home.id.clone()),
+        })
+        .unwrap();
+    assert_eq!(
+        list_now(&store, &reports).parent_id.as_deref(),
+        Some(home.id.as_str())
+    );
+    assert_eq!(stored_tasks(&db, &reports), before);
+    assert_eq!(custom(&store, Some(&reports)), ["R2", "R1", "R3"]);
+    store
+        .place_list(PlaceList {
+            id: reports.id.clone(),
+            expected_revision: list_now(&store, &reports).revision,
+            parent_id: None,
+            after_id: None,
+        })
+        .unwrap();
+    assert_eq!(list_now(&store, &reports).parent_id, None);
+    assert_eq!(stored_tasks(&db, &reports), before);
+    assert_eq!(store.view_sorts().unwrap(), sorts_before);
+    assert_eq!(
+        sort_of(&store, &view_of(Some(&reports))),
+        Some(SortMode::Custom)
+    );
+
+    // Its Custom Order is still the one to move within.
+    after(&store, &r1, None).unwrap();
+    assert_eq!(custom(&store, Some(&reports)), ["R1", "R2", "R3"]);
+}
+
+#[test]
+fn tasks_inside_a_removed_list_leave_every_custom_order_and_come_back_in_theirs() {
+    let (_dir, store) = fresh();
+    let work = list(&store, "Synthetic Work");
+    let reports = sub_list(&store, "Synthetic Reports", &work);
+    let weekly = sub_list(&store, "Synthetic Weekly", &reports);
+    let w1 = task_in(&store, "W1", Some(&weekly));
+    task_in(&store, "W2", Some(&weekly));
+    let w3 = task_in(&store, "W3", Some(&weekly));
+    task_in(&store, "R1", Some(&reports));
+    task_in(&store, "Inbox one", None);
+    after(&store, &w3, Some(&w1)).unwrap();
+    assert_eq!(custom(&store, Some(&weekly)), ["W2", "W1", "W3"]);
+
+    store
+        .set_list_removed(SetListRemoved {
+            id: work.id.clone(),
+            expected_revision: list_now(&store, &work).revision,
+            removed: true,
+        })
+        .unwrap();
+    // Neither List inside is in Removed itself, yet both are hidden with it:
+    // no Custom listing shows their Tasks, and none can be rearranged.
+    assert!(!list_now(&store, &weekly).removed);
+    for hidden in [&reports, &weekly] {
+        let err = store
+            .query_tasks(
+                &TaskQuery {
+                    view: view_of(Some(hidden)),
+                    sort: SortMode::Custom,
+                    ..TaskQuery::default()
+                },
+                100,
+                None,
+            )
+            .unwrap_err();
+        assert_eq!(err.code(), "removed");
+        let err = store
+            .set_view_sort(&view_of(Some(hidden)), SortMode::Custom)
+            .unwrap_err();
+        assert_eq!(err.code(), "removed");
+    }
+    assert_eq!(custom(&store, None), ["Inbox one"]);
+    assert_eq!(
+        titles(&store, TaskView::All, SortMode::Priority),
+        ["Inbox one"]
+    );
+    let err = after(&store, &w1, None).unwrap_err();
+    assert!(matches!(err, TaskError::TaskListRemoved), "{err:?}");
+    let err = after(&store, &w3, Some(&w1)).unwrap_err();
+    assert_eq!(err.code(), "removed");
+
+    store
+        .set_list_removed(SetListRemoved {
+            id: work.id.clone(),
+            expected_revision: list_now(&store, &work).revision,
+            removed: false,
+        })
+        .unwrap();
+    assert_eq!(custom(&store, Some(&weekly)), ["W2", "W1", "W3"]);
+    assert_eq!(
+        sort_of(&store, &view_of(Some(&weekly))),
+        Some(SortMode::Custom)
+    );
 }

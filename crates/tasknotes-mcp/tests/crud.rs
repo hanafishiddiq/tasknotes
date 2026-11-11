@@ -640,6 +640,141 @@ fn wont_do_is_set_cleared_and_filtered_through_mcp() {
     assert_eq!(reopened["item"]["progress"], 30);
 }
 
+/// Ticket 12: a List inside a List, moved and read as a tree; removing one
+/// that holds anything waits for the person.
+#[test]
+fn lists_nest_move_and_read_as_a_tree() {
+    let data = Data::trusted();
+    let mut s = data.server();
+    let work = s.ok("list_create", json!({"name": "Synthetic Work"}));
+    let home = s.ok("list_create", json!({"name": "Synthetic Home"}));
+    let reports = s.ok(
+        "list_create",
+        json!({"name": "Synthetic Reports", "parent_id": id(&work)}),
+    );
+    assert_eq!(reports["item"]["parent_id"], id(&work));
+    let tree = |s: &mut common::Server| -> Vec<(String, Value)> {
+        s.ok("list_list", json!({}))["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|l| {
+                (
+                    l["name"].as_str().unwrap().to_owned(),
+                    l["parent_id"].clone(),
+                )
+            })
+            .collect()
+    };
+    assert_eq!(
+        tree(&mut s),
+        [
+            ("Synthetic Work".to_owned(), Value::Null),
+            ("Synthetic Reports".to_owned(), json!(id(&work))),
+            ("Synthetic Home".to_owned(), Value::Null),
+        ]
+    );
+
+    let moved = s.ok(
+        "list_move",
+        json!({"id": id(&reports), "revision": rev(&reports), "parent_id": id(&home)}),
+    );
+    assert_eq!(moved["item"]["parent_id"], id(&home));
+    s.refused(
+        "list_move",
+        json!({"id": id(&reports), "revision": rev(&moved)}),
+        "invalid_input",
+    );
+    let home_now = s.ok("list_list", json!({}))["items"][1].clone();
+    s.refused(
+        "list_move",
+        json!({"id": id(&home), "revision": home_now["revision"], "parent_id": id(&reports)}),
+        "invalid_input",
+    );
+    let placed = s.ok(
+        "list_reorder",
+        json!({"id": id(&reports), "revision": rev(&moved), "first": true, "top": true}),
+    );
+    assert!(placed["item"]["parent_id"].is_null());
+    assert_eq!(tree(&mut s)[0].0, "Synthetic Reports");
+
+    let inner = s.ok(
+        "list_create",
+        json!({"name": "Synthetic Inner", "parent_id": id(&work)}),
+    );
+    let work_now = s.ok("list_list", json!({}))["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|l| l["id"] == id(&work))
+        .unwrap()
+        .clone();
+    assert_eq!(work_now["has_children"], true);
+    s.refused(
+        "list_remove",
+        json!({"id": id(&work), "revision": work_now["revision"]}),
+        "needs_approval",
+    );
+    assert_eq!(
+        tree(&mut s)
+            .iter()
+            .filter(|(name, _)| name == "Synthetic Inner")
+            .count(),
+        1,
+        "nothing was hidden: {}",
+        id(&inner)
+    );
+}
+
+/// Owner decision Q33: List names are unique among siblings only, and every
+/// tool names a List by id, so two Lists called Reports never make a call
+/// ambiguous.
+#[test]
+fn list_names_are_unique_among_siblings_and_tools_name_lists_by_id() {
+    let data = Data::trusted();
+    let mut s = data.server();
+    let it = s.ok("list_create", json!({"name": "Adamaja IT"}));
+    let personal = s.ok("list_create", json!({"name": "Personal"}));
+    let reports = s.ok(
+        "list_create",
+        json!({"name": "Reports", "parent_id": id(&it)}),
+    );
+    let other = s.ok(
+        "list_create",
+        json!({"name": "Reports", "parent_id": id(&personal)}),
+    );
+    let refused = s.refused(
+        "list_create",
+        json!({"name": "REPORTS", "parent_id": id(&it)}),
+        "name_conflict",
+    );
+    assert_eq!(
+        refused["message"],
+        "A List with this name already exists here"
+    );
+    s.refused(
+        "list_move",
+        json!({"id": id(&other), "revision": rev(&other), "parent_id": id(&it)}),
+        "name_conflict",
+    );
+    s.refused(
+        "list_rename",
+        json!({"id": id(&personal), "revision": rev(&personal), "name": "adamaja it"}),
+        "name_conflict",
+    );
+
+    let task = s.ok(
+        "task_create",
+        json!({"title": "Synthetic report", "list_id": id(&reports)}),
+    );
+    assert_eq!(task["item"]["list_id"], id(&reports));
+    s.refused(
+        "task_create",
+        json!({"title": "By name", "list_id": "Reports"}),
+        "not_found",
+    );
+}
+
 #[test]
 fn tasks_read_and_move_in_custom_order_with_a_revision_check() {
     let data = Data::trusted();

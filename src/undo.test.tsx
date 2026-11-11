@@ -177,10 +177,10 @@ describe("a refused Undo", () => {
     await user.click(screen.getByRole("button", { name: "Settings" }));
     expect(await screen.findByRole("heading", { name: "Settings" })).toBeVisible();
 
-    backend.refuse("set_list_removed", "A List with this name already exists");
+    backend.refuse("set_list_removed", "A List with this name already exists here");
     await user.keyboard("{Meta>}z{/Meta}");
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't undo: A List with this name already exists");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't undo: A List with this name already exists here");
     expect(lists[0].removed).toBe(true);
   });
 

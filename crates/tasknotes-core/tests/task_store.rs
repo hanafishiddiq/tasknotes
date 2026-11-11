@@ -167,10 +167,11 @@ fn stores_opening_at_the_same_moment_all_succeed() {
     for older in [
         None,
         Some(
-            "DROP TABLE retired_revisions;
+            "DROP TABLE pomodoro_sessions;
+                 DROP TABLE retired_revisions;
                  DROP TABLE bulk_requests;
                  ALTER TABLE audit_entries DROP COLUMN requested_by;
-                 DROP INDEX lists_manual_order; ALTER TABLE lists DROP COLUMN position;
+                 DROP INDEX lists_manual_order; DROP INDEX lists_parent; DROP INDEX lists_sibling_name; ALTER TABLE lists DROP COLUMN parent_id; ALTER TABLE lists DROP COLUMN position;
              CREATE INDEX lists_created_order ON lists(created_at DESC, id DESC);
              DROP INDEX note_folders_manual_order; ALTER TABLE note_folders DROP COLUMN position; ALTER TABLE note_folders DROP COLUMN icon; ALTER TABLE note_folders DROP COLUMN color;
              DROP INDEX tasks_status_difficulty_order; ALTER TABLE tasks DROP COLUMN difficulty; ALTER TABLE lists DROP COLUMN icon; ALTER TABLE lists DROP COLUMN color;

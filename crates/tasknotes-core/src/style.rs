@@ -167,7 +167,7 @@ impl TaskStore {
         if old.revision != input.expected_revision {
             return Err(TaskError::RevisionConflict);
         }
-        if old.removed {
+        if crate::organization::list_hidden(&tx, &old.id)? {
             return Err(TaskError::ListRemoved);
         }
         restyle(&tx, "lists", &input, &old.style, TaskError::ListUnchanged)?;
