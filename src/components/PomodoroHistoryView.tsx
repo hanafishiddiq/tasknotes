@@ -109,11 +109,10 @@ export default function PomodoroHistoryView({ hidden, refreshKey, onOpenTask }: 
     setLoadingMore(true);
     try {
       const page = await pomodoroApi.history(cursor);
+      // The core's cursor starts after the last day shown, and a read from the
+      // top since then drops this answer, so no day can come twice.
       if (read !== generation.current) return;
-      setDays((current) => {
-        const seen = new Set(current.map((day) => day.date));
-        return [...current, ...page.items.filter((day) => !seen.has(day.date))];
-      });
+      setDays((current) => [...current, ...page.items]);
       setCursor(page.nextCursor);
     } catch (reason) {
       if (read === generation.current) setError("Couldn't load more days: " + errorMessage(reason));

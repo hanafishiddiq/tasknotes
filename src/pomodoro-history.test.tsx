@@ -69,6 +69,10 @@ const FEB_2: PomodoroDay = {
   date: "2025-02-02", finishedSessions: 1, focusMinutes: 25, stoppedSessions: 0,
   sessions: [session({ startedAt: new Date(2025, 1, 2, 8, 0).getTime() })],
 };
+const JAN_5: PomodoroDay = {
+  date: "2025-01-05", finishedSessions: 1, focusMinutes: 25, stoppedSessions: 0,
+  sessions: [session({ startedAt: new Date(2025, 0, 5, 8, 0).getTime() })],
+};
 
 /** The text of each row, with the narrow space Intl may put before AM. */
 const rowTexts = (rows: HTMLElement[]) => rows.map((row) => row.textContent?.replace(/\s/g, " "));
@@ -273,6 +277,27 @@ describe("Pomodoro history page (Ticket 14)", () => {
     expect(within(page).queryByRole("region", { name: "Sunday, Feb 2, 2025" })).not.toBeInTheDocument();
     await user.click(within(page).getByRole("button", { name: "Load more days" }));
     expect(await within(page).findByRole("region", { name: "Tuesday, Mar 4, 2025" })).toBeInTheDocument();
+  });
+
+  it("never shows a day twice when a read from the top overtakes Load more", async () => {
+    pages["p1|2025-03-04"] = { items: [FEB_2], nextCursor: "p1|2025-02-02" };
+    pages["p1|2025-02-02"] = { items: [JAN_5], nextCursor: null };
+    const { user, page } = await openHistory();
+    await user.click(within(page).getByRole("button", { name: "Load more days" }));
+    await within(page).findByRole("region", { name: "Sunday, Feb 2, 2025" });
+    held = { cursor: "p1|2025-02-02", release: () => {} };
+    await user.click(within(page).getByRole("button", { name: "Load more days" }));
+    // Meanwhile a session is stored and the core's pages end elsewhere: the
+    // read from the top already brings Jan 5 that the held page also holds.
+    pages["p1|2025-03-04"] = { items: [FEB_2, JAN_5], nextCursor: null };
+    await shellSays({ phase: "idle" }, true);
+    await within(page).findByRole("region", { name: "Sunday, Jan 5, 2025" });
+    await act(async () => held?.release());
+
+    await waitFor(() => expect(within(page).queryByRole("button", { name: /Load/ })).not.toBeInTheDocument());
+    const days = within(page).getAllByRole("region").map((day) => day.getAttribute("aria-labelledby"))
+      .map((id) => document.getElementById(id!)?.textContent);
+    expect(days).toEqual(["Today", "Tuesday, Mar 4, 2025", "Sunday, Feb 2, 2025", "Sunday, Jan 5, 2025"]);
   });
 
   it("reads the history again after a change made outside the window", async () => {
