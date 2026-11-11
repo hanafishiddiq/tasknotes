@@ -1,5 +1,7 @@
+use std::collections::BTreeMap;
+
 use rusqlite::{Transaction, params_from_iter, types::Value};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::tasks::{
@@ -200,7 +202,44 @@ fn parse_cursor(value: &str, key: &str, sort: SortMode) -> Result<After, TaskErr
     Ok(after)
 }
 
+/// How many unfinished Tasks (Ready or In Progress) each place holds, the
+/// numbers beside the sidebar's folders (batch 3, Q45). Completed, Won't Do
+/// and Removed never count, as in every view; a List counts only its own
+/// Tasks, never those of the Lists inside it (GLOSSARY "List").
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnfinishedCounts {
+    /// Every unfinished Task not in Removed: All tasks.
+    pub all: i64,
+    pub inbox: i64,
+    /// By List id; a List with none is left out.
+    pub lists: BTreeMap<String, i64>,
+}
+
 impl TaskStore {
+    /// [`UnfinishedCounts`] in one grouped count: no Task is read.
+    pub fn unfinished_counts(&self) -> Result<UnfinishedCounts, TaskError> {
+        let conn = self.connect()?;
+        let mut stmt = conn.prepare(concat!(
+            "SELECT tasks.list_id, COUNT(*) FROM tasks WHERE ",
+            task_visible!("tasks"),
+            " AND tasks.status IN ('ready', 'in_progress') GROUP BY tasks.list_id"
+        ))?;
+        let mut counts = UnfinishedCounts::default();
+        let mut rows = stmt.query([])?;
+        while let Some(row) = rows.next()? {
+            let count: i64 = row.get(1)?;
+            counts.all += count;
+            match row.get::<_, Option<String>>(0)? {
+                None => counts.inbox = count,
+                Some(list_id) => {
+                    counts.lists.insert(list_id, count);
+                }
+            }
+        }
+        Ok(counts)
+    }
+
     /// Bounded keyset page over one query. A cursor is valid only for the
     /// query that produced it, so pages never repeat or skip across queries.
     pub fn query_tasks(
