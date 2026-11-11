@@ -86,6 +86,7 @@ fn pomodoro_history_is_a_read_only_tool() {
     assert_eq!(tool["annotations"]["readOnlyHint"], true);
     let description = tool["description"].as_str().unwrap();
     assert!(description.contains("Stopped"), "{description}");
+    assert!(description.contains("ended_early"), "{description}");
     assert!(description.contains("local"), "{description}");
 }
 
@@ -127,6 +128,36 @@ fn history_counts_finished_sessions_per_local_day_newest_first() {
     let stopped = &days[1]["sessions"][1];
     assert_eq!(stopped["outcome"], "stopped");
     assert_eq!(stopped["stopped_after_minutes"], 10);
+}
+
+#[test]
+fn a_focus_ended_early_is_named_so_and_counts_its_minutes_but_not_as_a_session() {
+    let data = Data::trusted();
+    let desktop = data.desktop();
+    let start = NOV_10_JAKARTA + 9 * HOUR;
+    desktop
+        .record_pomodoro_session(session(None, start, SessionOutcome::Finished))
+        .unwrap();
+    desktop
+        .record_pomodoro_session(EndedSession {
+            stopped_after_seconds: Some(12 * 60),
+            ended_at: start + HOUR + 12 * MINUTE,
+            ..session(None, start + HOUR, SessionOutcome::EndedEarly)
+        })
+        .unwrap();
+    let mut server = data.server_with(&JAKARTA);
+    let page = server.ok("pomodoro_history", json!({}));
+    let day = &page["items"][0];
+    assert_eq!(day["finished_sessions"], 1);
+    assert_eq!(
+        day["focus_minutes"], 40,
+        "25 + 3 Overtime + the 12 before Start break"
+    );
+    assert_eq!(day["stopped_sessions"], 0);
+    let early = &day["sessions"][1];
+    assert_eq!(early["outcome"], "ended_early");
+    assert_eq!(early["stopped_after_minutes"], 12);
+    assert_eq!(early["overtime_minutes"], 0);
 }
 
 #[test]

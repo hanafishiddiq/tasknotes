@@ -27,7 +27,9 @@ use rusqlite::params;
 use serde::Serialize;
 
 use crate::calendar::{DAY_MS, TimeZone, day_at, format_date, parse_date};
-use crate::pomodoro::{PomodoroSession, SessionOutcome, read_session, whole_minutes};
+use crate::pomodoro::{
+    PomodoroSession, SESSION_COLUMNS, SessionOutcome, read_session, whole_minutes,
+};
 use crate::tasks::{TaskError, TaskStore};
 
 /// Which days to read: `from` and `to` are local dates (`YYYY-MM-DD`),
@@ -161,27 +163,28 @@ pub struct PomodoroTotals {
     pub focus_minutes: i64,
 }
 
-/// [`PomodoroTotals`] in one pass; each session rounds to its whole minutes
-/// as [`whole_minutes`] does ((seconds + 30) / 60, never negative here).
-const TOTALS_SQL: &str = "SELECT
-       COALESCE(SUM(outcome = 'finished'), 0),
-       COALESCE(SUM(CASE outcome
-           WHEN 'finished' THEN (planned_seconds + 30) / 60 + (overtime_seconds + 30) / 60
-           WHEN 'ended_early' THEN (stopped_after_seconds + 30) / 60
-           ELSE 0 END), 0)
-     FROM pomodoro_sessions";
-
 impl TaskStore {
     /// The all-time totals the Pomodoro page shows (batch 3, Q42). Read
     /// only; every interface may read them.
     pub fn pomodoro_totals(&self) -> Result<PomodoroTotals, TaskError> {
         let conn = self.connect()?;
-        Ok(conn.query_row(TOTALS_SQL, [], |row| {
-            Ok(PomodoroTotals {
-                finished_sessions: row.get(0)?,
-                focus_minutes: row.get(1)?,
-            })
-        })?)
+        let mut statement =
+            conn.prepare(&format!("SELECT {SESSION_COLUMNS} FROM pomodoro_sessions"))?;
+        let mut totals = PomodoroTotals {
+            finished_sessions: 0,
+            focus_minutes: 0,
+        };
+        for session in statement.query_map([], read_session)? {
+            let session = session?;
+            totals.finished_sessions += i64::from(session.outcome == SessionOutcome::Finished);
+            totals.focus_minutes += counted_minutes(
+                session.outcome,
+                whole_minutes(session.planned_seconds),
+                whole_minutes(session.overtime_seconds),
+                session.stopped_after_seconds.map(whole_minutes),
+            );
+        }
+        Ok(totals)
     }
 
     /// Up to `limit` days of the history in `range`, newest first, after the
@@ -301,11 +304,19 @@ fn history_session(
     }
 }
 
-/// The focus a session counts, in the whole minutes it shows.
-fn counted_minutes(entry: &HistorySession) -> i64 {
-    match entry.outcome {
-        SessionOutcome::Finished => entry.planned_minutes + entry.overtime_minutes,
-        SessionOutcome::EndedEarly => entry.stopped_after_minutes.unwrap_or(0),
+/// The focus a session counts, in the whole minutes it shows: a Finished
+/// one its planned length and the Overtime counted, an Ended Early one its
+/// focus before the break, a Stopped one nothing. The days and the all-time
+/// totals both count with this.
+fn counted_minutes(
+    outcome: SessionOutcome,
+    planned_minutes: i64,
+    overtime_minutes: i64,
+    stopped_after_minutes: Option<i64>,
+) -> i64 {
+    match outcome {
+        SessionOutcome::Finished => planned_minutes + overtime_minutes,
+        SessionOutcome::EndedEarly => stopped_after_minutes.unwrap_or(0),
         SessionOutcome::Stopped => 0,
     }
 }
@@ -323,7 +334,17 @@ fn summarize(day: i64, mut newest_first: Vec<HistorySession>) -> PomodoroDay {
     PomodoroDay {
         date: format_date(day),
         finished_sessions: finished().count() as i64,
-        focus_minutes: sessions.iter().map(counted_minutes).sum(),
+        focus_minutes: sessions
+            .iter()
+            .map(|entry| {
+                counted_minutes(
+                    entry.outcome,
+                    entry.planned_minutes,
+                    entry.overtime_minutes,
+                    entry.stopped_after_minutes,
+                )
+            })
+            .sum(),
         stopped_sessions: sessions
             .iter()
             .filter(|entry| entry.outcome == SessionOutcome::Stopped)

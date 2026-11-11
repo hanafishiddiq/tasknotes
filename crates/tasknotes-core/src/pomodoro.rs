@@ -354,7 +354,7 @@ pub(crate) fn migrate_v24(migration: &Transaction) -> Result<(), TaskError> {
     Ok(())
 }
 
-const SESSION_COLUMNS: &str = "id, task_id, started_at, planned_seconds, overtime_seconds, \
+pub(crate) const SESSION_COLUMNS: &str = "id, task_id, started_at, planned_seconds, overtime_seconds, \
      outcome, ended_at, utc_offset_seconds, stopped_after_seconds";
 
 /// The most sessions one listing returns; a day holds far fewer.
@@ -650,10 +650,27 @@ impl PomodoroTimer {
         }
     }
 
-    /// Finished sessions since the last long break was earned: the window's
-    /// beads.
+    /// The window's beads: Finished sessions in the cycle toward the long
+    /// break, or during a long break (and once it is over) the whole cycle it
+    /// closed, until the next focus begins the next one.
     pub fn finished_in_cycle(&self) -> u32 {
-        self.finished_in_cycle
+        match self.phase {
+            PomodoroPhase::Break { long: true, .. } | PomodoroPhase::BreakDone { long: true } => {
+                self.durations.sessions_before_long_break
+            }
+            _ => self.finished_in_cycle,
+        }
+    }
+
+    /// When the focus under way started, on the wall clock (pauses move its
+    /// end, never its start), so the window's day rail draws it from there;
+    /// `None` without one.
+    pub fn focus_started_at(&self) -> Option<i64> {
+        match &self.phase {
+            PomodoroPhase::Focus { started_at, .. }
+            | PomodoroPhase::FocusDone { started_at, .. } => Some(*started_at),
+            _ => None,
+        }
     }
 
     /// Whether a session or break is under way or waiting for a click.
@@ -759,8 +776,9 @@ impl PomodoroTimer {
     /// Before the planned end, while a focus counts down or is paused: the
     /// person rests now. The session is Ended Early with its focus so far,
     /// which counts as focus time but not as a session, so the cycle toward
-    /// the long break does not move; under a minute it is Stopped. The
-    /// (short) break starts at once.
+    /// the long break does not move; under a minute it is Stopped. The break
+    /// starts at once: the short one, or the long one when the Finished
+    /// sessions before it already earned it.
     pub fn break_early(&mut self, now: Moment) -> Result<EndedSession, NotNow> {
         self.tick(now);
         let mut ended = self
@@ -823,9 +841,7 @@ impl PomodoroTimer {
             planned_seconds: *planned_seconds,
             overtime_seconds: 0,
             outcome,
-            stopped_after_seconds: Some(
-                planned_seconds - remaining(held(now, *paused_at), *ends_at),
-            ),
+            stopped_after_seconds: Some(planned_seconds - seconds_left(now, *ends_at, *paused_at)),
             ended_at: now.wall.max(*started_at),
         })
     }
@@ -887,7 +903,7 @@ impl PomodoroTimer {
                 ..
             } => TimerState::Focus {
                 task_id: task_id.clone(),
-                remaining_seconds: remaining(held(now, *paused_at), *ends_at),
+                remaining_seconds: seconds_left(now, *ends_at, *paused_at),
                 paused: paused_at.is_some(),
             },
             PomodoroPhase::FocusDone {
@@ -903,7 +919,7 @@ impl PomodoroTimer {
                 ..
             } => TimerState::Break {
                 long: *long,
-                remaining_seconds: remaining(held(now, *paused_at), *ends_at),
+                remaining_seconds: seconds_left(now, *ends_at, *paused_at),
                 paused: paused_at.is_some(),
             },
             PomodoroPhase::BreakDone { long } => TimerState::BreakDone { long: *long },
@@ -967,18 +983,11 @@ impl PomodoroTimer {
     }
 }
 
-/// `now`, or while paused the moment Pause was clicked: the time a held
-/// focus or break is measured at.
-fn held(now: Moment, paused_at: Option<i64>) -> Moment {
-    Moment {
-        awake: paused_at.unwrap_or(now.awake),
-        ..now
-    }
-}
-
-/// Whole seconds left, rounded up so "00:00" never shows before the end.
-fn remaining(now: Moment, ends_at: i64) -> i64 {
-    ((ends_at - now.awake).max(0) + MILLIS_PER_SECOND - 1) / MILLIS_PER_SECOND
+/// Whole seconds left of a focus or break, rounded up so "00:00" never shows
+/// before the end; while paused, measured at the moment Pause was clicked.
+fn seconds_left(now: Moment, ends_at: i64, paused_at: Option<i64>) -> i64 {
+    let measured_at = paused_at.unwrap_or(now.awake);
+    ((ends_at - measured_at).max(0) + MILLIS_PER_SECOND - 1) / MILLIS_PER_SECOND
 }
 
 /// Whole seconds of Overtime since the planned end, rounded down.
@@ -1001,6 +1010,7 @@ mod tests {
     const A0: i64 = 5_000;
     const MIN: i64 = 60_000;
     const SEC: i64 = 1_000;
+    const HOUR: i64 = 60 * MIN;
     /// The Mac's clock in Jakarta, UTC+7.
     const JAKARTA: i32 = 7 * 3600;
 
@@ -1645,6 +1655,69 @@ mod tests {
         );
         t.tick(at(35 * MIN));
         assert_eq!(t.planned_seconds(), None);
+    }
+
+    #[test]
+    fn the_window_learns_when_the_focus_under_way_started_on_the_wall_clock() {
+        let mut t = timer();
+        assert_eq!(t.focus_started_at(), None);
+        t.start_focus(at(3 * MIN), None).unwrap();
+        // A pause moves the end, never the start.
+        t.pause(at(10 * MIN)).unwrap();
+        t.resume(at(15 * MIN)).unwrap();
+        assert_eq!(t.focus_started_at(), Some(T0 + 3 * MIN));
+        t.tick(at(33 * MIN));
+        assert_eq!(t.focus_started_at(), Some(T0 + 3 * MIN));
+        t.start_break(at(34 * MIN)).unwrap();
+        assert_eq!(t.focus_started_at(), None);
+    }
+
+    /// Four focuses to their end, each followed by its break; `last` ends the
+    /// fourth instead of Start break.
+    fn four_finished(last: impl FnOnce(&mut PomodoroTimer, Moment)) -> PomodoroTimer {
+        let mut last = Some(last);
+        let mut t = timer();
+        for round in 0..4 {
+            let start = round * 30 * MIN;
+            t.start_focus(at(start), None).unwrap();
+            t.tick(at(start + 25 * MIN));
+            if round < 3 {
+                t.start_break(at(start + 25 * MIN)).unwrap();
+            } else {
+                (last.take().unwrap())(&mut t, at(start + 25 * MIN));
+            }
+        }
+        t
+    }
+
+    #[test]
+    fn a_long_break_keeps_the_beads_of_the_cycle_it_closed() {
+        let mut t = four_finished(|t, now| {
+            t.start_break(now).unwrap();
+        });
+        assert!(matches!(t.phase(), PomodoroPhase::Break { long: true, .. }));
+        assert_eq!(t.finished_in_cycle(), 4);
+        t.tick(at(4 * 30 * MIN + 15 * MIN));
+        assert!(matches!(t.phase(), PomodoroPhase::BreakDone { long: true }));
+        assert_eq!(t.finished_in_cycle(), 4);
+        // The next focus begins the next cycle.
+        t.start_focus(at(4 * 30 * MIN + 16 * MIN), None).unwrap();
+        assert_eq!(t.finished_in_cycle(), 0);
+    }
+
+    #[test]
+    fn a_break_started_early_is_the_long_one_once_the_cycle_has_earned_it() {
+        // The fourth focus is stopped past its end: Finished, counted, no break.
+        let mut t = four_finished(|t, now| {
+            t.stop(now).unwrap();
+        });
+        assert_eq!(t.finished_in_cycle(), 4);
+        t.start_focus(at(3 * HOUR), None).unwrap();
+        let ended = t.break_early(at(3 * HOUR + 10 * MIN)).unwrap();
+        // Ended Early never moves the cycle; the four before it earned the long break.
+        assert_eq!(ended.outcome, SessionOutcome::EndedEarly);
+        assert!(matches!(t.phase(), PomodoroPhase::Break { long: true, .. }));
+        assert_eq!(t.finished_in_cycle(), 4);
     }
 
     #[test]
