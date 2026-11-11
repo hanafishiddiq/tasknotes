@@ -12,7 +12,11 @@ Tujuan akhir: Tasknotes di /Applications berisi 4 perubahan batch 3 (tombol Remo
 - [ ] Tanda kuning Task baru (tiket 02) di main
   - [ ] Tanya jawab, termasuk konflik dengan keputusan 9 Nov
     - [x] Q5–Q8 dijawab (Q8: Task dari AI juga diberi tanda)
-    - [ ] Q4 (toast tetap + tanda kuning) dan pertanyaan lanjutan Task dari AI
+    - [x] Q4, Q10, Q13 dijawab (toast tetap, 10 detik + tombol X; AI lewat CLI/MCP; tanpa toast untuk AI)
+    - [ ] Klarifikasi Q11 (10 detik sejak kapan), Q12 (Task dari AI saat app tertutup), tanda Task sendiri
+  - [x] Bagian 1: toast 10 detik + tombol X, tanpa kilatan (commit fb65e02, tes lokal hijau)
+  - [ ] Bagian 2: tanda kuning Task sendiri dan Task dari AI
+  - [ ] Draft PR, review dua sumbu, merge setelah Han konfirmasi
 - [ ] Menu klik kanan Task (tiket 03) di main
 - [ ] Halaman Pomodoro lengkap (tiket 04) di main
 - [ ] Semua tiket di main dan lolos CI gabungan
