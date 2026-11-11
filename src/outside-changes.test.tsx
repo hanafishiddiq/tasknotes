@@ -149,6 +149,14 @@ async function answer(command: string, args: unknown): Promise<unknown> {
       case "list_note_tasks":
         return { items: [], nextCursor: null };
       case "count_pending_bulk_requests": return 0;
+      case "unfinished_counts": {
+        // As the core counts them: Ready and In Progress, outside Lists in Removed.
+        const hidden = new Set(lists.filter((item) => item.removed).map((item) => item.id));
+        const open = tasks.filter((item) => item.status !== "completed" && !(item.listId && hidden.has(item.listId)));
+        const byList: Record<string, number> = {};
+        for (const item of open) if (item.listId) byList[item.listId] = (byList[item.listId] ?? 0) + 1;
+        return { all: open.length, inbox: open.filter((item) => !item.listId).length, lists: byList };
+      }
       case "quit_ready": return null;
       default: return notes.handle(command, body);
     }
@@ -174,6 +182,26 @@ describe("Changes made outside the window", () => {
     expect(await screen.findByRole("article", { name: "Added through MCP" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Imported" })).toBeVisible();
     expect(screen.getByRole("article", { name: "Synthetic task 1" })).toBeVisible();
+  });
+
+  it("reads the sidebar's numbers again, even when the page showing did not change (batch 3, Ticket 05)", async () => {
+    const work = list("Work");
+    lists = [work];
+    tasks = [task(1, { listId: work.id })];
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Work" }));
+    await screen.findByRole("article", { name: "Synthetic task 1" });
+    const inboxCount = () => screen.getByRole("button", { name: "Inbox" }).querySelector(".folder-count [aria-hidden]")?.textContent;
+    await waitFor(() => expect(screen.getByRole("button", { name: "Work" })).toHaveAccessibleDescription("1 unfinished"));
+    expect(inboxCount()).toBeUndefined();
+
+    // The CLI adds a Task to the Inbox; the Work page stays as it was.
+    tasks.push(task(2, { title: "Added through the CLI" }));
+    outside();
+    await focusWindow();
+    await waitFor(() => expect(inboxCount()).toBe("1"));
+    expect(screen.getByRole("button", { name: "All tasks" })).toHaveAccessibleDescription("2 unfinished");
   });
 
   it("finds them on its own while the window stays in focus", async () => {

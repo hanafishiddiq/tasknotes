@@ -102,6 +102,13 @@ export class World {
     if (refusal) throw refusal;
     switch (command) {
       case "list_lists": return { items: this.lists.map((list) => ({ ...list })), nextCursor: null };
+      case "unfinished_counts": {
+        // The sidebar's numbers (batch 3, Ticket 05), as the core counts the Tasks on hand.
+        const open = this.tasks.filter((task) => task.status !== "completed");
+        const lists: Record<string, number> = {};
+        for (const task of open) if (task.listId) lists[task.listId] = (lists[task.listId] ?? 0) + 1;
+        return { all: open.length, inbox: open.filter((task) => !task.listId).length, lists };
+      }
       case "list_tasks": return { items: this.matchingTasks(args), nextCursor: args.cursor ? null : this.taskNextCursor };
       case "create_task": {
         const created = fixtureTask(`new-${++this.clock}`, { title: args.input.title, description: args.input.description });
