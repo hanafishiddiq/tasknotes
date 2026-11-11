@@ -32,8 +32,8 @@ use tasknotes_core::tasks::TaskStore;
 use tauri::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, Runtime};
-use tauri_plugin_notification::{Action, ActionType, NotificationExt};
 
+use crate::macos_notifications::{self, Button, Clicked, Kind, Post};
 use crate::pomodoro_state::{
     Command, MenuAction, MenuEntry, Notice, NoticeKind, Pomodoro, PomodoroView, Shared, Step,
 };
@@ -42,17 +42,33 @@ const TRAY_ID: &str = "tasknotes-pomodoro";
 const MENU_OPEN: &str = "tasknotes-pomodoro-open";
 /// Sent to the page whenever what the timer shows changes.
 const CHANGED: &str = "tasknotes://pomodoro";
-const FOCUS_END_TYPE: &str = "tasknotes-pomodoro-focus-end";
-const BREAK_END_TYPE: &str = "tasknotes-pomodoro-break-end";
 const ACTION_START_BREAK: &str = "start-break";
 const ACTION_COUNT_OVERTIME: &str = "count-overtime";
 const ACTION_START_FOCUS: &str = "start-focus";
-/// A click on the notification itself.
-const ACTION_TAP: &str = "tap";
-const FOCUS_END_TITLE: &str = "Focus done";
-const BREAK_END_TITLE: &str = "Break over";
-/// The system sound macOS plays for a notification.
-const SYSTEM_SOUND: &str = "NSUserNotificationDefaultSoundName";
+const FOCUS_END: Kind = Kind {
+    identifier: "tasknotes-pomodoro-focus-end",
+    // The choice that counts nothing comes first.
+    buttons: &[
+        Button {
+            id: ACTION_START_BREAK,
+            title: "Start break",
+        },
+        Button {
+            id: ACTION_COUNT_OVERTIME,
+            title: "Count overtime",
+        },
+    ],
+};
+const BREAK_END: Kind = Kind {
+    identifier: "tasknotes-pomodoro-break-end",
+    buttons: &[Button {
+        id: ACTION_START_FOCUS,
+        title: "Start focus",
+    }],
+};
+/// Every kind of Pomodoro notification: registered at launch, taken away
+/// together.
+const POMODORO_NOTIFICATIONS: [Kind; 2] = [FOCUS_END, BREAK_END];
 
 pub struct PomodoroShell {
     shared: Shared,
@@ -135,45 +151,30 @@ pub fn start<R: Runtime>(app: &AppHandle<R>, durations: PomodoroDurations, silen
         started: Instant::now(),
     });
     app.manage(Tray::<R>(Mutex::default()));
-    let notification = app.notification();
-    let registered = notification.register_action_types(vec![
-        ActionType::builder(FOCUS_END_TYPE)
-            .actions(vec![
-                // macOS shows them in an Options menu and reports the first for a
-                // click on the menu button itself, so the choice that counts
-                // nothing comes first.
-                Action::builder(ACTION_START_BREAK, "Start break").build(),
-                Action::builder(ACTION_COUNT_OVERTIME, "Count overtime").build(),
-            ])
-            .build(),
-        ActionType::builder(BREAK_END_TYPE)
-            .actions(vec![
-                Action::builder(ACTION_START_FOCUS, "Start focus").build(),
-            ])
-            .build(),
-    ]);
     let handle = app.clone();
-    // Runs on the plugin's own thread, so the store write is off the main thread.
-    let listening = notification.on_action(move |performed| {
-        let command = match performed.action_id() {
-            ACTION_START_BREAK => Command::StartBreak,
-            ACTION_COUNT_OVERTIME => Command::CountOvertime,
-            ACTION_START_FOCUS => Command::StartNextFocus,
-            ACTION_TAP => return crate::shell::show_main_window(&handle),
-            _ => return,
-        };
-        let notice = performed.notification().map(|shown| shown.id());
-        run(&handle, |pomodoro, now| {
-            pomodoro.answer(notice, command, now)
-        });
+    macos_notifications::listen(&POMODORO_NOTIFICATIONS, move |click| {
+        match reply(&click.clicked) {
+            None => {}
+            Some(Reply::ShowWindow) => crate::shell::show_main_window(&handle),
+            Some(Reply::Answer(command)) => {
+                let handle = handle.clone();
+                // The store write runs on a thread of its own, not on the
+                // one macOS calls on.
+                let answering = std::thread::Builder::new()
+                    .name("pomodoro-notification".into())
+                    .spawn(move || {
+                        run(&handle, |pomodoro, now| {
+                            pomodoro.answer(click.tag, command, now)
+                        });
+                    });
+                if let Err(error) = answering {
+                    eprintln!("Tasknotes could not answer the Pomodoro notification: {error}");
+                }
+            }
+        }
     });
-    if let Err(error) = registered.and(listening) {
-        eprintln!("Tasknotes could not set up the Pomodoro notification actions: {error}");
-    }
     // A notification left from before a restart has nothing to answer.
-    let _ = app.run_on_main_thread(|| {
-        crate::macos_notifications::withdraw_delivered(&[FOCUS_END_TITLE, BREAK_END_TITLE]);
-    });
+    macos_notifications::withdraw(&POMODORO_NOTIFICATIONS);
 
     let handle = app.clone();
     let ticking = std::thread::Builder::new()
@@ -211,20 +212,14 @@ fn run<R: Runtime>(
     }
 }
 
-/// Withdraws and posts notifications (in that order, on the main thread)
-/// and stores the ended sessions.
+/// Withdraws and shows notifications (in that order; any thread will do, see
+/// `macos_notifications`) and stores the ended sessions.
 fn perform<R: Runtime>(app: &AppHandle<R>, step: Step) -> Stored {
-    if step.withdraw || step.notify.is_some() {
-        let handle = app.clone();
-        let (withdraw, notify) = (step.withdraw, step.notify);
-        let _ = app.run_on_main_thread(move || {
-            if withdraw {
-                crate::macos_notifications::withdraw_delivered(&[FOCUS_END_TITLE, BREAK_END_TITLE]);
-            }
-            if let Some(notice) = notify {
-                show(&handle, notice);
-            }
-        });
+    if step.withdraw {
+        macos_notifications::withdraw(&POMODORO_NOTIFICATIONS);
+    }
+    if let Some(notice) = step.notify {
+        macos_notifications::show(post_for(notice));
     }
     let shell = app.state::<PomodoroShell>();
     let mut stored = Stored::default();
@@ -259,32 +254,51 @@ fn publish<R: Runtime>(app: &AppHandle<R>, stored: Stored) -> PomodoroView {
     view
 }
 
-fn show<R: Runtime>(app: &AppHandle<R>, notice: Notice) {
+/// The notification for a notice: its words, its buttons, and a sound unless
+/// the Pomodoro is Silent.
+fn post_for(notice: Notice) -> Post {
     let (kind, title, body) = match notice.kind {
         NoticeKind::FocusEnded => (
-            FOCUS_END_TYPE,
-            FOCUS_END_TITLE,
+            FOCUS_END,
+            "Focus done",
             "Start a break, or count the overtime if you kept focusing.",
         ),
         NoticeKind::BreakEnded => (
-            BREAK_END_TYPE,
-            BREAK_END_TITLE,
+            BREAK_END,
+            "Break over",
             "Start the next focus when you are ready.",
         ),
     };
-    let mut notification = app
-        .notification()
-        .builder()
-        .id(notice.id)
-        .title(title)
-        .body(body)
-        .action_type_id(kind);
-    if !notice.silent {
-        notification = notification.sound(SYSTEM_SOUND);
+    Post {
+        kind,
+        tag: notice.id,
+        title,
+        body,
+        sound: !notice.silent,
     }
-    if let Err(error) = notification.show() {
-        eprintln!("Tasknotes could not show the Pomodoro notification: {error}");
-    }
+}
+
+/// What a click on a Pomodoro notification asks for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Reply {
+    /// The click the button names, as from the menu bar or the window.
+    Answer(Command),
+    /// The notification itself was clicked.
+    ShowWindow,
+}
+
+fn reply(clicked: &Clicked) -> Option<Reply> {
+    let id = match clicked {
+        Clicked::Notification => return Some(Reply::ShowWindow),
+        Clicked::Button(id) => id.as_str(),
+    };
+    let command = match id {
+        ACTION_START_BREAK => Command::StartBreak,
+        ACTION_COUNT_OVERTIME => Command::CountOvertime,
+        ACTION_START_FOCUS => Command::StartNextFocus,
+        _ => return None,
+    };
+    Some(Reply::Answer(command))
 }
 
 /// One click from the window, the menu bar or the notification. The page
@@ -317,7 +331,7 @@ pub fn save_on_quit<R: Runtime>(app: &AppHandle<R>) {
     let step = shell.lock().quit(shell.now());
     shell.shared.close();
     if step.withdraw {
-        crate::macos_notifications::withdraw_delivered(&[FOCUS_END_TITLE, BREAK_END_TITLE]);
+        macos_notifications::withdraw(&POMODORO_NOTIFICATIONS);
     }
     for session in step.record {
         if let Err(error) = record(app, session) {
@@ -488,5 +502,75 @@ mod tests {
         assert_eq!(stored["sessionStored"], true);
         assert_eq!(stored["taskChanged"], "task-1");
         assert_eq!(sent(Stored::default())["sessionStored"], false);
+    }
+
+    fn notice(kind: NoticeKind, silent: bool) -> Notice {
+        Notice {
+            id: 7,
+            kind,
+            silent,
+        }
+    }
+
+    fn buttons(post: &Post) -> Vec<(&str, &str)> {
+        post.kind
+            .buttons
+            .iter()
+            .map(|button| (button.id, button.title))
+            .collect()
+    }
+
+    /// macOS lists a notification's buttons in the order given; the choice
+    /// that counts nothing comes first (spec item 18).
+    #[test]
+    fn a_focus_end_offers_start_break_before_count_overtime_with_a_sound() {
+        let post = post_for(notice(NoticeKind::FocusEnded, false));
+        assert_eq!((post.title, post.tag), ("Focus done", 7));
+        assert_eq!(
+            buttons(&post),
+            [
+                ("start-break", "Start break"),
+                ("count-overtime", "Count overtime")
+            ]
+        );
+        assert!(post.sound);
+    }
+
+    #[test]
+    fn a_break_end_offers_start_focus_and_silent_means_no_sound() {
+        let post = post_for(notice(NoticeKind::BreakEnded, true));
+        assert_eq!(post.title, "Break over");
+        assert_eq!(buttons(&post), [("start-focus", "Start focus")]);
+        assert!(!post.sound);
+    }
+
+    /// The kinds registered at launch are where macOS takes a notification's
+    /// buttons from, and the ones taken away together (also after a restart,
+    /// with no list of what was shown): every notification is one of them.
+    #[test]
+    fn every_notification_is_a_kind_registered_at_launch_and_withdrawn_together() {
+        let focus = post_for(notice(NoticeKind::FocusEnded, false)).kind;
+        let rest = post_for(notice(NoticeKind::BreakEnded, false)).kind;
+        assert_ne!(focus.identifier, rest.identifier);
+        assert_eq!(POMODORO_NOTIFICATIONS, [focus, rest]);
+    }
+
+    #[test]
+    fn a_click_on_a_notification_is_the_answer_its_button_names() {
+        let button = |id: &str| reply(&Clicked::Button(id.into()));
+        assert_eq!(
+            button("start-break"),
+            Some(Reply::Answer(Command::StartBreak))
+        );
+        assert_eq!(
+            button("count-overtime"),
+            Some(Reply::Answer(Command::CountOvertime))
+        );
+        assert_eq!(
+            button("start-focus"),
+            Some(Reply::Answer(Command::StartNextFocus))
+        );
+        assert_eq!(reply(&Clicked::Notification), Some(Reply::ShowWindow));
+        assert_eq!(button("something-else"), None);
     }
 }
