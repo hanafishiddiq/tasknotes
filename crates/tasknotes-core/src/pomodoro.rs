@@ -542,6 +542,8 @@ pub enum PomodoroPhase {
     },
     Break {
         long: bool,
+        /// Its length when it started; new lengths apply from the next one.
+        planned_seconds: i64,
         ends_at: i64,
         paused_at: Option<i64>,
     },
@@ -630,6 +632,30 @@ impl PomodoroTimer {
         self.durations = durations;
     }
 
+    /// The length of the focus or break under way, as it was planned when it
+    /// started (pauses aside), so the window can show how much is spent;
+    /// `None` while Idle and once a break is over.
+    pub fn planned_seconds(&self) -> Option<i64> {
+        match &self.phase {
+            PomodoroPhase::Focus {
+                planned_seconds, ..
+            }
+            | PomodoroPhase::FocusDone {
+                planned_seconds, ..
+            }
+            | PomodoroPhase::Break {
+                planned_seconds, ..
+            } => Some(*planned_seconds),
+            PomodoroPhase::Idle | PomodoroPhase::BreakDone { .. } => None,
+        }
+    }
+
+    /// Finished sessions since the last long break was earned: the window's
+    /// beads.
+    pub fn finished_in_cycle(&self) -> u32 {
+        self.finished_in_cycle
+    }
+
     /// Whether a session or break is under way or waiting for a click.
     pub fn active(&self) -> bool {
         self.phase != PomodoroPhase::Idle
@@ -660,6 +686,7 @@ impl PomodoroTimer {
                 long,
                 ends_at,
                 paused_at: None,
+                ..
             } if now.awake >= *ends_at => {
                 self.phase = PomodoroPhase::BreakDone { long: *long };
                 Some(TimerEvent::BreakEnded)
@@ -843,6 +870,7 @@ impl PomodoroTimer {
         };
         self.phase = PomodoroPhase::Break {
             long,
+            planned_seconds: i64::from(minutes) * 60,
             ends_at: now.awake + i64::from(minutes) * MILLIS_PER_MINUTE,
             paused_at: None,
         };
@@ -872,6 +900,7 @@ impl PomodoroTimer {
                 long,
                 ends_at,
                 paused_at,
+                ..
             } => TimerState::Break {
                 long: *long,
                 remaining_seconds: remaining(held(now, *paused_at), *ends_at),
@@ -1592,6 +1621,30 @@ mod tests {
         t.start_break(at(26 * MIN)).unwrap();
         assert_eq!(t.break_early(at(27 * MIN)), Err(NotNow));
         assert_eq!(timer().break_early(at(0)), Err(NotNow));
+    }
+
+    #[test]
+    fn the_window_learns_the_length_under_way_and_the_place_in_the_cycle() {
+        let mut t = timer();
+        assert_eq!((t.planned_seconds(), t.finished_in_cycle()), (None, 0));
+        t.start_focus(at(0), None).unwrap();
+        assert_eq!(t.planned_seconds(), Some(25 * 60));
+        // New lengths apply from the next focus; this one keeps its own.
+        t.set_durations(PomodoroDurations {
+            focus_minutes: 50,
+            short_break_minutes: 10,
+            ..PomodoroDurations::default()
+        });
+        assert_eq!(t.planned_seconds(), Some(25 * 60));
+        t.tick(at(25 * MIN));
+        assert_eq!(t.planned_seconds(), Some(25 * 60));
+        t.start_break(at(25 * MIN)).unwrap();
+        assert_eq!(
+            (t.planned_seconds(), t.finished_in_cycle()),
+            (Some(10 * 60), 1)
+        );
+        t.tick(at(35 * MIN));
+        assert_eq!(t.planned_seconds(), None);
     }
 
     #[test]

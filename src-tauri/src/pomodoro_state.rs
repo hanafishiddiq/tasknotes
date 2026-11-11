@@ -162,6 +162,11 @@ pub struct PomodoroView {
     pub state: TimerState,
     /// The menu bar text, e.g. "🍅 12:34".
     pub title: Option<String>,
+    /// The length of the focus or break under way, as planned when it
+    /// started, so the page's ring shows how much is spent.
+    pub planned_seconds: Option<i64>,
+    /// Finished sessions since the last long break was earned.
+    pub finished_in_cycle: u32,
     pub durations: PomodoroDurations,
     pub limits: DurationLimits,
     /// The Task the next focus after a break is for.
@@ -399,6 +404,8 @@ impl Pomodoro {
         PomodoroView {
             state: self.timer.state(now),
             title: self.title(now),
+            planned_seconds: self.timer.planned_seconds(),
+            finished_in_cycle: self.timer.finished_in_cycle(),
             durations: self.timer.durations(),
             limits: DurationLimits::CURRENT,
             last_task_id: self.last_task_id.clone(),
@@ -900,6 +907,8 @@ mod tests {
         assert_eq!(json["phase"], "focus");
         assert_eq!(json["taskId"], "task-1");
         assert_eq!(json["remainingSeconds"], 24 * 60);
+        assert_eq!(json["plannedSeconds"], 25 * 60);
+        assert_eq!(json["finishedInCycle"], 0);
         assert_eq!(json["title"], "🍅 24:00");
         assert_eq!(json["durations"]["focusMinutes"], 25);
         assert_eq!(json["limits"]["focusMinutes"]["max"], 180);
