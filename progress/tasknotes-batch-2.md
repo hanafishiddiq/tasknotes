@@ -25,6 +25,12 @@ Tujuan akhir: Tasknotes di /Applications berisi 12 isi batch ini (PR #23, PR #24
   - [x] Merge dan pasang ke /Applications setelah izin Han (2026-11-12; #48 fc94095, #47 a33441f; cadangan pre-ticket17-20261112 terverifikasi)
   - [x] Ukur ulang CPU: hanya hujan dimute dan app diam → audio WebKit 0,00 % / 0,03 % (sebelumnya 1,26 %), total Tasknotes 0,31 % / 0,76 % (sebelumnya ≈ 2 %)
   - [x] Han mendengar bunyi pertama setelah diam lebih dari 5 detik ("Terdengar", 2026-11-12)
+- [ ] Sisa cek native setelah batch 2 dan 3 dirapikan (2026-11-12)
+  - [x] Centang tiket yang sudah terbukti (batch 3 tiket 01–05, Ticket 05, Ticket 15)
+  - [x] Teks pembaca layar "1 minute of focus today" diperbaiki (ikut build berikutnya)
+  - [x] Ticket 05 di app asli: Task dari CLI muncul sendiri dalam 4–5 detik, ketikan yang belum disimpan tetap ada
+  - [ ] Tampilan halaman Pomodoro di tema gelap, terang, dan jendela 400 px (Ticket 14)
+  - [ ] Sisa notifikasi Pomodoro, butuh telinga dan klik Han (Ticket 02, batch 3 Issue 06)
 
 ## Perlu Han lakukan
 
@@ -39,6 +45,15 @@ Tujuan akhir: Tasknotes di /Applications berisi 12 isi batch ini (PR #23, PR #24
 - [x] Dengarkan bunyi pertama setelah Tasknotes diam lebih dari 5 detik (Han: terdengar)
   - Cara: biarkan Tasknotes tanpa klik lebih dari 5 detik, lalu tambah atau selesaikan satu Task; bunyinya harus terdengar seperti biasa
   - Menahan: Han mendengar bunyi pertama setelah diam (Ticket 17)
+- [ ] Cek sisa notifikasi Pomodoro (opsional, sekitar 5 menit)
+  - Cara:
+    1. Halaman Pomodoro › ikon durasi: Focus 1, Break 1, lalu Save. Pilih Task apa saja, Start focus, lalu pindah ke app lain.
+    2. Saat "Focus done" muncul, klik tombol Count overtime di notifikasinya. Harapan: Break langsung mulai, sesi tercatat Finished dengan Overtime.
+    3. Satu menit kemudian muncul "Break over" (tombol Start focus) dan menu bar menulis "☕ Done" (ikon ada di balik « di menu bar). Klik badan notifikasinya, bukan tombolnya. Harapan: jendela Tasknotes muncul.
+    4. Nyalakan Silent di sheet durasi, lalu Start focus. "Focus done" harus muncul tanpa bunyi; jawab lewat menu 🍅 di menu bar (Start break). Harapan: notifikasinya hilang.
+    5. Start focus lagi; saat "Focus done" tampil, keluar dari Tasknotes (⌘Q). Harapan: notifikasinya hilang dan sesi tersimpan.
+    6. Kembalikan Focus 25, Break 5, Silent mati.
+  - Menahan: Sisa notifikasi Pomodoro (Ticket 02, batch 3 Issue 06); bukan penghalang pemakaian
 
 ## Riwayat sesi
 

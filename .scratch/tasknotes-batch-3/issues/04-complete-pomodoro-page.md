@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** merged to main in PR #41 (`27f6749`, owner OK 2026-11-11 after green CI); the owner's native check waits for the batch-3 install build
+**Implementation:** completed — merged to main in PR #41 (`27f6749`, owner OK 2026-11-11 after green CI); native check done; the singular "1 minute of focus today" fixed 2026-11-12
 
 ## Acceptance criteria
 
@@ -19,7 +19,7 @@
 - [x] Today's day rail: one mark per session at its time (Finished and ended early filled, Stopped hollow, the running focus dim), now as a thin line, today's counted focus at its end; each mark names its times, Task and outcome to the pointer and screen readers; the record below says the same for the keyboard.
 - [x] The focus record below: all-time sessions and focus from the core in its heading, then each day as today's history does (newest first, its sessions oldest first), with "Load more days".
 - [x] Every text keeps WCAG AA in both themes; the paused pulse and the ring's colour fades stop under Reduce Motion.
-- [ ] The owner checks it in the installed app (batch-3 click check).
+- [x] The owner checks it in the installed app (batch-3 click check). _Checked 2026-11-11 by the agent through Cua at the owner's request, in the installed batch-3 app with the owner's store (`progress/tasknotes-batch-3.md`, "App asli batch 3 dicek"): Pause, Start break early, a 1-minute focus, Start break and Stop passed; on 2026-11-12 the page listed Stopped and Finished sessions with their Task._
 
 ## Delivery guardrails
 
@@ -58,3 +58,5 @@
 - The sidebar block shows a Resume button while paused, which the spec did not ask for (Q26 says the block stays as it is). Raised to the owner as Q47: keep it (2026-11-11).
 
 **2026-11-12 — found in the batch-2 native check:** the day rail's screen-reader text says "1 minutes of focus today" for one minute (`src/components/PomodoroDayRail.tsx`, `{day?.focusMinutes ?? 0} minutes of focus today`), while the record's own lines use the singular. Not fixed; a one-line change for whoever next touches the page.
+
+**2026-11-12 — fixed:** the day rail now says "1 minute of focus today": the record's `plural` moved to `src/lib/pomodoro-format.ts` and both use it; `src/pomodoro-history.test.tsx` "says a single minute of focus today in the singular, as the record does" (red before the change).

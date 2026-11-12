@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** merged to main in PR #38 (`eae7390`); the owner's native check waits for the batch-3 install build
+**Implementation:** completed — merged to main in PR #38 (`eae7390`); native check done
 
 ## Acceptance criteria
 
@@ -14,7 +14,7 @@
 - [x] Under the pointer it keeps the red and takes a faint red fill; disabled, it dims like any disabled control and takes no fill. — same test (`:hover:not(:disabled)` only); `button:disabled` opacity 0.5 is unchanged.
 - [x] The red label stays at WCAG AA 4.5:1 on the canvas and on its hover fill, dark and light. — `src/a11y-contrast.test.tsx`, surfaces `bg` and `remove-hover`: 8% red; 12% gave 4.31 and 10% gave 4.46 in light. A new check there fails when any `color-mix` fill in App.css is not a measured surface (review finding).
 - [x] Only this button changes: Save, the other Task controls and the Notes toolbar trash icon keep their look; the action is still a reversible move with no dialog. — `src/removed.test.tsx` ("marks Move to Removed on an open Task as the red remove button") checks the Task details hold exactly one red button; the Notes trash icon is outside any test here and unchanged by construction (`button-remove` appears only in `TaskRow.tsx`; `NotesWorkspace.tsx` untouched); `onClick` and the existing Removed tests are unchanged.
-- [ ] The owner sees it red in the installed app (batch-3 click check).
+- [x] The owner sees it red in the installed app (batch-3 click check). _Checked 2026-11-11 by the agent through Cua at the owner's request, in the installed batch-3 app with the owner's store (`progress/tasknotes-batch-3.md`, "App asli batch 3 dicek"): the red Remove passed._
 
 ## Delivery guardrails
 

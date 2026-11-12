@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** merged to main in PR #42 (`58f8026`, owner OK 2026-11-11 after green CI); the owner's native check waits for the batch-3 install build
+**Implementation:** completed — merged to main in PR #42 (`58f8026`, owner OK 2026-11-11 after green CI); native check done
 
 ## Acceptance criteria
 
@@ -14,7 +14,7 @@
 - [x] Every folder shows its count, kept current after changes made here and from the CLI or MCP, without reading every Task.
 - [x] A Settings choice says where counts show: every folder (the default), only the open folder, or none (Q48).
 - [x] Counts keep the folder's tabular tertiary style and WCAG AA on every sidebar fill.
-- [ ] The owner checks it in the installed app (batch-3 click check).
+- [x] The owner checks it in the installed app (batch-3 click check). _Checked 2026-11-11 by the agent through Cua at the owner's request, in the installed batch-3 app with the owner's store (`progress/tasknotes-batch-3.md`, "App asli batch 3 dicek"): the sidebar counts matched the database, and the three Settings choices worked._
 
 ## Delivery guardrails
 
