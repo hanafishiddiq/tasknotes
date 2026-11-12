@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** merged to main in PR #40 (`d9f0c22`); the owner's native check waits for the batch-3 install build
+**Implementation:** completed — merged to main in PR #40 (`d9f0c22`); native check done
 
 ## Acceptance criteria
 
@@ -17,7 +17,7 @@
 - [x] Keyboard: Shift+F10 or the menu key on a row opens it; arrows move between the enabled items, Home and End jump, Return or Space chooses, Right opens Priority and Left closes it, Escape closes and puts focus back where it was, Tab closes. — tests "opens from the keyboard…", "moves with the arrows…", "changes the priority…", "closes on … Tab".
 - [x] It closes on a choice, a click elsewhere, scrolling, resizing or the window losing focus; it never leaves the window, and Priority opens to the left when there is no room on the right. — tests "closes on a click elsewhere…", "stays inside the window near its edges"; the Priority sheet is placed once on screen with its real size, flipped left without room and kept above the window's bottom (test "places Priority beside its item…").
 - [x] Its look follows DESIGN.md (sidebar gray sheet, hairline, 8px radius, no shadow; highlighted item in the selected-row colour; Move to Removed in Alert Red) and every text on it keeps WCAG AA. — stylesheet test in `src/task-context-menu.test.tsx`; `src/a11y-contrast.test.tsx` (`.task-menu-item:focus` on the selected-row colour, Remove on the sidebar and highlighted on solid red). A red tint as Remove's highlight measured 4.05:1 in light, so the highlight is solid red with canvas-coloured text; the focus replacement is registered in `src/stylesheet-a11y.test.tsx`.
-- [ ] The owner checks it in the installed app (batch-3 click check).
+- [x] The owner checks it in the installed app (batch-3 click check). _Checked 2026-11-11 by the agent through Cua at the owner's request, in the installed batch-3 app with the owner's store (`progress/tasknotes-batch-3.md`, "App asli batch 3 dicek"): the right-click menu passed._
 
 ## Delivery guardrails
 

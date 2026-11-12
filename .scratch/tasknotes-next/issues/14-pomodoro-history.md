@@ -42,3 +42,5 @@
 - Still open: the look of the page in the real app window with synthetic data (the screen awake).
 
 **2026-11-12 — native check in the installed app** (the agent through Cua, owner-approved; dark theme; synthetic test Tasks and Lists in the owner's store, moved to Removed afterwards): the page listed today's two test sessions with their time range and Task, one "Stopped after 2 min" and one "Finished"; the day read "1 session, 1 minute of focus, 1 stopped" and the all-time line counted the Finished one only. Found: the day rail's screen-reader text reads "1 minutes of focus today" (`src/components/PomodoroDayRail.tsx`, no singular), recorded on batch 3 Ticket 04; not fixed.
+
+**2026-11-12 — read in the installed app** (accessibility tree, not looked at): the page listed today's Stopped ("Stopped after 2 min") and Finished rows with their Task, the day read "1 session, 1 minute of focus, 1 stopped", and the all-time line counted only the Finished one. Still open for the two criteria above: the look in the dark and light themes and in a 400 px window.

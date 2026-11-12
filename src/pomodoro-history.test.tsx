@@ -208,6 +208,16 @@ describe("Pomodoro page: the focus record (Ticket 14, batch 3 layout A)", () => 
     ]);
   });
 
+  it("says a single minute of focus today in the singular, as the record does", async () => {
+    pages.first = {
+      items: [{ ...TODAY, finishedSessions: 1, focusMinutes: 1, stoppedSessions: 0, sessions: [session({ plannedMinutes: 1 })] }],
+      nextCursor: null,
+    };
+    await openHistory();
+    const rail = screen.getByRole("figure", { name: "Today" });
+    expect(within(rail).getByText("1 minute of focus today")).toHaveClass("sr-only");
+  });
+
   it("draws today as a rail under the timer, a mark for each session at its time", async () => {
     await openHistory();
     const rail = screen.getByRole("figure", { name: "Today" });

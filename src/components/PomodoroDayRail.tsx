@@ -1,5 +1,5 @@
 import type { HistorySession, PomodoroDay, PomodoroView } from "../lib/pomodoro-api";
-import { focusTime, onItsClock, sessionOutcome, sessionTask, sessionTimes } from "../lib/pomodoro-format";
+import { focusTime, onItsClock, plural, sessionOutcome, sessionTask, sessionTimes } from "../lib/pomodoro-format";
 import { useWallMinute } from "../lib/use-wall-minute";
 
 const MINUTES_PER_DAY = 24 * 60;
@@ -69,7 +69,7 @@ export default function PomodoroDayRail({ day, view }: PomodoroDayRailProps) {
       </div>
       <span className="pomo-rail-total">
         <span aria-hidden="true">{focusTime(day?.focusMinutes ?? 0)}</span>
-        <span className="sr-only">{day?.focusMinutes ?? 0} minutes of focus today</span>
+        <span className="sr-only">{plural(day?.focusMinutes ?? 0, "minute")} of focus today</span>
       </span>
       <span aria-hidden="true" />
       <span className="pomo-rail-hours" aria-hidden="true">

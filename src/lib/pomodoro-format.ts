@@ -19,6 +19,9 @@ export function sessionTimes(session: HistorySession): string {
   return `${CLOCK.format(start)} – ${CLOCK.format(end)}`;
 }
 
+/** "1 minute", "57 minutes": a count in words, for screen readers. */
+export const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
+
 /** "57m", "1h 07m". */
 export function focusTime(minutes: number): string {
   if (minutes < 60) return `${minutes}m`;

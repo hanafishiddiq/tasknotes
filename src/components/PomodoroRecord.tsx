@@ -2,7 +2,7 @@ import { useId } from "react";
 import { LoaderCircle, Timer } from "lucide-react";
 import { localCalendarDay } from "../lib/deadlines";
 import type { HistorySession, PomodoroDay } from "../lib/pomodoro-api";
-import { focusTime, sessionOutcome, sessionTask, sessionTimes } from "../lib/pomodoro-format";
+import { focusTime, plural, sessionOutcome, sessionTask, sessionTimes } from "../lib/pomodoro-format";
 import type { PomodoroHistory } from "../lib/use-pomodoro-history";
 
 const DAY = new Intl.DateTimeFormat("en", { weekday: "long", month: "short", day: "numeric" });
@@ -22,8 +22,6 @@ function dayLabel(date: string, today: string): string {
   if (date === localCalendarDay(noonOf(today, -1))) return "Yesterday";
   return (date.slice(0, 4) === today.slice(0, 4) ? DAY : DAY_WITH_YEAR).format(noonOf(date));
 }
-
-const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
 
 /** What the day counts, as the core counted it: short on screen, in words for screen readers. */
 function dayTotal(day: PomodoroDay): { shown: string; said: string } {

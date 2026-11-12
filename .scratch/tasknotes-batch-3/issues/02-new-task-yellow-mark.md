@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** merged to main in PR #39 (`83aa171`); the owner's native check waits for the batch-3 install build
+**Implementation:** completed — merged to main in PR #39 (`83aa171`); native check done
 
 ## Acceptance criteria
 
@@ -20,7 +20,7 @@
 - [x] Text and marks on the row keep WCAG AA on the mark: title, subtitle, progress, metadata, priority and deadline colours, tags, and the status ring, dot and disc. — `src/a11y-contrast.test.tsx`, surface `new-mark`. Measured by running this test at each mix during development: the full sidebar hover yellow failed nine pairs (dark: Overdue red, the "+N" tag; light: High and Very High orange, Overdue, Due today, the In Progress ring and dot, the Completed disc); 60% still failed five, 52% one; 50% passes all. The opened Task never carries the mark, so the red Move to Removed never sits on it.
 - [x] Screen readers hear "Just added" on a marked row, and as the description of its open button when moving between titles. — `src/new-task-mark.test.tsx`.
 - [x] A Task open already when the check names it gets no mark; opening any Task, even the one open already, ends the owner's own marks. — App test "gets no mark when it is open already…" (fails without the fix); every open goes through `openTask` in `App.tsx`.
-- [ ] The owner sees the toast, the X and the mark in the installed app (batch-3 click check).
+- [x] The owner sees the toast, the X and the mark in the installed app (batch-3 click check). _Checked 2026-11-11 by the agent through Cua at the owner's request, in the installed batch-3 app with the owner's store (`progress/tasknotes-batch-3.md`, "App asli batch 3 dicek"): the toast and the mark passed; the X was checked on 2026-11-12 (see Comments)._
 
 ## Delivery guardrails
 
@@ -39,3 +39,5 @@
 **2026-11-11 — review on PR #39:** fixed: the core bounds both outside queries by `latest`, so a Task created between its reads is named once (it could have been marked a second time); every way of opening a Task goes through `openTask`, so re-opening the Task already open also ends the owner's marks; a Task open already when the check names it is not marked; "Just added" also describes the open button; `rowProps` keeps the row wiring in the hook; `createdTasks` is required (test mocks send it); `.task-toast--closable` replaces `.task-toast--new`, which read like the mark; DESIGN.md's Sidebar Hover Yellow names its new use. Accepted: a Task the CLI creates and removes before the next check keeps a waiting mark in memory; if it is restored, it shows the mark until seen for 10 seconds. Raised to the owner as Q17 (below).
 
 **2026-11-11 — owner decisions (Han), Q17–Q19:** Q17: with the menu-bar item on, closing the window only hides Tasknotes; a Task an AI adds then is marked and counts its 10 seconds once seen; Q15 (no mark) applies to quitting with ⌘Q. Q18: the mark stays at half the sidebar hover yellow. Q19: merge after green CI.
+
+**2026-11-12 — native check of the X and an AI Task's mark** (the agent through Cua, owner-approved, in the installed app): a Task added in the window showed the toast with its X (`Dismiss`); pressing it took the toast away, and the row kept "Just added". A Task created through the CLI a moment later appeared in the open window and carried "Just added" too. Both test Tasks were moved to Removed.
