@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** completed — merged in PR #48 (fc94095) with the owner's confirmation and installed 2026-11-12; native CPU check passed; the owner's ear check of the first cue after a rest is still open
+**Implementation:** completed — merged in PR #48 (fc94095) with the owner's confirmation and installed 2026-11-12; native CPU check and the owner's ear check passed
 
 ## Acceptance criteria
 
@@ -14,7 +14,7 @@
 - [x] A click or key press wakes the resting device, so the cue that follows plays at once; a cue that comes while it still rests plays as soon as the device is awake rather than being dropped. _Evidence: "wakes on a click or key press, so the cue that follows plays at once, with no waiting hint", "plays a cue that comes while the device rests as soon as it is awake, rather than dropping it"; a wake that takes longer than 250 ms drops the cue instead of playing it with the next click: "drops a cue whose wake is held back, rather than playing it late with the next click" (the fake now holds `resume()` the way WebKit's pending resume does)._
 - [x] While rain plays, the device never rests. _Evidence: "never rests while the rain plays"; rain wanted but still rendering keeps it awake too (the rest needs `ambientTarget() === 0`; seen in a review probe; removing the rain checks from the rest sends the suite into a suspend-and-wake loop)._
 - [x] Kept as they are: a cue is still dropped while WebKit blocks autoplay or the system has interrupted audio; both channels muted still suspends at once; the quit fade and the waiting hint are unchanged. _Evidence: the existing tests pass unchanged ("drops a cue rather than delaying it while autoplay is blocked", "suspends audio entirely when both channels are muted…", "fades the rain out before quitting…", "resumes after the system interrupts audio…", "does not flash the waiting hint…"); new: "treats an interruption during a rest like any other: the waiting hint shows and cues are dropped", "forgets its rest when disposed, so a new device that WebKit blocks still says it is waiting"._
-- [ ] Native: with only rain muted and the window idle, the installed app's WebKit audio process uses about what it uses with both muted (Ticket 08 method), measured after the owner approves the install; and the first cue after a rest is heard (the owner's ear).
+- [x] Native: with only rain muted and the window idle, the installed app's WebKit audio process uses about what it uses with both muted (Ticket 08 method), measured after the owner approves the install; and the first cue after a rest is heard (the owner's ear). _Evidence: idle 0.00 % / 0.03 % in the audio process (1.26 % before), see the 2026-11-12 table below; the owner left Tasknotes idle for more than 5 s, then added or completed a Task and heard the cue ("Terdengar", 2026-11-12)._
 
 ## Delivery guardrails
 
@@ -45,3 +45,5 @@
 | B2: idle, repeat | 0.76 % | 0.03 % | 0.61 % | 0.00 % |
 
 Before the fix the same idle state measured 2.35 % / 1.98 % in total with 1.26 % in the audio process both times (Ticket 08); now the audio process is at the both-muted level (0.00 %). Run A shows the device does wake on a key press. WebContent varies between runs as it did before. `coreaudiod` serves every app, so its fall is not claimed for Tasknotes alone.
+
+**2026-11-12 — owner's ear check:** "Terdengar": the first cue after more than 5 quiet seconds is heard in the installed app.

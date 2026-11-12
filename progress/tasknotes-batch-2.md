@@ -20,11 +20,11 @@ Tujuan akhir: Tasknotes di /Applications berisi 12 isi batch ini (PR #23, PR #24
 - [x] Han mengecek app asli (daftar 10 langkah)
   - Dicek AI lewat Cua atas izin Han (2026-11-12): 10/10 sesuai; data uji dipindah ke Removed
   - Temuan kecil: teks pembaca layar "1 minutes of focus today" di halaman Pomodoro (dicatat di batch 3 Ticket 04, belum diperbaiki)
-- [ ] Perbaikan audio: perangkat audio istirahat di antara bunyi saat hujan tidak berbunyi (Ticket 17)
+- [x] Perbaikan audio: perangkat audio istirahat di antara bunyi saat hujan tidak berbunyi (Ticket 17)
   - [x] Dibuat test-first, direview dua sumbu, Draft PR #48 (2026-11-12)
   - [x] Merge dan pasang ke /Applications setelah izin Han (2026-11-12; #48 fc94095, #47 a33441f; cadangan pre-ticket17-20261112 terverifikasi)
   - [x] Ukur ulang CPU: hanya hujan dimute dan app diam → audio WebKit 0,00 % / 0,03 % (sebelumnya 1,26 %), total Tasknotes 0,31 % / 0,76 % (sebelumnya ≈ 2 %)
-  - [ ] Han mendengar bunyi pertama setelah diam lebih dari 5 detik
+  - [x] Han mendengar bunyi pertama setelah diam lebih dari 5 detik ("Terdengar", 2026-11-12)
 
 ## Perlu Han lakukan
 
@@ -36,7 +36,7 @@ Tujuan akhir: Tasknotes di /Applications berisi 12 isi batch ini (PR #23, PR #24
   - Menahan: Han mengecek app asli (daftar 10 langkah)
 - [x] Putuskan perbaikan audio saat hanya hujan dimute (Han: "Ya, perbaiki", 2026-11-12 → Ticket 17)
 - [x] Izinkan merge PR #48 dan pasang build baru ke /Applications (Han: "Ya, merge & pasang", 2026-11-12)
-- [ ] Dengarkan bunyi pertama setelah Tasknotes diam lebih dari 5 detik
+- [x] Dengarkan bunyi pertama setelah Tasknotes diam lebih dari 5 detik (Han: terdengar)
   - Cara: biarkan Tasknotes tanpa klik lebih dari 5 detik, lalu tambah atau selesaikan satu Task; bunyinya harus terdengar seperti biasa
   - Menahan: Han mendengar bunyi pertama setelah diam (Ticket 17)
 
