@@ -41,3 +41,5 @@
 - Naming: core `Style` (icon, colour) embedded with `serde(flatten)` on `List`, `NoteFolder` and export records (JSON fields unchanged); `FIRST_EXTRA_LIST_COLUMN` / `FIRST_EXTRA_FOLDER_COLUMN`; the two `set_*_style_inner` share one `restyle` step (unchanged check + UPDATE), each keeping its own read and refusals.
 - `pnpm gen:style-icons` added; the drift test's message names it.
 - Still open: native GUI check in the built app (both themes, 210px sidebar, depth-5 folder).
+
+**2026-11-12 — native check in the installed app** (the agent through Cua, owner-approved; dark theme; synthetic test Tasks and Lists in the owner's store, moved to Removed afterwards): the row's icon button opened the picker; Teal and Rocket, then Save, stored `icon: rocket, color: teal` (CLI) and showed a teal rocket in the sidebar. The light theme and a 210 px sidebar were not checked.

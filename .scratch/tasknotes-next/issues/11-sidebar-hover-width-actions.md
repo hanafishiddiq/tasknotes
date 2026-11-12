@@ -34,3 +34,5 @@
 - Drop target: `.folder-row[data-drop-edge="into"] .folder-actions` takes the row's `--side-selected` fill. Disabled rows never turn yellow (`:not(:disabled)` on the row hover rule; their action fill is `--sidebar`). Actions show on `.folder-row:focus-within`. Evidence: `src/sidebar-stylesheet.test.tsx` (3 new tests, 1 updated).
 - The App.css and TaskSidebar.tsx comments about where the edge sits now agree: inside the sidebar in the markup, positioned against the shell.
 - `pnpm typecheck` passes; `pnpm test` 35 files, 1074 passed, 4 todo. Native drag feel and visuals still to be checked by the owner.
+
+**2026-11-12 — native check in the installed app** (the agent through Cua, owner-approved; dark theme; synthetic test Tasks and Lists in the owner's store, moved to Removed afterwards): the pointer over a List that is not open filled its row with a pale yellow (sampled rgb 75,68,40, the `--side-hover` #4c4424 as captured) and showed the row's icons; the open List stays #444444. Dragging the edge from 260 to 320 pt widened the sidebar, and a double-click on the edge put it back to exactly 260. The light theme was not checked.

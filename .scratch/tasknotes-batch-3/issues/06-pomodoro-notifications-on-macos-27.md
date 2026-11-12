@@ -17,7 +17,8 @@
 - [x] Outside a bundled app (tests, `cargo run`) nothing is asked of macOS and nothing crashes.
 - [x] On macOS 27.2, under Tasknotes' identifier, a notification shown by this module is delivered and presented (no "Denying" in `usernoted`'s log) and withdrawn.
 - [x] Native, in the installed app: a 1-minute focus shows "Focus done", and its Start break button starts the break and takes the notification away.
-- [ ] Native, still unchecked: the sound, Count overtime on the notification, a click on the notification itself, answering from the window or the menu bar while it is shown, quitting with one shown.
+- [x] Native: answering from the window while the notification is shown takes it away (2026-11-12).
+- [ ] Native, still unchecked: the sound heard (macOS presented it with sound), Count overtime on the notification, a click on the notification itself, answering from the menu bar while it is shown, quitting with one shown.
 
 ## Delivery guardrails
 
@@ -43,3 +44,5 @@
 **2026-11-11 — merged and installed (owner: "Ya, merge & pasang"):** CI 14/14 green, PR #44 merged as 8a9d072; release build of that tree (`tauri build --bundles app`, signed ad hoc), installed after a backup of the data and the old app (`store.adamaja.tasknotes.pre-issue06-20261111`: checksums equal, `integrity_check` ok, schema 24). At launch `usernoted` logged the modern connection from `/Applications/Tasknotes.app`, both kinds' buttons (`setNotificationCategories: 2`) and the start-up withdrawal; no "Denying".
 
 **2026-11-11 — native check in the installed app:** with Focus set to 1 minute, the focus started at 20:20:29 and `usernoted` logged `Delivering` and `Presenting` for `req:"tasknotes-pomodoro-focus-end"` at 20:21:27. The owner clicked Start break on it in Notification Center: the timer went to Break, the session was stored Finished (1 min, Overtime not counted, as Start break means), and the notification was removed (`_removeDelivered: Removed` at 20:22:55; no Tasknotes record left in the notification database). The break was then stopped and Focus set back to 25 minutes.
+
+**2026-11-12 — second native check (batch-2 check, the agent through Cua, owner-approved):** a 1-minute focus ended at 08:10:51; `usernoted` logged `Delivering … hasSound: true` and `Presenting … as banner (["badge", "sound", "alert"])` for `req:"tasknotes-pomodoro-focus-end"`, and the notification database holds both categories with their buttons (Start break, Count overtime; Start focus). Stop in the window, with the notification still shown, stored the session Finished and withdrew it (`_removeDelivered: Removed` at 08:11:40). Whether the sound was audible was not judged.

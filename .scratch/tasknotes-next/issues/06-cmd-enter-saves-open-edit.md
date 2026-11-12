@@ -25,3 +25,5 @@
 ## Comments
 
 **2026-11-09 — owner decision (Han), Q12:** saves the group being edited; show a hint on the button.
+
+**2026-11-12 — native check in the installed app** (the agent through Cua, owner-approved; dark theme; synthetic test Tasks and Lists in the owner's store, moved to Removed afterwards): after a title edit the Save button read "Save changes ⌘↵" (and "Apply progress ⌘↵" in the progress group); ⌘↵ in the title saved it (the CLI read the new title and revision) and closed the edit group; undoing the edit by hand hid the Save button again.

@@ -40,3 +40,5 @@
 - `ChangeTask` derives `Default`; Rust tests use `..Default::default()`. TypeScript fixtures were left as they are (17 files with their own fixture each; a shared factory is a larger change).
 - Caveat: a database already opened by a v18 build from before this fix lacks `wont_do_from` and would need a renumbered migration; only synthetic and debug stores should have run this branch.
 - Verified: `pnpm typecheck`; `pnpm test` 1088 passed + 4 todo (37 files); core 269, CLI 49, MCP 38, src-tauri 42, e2e 8 passed; `cargo fmt --check` clean. Native GUI not checked.
+
+**2026-11-12 — native check in the installed app** (the agent through Cua, owner-approved; dark theme; synthetic test Tasks and Lists in the owner's store, moved to Removed afterwards): choosing Won't do in the status control moved the Task to Completed with a struck-through title, the ⊗ mark and "Won't do · 0%"; the CLI read `status: completed, wont_do: true, progress: 0`. Choosing Ready in the same control reopened it.

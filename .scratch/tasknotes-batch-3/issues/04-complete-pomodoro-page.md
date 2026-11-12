@@ -57,3 +57,4 @@
 - Left as is, by judgement: the page, the sidebar block and the menu bar each lay out the timer's choices themselves (each shows a different set, as DESIGN.md says); `stopped_after_seconds` keeps its name, as it is part of the CLI and MCP output.
 - The sidebar block shows a Resume button while paused, which the spec did not ask for (Q26 says the block stays as it is). Raised to the owner as Q47: keep it (2026-11-11).
 
+**2026-11-12 — found in the batch-2 native check:** the day rail's screen-reader text says "1 minutes of focus today" for one minute (`src/components/PomodoroDayRail.tsx`, `{day?.focusMinutes ?? 0} minutes of focus today`), while the record's own lines use the singular. Not fixed; a one-line change for whoever next touches the page.
