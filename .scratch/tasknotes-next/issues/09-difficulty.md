@@ -35,3 +35,5 @@
 - No Difficulty in the editor shows a dashed square, not Very easy's `SignalZero`; DESIGN.md updated (`6fd8981`).
 - Upgrade tests in `tests/search.rs` and `tests/organization.rs` assert upgraded Tasks have NULL Difficulty (`b26694e`).
 - Verified: `pnpm typecheck`; `pnpm test` 1047 passed + 4 todo (34 files); core 252, CLI 47, MCP 36, src-tauri 42 passed; `cargo fmt --check` clean in all four. Native GUI not checked.
+
+**2026-11-12 — native check in the installed app** (the agent through Cua, owner-approved; dark theme; synthetic test Tasks and Lists in the owner's store, moved to Removed afterwards): Hard and Easy pills showed on the rows; "Hardest first" put the Hard Task above the Easy one, and swapping their Difficulty swapped the order (the CLI's `--sort difficulty` agreed).
