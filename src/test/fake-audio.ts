@@ -67,8 +67,12 @@ export class FakeOscillator extends FakeSource {
 
 export class FakeAudioContext {
   static instances: FakeAudioContext[] = [];
-  /** What `resume()` does: "allow" starts audio; "block" leaves it suspended, as WebKit does without a gesture. */
-  static resumePolicy: "allow" | "block" = "allow";
+  /**
+   * What `resume()` does: "allow" starts audio; "block" leaves it suspended and
+   * settles; "hold" leaves it suspended and settles only once the audio runs, as
+   * WebKit's pending resume does.
+   */
+  static resumePolicy: "allow" | "block" | "hold" = "allow";
   /** The state a new context starts in. */
   static initialState: "running" | "suspended" = "running";
 
@@ -81,6 +85,7 @@ export class FakeAudioContext {
   oscillators: FakeOscillator[] = [];
   resumeCalls = 0;
   private listeners = new Set<() => void>();
+  private heldResumes: (() => void)[] = [];
 
   constructor() {
     FakeAudioContext.instances.push(this);
@@ -107,12 +112,18 @@ export class FakeAudioContext {
   /** The system changing the state on its own, e.g. another app taking the audio device. */
   setState(state: FakeAudioContext["state"]) {
     this.state = state;
+    if (state === "running") {
+      for (const settle of this.heldResumes.splice(0)) settle();
+    }
     for (const listener of this.listeners) listener();
   }
 
   async resume() {
     this.resumeCalls += 1;
     if (this.state === "closed") throw new Error("closed");
+    if (FakeAudioContext.resumePolicy === "hold" && this.state !== "running") {
+      return new Promise<void>((settle) => { this.heldResumes.push(settle); });
+    }
     if (FakeAudioContext.resumePolicy === "allow" && this.state !== "running") this.setState("running");
   }
   async suspend() {
