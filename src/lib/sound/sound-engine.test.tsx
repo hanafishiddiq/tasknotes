@@ -217,6 +217,127 @@ describe("independent volume and mute", () => {
   });
 });
 
+/** A clock the test moves by hand: each wait settles once its time has passed. */
+function fakeClock() {
+  let now = 0;
+  const pending: { due: number; resolve: () => void }[] = [];
+  return {
+    wait: (ms: number) => new Promise<void>((resolve) => { pending.push({ due: now + ms, resolve }); }),
+    async advance(ms: number) {
+      now += ms;
+      for (const timer of pending.filter((each) => each.due <= now)) {
+        pending.splice(pending.indexOf(timer), 1);
+        timer.resolve();
+      }
+      await settle();
+    },
+  };
+}
+
+function engineOn(clock: ReturnType<typeof fakeClock>): SoundEngine {
+  return createSoundEngine({
+    createContext: () => new FakeAudioContext() as unknown as AudioContext,
+    renderAmbient: quietRain,
+    wait: clock.wait,
+  });
+}
+
+const RAIN_MUTED = withChannel("ambient", { muted: true });
+
+describe("resting between cues", () => {
+  it("suspends the audio device a few seconds after the last cue once the rain is muted, and leaves it so", async () => {
+    const clock = fakeClock();
+    const sound = engineOn(clock);
+    sound.apply(DEFAULT_SOUND_SETTINGS);
+    await settle();
+    const context = FakeAudioContext.latest();
+    sound.apply(RAIN_MUTED);
+    sound.play("create");
+    await clock.advance(1000);
+    expect(context.state).toBe("running");
+
+    await clock.advance(5000);
+    expect(context.state).toBe("suspended");
+    // Interaction sound is still on: no hint in Settings.
+    expect(sound.status()).toBe("playing");
+    const resumes = context.resumeCalls;
+    await clock.advance(60_000);
+    expect(context.state).toBe("suspended");
+    expect(context.resumeCalls).toBe(resumes);
+  });
+
+  async function resting() {
+    const clock = fakeClock();
+    const sound = engineOn(clock);
+    sound.apply(RAIN_MUTED);
+    await settle();
+    await clock.advance(60_000);
+    const context = FakeAudioContext.latest();
+    expect(context.state).toBe("suspended");
+    return { clock, sound, context };
+  }
+
+  it("wakes on a click or key press, so the cue that follows plays at once, with no waiting hint", async () => {
+    const { sound, context } = await resting();
+    const seen: string[] = [];
+    sound.onStatus(() => seen.push(sound.status()));
+    sound.gesture();
+    await settle();
+    expect(context.state).toBe("running");
+    sound.play("complete");
+    expect(context.oscillators).toHaveLength(2);
+    expect(seen).not.toContain("waiting-for-gesture");
+  });
+
+  it("plays a cue that comes while the device rests as soon as it is awake, rather than dropping it", async () => {
+    const { sound, context } = await resting();
+    context.currentTime = 20;
+    sound.play("complete");
+    await settle();
+    expect(context.state).toBe("running");
+    expect(context.oscillators).toHaveLength(2);
+    for (const tone of context.oscillators) expect(tone.startedAt).toBeGreaterThanOrEqual(20);
+  });
+
+  it("never rests while the rain plays", async () => {
+    const clock = fakeClock();
+    const sound = engineOn(clock);
+    sound.apply(DEFAULT_SOUND_SETTINGS);
+    await settle();
+    const context = FakeAudioContext.latest();
+    sound.play("create");
+    await clock.advance(60_000);
+    expect(context.state).toBe("running");
+    expect(context.playingSources()).toHaveLength(1);
+  });
+
+  it("counts the quiet seconds from the latest click, key press or cue", async () => {
+    const clock = fakeClock();
+    const sound = engineOn(clock);
+    sound.apply(RAIN_MUTED);
+    await settle();
+    const context = FakeAudioContext.latest();
+    await clock.advance(4000);
+    sound.gesture();
+    await clock.advance(4000);
+    sound.play("create");
+    await clock.advance(4000);
+    expect(context.state).toBe("running");
+    await clock.advance(2000);
+    expect(context.state).toBe("suspended");
+  });
+
+  it("forgets its rest when disposed, so a new device that WebKit blocks still says it is waiting", async () => {
+    const { sound } = await resting();
+    sound.dispose();
+    FakeAudioContext.initialState = "suspended";
+    FakeAudioContext.resumePolicy = "block";
+    sound.apply(RAIN_MUTED);
+    await settle();
+    expect(sound.status()).toBe("waiting-for-gesture");
+  });
+});
+
 describe("status", () => {
   it("does not flash the waiting hint when sound comes back after the engine's own suspend", async () => {
     const sound = engine();

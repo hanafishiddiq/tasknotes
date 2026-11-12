@@ -1,7 +1,10 @@
 import { renderRainInSlices } from "./rain";
 import type { SoundSettings } from "./sound-settings";
 
-/** off: nothing to play; waiting-for-gesture: the WebView blocked autoplay. */
+/**
+ * off: nothing to play; waiting-for-gesture: the WebView blocked autoplay;
+ * playing: sound is on (with no rain, the device rests between cues).
+ */
 export type SoundStatus = "off" | "waiting-for-gesture" | "playing" | "unavailable";
 
 /** A moment an interaction sound marks. */
@@ -36,6 +39,12 @@ const FADE_IN_SECONDS = 2;
 const ADJUST_SECONDS = 0.08;
 const QUIT_FADE_SECONDS = 0.3;
 const RAIN_LOOP_SECONDS = 12;
+/**
+ * With no rain playing, the audio device rests this long after the last click,
+ * key press or cue: a running device renders silence at about 1.3 % of a core
+ * in WebKit's audio process (Ticket 08), a suspended one at none.
+ */
+const REST_AFTER_MS = 5000;
 
 /** Each cue is one or two soft sine notes with a quick rise and a short decay. */
 const CUES: Record<Cue, { hz: number; at: number; seconds: number }[]> = {
@@ -62,6 +71,10 @@ export function createSoundEngine(options: SoundEngineOptions): SoundEngine {
   let renderFailed = false;
   /** Set when the engine itself suspended the context, so waking it is not a blocked autoplay. */
   let suspendedByUs = false;
+  /** The device rests between cues: only a click, key press, cue or the rain wakes it. */
+  let resting = false;
+  /** Counts the rests asked for, so only the one after the latest activity happens. */
+  let restRequests = 0;
   let sources: AudioBufferSourceNode[] = [];
   let current: SoundStatus = "off";
 
@@ -152,11 +165,30 @@ export function createSoundEngine(options: SoundEngineOptions): SoundEngine {
     if (!audible) return quiet();
     const audio = ensureContext();
     if (!audio || audio.state === "closed") return;
-    if (ambientTarget() > 0) prepareRain(audio);
-    if (!running()) return wake(audio);
+    if (ambientTarget() > 0) {
+      resting = false;
+      prepareRain(audio);
+    }
+    if (!running()) {
+      if (!resting) wake(audio);
+      return;
+    }
     suspendedByUs = false;
     applyLevels(audio);
     setStatus("playing");
+    restLater(audio);
+  }
+
+  /** No rain: suspend the device once a few quiet seconds have passed since the latest activity. */
+  function restLater(audio: AudioContext) {
+    const request = ++restRequests;
+    void wait(REST_AFTER_MS).then(() => {
+      const idle = request === restRequests && context === audio && running()
+        && ambientTarget() === 0 && sources.length === 0;
+      if (!idle) return;
+      resting = suspendedByUs = true;
+      return audio.suspend();
+    }).catch(() => undefined);
   }
 
   /** The context is not running: ask it to, and say "waiting" only if it stays blocked. */
@@ -191,9 +223,25 @@ export function createSoundEngine(options: SoundEngineOptions): SoundEngine {
     }).catch(() => undefined);
   }
 
+  /**
+   * A cue on a running device sounds at once. On a device the engine suspended
+   * (resting, or woken by a click and not running yet) it sounds once the device
+   * is awake; while WebKit blocks autoplay or the system interrupts audio it is
+   * dropped rather than played late.
+   */
   function play(cue: Cue) {
     const audio = context;
-    if (!audio || !interactionGain || !running() || interactionTarget() === 0) return;
+    if (!audio || !interactionGain || interactionTarget() === 0) return;
+    if (running()) return playNow(audio, cue);
+    if (!suspendedByUs) return;
+    resting = false;
+    audio.resume().then(() => {
+      if (context === audio && running()) playNow(audio, cue);
+    }, () => undefined);
+  }
+
+  function playNow(audio: AudioContext, cue: Cue) {
+    if (!interactionGain) return;
     const start = audio.currentTime;
     for (const note of CUES[cue]) {
       const at = start + note.at;
@@ -210,6 +258,7 @@ export function createSoundEngine(options: SoundEngineOptions): SoundEngine {
       tone.stop(at + note.seconds + 0.02);
       tone.onended = () => envelope.disconnect();
     }
+    restLater(audio);
   }
 
   return {
@@ -219,6 +268,7 @@ export function createSoundEngine(options: SoundEngineOptions): SoundEngine {
     },
     gesture() {
       quitting = false;
+      resting = false;
       sync();
     },
     play,
@@ -236,7 +286,7 @@ export function createSoundEngine(options: SoundEngineOptions): SoundEngine {
       const audio = context;
       context = null;
       ambientGain = interactionGain = rain = null;
-      rendering = suspendedByUs = false;
+      rendering = suspendedByUs = resting = false;
       sources = [];
       if (audio) {
         audio.removeEventListener("statechange", sync);
