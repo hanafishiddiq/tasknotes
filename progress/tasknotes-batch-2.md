@@ -1,6 +1,6 @@
 # Tasknotes batch 2
 
-Tujuan akhir: Tasknotes di /Applications berisi 12 isi batch ini (PR #23, PR #24, Cmd+Enter, toast Task baru, Difficulty, Won't do, drag sort + Custom, nested List, sidebar baru + ikon/warna, Pomodoro + riwayatnya, klik lingkaran Task, hasil cek mute), dipasang dengan satu build. Cache build dihapus setelah build batch 3 (keputusan Han Q1, 2026-11-11; lihat progress/tasknotes-batch-3.md).
+Tujuan akhir: Tasknotes di /Applications berisi 12 isi batch ini (PR #23, PR #24, Cmd+Enter, toast Task baru, Difficulty, Won't do, drag sort + Custom, nested List, sidebar baru + ikon/warna, Pomodoro + riwayatnya, klik lingkaran Task, hasil cek mute), dipasang dengan satu build; ditambah perbaikan audio saat hanya hujan dimute (Ticket 17, pilihan Han 2026-11-12). Cache build dihapus setelah build batch 3 (keputusan Han Q1, 2026-11-11; lihat progress/tasknotes-batch-3.md).
 
 ## Progres
 
@@ -20,6 +20,10 @@ Tujuan akhir: Tasknotes di /Applications berisi 12 isi batch ini (PR #23, PR #24
 - [x] Han mengecek app asli (daftar 10 langkah)
   - Dicek AI lewat Cua atas izin Han (2026-11-12): 10/10 sesuai; data uji dipindah ke Removed
   - Temuan kecil: teks pembaca layar "1 minutes of focus today" di halaman Pomodoro (dicatat di batch 3 Ticket 04, belum diperbaiki)
+- [ ] Perbaikan audio: perangkat audio istirahat di antara bunyi saat hujan tidak berbunyi (Ticket 17)
+  - [x] Dibuat test-first, direview dua sumbu, Draft PR #48 (2026-11-12)
+  - [ ] Merge dan pasang ke /Applications setelah izin Han
+  - [ ] Ukur ulang CPU (hanya hujan dimute ≈ setara keduanya dimute) dan Han mendengar bunyi pertama setelah diam
 
 ## Perlu Han lakukan
 
@@ -29,9 +33,10 @@ Tujuan akhir: Tasknotes di /Applications berisi 12 isi batch ini (PR #23, PR #24
 - [x] Cek app asli dengan daftar 10 langkah (toast, lingkaran, ⌘↵, Won't Do, Difficulty, drag, sidebar, ikon + sub-List, Pomodoro + notifikasi, halaman Pomodoro) (dikerjakan AI atas izin Han)
   - Cara: coba tiap langkah di Tasknotes, kabari nomor yang tidak sesuai
   - Menahan: Han mengecek app asli (daftar 10 langkah)
-- [ ] Putuskan perbaikan audio saat hanya hujan dimute
-  - Cara: pilih "matikan audio saat tidak ada suara" (klik pertama setelah hening bisa telat beberapa milidetik) atau "biarkan" (≈ 2 % CPU satu core selama app terbuka); detail di Ticket 08
-  - Menahan: tidak ada; batch 2 sudah lengkap, perbaikan ini jadi tiket baru bila dipilih
+- [x] Putuskan perbaikan audio saat hanya hujan dimute (Han: "Ya, perbaiki", 2026-11-12 → Ticket 17)
+- [ ] Izinkan merge PR #48 dan pasang build baru ke /Applications
+  - Cara: setelah CI #48 hijau, balas "merge & pasang" (data dan app lama dicadangkan dulu seperti biasa)
+  - Menahan: Ukur ulang CPU dan Han mendengar bunyi pertama setelah diam (Ticket 17)
 
 ## Riwayat sesi
 

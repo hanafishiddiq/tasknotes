@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** measured 2026-11-12 in the installed app; a fix is proposed to the owner, decision pending (nothing changed in code)
+**Implementation:** completed — measured 2026-11-12 in the installed app; the owner chose the proposed fix, built as Ticket 17 (PR #48)
 
 ## Acceptance criteria
 
@@ -39,3 +39,5 @@ Percentages are of one core. `coreaudiod` used 5.0–7.2 % in every state; it se
 Reading: with only rain muted, the audio device stays running (the interaction channel is still audible, so `sync()` never reaches `quiet()`), and WebKit's audio process keeps rendering silence: about 1.3 % of one core, about ten times the both-muted total. Sound on measured lower in the GPU process than only-rain-muted in its single run; that is unexplained and was not repeated.
 
 Proposal to the owner (not built): suspend the audio device whenever no rain is playing and no interaction cue has played for a few seconds, and resume it for the next cue. Cost: the first click after a quiet spell may start a few milliseconds late. Alternative: keep it as is (about 2 % of one core while the app is open with rain muted).
+
+**2026-11-12 — owner's decision:** "Ya, perbaiki": the audio device rests between cues when no rain plays; built as Ticket 17 (`17-rest-audio-between-cues.md`, Draft PR #48).
