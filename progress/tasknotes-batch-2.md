@@ -29,7 +29,7 @@ Tujuan akhir: Tasknotes di /Applications berisi 12 isi batch ini (PR #23, PR #24
   - [x] Centang tiket yang sudah terbukti (batch 3 tiket 01–05, Ticket 05, Ticket 15)
   - [x] Teks pembaca layar "1 minute of focus today" diperbaiki (ikut build berikutnya)
   - [x] Ticket 05 di app asli: Task dari CLI muncul sendiri dalam 4–5 detik, ketikan yang belum disimpan tetap ada
-  - [ ] Tampilan halaman Pomodoro di tema gelap, terang, dan jendela 400 px (Ticket 14)
+  - [x] Tampilan halaman Pomodoro di tema gelap dan terang, jendela penuh dan tersempit 760 px (Ticket 14; 400 px tidak mungkin, lebar minimum app 760)
   - [ ] Sisa notifikasi Pomodoro, butuh telinga dan klik Han (Ticket 02, batch 3 Issue 06)
 
 ## Perlu Han lakukan
