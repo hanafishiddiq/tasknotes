@@ -1,7 +1,10 @@
 import { renderRainInSlices } from "./rain";
 import type { SoundSettings } from "./sound-settings";
 
-/** off: nothing to play; waiting-for-gesture: the WebView blocked autoplay. */
+/**
+ * off: nothing to play; waiting-for-gesture: the WebView blocked autoplay;
+ * playing: sound is on (with no rain, the device rests between cues).
+ */
 export type SoundStatus = "off" | "waiting-for-gesture" | "playing" | "unavailable";
 
 /** A moment an interaction sound marks. */
@@ -36,6 +39,22 @@ const FADE_IN_SECONDS = 2;
 const ADJUST_SECONDS = 0.08;
 const QUIT_FADE_SECONDS = 0.3;
 const RAIN_LOOP_SECONDS = 12;
+/**
+ * With no rain playing, the audio device rests this long after the last click,
+ * key press or cue: a running device renders silence at about 1.3 % of a core
+ * in WebKit's audio process (batch 2, Ticket 08), a suspended one at none.
+ */
+const REST_AFTER_MS = 5000;
+/** A cue whose resting device takes longer than this to wake is dropped rather than played late. */
+const CUE_WAKE_LIMIT_MS = 250;
+
+/**
+ * Why the engine itself suspended the device: "until-wanted" wakes as soon as
+ * sound is wanted (nothing was audible, or a click ended a rest);
+ * "until-activity" is a rest between cues that only a click, key press, cue or
+ * the rain ends.
+ */
+type OwnSuspend = "until-wanted" | "until-activity";
 
 /** Each cue is one or two soft sine notes with a quick rise and a short decay. */
 const CUES: Record<Cue, { hz: number; at: number; seconds: number }[]> = {
@@ -61,7 +80,9 @@ export function createSoundEngine(options: SoundEngineOptions): SoundEngine {
   let rendering = false;
   let renderFailed = false;
   /** Set when the engine itself suspended the context, so waking it is not a blocked autoplay. */
-  let suspendedByUs = false;
+  let ownSuspend: OwnSuspend | null = null;
+  /** Counts the rests asked for, so only the one after the latest activity happens. */
+  let restRequests = 0;
   let sources: AudioBufferSourceNode[] = [];
   let current: SoundStatus = "off";
 
@@ -152,16 +173,41 @@ export function createSoundEngine(options: SoundEngineOptions): SoundEngine {
     if (!audible) return quiet();
     const audio = ensureContext();
     if (!audio || audio.state === "closed") return;
-    if (ambientTarget() > 0) prepareRain(audio);
-    if (!running()) return wake(audio);
-    suspendedByUs = false;
+    if (ambientTarget() > 0) {
+      if (ownSuspend === "until-activity") ownSuspend = "until-wanted";
+      prepareRain(audio);
+    }
+    // The system took the device (another app, a call): it is no longer the engine's own suspend.
+    if (audio.state === "interrupted") ownSuspend = null;
+    if (!running()) {
+      if (ownSuspend !== "until-activity") wake(audio);
+      return;
+    }
+    ownSuspend = null;
     applyLevels(audio);
     setStatus("playing");
+    restLater(audio);
+  }
+
+  /** No rain: suspend the device once a few quiet seconds have passed since the latest activity. */
+  function restLater(audio: AudioContext) {
+    const request = ++restRequests;
+    suspendWhenStill(audio, REST_AFTER_MS, "until-activity",
+      () => request === restRequests && ambientTarget() === 0 && sources.length === 0);
+  }
+
+  /** After `ms`, suspends this device if it still runs and `still()` holds. */
+  function suspendWhenStill(audio: AudioContext, ms: number, until: OwnSuspend, still: () => boolean) {
+    void wait(ms).then(() => {
+      if (context !== audio || !running() || !still()) return;
+      ownSuspend = until;
+      return audio.suspend();
+    }).catch(() => undefined);
   }
 
   /** The context is not running: ask it to, and say "waiting" only if it stays blocked. */
   function wake(audio: AudioContext) {
-    if (!suspendedByUs) setStatus("waiting-for-gesture");
+    if (!ownSuspend) setStatus("waiting-for-gesture");
     const stillBlocked = () => { if (!running()) setStatus("waiting-for-gesture"); };
     audio.resume().then(() => (running() ? sync() : stillBlocked()), stillBlocked);
   }
@@ -182,18 +228,31 @@ export function createSoundEngine(options: SoundEngineOptions): SoundEngine {
     setStatus(unavailable ? "unavailable" : "off");
     if (!audio || !ambientGain || audio.state !== "running") return;
     stopRain(audio, ambientGain, fadeSeconds());
-    void wait(ADJUST_SECONDS * 1000 + 20).then(() => {
-      const stillQuiet = ambientTarget() === 0 && interactionTarget() === 0;
-      if (stillQuiet && context === audio && audio.state === "running") {
-        suspendedByUs = true;
-        return audio.suspend();
-      }
-    }).catch(() => undefined);
+    suspendWhenStill(audio, ADJUST_SECONDS * 1000 + 20, "until-wanted",
+      () => ambientTarget() === 0 && interactionTarget() === 0);
   }
 
+  /**
+   * A cue on a running device sounds at once. On a device the engine suspended
+   * (resting, or woken by a click and not running yet) it sounds once the device
+   * is awake, if that takes no longer than a moment; while WebKit blocks autoplay
+   * or the system interrupts audio it is dropped rather than played late.
+   */
   function play(cue: Cue) {
     const audio = context;
-    if (!audio || !interactionGain || !running() || interactionTarget() === 0) return;
+    if (!audio || !interactionGain || interactionTarget() === 0) return;
+    if (running()) return playNow(audio, cue);
+    if (!ownSuspend) return;
+    ownSuspend = "until-wanted";
+    let late = false;
+    void wait(CUE_WAKE_LIMIT_MS).then(() => { late = true; });
+    audio.resume().then(() => {
+      if (!late && context === audio && running()) playNow(audio, cue);
+    }, () => undefined);
+  }
+
+  function playNow(audio: AudioContext, cue: Cue) {
+    if (!interactionGain) return;
     const start = audio.currentTime;
     for (const note of CUES[cue]) {
       const at = start + note.at;
@@ -210,6 +269,7 @@ export function createSoundEngine(options: SoundEngineOptions): SoundEngine {
       tone.stop(at + note.seconds + 0.02);
       tone.onended = () => envelope.disconnect();
     }
+    restLater(audio);
   }
 
   return {
@@ -219,6 +279,7 @@ export function createSoundEngine(options: SoundEngineOptions): SoundEngine {
     },
     gesture() {
       quitting = false;
+      if (ownSuspend === "until-activity") ownSuspend = "until-wanted";
       sync();
     },
     play,
@@ -236,7 +297,8 @@ export function createSoundEngine(options: SoundEngineOptions): SoundEngine {
       const audio = context;
       context = null;
       ambientGain = interactionGain = rain = null;
-      rendering = suspendedByUs = false;
+      rendering = false;
+      ownSuspend = null;
       sources = [];
       if (audio) {
         audio.removeEventListener("statechange", sync);
