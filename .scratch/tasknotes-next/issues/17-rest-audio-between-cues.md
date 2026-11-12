@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**Implementation:** in progress — Draft PR
+**Implementation:** completed — merged in PR #48 (fc94095) with the owner's confirmation and installed 2026-11-12; native CPU check passed; the owner's ear check of the first cue after a rest is still open
 
 ## Acceptance criteria
 
@@ -33,3 +33,15 @@
 - Checks: `pnpm typecheck`, `pnpm build`, `pnpm test` (see the PR); mutation checks on the rain, late-wake and interruption guards each turn a test red.
 
 **2026-11-12 — two-axis review:** Standards found no hard violation. Its judgement calls were all taken: one suspend state instead of two flags, one shared suspend helper, one test `engine(wait)`, a cue-length-free assertion, and the Ticket 08 citation names its batch. Spec found nothing missing or out of scope, and two points were taken. First, an interruption during a rest made the next cue play late and hid the waiting hint; that is fixed and tested. Second, criterion 2 relies on `resume()` outside a gesture, so the native check now includes hearing the first cue after a rest. The review also noted that clicks count as activity, which is recorded above for the owner.
+
+**2026-11-12 — merged and installed (owner: "Ya, merge & pasang"):** CI green on #47 and #48; #48 merged as fc94095, #47 as a33441f. The release bundle was built from `5cd7e4c`, whose code equals `main` after both merges (`git diff 5cd7e4c a33441f` touches only `.scratch/` and `progress/`), signed ad hoc and installed after a backup (`store.adamaja.tasknotes.pre-ticket17-20261112`: database checksums equal, `integrity_check` ok, schema 24; the old app copy identical, the replaced app moved to the Trash). At launch `usernoted` registered both notification categories; the store opened (CLI read 8 Lists).
+
+**2026-11-12 — native CPU check (Ticket 08 method, the owner's own setting: interaction sounds 12 %, rain muted):** app, WebKit GPU (audio), WebContent and Networking processes of the new app, 60 s windows, screen awake and unlocked at both ends, the agent sending Tab presses straight to the app's process (no data changes).
+
+| Run | Tasknotes total | WebKit GPU (audio) | WebContent | `coreaudiod` |
+|---|---|---|---|---|
+| A: a Tab press every 3 s keeps the device awake | 1.86 % | 0.81 % | 0.78 % | 4.50 % |
+| B: idle, from 6 s after the last press | 0.31 % | 0.00 % | 0.18 % | 0.33 % |
+| B2: idle, repeat | 0.76 % | 0.03 % | 0.61 % | 0.00 % |
+
+Before the fix the same idle state measured 2.35 % / 1.98 % in total with 1.26 % in the audio process both times (Ticket 08); now the audio process is at the both-muted level (0.00 %). Run A shows the device does wake on a key press. WebContent varies between runs as it did before. `coreaudiod` serves every app, so its fall is not claimed for Tasknotes alone.
