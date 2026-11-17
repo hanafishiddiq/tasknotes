@@ -428,7 +428,11 @@ fn bulk_status_changes_follow_the_same_rules_as_change_task() {
         })
         .unwrap();
     }
-    for status in [WorkStatus::Completed, WorkStatus::InProgress] {
+    for status in [
+        WorkStatus::Completed,
+        WorkStatus::InProgress,
+        WorkStatus::Ready,
+    ] {
         for task in &one {
             w.ai.change_task(ChangeTask {
                 id: task.id.clone(),
@@ -460,11 +464,18 @@ fn bulk_status_changes_follow_the_same_rules_as_change_task() {
             assert_eq!(history(&a.id), history(&b.id), "same Progress Entries");
         }
     }
-    // Back from Completed, In Progress restored 0% and 40%, as for one Task.
-    assert_eq!(task_now(&w, &bulk[1].id).progress, 40);
-    // Ready for started work, or a status a Task already has, is refused
-    // exactly as for one Task.
-    for status in [WorkStatus::Ready, WorkStatus::InProgress] {
+    // Back from Completed, In Progress restored 0% and 40%, as for one Task,
+    // and set back to Ready they kept it (2026-11-18).
+    assert_eq!(
+        (
+            task_now(&w, &bulk[1].id).status,
+            task_now(&w, &bulk[1].id).progress
+        ),
+        (WorkStatus::Ready, 40)
+    );
+    // A status a Task already has is refused exactly as for one Task.
+    {
+        let status = WorkStatus::Ready;
         let single =
             w.ai.change_task(ChangeTask {
                 id: one[1].id.clone(),

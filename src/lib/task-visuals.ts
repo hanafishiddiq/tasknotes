@@ -47,17 +47,14 @@ export function statusChoiceLabel(choice: StatusChoice): string {
 const FINISHED_CANNOT_BE_SET_ASIDE = "Reopen it first: a finished Task can't be set aside";
 /**
  * Whether a status choice is open for a Task now, and why not when the reason is
- * worth saying. Ready is for work not yet started, which a Task completed or set
- * aside before it started still is (Q48, ADR 0008); a finished Task is reopened
- * before it is set aside. The core refuses both too; the status control and the
- * Task menu both ask here, so they never offer different choices.
+ * worth saying. Any Task may be set back to Ready (ADR 0006 addendum,
+ * 2026-11-18); a finished Task is reopened before it is set aside, which the
+ * core refuses too. The status control and the Task menu both ask here, so
+ * they never offer different choices.
  */
 export function statusChoiceState(
   task: Pick<Task, "status" | "wontDo" | "completedFrom" | "wontDoFrom">, choice: StatusChoice,
 ): { disabled: boolean; reason?: string } {
-  if (choice === "ready" && task.status !== "ready" && (task.completedFrom ?? task.wontDoFrom) !== "ready") {
-    return { disabled: true };
-  }
   if (choice === "wont_do" && task.status === "completed" && !task.wontDo) {
     return { disabled: true, reason: FINISHED_CANNOT_BE_SET_ASIDE };
   }

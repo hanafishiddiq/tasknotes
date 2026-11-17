@@ -125,8 +125,22 @@ describe("Task status and priority", () => {
     }));
     expect(await screen.findByRole("region", { name: "Completed tasks" })).toBeInTheDocument();
     expect(within(screen.getByRole("article", { name: "Ready plan" })).getByText("Completed", { selector: ".status-pill" })).toBeInTheDocument();
+    // Any Task may be set back to Ready (2026-11-18).
     const workStatus = screen.getByRole("combobox", { name: "Work status" });
-    expect(within(workStatus).getByRole("option", { name: "Ready" })).toBeDisabled();
+    expect(within(workStatus).getByRole("option", { name: "Ready" })).toBeEnabled();
+  });
+
+  it("sets an In Progress Task back to Ready, where it keeps its progress", async () => {
+    saved = [{ ...base, title: "Started plan", status: "in_progress", progress: 40 }];
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open Started plan" }));
+    await user.selectOptions(screen.getByRole("combobox", { name: "Work status" }), "ready");
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("change_task", {
+      input: { id: "task-1", expectedRevision: 1, status: "ready" },
+    }));
+    const ready = await screen.findByRole("region", { name: "Ready tasks" });
+    expect(within(ready).getByRole("article", { name: "Started plan" })).toHaveTextContent("40%");
   });
 
   it("allows sorting by newest while keeping status groups in fixed order", async () => {

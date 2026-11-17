@@ -159,10 +159,10 @@ describe("opening the Task menu", () => {
 });
 
 describe("what the menu offers", () => {
-  it("dims Ready once work has started, and Won't do on a finished Task, as the status control does", async () => {
+  it("offers Ready once work has started, and dims Won't do on a finished Task, as the status control does", async () => {
     render(<App />);
     await rightClick("Synthetic draft");
-    expect(within(menu()).getByRole("menuitemradio", { name: "Ready" })).toHaveAttribute("aria-disabled", "true");
+    expect(within(menu()).getByRole("menuitemradio", { name: "Ready" })).not.toHaveAttribute("aria-disabled", "true");
     expect(within(menu()).getByRole("menuitemradio", { name: "In Progress" })).toHaveAttribute("aria-checked", "true");
     fireEvent.keyDown(menu(), { key: "Escape" });
 
@@ -267,10 +267,17 @@ describe("moving through the menu and closing it", () => {
   it("moves with the arrows over the enabled items, jumps with Home and End, and chooses with Return", async () => {
     const user = userEvent.setup();
     render(<App />);
-    await rightClick("Synthetic draft");
-    // Ready is dimmed on a started Task: the arrow skips it.
+    await rightClick("Synthetic finished");
+    // Won't do is dimmed on a finished Task: the arrow skips it.
+    await user.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}");
+    expect(within(menu()).getByRole("menuitemradio", { name: "Completed" })).toHaveFocus();
     await user.keyboard("{ArrowDown}");
-    expect(within(menu()).getByRole("menuitemradio", { name: "In Progress" })).toHaveFocus();
+    expect(item("Priority")).toHaveFocus();
+    fireEvent.keyDown(menu(), { key: "Escape" });
+
+    await rightClick("Synthetic draft");
+    await user.keyboard("{ArrowDown}");
+    expect(within(menu()).getByRole("menuitemradio", { name: "Ready" })).toHaveFocus();
     await user.keyboard("{End}");
     expect(item("Move to Removed")).toHaveFocus();
     await user.keyboard("{ArrowDown}");

@@ -82,7 +82,7 @@ fn percent_and_status_transitions_preserve_last_incomplete_progress() {
 }
 
 #[test]
-fn contradicting_status_progress_or_reset_to_ready_is_rejected_without_changes() {
+fn contradicting_status_and_progress_are_rejected_without_changes() {
     let dir = tempfile::tempdir().unwrap();
     let store = TaskStore::open(&dir.path().join("tasks.db")).unwrap();
     let ready = store
@@ -101,9 +101,7 @@ fn contradicting_status_progress_or_reset_to_ready_is_rejected_without_changes()
         .unwrap();
 
     for (status, progress) in [
-        (Some(WorkStatus::Ready), None),
-        (Some(WorkStatus::Ready), Some(0)),
-        (Some(WorkStatus::Ready), Some(45)),
+        (Some(WorkStatus::Ready), Some(100)),
         (Some(WorkStatus::InProgress), Some(100)),
         (Some(WorkStatus::Completed), Some(55)),
         (None, Some(101)),
@@ -154,6 +152,7 @@ fn contradicting_status_progress_or_reset_to_ready_is_rejected_without_changes()
                 id: completed.id.clone(),
                 expected_revision: completed.revision,
                 status: Some(WorkStatus::Ready),
+                progress: Some(100),
                 ..Default::default()
             })
             .is_err()

@@ -44,6 +44,11 @@ Keputusan Han (2026-11-18), Han minta lanjut terus sampai selesai satu per satu:
   - [x] Review: format kode, tombol tidak bisa diklik berulang saat macOS masih bertanya (menunggu di thread terpisah), komentar tes; diperbaiki
   - [ ] Draft PR, CI hijau
 - [ ] Status In Progress ↔ Ready bisa diubah bebas
+  - [x] Han: pindah ke Ready mempertahankan angka progress (2026-11-18)
+  - [x] Aturan inti diubah dengan TDD (berlaku sama di app, CLI, MCP, perubahan massal); Ready tidak pernah 100%; tidak ada yang pindah ke Ready dengan sendirinya
+  - [x] Tampilan: pilihan Ready tidak lagi diredupkan; baris Task Ready yang punya progress menampilkan persennya
+  - [x] ADR 0006, GLOSSARY, AGENTS.md dan DECISIONS diperbarui
+  - [ ] Review dan Draft PR, CI hijau
 - [ ] Subtask
 - [ ] Notes milik Task (catatan di dalam Task) bisa menyimpan gambar
 - [ ] Satu Task bisa muncul di beberapa List sekaligus, identik (selesai di satu = selesai di semua)

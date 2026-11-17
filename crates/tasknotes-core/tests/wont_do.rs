@@ -237,9 +237,9 @@ fn reopening_through_the_status_clears_wont_do_by_the_usual_progress_rules() {
         (WorkStatus::Ready, 0, false)
     );
 
-    // …but not to one with progress.
+    // …and so does one with progress, which keeps it (2026-11-18).
     let partial = wont_do(&store, &at_progress(&store, "Synthetic partial", 20)).unwrap();
-    let error = apply(
+    let ready = apply(
         &store,
         &partial,
         ChangeTask {
@@ -247,8 +247,11 @@ fn reopening_through_the_status_clears_wont_do_by_the_usual_progress_rules() {
             ..change()
         },
     )
-    .unwrap_err();
-    transition_message(&error);
+    .unwrap();
+    assert_eq!(
+        (ready.status, ready.progress, ready.wont_do),
+        (WorkStatus::Ready, 20, false)
+    );
 }
 
 #[test]
@@ -280,8 +283,8 @@ fn clearing_wont_do_alone_reopens_to_ready_or_in_progress_by_progress() {
 }
 
 /// AGENTS.md and ADR 0006: a started Task stays In Progress while idle, even
-/// at 0%; Ready is only for work not yet started. Reopening a Won't Do Task
-/// returns it to the work status it had before it was set aside.
+/// at 0%, unless the person chooses Ready. Reopening a Won't Do Task returns
+/// it to the work status it had before it was set aside.
 #[test]
 fn reopening_returns_the_task_to_the_work_status_it_had_before_wont_do() {
     let dir = tempfile::tempdir().unwrap();
@@ -336,19 +339,21 @@ fn reopening_returns_the_task_to_the_work_status_it_had_before_wont_do() {
         (WorkStatus::InProgress, 40, false)
     );
 
-    // A started Task set aside at 0% cannot be reopened as Ready either…
-    let idle = wont_do(&store, &started_at_zero("Synthetic idle again")).unwrap();
-    let error = apply(
+    // A started Task set aside at 0% goes back to Ready only when chosen
+    // (2026-11-18)…
+    let chosen = wont_do(&store, &started_at_zero("Synthetic set back")).unwrap();
+    let ready = apply(
         &store,
-        &idle,
+        &chosen,
         ChangeTask {
             status: Some(WorkStatus::Ready),
             ..change()
         },
     )
-    .unwrap_err();
-    transition_message(&error);
+    .unwrap();
+    assert_eq!((ready.status, ready.progress), (WorkStatus::Ready, 0));
     // …and progress 0 keeps it In Progress.
+    let idle = wont_do(&store, &started_at_zero("Synthetic idle again")).unwrap();
     let reopened = apply(
         &store,
         &idle,

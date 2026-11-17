@@ -112,15 +112,15 @@ describe("Won't Do", () => {
     await user.click(await screen.findByRole("button", { name: "Open Synthetic set aside" }));
     const select = screen.getByRole("combobox", { name: "Work status" });
     expect(select).toHaveValue("wont_do");
-    // It has progress, so only In Progress reopens it; Ready stays closed.
-    expect(within(select).getByRole("option", { name: "Ready" })).toBeDisabled();
+    // Ready is offered too, and would keep its progress (2026-11-18).
+    expect(within(select).getByRole("option", { name: "Ready" })).toBeEnabled();
     await user.selectOptions(select, "in_progress");
     await waitFor(() => expect(changes).toEqual([{ id: "c", expectedRevision: 1, status: "in_progress" }]));
     const aside = screen.getByRole("article", { name: "Synthetic set aside" });
     await waitFor(() => expect(aside).not.toHaveClass("task-card--wont-do"));
   });
 
-  it("offers Ready only to a Won't Do Task that never started, and says why a finished one can't be set aside", async () => {
+  it("offers Ready to every Won't Do Task, and says why a finished one can't be set aside", async () => {
     saved = [
       task({ id: "z", title: "Synthetic unstarted", status: "completed", progress: 0, wontDo: true, wontDoFrom: "ready" }),
       task({ id: "i", title: "Synthetic idle", status: "completed", progress: 0, wontDo: true, wontDoFrom: "in_progress" }),
@@ -132,10 +132,10 @@ describe("Won't Do", () => {
     const select = screen.getByRole("combobox", { name: "Work status" });
     expect(within(select).getByRole("option", { name: "Ready" })).toBeEnabled();
 
-    // Started, then set aside at 0%: it stays started work (ADR 0006).
+    // Started, then set aside at 0%: the person may still choose Ready (2026-11-18).
     await user.click(screen.getByRole("button", { name: "Open Synthetic idle" }));
     const idle = screen.getByRole("combobox", { name: "Work status" });
-    expect(within(idle).getByRole("option", { name: "Ready" })).toBeDisabled();
+    expect(within(idle).getByRole("option", { name: "Ready" })).toBeEnabled();
 
     await user.click(screen.getByRole("button", { name: "Open Synthetic finished" }));
     const finished = screen.getByRole("combobox", { name: "Work status" });

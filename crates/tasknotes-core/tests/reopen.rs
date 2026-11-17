@@ -115,7 +115,7 @@ fn a_task_completed_from_ready_reopens_to_ready_at_zero() {
 }
 
 #[test]
-fn a_task_completed_from_in_progress_reopens_to_its_previous_progress_and_never_to_ready() {
+fn a_task_completed_from_in_progress_reopens_to_its_previous_progress() {
     let dir = tempfile::tempdir().unwrap();
     let store = store_at(&dir.path().join("t.db"));
     let started = apply(&store, &task(&store, "Synthetic forty"), progress(40)).unwrap();
@@ -125,13 +125,12 @@ fn a_task_completed_from_in_progress_reopens_to_its_previous_progress_and_never_
         (WorkStatus::Completed, 100, Some(WorkStatus::InProgress))
     );
 
-    let refused = apply(&store, &done, status(WorkStatus::Ready)).unwrap_err();
-    assert!(
-        matches!(refused, TaskError::InvalidTransition(_)),
-        "{refused:?}"
-    );
     let reopened = apply(&store, &done, status(WorkStatus::InProgress)).unwrap();
     assert_eq!(state(&reopened), (WorkStatus::InProgress, 40, None));
+    // Choosing Ready instead keeps the 40% too (2026-11-18).
+    let done = apply(&store, &reopened, status(WorkStatus::Completed)).unwrap();
+    let ready = apply(&store, &done, status(WorkStatus::Ready)).unwrap();
+    assert_eq!(state(&ready), (WorkStatus::Ready, 40, None));
 
     // Started and idle at 0% (ADR 0006) is In Progress too, not Ready.
     let idle = apply(
@@ -143,7 +142,6 @@ fn a_task_completed_from_in_progress_reopens_to_its_previous_progress_and_never_
     assert_eq!((idle.status, idle.progress), (WorkStatus::InProgress, 0));
     let done = apply(&store, &idle, status(WorkStatus::Completed)).unwrap();
     assert_eq!(done.completed_from, Some(WorkStatus::InProgress));
-    assert!(apply(&store, &done, status(WorkStatus::Ready)).is_err());
     let lowered = apply(&store, &done, progress(0)).unwrap();
     assert_eq!(state(&lowered), (WorkStatus::InProgress, 0, None));
 }
@@ -314,11 +312,6 @@ fn a_task_completed_before_progress_history_keeps_the_earlier_rule() {
         .unwrap()
         .unwrap();
     assert_eq!(state(&old), (WorkStatus::Completed, 100, None));
-    let error = apply(&store, &old, status(WorkStatus::Ready)).unwrap_err();
-    assert!(
-        matches!(error, TaskError::InvalidTransition(_)),
-        "{error:?}"
-    );
     let lowered = apply(&store, &old, progress(0)).unwrap();
     assert_eq!(state(&lowered), (WorkStatus::InProgress, 0, None));
 }
