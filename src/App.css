@@ -1532,7 +1532,9 @@ kbd {
 }
 /* Like a hovered row, it hides the hairlines on either side. */
 .task-card--new::before,
-.task-slot:has(.task-card--new) + .task-slot .task-card::before {
+.task-slot:has(.task-card--new) + .task-slot .task-card::before,
+.task-card--fading::before,
+.task-slot:has(.task-card--fading) + .task-slot .task-card::before {
   border-color: transparent;
 }
 .task-check {

@@ -162,6 +162,40 @@ describe("the marks on their own", () => {
     expect(NEW_TASK_MARK_MS).toBe(20_000);
   });
 
+  it("ends the person's own add opened in the same moment it was added", () => {
+    const { result } = renderHook(() => useNewTaskMarks());
+    // Both before a render: the open must still see the add.
+    act(() => { result.current.addedHere("a"); result.current.opened("other"); });
+    expect(result.current.marked.size).toBe(0);
+  });
+
+  it("never lets an old countdown end a mark given again", () => {
+    vi.useFakeTimers();
+    const { result } = renderHook(() => useNewTaskMarks());
+    act(() => result.current.addedOutside(["x"]));
+    // Forgotten and reported seen in the same moment: no countdown may start for the gone mark.
+    act(() => { result.current.forget("x"); result.current.seen("x"); });
+    act(() => vi.advanceTimersByTime(5_000));
+    act(() => result.current.addedOutside(["x"]));
+    act(() => result.current.seen("x"));
+    act(() => vi.advanceTimersByTime(NEW_TASK_MARK_MS - 1));
+    expect(result.current.marked.has("x")).toBe(true);
+  });
+
+  it("ends a fading mark at once when its Task is opened, and leaves no timer behind", () => {
+    vi.useFakeTimers();
+    const { result, unmount } = renderHook(() => useNewTaskMarks());
+    act(() => { result.current.addedHere("a"); result.current.addedOutside(["x"]); });
+    act(() => { result.current.seen("a"); result.current.seen("x"); });
+    act(() => vi.advanceTimersByTime(NEW_TASK_MARK_MS));
+    expect(result.current.rowProps("a").fading).toBe(true);
+    act(() => result.current.opened("a"));
+    expect(result.current.rowProps("a")).toMatchObject({ justAdded: false, fading: false });
+    expect(result.current.rowProps("x").fading).toBe(true);
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("keeps an outside add until 20 seconds after it is seen, never counting before", () => {
     vi.useFakeTimers();
     const { result } = renderHook(() => useNewTaskMarks());
@@ -353,6 +387,8 @@ describe("the mark's stylesheet", () => {
     const fading = rules.filter((rule) => rule.media?.includes("prefers-reduced-motion: no-preference") &&
       rule.selector.trim() === ".task-card--fading .task-row").map((rule) => rule.body).join("\n");
     expect(fading).toMatch(new RegExp(`transition: background-color ${MARK_FADE_MS}ms`));
+    // The hairlines stay hidden while it fades, so they do not snap back before the yellow has gone.
+    expect(rules.some((rule) => rule.selector.split(",").map((part) => part.trim()).includes(".task-card--fading::before"))).toBe(true);
   });
 
   it("fills the row with a paler sidebar hover yellow, keeps it under the pointer, and draws no border", () => {

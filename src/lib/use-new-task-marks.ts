@@ -43,8 +43,8 @@ export interface NewTaskMarks {
  */
 export function useNewTaskMarks(): NewTaskMarks {
   const [marks, setMarks] = useState<ReadonlyMap<string, { by: AddedBy; state: MarkState }>>(() => new Map());
-  const marksNow = useRef(marks);
-  marksNow.current = marks;
+  // The marks as of the last change, not the last render: two calls in one moment must see each other.
+  const latest = useRef(marks);
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
   useEffect(() => {
@@ -55,47 +55,48 @@ export function useNewTaskMarks(): NewTaskMarks {
     };
   }, []);
 
+  const change = useCallback((next: ReadonlyMap<string, { by: AddedBy; state: MarkState }>) => {
+    if (next === latest.current) return;
+    latest.current = next;
+    setMarks(next);
+  }, []);
+
   const drop = useCallback((taskIds: readonly string[]) => {
     for (const taskId of taskIds) {
       clearTimeout(timers.current.get(taskId));
       timers.current.delete(taskId);
     }
-    setMarks((now) => {
-      if (!taskIds.some((taskId) => now.has(taskId))) return now;
-      const next = new Map(now);
-      for (const taskId of taskIds) next.delete(taskId);
-      return next;
-    });
-  }, []);
+    const now = latest.current;
+    if (!taskIds.some((taskId) => now.has(taskId))) return;
+    const next = new Map(now);
+    for (const taskId of taskIds) next.delete(taskId);
+    change(next);
+  }, [change]);
 
   const add = useCallback((taskIds: readonly string[], by: AddedBy) => {
-    setMarks((now) => {
-      const fresh = taskIds.filter((taskId) => !now.has(taskId));
-      if (fresh.length === 0) return now;
-      const next = new Map(now);
-      for (const taskId of fresh) next.set(taskId, { by, state: "waiting" });
-      return next;
-    });
-  }, []);
+    const now = latest.current;
+    const fresh = taskIds.filter((taskId) => !now.has(taskId));
+    if (fresh.length === 0) return;
+    const next = new Map(now);
+    for (const taskId of fresh) next.set(taskId, { by, state: "waiting" });
+    change(next);
+  }, [change]);
 
   const addedHere = useCallback((taskId: string) => add([taskId], "here"), [add]);
   const addedOutside = useCallback((taskIds: readonly string[]) => add(taskIds, "outside"), [add]);
 
   const opened = useCallback((taskId: string) => {
-    const own = [...marksNow.current].filter(([, mark]) => mark.by === "here").map(([id]) => id);
+    const own = [...latest.current].filter(([, mark]) => mark.by === "here").map(([id]) => id);
     drop([...own, taskId]);
   }, [drop]);
 
   const setState = useCallback((taskId: string, state: MarkState) => {
-    setMarks((now) => {
-      const mark = now.get(taskId);
-      return mark ? new Map(now).set(taskId, { ...mark, state }) : now;
-    });
-  }, []);
+    const mark = latest.current.get(taskId);
+    if (mark) change(new Map(latest.current).set(taskId, { ...mark, state }));
+  }, [change]);
 
   const seen = useCallback((taskId: string) => {
-    // The state says what renders; the timer guards a second report in the same tick, before it renders.
-    if (marksNow.current.get(taskId)?.state !== "waiting" || timers.current.has(taskId)) return;
+    if (latest.current.get(taskId)?.state !== "waiting" || timers.current.has(taskId)) return;
     timers.current.set(taskId, setTimeout(() => {
       setState(taskId, "fading");
       timers.current.set(taskId, setTimeout(() => drop([taskId]), MARK_FADE_MS));
