@@ -26,6 +26,9 @@ Keputusan Han (2026-11-17): 10 item kecil, ditambah 2 fitur baru (Task di bebera
   - [x] Diganti dengan TDD, seluruh tes lulus
   - [ ] Draft PR dibuka dan CI hijau
 - [ ] Tanda kuning Task baru tetap terlihat 20 detik
+  - [x] Han: berlaku untuk Task buatan sendiri dan dari AI; membuka Task tetap menghapus lebih cepat (2026-11-17)
+  - [x] Dikerjakan dengan TDD: 20 detik sejak terlihat, lalu memudar 0,8 detik; DESIGN.md diperbarui
+  - [ ] Draft PR dibuka dan CI hijau
 - [ ] Tombol Hide/Show Completed
 - [ ] Pomodoro meminta izin notifikasi sebelum bisa dipakai
 - [ ] Status In Progress ↔ Ready bisa diubah bebas

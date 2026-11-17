@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, renderHook, screen, within } from "@te
 import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
 import App from "./App";
-import { OUTSIDE_MARK_MS, useNewTaskMarks } from "./lib/use-new-task-marks";
+import { MARK_FADE_MS, NEW_TASK_MARK_MS, useNewTaskMarks } from "./lib/use-new-task-marks";
 import { OUTSIDE_CHANGE_POLL_MS } from "./lib/use-outside-changes";
 import type { Task } from "./lib/task-api";
 import { rules } from "./test/stylesheet";
@@ -12,10 +12,11 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 const call = vi.mocked(invoke);
 
 /**
- * Batch 3, Ticket 02 (owner decisions 2026-11-11, Q6–Q16): a pale-yellow mark
- * on Tasks just added. One the person adds in the window stays until any Task
- * is opened; one the CLI or an MCP client adds stays until 10 seconds after it
- * is seen, or until it is opened. View state only. Synthetic fixtures only.
+ * Batch 3, Ticket 02 (owner decisions 2026-11-11, Q6–Q16), changed in batch 4
+ * (owner, 2026-11-17): a pale-yellow mark on Tasks just added, by the person in
+ * the window or by the CLI or an MCP client. It stays until 20 seconds after it
+ * is seen, then fades; opening a Task ends it sooner (any Task for the person's
+ * own adds, that Task for the others). View state only. Synthetic fixtures only.
  */
 const JUST_ADDED = "Just added";
 const TOAST = "Task added · Click to edit";
@@ -134,7 +135,7 @@ async function addTask(user: ReturnType<typeof userEvent.setup>, title: string) 
 }
 
 describe("the marks on their own", () => {
-  it("keeps the person's own adds until any Task is opened", () => {
+  it("ends the person's own adds when any Task is opened, before their 20 seconds", () => {
     const { result } = renderHook(() => useNewTaskMarks());
     act(() => { result.current.addedHere("a"); result.current.addedHere("b"); });
     expect([...result.current.marked].sort()).toEqual(["a", "b"]);
@@ -142,7 +143,26 @@ describe("the marks on their own", () => {
     expect(result.current.marked.size).toBe(0);
   });
 
-  it("keeps an outside add until 10 seconds after it is seen, never counting before", () => {
+  it("keeps the person's own add until 20 seconds after it is seen, then fades it", () => {
+    vi.useFakeTimers();
+    const { result } = renderHook(() => useNewTaskMarks());
+    act(() => result.current.addedHere("a"));
+    expect(result.current.waitingToBeSeen.has("a")).toBe(true);
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(result.current.marked.has("a")).toBe(true);
+
+    act(() => result.current.seen("a"));
+    act(() => vi.advanceTimersByTime(NEW_TASK_MARK_MS - 1));
+    expect(result.current.rowProps("a")).toMatchObject({ justAdded: true, fading: false });
+    act(() => vi.advanceTimersByTime(1));
+    // The yellow eases away instead of vanishing.
+    expect(result.current.rowProps("a")).toMatchObject({ justAdded: false, fading: true });
+    act(() => vi.advanceTimersByTime(MARK_FADE_MS));
+    expect(result.current.rowProps("a")).toMatchObject({ justAdded: false, fading: false });
+    expect(NEW_TASK_MARK_MS).toBe(20_000);
+  });
+
+  it("keeps an outside add until 20 seconds after it is seen, never counting before", () => {
     vi.useFakeTimers();
     const { result } = renderHook(() => useNewTaskMarks());
     act(() => result.current.addedOutside(["x"]));
@@ -153,13 +173,12 @@ describe("the marks on their own", () => {
 
     act(() => result.current.seen("x"));
     expect(result.current.waitingToBeSeen.has("x")).toBe(false);
-    act(() => vi.advanceTimersByTime(OUTSIDE_MARK_MS - 1));
-    // Seen again: the 10 seconds do not start over.
+    act(() => vi.advanceTimersByTime(NEW_TASK_MARK_MS - 1));
+    // Seen again: the 20 seconds do not start over.
     act(() => result.current.seen("x"));
     expect(result.current.marked.has("x")).toBe(true);
     act(() => vi.advanceTimersByTime(1));
     expect(result.current.marked.has("x")).toBe(false);
-    expect(OUTSIDE_MARK_MS).toBe(10_000);
   });
 
   it("drops one outside mark when that Task is opened, leaving the others", () => {
@@ -200,6 +219,25 @@ describe("a Task the person adds in the window", () => {
     expect(screen.queryByText(JUST_ADDED)).toBeNull();
   });
 
+  it("goes 20 seconds after it is added on screen, fading out", async () => {
+    tasks = [task(1, { title: "Older task" })];
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(<App />);
+    await screen.findByRole("article", { name: "Older task" });
+    await addTask(user, "Fresh one");
+    expect(isMarked("Fresh one")).toBe(true);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(NEW_TASK_MARK_MS - 500); });
+    expect(isMarked("Fresh one")).toBe(true);
+    await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+    expect(isMarked("Fresh one")).toBe(false);
+    expect(row("Fresh one").classList.contains("task-card--fading")).toBe(true);
+    expect(within(row("Fresh one")).queryByText(JUST_ADDED)).toBeNull();
+    await act(async () => { await vi.advanceTimersByTimeAsync(MARK_FADE_MS); });
+    expect(row("Fresh one").classList.contains("task-card--fading")).toBe(false);
+  });
+
   it("loses its mark when the toast opens it", async () => {
     tasks = [task(1, { title: "Older task" })];
     const user = userEvent.setup();
@@ -213,13 +251,13 @@ describe("a Task the person adds in the window", () => {
 });
 
 describe("a Task another process adds", () => {
-  it("is marked with no toast, and goes 10 seconds after it is seen", async () => {
+  it("is marked with no toast, and goes 20 seconds after it is seen", async () => {
     tasks = [task(1, { title: "Older task" })];
     vi.useFakeTimers({ shouldAdvanceTime: true });
     render(<App />);
     await screen.findByRole("article", { name: "Older task" });
     await windowHasLookedOnce();
-    // Off screen at first (another List, or scrolled away): its 10 seconds wait.
+    // Off screen at first (another List, or scrolled away): its 20 seconds wait.
     scrollRowsOnScreen(false);
 
     createdByAnotherProcess(task(2, { title: "Added by an AI" }));
@@ -233,7 +271,7 @@ describe("a Task another process adds", () => {
     expect(isMarked("Added by an AI")).toBe(true);
 
     scrollRowsOnScreen(true);
-    await act(async () => { await vi.advanceTimersByTimeAsync(OUTSIDE_MARK_MS - 100); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(NEW_TASK_MARK_MS - 100); });
     expect(isMarked("Added by an AI")).toBe(true);
     await act(async () => { await vi.advanceTimersByTimeAsync(100); });
     expect(isMarked("Added by an AI")).toBe(false);
@@ -255,7 +293,7 @@ describe("a Task another process adds", () => {
 
     vi.mocked(document.hasFocus).mockReturnValue(true);
     act(() => { fireEvent.focus(window); });
-    await act(async () => { await vi.advanceTimersByTimeAsync(OUTSIDE_MARK_MS); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(NEW_TASK_MARK_MS); });
     expect(isMarked("Added while away")).toBe(false);
   });
 
@@ -309,6 +347,13 @@ describe("a Task another process adds", () => {
 describe("the mark's stylesheet", () => {
   const bodyOf = (selector: string) => rules.filter((rule) =>
     rule.selector.split(",").map((part) => part.replace(/\s+/g, " ").trim()).includes(selector)).map((rule) => rule.body).join("\n");
+
+  it("eases the yellow away over the fade, starting from the mark's own fill", () => {
+    // Inside the Reduce Motion "no-preference" block: with Reduce Motion on, the mark just goes.
+    const fading = rules.filter((rule) => rule.media?.includes("prefers-reduced-motion: no-preference") &&
+      rule.selector.trim() === ".task-card--fading .task-row").map((rule) => rule.body).join("\n");
+    expect(fading).toMatch(new RegExp(`transition: background-color ${MARK_FADE_MS}ms`));
+  });
 
   it("fills the row with a paler sidebar hover yellow, keeps it under the pointer, and draws no border", () => {
     // Half the sidebar hover yellow over the canvas: the full one drops red, orange and faint

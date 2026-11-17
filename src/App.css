@@ -2625,6 +2625,10 @@ button.task-check::before {
   .pomo-pill {
     transition: filter 120ms ease-out;
   }
+  /* A new Task's 20 seconds are up: its yellow eases back to the row's own colour (MARK_FADE_MS). */
+  .task-card--fading .task-row {
+    transition: background-color 800ms ease-out;
+  }
 }
 /* No fainter than 3:1 for the large time in either appearance. */
 @keyframes pomo-rest {

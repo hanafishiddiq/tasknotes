@@ -84,6 +84,8 @@ interface TaskRowProps {
   reorderable?: boolean;
   /** Just added, here or by an AI: the row takes the pale-yellow new Task mark. */
   justAdded?: boolean;
+  /** The mark's time is up: its yellow eases away. */
+  fading?: boolean;
   /** Given while the mark waits to be seen: called when the row is on screen with the window in front. */
   onSeen?: () => void;
   /** Right-click, Shift+F10 or the menu key on the row: open the Task menu here (batch 3, Ticket 03). */
@@ -173,6 +175,7 @@ export default function TaskRow({
   onEdits,
   reorderable = false,
   justAdded = false,
+  fading = false,
   onSeen,
   onMenu,
 }: TaskRowProps) {
@@ -299,7 +302,7 @@ export default function TaskRow({
   return (
     <article
       ref={card}
-      className={`task-card task-card--${task.status} ${wontDo ? "task-card--wont-do" : ""} ${expanded ? "task-card--expanded" : ""} ${justAdded ? "task-card--new" : ""}`}
+      className={`task-card task-card--${task.status} ${wontDo ? "task-card--wont-do" : ""} ${expanded ? "task-card--expanded" : ""} ${justAdded ? "task-card--new" : ""} ${fading ? "task-card--fading" : ""}`}
       aria-label={task.title}
     >
       {/* The row, not the open Task's fields, takes the Task menu: they keep the system's copy and paste. */}
