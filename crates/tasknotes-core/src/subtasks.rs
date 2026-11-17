@@ -5,6 +5,8 @@
 //! Note Link is unlinked: it is never deleted, and restoring brings it back in
 //! its place. Every interface writes through here, audited.
 
+use std::collections::HashMap;
+
 use rusqlite::{Connection, OptionalExtension, Row, Transaction, params, params_from_iter};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -127,15 +129,33 @@ fn read(conn: &Connection, id: &str) -> Result<Subtask, TaskError> {
     .ok_or(TaskError::SubtaskNotFound)
 }
 
-/// The item as a write finds it: it exists, its Task takes changes, and the
-/// caller read its latest revision.
-fn writable(tx: &Transaction, id: &str, expected_revision: i64) -> Result<Subtask, TaskError> {
+/// The item as a write finds it, once it exists, its Task takes changes and
+/// the caller read its latest revision. A Removed item may still be found
+/// here: each write decides what that means for it.
+fn item_for_write(
+    tx: &Transaction,
+    id: &str,
+    expected_revision: i64,
+) -> Result<Subtask, TaskError> {
     let item = read(tx, id)?;
     crate::removed::require_writable_task(tx, &item.task_id)?;
     if item.revision != expected_revision {
         return Err(TaskError::RevisionConflict);
     }
     Ok(item)
+}
+
+/// Refuses a checklist that already holds the most items a Task may have.
+fn require_room(tx: &Transaction, task_id: &str) -> Result<(), TaskError> {
+    let shown: i64 = tx.query_row(
+        "SELECT count(*) FROM task_subtasks WHERE task_id = ?1 AND removed_at IS NULL",
+        params![task_id],
+        |row| row.get(0),
+    )?;
+    if shown >= SUBTASKS_PER_TASK {
+        return Err(TaskError::TooManySubtasks);
+    }
+    Ok(())
 }
 
 /// Fills each Task's checklist counts, Removed items left out.
@@ -158,12 +178,10 @@ pub(crate) fn hydrate_counts(conn: &Connection, tasks: &mut [Task]) -> Result<()
                     row.get::<_, u32>(2)?,
                 ))
             })?
-            .collect::<Result<Vec<_>, _>>()?;
+            .map(|row| row.map(|(id, total, done)| (id, (total, done))))
+            .collect::<Result<HashMap<String, (u32, u32)>, _>>()?;
         for task in chunk.iter_mut() {
-            let (total, done) = counts
-                .iter()
-                .find(|(id, _, _)| *id == task.id)
-                .map_or((0, 0), |(_, total, done)| (*total, *done));
+            let (total, done) = counts.get(&task.id).copied().unwrap_or((0, 0));
             task.subtasks_total = total;
             task.subtasks_done = done;
         }
@@ -200,14 +218,7 @@ impl TaskStore {
         let mut conn = self.connect()?;
         let tx = self.begin_write(&mut conn)?;
         crate::removed::require_writable_task(&tx, &input.task_id)?;
-        let shown: i64 = tx.query_row(
-            "SELECT count(*) FROM task_subtasks WHERE task_id = ?1 AND removed_at IS NULL",
-            params![input.task_id],
-            |row| row.get(0),
-        )?;
-        if shown >= SUBTASKS_PER_TASK {
-            return Err(TaskError::TooManySubtasks);
-        }
+        require_room(&tx, &input.task_id)?;
         let item = tx.query_row(
             &format!(
                 "INSERT INTO task_subtasks (id, task_id, text, done, position, revision, created_at, updated_at)
@@ -233,7 +244,11 @@ impl TaskStore {
             let now = current_millis()?;
             let mut conn = self.connect()?;
             let tx = self.begin_write(&mut conn)?;
-            let before = writable(&tx, &input.id, input.expected_revision)?;
+            let before = item_for_write(&tx, &input.id, input.expected_revision)?;
+            // Off the checklist: nothing to change until it is restored.
+            if before.removed {
+                return Err(TaskError::SubtaskNotFound);
+            }
             let text = text.unwrap_or_else(|| before.text.clone());
             let done = input.done.unwrap_or(before.done);
             if text == before.text && done == before.done {
@@ -260,7 +275,7 @@ impl TaskStore {
             let now = current_millis()?;
             let mut conn = self.connect()?;
             let tx = self.begin_write(&mut conn)?;
-            let before = writable(&tx, &input.id, input.expected_revision)?;
+            let before = item_for_write(&tx, &input.id, input.expected_revision)?;
             if before.removed {
                 return Err(TaskError::SubtaskNotFound);
             }
@@ -276,6 +291,7 @@ impl TaskStore {
                 })?
                 .collect::<Result<_, _>>()?
             };
+            let all_ids: Vec<String> = all.iter().map(|(id, _)| id.clone()).collect();
             let mut order: Vec<(String, bool)> =
                 all.into_iter().filter(|(id, _)| *id != before.id).collect();
             // In front of the shown item now at `index`, or after the last shown one.
@@ -290,6 +306,9 @@ impl TaskStore {
                 None => shown_at.last().map_or(0, |last| last + 1),
             };
             order.insert(at, (before.id.clone(), false));
+            if order.iter().map(|(id, _)| id).eq(all_ids.iter()) {
+                return Err(TaskError::SubtaskUnchanged);
+            }
             for (position, (id, _)) in order.iter().enumerate() {
                 tx.execute(
                     "UPDATE task_subtasks SET position = ?2 WHERE id = ?1",
@@ -321,7 +340,7 @@ impl TaskStore {
             let now = current_millis()?;
             let mut conn = self.connect()?;
             let tx = self.begin_write(&mut conn)?;
-            let before = writable(&tx, &input.id, input.expected_revision)?;
+            let before = item_for_write(&tx, &input.id, input.expected_revision)?;
             if before.removed {
                 return Err(TaskError::SubtaskUnchanged);
             }
@@ -340,36 +359,36 @@ impl TaskStore {
         })
     }
 
-    /// Undo for a removal: the item comes back in the place it had. One on
-    /// the checklist already is returned unchanged.
-    pub fn restore_subtask(&self, id: &str) -> Result<Subtask, TaskError> {
-        let now = current_millis()?;
-        let mut conn = self.connect()?;
-        let tx = self.begin_write(&mut conn)?;
-        let before = read(&tx, id)?;
-        if !before.removed {
-            return Ok(before);
-        }
-        crate::removed::require_writable_task(&tx, &before.task_id)?;
-        let shown: i64 = tx.query_row(
-            "SELECT count(*) FROM task_subtasks WHERE task_id = ?1 AND removed_at IS NULL",
-            params![before.task_id],
-            |row| row.get(0),
-        )?;
-        if shown >= SUBTASKS_PER_TASK {
-            return Err(TaskError::TooManySubtasks);
-        }
-        let item = tx.query_row(
-            &format!(
-                "UPDATE task_subtasks SET removed_at = NULL, revision = revision + 1,
-                   updated_at = max(updated_at + 1, ?2)
-                 WHERE id = ?1 RETURNING {COLUMNS}"
-            ),
-            params![id, now],
-            read_subtask,
-        )?;
-        self.audit_applied(&tx, AuditAction::SubtaskRestore, &item.id, item.revision)?;
-        tx.commit()?;
-        Ok(item)
+    /// Undo for a removal: the item comes back in the place it had, naming
+    /// the revision the removal gave it. One on the checklist already is
+    /// returned unchanged.
+    pub fn restore_subtask(&self, id: &str, expected_revision: i64) -> Result<Subtask, TaskError> {
+        let input = SetSubtaskRemoved {
+            id: id.to_owned(),
+            expected_revision,
+        };
+        self.audited(AuditAction::SubtaskRestore, input, |input| {
+            let now = current_millis()?;
+            let mut conn = self.connect()?;
+            let tx = self.begin_write(&mut conn)?;
+            let before = read(&tx, &input.id)?;
+            if !before.removed {
+                return Ok(before);
+            }
+            let before = item_for_write(&tx, &input.id, input.expected_revision)?;
+            require_room(&tx, &before.task_id)?;
+            let item = tx.query_row(
+                &format!(
+                    "UPDATE task_subtasks SET removed_at = NULL, revision = revision + 1,
+                       updated_at = max(updated_at + 1, ?2)
+                     WHERE id = ?1 RETURNING {COLUMNS}"
+                ),
+                params![input.id, now],
+                read_subtask,
+            )?;
+            self.audit_applied(&tx, AuditAction::SubtaskRestore, &item.id, item.revision)?;
+            tx.commit()?;
+            Ok(item)
+        })
     }
 }

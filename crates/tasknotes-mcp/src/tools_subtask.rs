@@ -7,7 +7,7 @@ use serde::Deserialize;
 use tasknotes_cli::contract;
 use tasknotes_core::subtasks::{AddSubtask, MoveSubtask, UpdateSubtask};
 
-use crate::tools::{Id, Kind, Revisioned, ToolDef, item, revision, tool};
+use crate::tools::{Kind, Revisioned, ToolDef, item, revision, tool};
 
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -112,8 +112,12 @@ pub fn tools() -> Vec<ToolDef> {
         tool(
             "subtask_restore",
             Kind::Write,
-            "Bring a removed checklist item back, in the place it had.",
-            |c, a: Id| item(contract::subtask(&c.store.restore_subtask(&a.id)?)),
+            "Bring a removed checklist item back, in the place it had; name the revision subtask_remove gave it.",
+            |c, a: Revisioned| {
+                item(contract::subtask(
+                    &c.store.restore_subtask(&a.id, revision(a.revision)?)?,
+                ))
+            },
         ),
     ]
 }

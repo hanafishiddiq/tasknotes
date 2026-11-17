@@ -587,7 +587,10 @@ fn task_markdown(task: &TaskRecord) -> String {
         for item in shown {
             // Later lines of a long item stay inside it.
             let body = item.text.lines().collect::<Vec<_>>().join("\n  ");
-            text.push_str(&format!("- [{}] {body}\n", if item.done { "x" } else { " " }));
+            text.push_str(&format!(
+                "- [{}] {body}\n",
+                if item.done { "x" } else { " " }
+            ));
         }
     }
     if !task.progress_entries.is_empty() {

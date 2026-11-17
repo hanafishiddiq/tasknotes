@@ -412,9 +412,13 @@ fn remove_subtask(
 }
 
 #[tauri::command]
-fn restore_subtask(store: State<'_, TaskStore>, id: String) -> Result<Subtask, String> {
+fn restore_subtask(
+    store: State<'_, TaskStore>,
+    id: String,
+    expected_revision: i64,
+) -> Result<Subtask, String> {
     store
-        .restore_subtask(&id)
+        .restore_subtask(&id, expected_revision)
         .map_err(|error| error.to_string())
 }
 

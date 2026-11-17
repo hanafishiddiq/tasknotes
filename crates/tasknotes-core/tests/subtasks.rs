@@ -183,6 +183,16 @@ fn an_item_moves_to_another_place_in_the_checklist() {
         })
         .unwrap();
     assert_eq!(texts(&store, &plan), ["C", "B", "A"]);
+    // A move to where it already is changes nothing.
+    let last = store.list_subtasks(&plan.id).unwrap().pop().unwrap();
+    let same = store
+        .move_subtask(MoveSubtask {
+            id: last.id.clone(),
+            expected_revision: last.revision,
+            index: 2,
+        })
+        .unwrap_err();
+    assert_eq!(same.code(), "unchanged");
 }
 
 #[test]
@@ -206,7 +216,16 @@ fn removing_an_item_is_reversible_and_it_comes_back_in_its_place() {
         "unchanged"
     );
 
-    let back = store.restore_subtask(&b.id).unwrap();
+    // An item off the checklist takes no edits until it is back.
+    assert_eq!(
+        set_done(&store, &removed, false).unwrap_err().code(),
+        "not_found"
+    );
+    assert_eq!(
+        store.restore_subtask(&b.id, b.revision).unwrap_err().code(),
+        "revision_conflict"
+    );
+    let back = store.restore_subtask(&b.id, removed.revision).unwrap();
     assert!(!back.removed && back.done);
     assert_eq!(texts(&store, &plan), ["A", "B", "C"]);
     assert_eq!(counts(&store, &plan), (1, 3));
@@ -251,6 +270,17 @@ fn a_checklist_holds_at_most_500_items() {
         })
         .unwrap_err();
     assert_eq!(refused.code(), "invalid_input");
+    // Nor does restoring one past the limit.
+    let first = store.list_subtasks(&plan.id).unwrap().remove(0);
+    let gone = store.remove_subtask(&first.id, first.revision).unwrap();
+    add(&store, &plan, "Takes its place");
+    assert_eq!(
+        store
+            .restore_subtask(&gone.id, gone.revision)
+            .unwrap_err()
+            .code(),
+        "invalid_input"
+    );
 }
 
 #[test]
@@ -264,7 +294,7 @@ fn every_change_is_in_the_audit_history_and_the_window_hears_of_it() {
     let item = add(&cli, &plan, "From the CLI");
     let done = set_done(&cli, &item, true).unwrap();
     let removed = cli.remove_subtask(&done.id, done.revision).unwrap();
-    cli.restore_subtask(&removed.id).unwrap();
+    cli.restore_subtask(&removed.id, removed.revision).unwrap();
 
     assert!(desktop.outside_changes(Some(seen)).unwrap().changed);
     let actions: Vec<String> = desktop
@@ -304,7 +334,10 @@ fn a_v24_database_gains_checklists_and_keeps_its_tasks() {
         .unwrap();
     assert_eq!(version, tasknotes_core::tasks::SCHEMA_VERSION);
     let kept = store.get_task(&plan.id).unwrap().unwrap();
-    assert_eq!((kept.title.as_str(), kept.subtasks_total), ("Synthetic older plan", 0));
+    assert_eq!(
+        (kept.title.as_str(), kept.subtasks_total),
+        ("Synthetic older plan", 0)
+    );
     add(&store, &kept, "Works after the upgrade");
     assert_eq!(counts(&store, &kept), (0, 1));
 }

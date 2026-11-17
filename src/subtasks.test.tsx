@@ -79,6 +79,7 @@ beforeEach(() => {
       }
       case "restore_subtask": {
         const found = items.find((each) => each.id === body.id)!;
+        if (found.revision !== body.expectedRevision) throw "Revision conflict: the Task has changed; reload before saving";
         Object.assign(found, { removed: false, revision: found.revision + 1 });
         return { ...found };
       }
@@ -132,7 +133,8 @@ describe("a Task's checklist", () => {
     const user = userEvent.setup();
     const list = await openTrip(user);
     const text = await within(list).findByRole("textbox", { name: "Subtask text" });
-    expect(text).toHaveAttribute("maxLength", "10000");
+    // The window cuts nothing short: the core alone holds the 10,000-character limit.
+    expect(text).not.toHaveAttribute("maxLength");
     await user.clear(text);
     await user.click(text);
     await user.paste(long);
@@ -148,7 +150,7 @@ describe("a Task's checklist", () => {
     expect(calls("remove_subtask")).toEqual([{ id: "s1", expectedRevision: 1 }]);
     await waitFor(() => expect(within(list).queryByRole("checkbox", { name: "Book the train" })).toBeNull());
     await user.click(within(list).getByRole("button", { name: "Undo" }));
-    expect(calls("restore_subtask")).toEqual([{ id: "s1" }]);
+    expect(calls("restore_subtask")).toEqual([{ id: "s1", expectedRevision: 2 }]);
     expect(await within(list).findByRole("checkbox", { name: "Book the train" })).toBeInTheDocument();
   });
 
@@ -164,6 +166,32 @@ describe("a Task's checklist", () => {
       .toEqual(["B", "A", "C"]));
     // The moved item keeps the cursor.
     expect(within(list).getAllByRole("textbox", { name: "Subtask text" })[1]).toHaveFocus();
+  });
+
+  it("runs an edit and the next action one after the other, each on the newest revision", async () => {
+    items = [item("A"), item("B")];
+    const user = userEvent.setup();
+    const list = await openTrip(user);
+    const [first] = await within(list).findAllByRole("textbox", { name: "Subtask text" });
+    await user.type(first, " and more");
+    await user.keyboard("{Alt>}{ArrowDown}{/Alt}");
+    await waitFor(() => expect(calls("move_subtask")).toEqual([{ input: { id: "s1", expectedRevision: 2, index: 1 } }]));
+    expect(calls("update_subtask")).toEqual([{ input: { id: "s1", expectedRevision: 1, text: "A and more" } }]);
+    // Edited, then ticked straight away: the tick names the revision the edit made.
+    const [, moved] = within(list).getAllByRole("textbox", { name: "Subtask text" });
+    await user.type(moved, "!");
+    await user.click(within(list).getByRole("checkbox", { name: "A and more" }));
+    await waitFor(() => expect(calls("update_subtask").slice(-1)[0]).toEqual({ input: { id: "s1", expectedRevision: 4, done: true } }));
+    expect(within(list).queryByRole("alert")).toBeNull();
+  });
+
+  it("takes a long item with line breaks in the add field, Shift+Return for a new line", async () => {
+    const user = userEvent.setup();
+    const list = await openTrip(user);
+    const field = within(list).getByRole("textbox", { name: "Add subtask" });
+    await user.type(field, "First line{Shift>}{Enter}{/Shift}second line{Enter}");
+    expect(calls("add_subtask")).toEqual([{ input: { taskId: "trip", text: "First line\nsecond line" } }]);
+    expect(field).toHaveValue("");
   });
 
   it("says why a change was refused and shows the checklist as it is now", async () => {

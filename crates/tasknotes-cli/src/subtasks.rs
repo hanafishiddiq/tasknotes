@@ -54,7 +54,10 @@ pub fn subtask_command(store: &TaskStore, verb: &str, words: &[String]) -> Resul
             let p = parse(words, &flags(&["revision"], 1))?;
             store.remove_subtask(p.id(), p.revision()?)?
         }
-        "restore" => store.restore_subtask(parse(words, &ONE_ID)?.id())?,
+        "restore" => {
+            let p = parse(words, &flags(&["revision"], 1))?;
+            store.restore_subtask(p.id(), p.revision()?)?
+        }
         _ => return Err(CliError::invalid(USAGE)),
     };
     Ok(contract::success_item(contract::subtask(&item)))

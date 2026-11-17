@@ -964,7 +964,10 @@ fn a_tasks_checklist_round_trips_through_mcp() {
         json!({"id": id(&done), "revision": rev(&done)}),
     );
     assert_eq!(gone["item"]["removed"], true);
-    let back = s.ok("subtask_restore", json!({"id": id(&gone)}));
+    let back = s.ok(
+        "subtask_restore",
+        json!({"id": id(&gone), "revision": rev(&gone)}),
+    );
     assert_eq!(back["item"]["removed"], false);
     s.refused(
         "subtask_update",

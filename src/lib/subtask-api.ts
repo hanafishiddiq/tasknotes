@@ -13,9 +13,6 @@ export interface Subtask {
   updatedAt: number;
 }
 
-/** The longest item the core keeps. */
-export const SUBTASK_TEXT_MAX = 10_000;
-
 export const subtaskApi = {
   list: (taskId: string) => invoke<Subtask[]>("list_subtasks", { taskId }),
   add: (taskId: string, text: string) => invoke<Subtask>("add_subtask", { input: { taskId, text } }),
@@ -26,5 +23,6 @@ export const subtaskApi = {
   move: (item: Subtask, index: number) =>
     invoke<Subtask>("move_subtask", { input: { id: item.id, expectedRevision: item.revision, index } }),
   remove: (item: Subtask) => invoke<Subtask>("remove_subtask", { id: item.id, expectedRevision: item.revision }),
-  restore: (item: Subtask) => invoke<Subtask>("restore_subtask", { id: item.id }),
+  /** `item` as its removal left it: the restore names that revision. */
+  restore: (item: Subtask) => invoke<Subtask>("restore_subtask", { id: item.id, expectedRevision: item.revision }),
 };

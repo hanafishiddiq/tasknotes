@@ -56,6 +56,8 @@ Keputusan Han (2026-11-18), Han minta lanjut terus sampai selesai satu per satu:
   - [x] CLI `subtask …` dan alat MCP `subtask_*`, dengan tes
   - [x] Tampilan dengan TDD: checklist di Task yang dibuka, angka 2/5 di baris; dicek di halaman uji
   - [x] GLOSSARY, ADR 0011, DESIGN.md
+  - [x] Review dua sumbu; diperbaiki: edit lalu centang/pindah tidak lagi bentrok revisi (aksi berurutan), item terhapus tidak bisa diedit, restore wajib menyebut revisi, kolom tambah bisa banyak baris, teks panjang menyesuaikan lebar jendela
+  - [ ] Draft PR #61, CI hijau
 - [ ] Notes milik Task (catatan di dalam Task) bisa menyimpan gambar
 - [ ] Satu Task bisa muncul di beberapa List sekaligus, identik (selesai di satu = selesai di semua)
 - [ ] Kalimat pertama Note otomatis jadi judul bergaya heading (tebal dan lebih besar)

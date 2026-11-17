@@ -65,7 +65,8 @@ fn a_checklist_is_kept_through_the_cli() {
 
     let gone = cli.ok(&["subtask", "remove", id(&done), "--revision", &rev(&done)])["item"].clone();
     assert_eq!(gone["removed"], true);
-    let back = cli.ok(&["subtask", "restore", id(&gone)])["item"].clone();
+    let back =
+        cli.ok(&["subtask", "restore", id(&gone), "--revision", &rev(&gone)])["item"].clone();
     assert_eq!(back["removed"], false);
     let audit = cli.ok(&["audit", "list"]);
     assert!(
@@ -107,7 +108,10 @@ fn checklist_refusals_use_their_own_codes() {
     ]);
     assert_eq!(error_code(&bad, 2), "invalid_input");
     assert_eq!(
-        error_code(&cli.run(&["subtask", "restore", "no-such-item"]), 3),
+        error_code(
+            &cli.run(&["subtask", "restore", "no-such-item", "--revision", "1"]),
+            3
+        ),
         "not_found"
     );
 }
