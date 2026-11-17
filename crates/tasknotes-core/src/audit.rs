@@ -108,6 +108,7 @@ actions! {
     SubtaskMove => "subtask.move",
     SubtaskRemove => "subtask.remove",
     SubtaskRestore => "subtask.restore",
+    TaskImageAdd => "task.image.add",
     BulkRequest => "bulk.request",
     BulkApprove => "bulk.approve",
     BulkDecline => "bulk.decline",
@@ -134,6 +135,7 @@ impl AuditAction {
             SubtaskCreate | SubtaskUpdate | SubtaskMove | SubtaskRemove | SubtaskRestore => {
                 "task_subtasks"
             }
+            TaskImageAdd => "task_images",
             BulkRequest | BulkApprove | BulkDecline => "bulk_requests",
             PomodoroRecord => "pomodoro_sessions",
             BackupRestore => return None,

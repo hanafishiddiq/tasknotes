@@ -139,6 +139,10 @@ pub enum TaskError {
     TooManySubtasks,
     #[error("This subtask already reads so")]
     SubtaskUnchanged,
+    #[error("Images must be PNG, JPEG, GIF or WebP, up to 10 MB")]
+    InvalidTaskImage,
+    #[error("Image not found")]
+    TaskImageNotFound,
     #[error("Invalid Note Link page cursor")]
     InvalidLinkCursor,
     #[error("Invalid Audit Entry page cursor")]
@@ -275,7 +279,8 @@ impl TaskError {
             | InvalidPomodoroRange
             | EmptySubtask
             | SubtaskTooLong
-            | TooManySubtasks => "invalid_input",
+            | TooManySubtasks
+            | InvalidTaskImage => "invalid_input",
             InvalidCursor
             | InvalidHistoryCursor
             | InvalidRemovedCursor
@@ -285,7 +290,7 @@ impl TaskError {
             | InvalidAuditCursor
             | InvalidListCursor => "invalid_cursor",
             NotFound | ListNotFound | NoteNotFound | NoteFolderNotFound | LinkNotFound
-            | SubtaskNotFound | BulkRequestNotFound => "not_found",
+            | SubtaskNotFound | TaskImageNotFound | BulkRequestNotFound => "not_found",
             RevisionConflict
             | NoteRevisionConflict
             | NoteFolderRevisionConflict
@@ -985,7 +990,7 @@ const WONT_DO_FROM_COLUMN: usize = 15;
 pub(crate) const COLUMN_COUNT: usize = 16;
 
 /// The database schema this core reads and writes.
-pub const SCHEMA_VERSION: i64 = 25;
+pub const SCHEMA_VERSION: i64 = 26;
 
 /// How long a write waits for another process (the CLI, MCP) holding the database lock.
 pub const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -1239,6 +1244,11 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), TaskError> {
     if version < 25 {
         let migration = connection.transaction()?;
         crate::subtasks::migrate_v25(&migration)?;
+        migration.commit()?;
+    }
+    if version < 26 {
+        let migration = connection.transaction()?;
+        crate::task_images::migrate_v26(&migration)?;
         migration.commit()?;
     }
     Ok(())

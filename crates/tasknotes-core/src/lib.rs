@@ -101,6 +101,7 @@ pub mod removed;
 mod search;
 pub mod style;
 pub mod subtasks;
+pub mod task_images;
 pub mod tasks;
 mod text_fold;
 pub mod tree;
