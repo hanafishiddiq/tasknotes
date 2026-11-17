@@ -18,6 +18,8 @@ const child = world.notes.folder(LONG, parent);
 const child2 = world.notes.folder(WORD, parent);
 world.notes.seed(`# ${LONG} ${LONG}\n\nBody`, `${LONG} ${LONG}`, { folderId: child.id });
 world.notes.seed(`# ${WORD}\n\nBody`, WORD, { folderId: child2.id });
+// A plain first line: the editor shows it as the title (batch 4).
+world.notes.seed("Synthetic meeting notes on a plain first line\n\nBody text under the title.\n\n- First point\n- Second point", "Synthetic meeting notes on a plain first line");
 world.tasksOfNote = [{ id: "a", title: `${LONG} — Maintenance and review of every single step`, status: "completed", revision: 1, removed: false } as any];
 world.notesOfTask = [{ id: "note-1", title: `${LONG} ${LONG}`, revision: 1, removed: false } as any];
 world.removed = [{ kind: "task", id: "r", title: WORD + " " + LONG, revision: 1, removedAt: FIXTURE_NOW, inRemovedContainer: false }];
