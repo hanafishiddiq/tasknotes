@@ -21,6 +21,7 @@ use tasknotes_core::note_folders::{FolderParent, NoteFolder};
 use tasknotes_core::notes::{Note, NoteSummary};
 use tasknotes_core::pomodoro::{HistorySession, PomodoroDay};
 use tasknotes_core::removed::RemovedItem;
+use tasknotes_core::subtasks::Subtask;
 use tasknotes_core::tasks::{List, ListParent, ProgressEntry, Task, TaskError, TaskStore};
 
 /// The version of this JSON contract, sent as `schema_version` in every
@@ -183,6 +184,22 @@ pub fn task(task: &Task) -> Value {
         "created_at": task.created_at,
         "updated_at": task.updated_at,
         "removed": task.removed,
+        // The checklist: how many items are done, of how many (batch 4).
+        "subtasks_done": task.subtasks_done,
+        "subtasks_total": task.subtasks_total,
+    })
+}
+
+pub fn subtask(item: &Subtask) -> Value {
+    json!({
+        "id": item.id,
+        "task_id": item.task_id,
+        "text": item.text,
+        "done": item.done,
+        "removed": item.removed,
+        "revision": item.revision,
+        "created_at": item.created_at,
+        "updated_at": item.updated_at,
     })
 }
 

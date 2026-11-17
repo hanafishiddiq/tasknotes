@@ -11,6 +11,7 @@ mod tools;
 mod tools_bulk;
 mod tools_note;
 mod tools_pomodoro;
+mod tools_subtask;
 mod tools_task;
 
 use std::process::ExitCode;

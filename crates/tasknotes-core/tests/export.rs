@@ -447,3 +447,71 @@ fn a_destination_without_a_name_is_its_own_error() {
         "{refused}"
     );
 }
+
+#[test]
+fn both_exports_carry_a_tasks_checklist() {
+    use tasknotes_core::subtasks::AddSubtask;
+    let dir = tempfile::tempdir().unwrap();
+    let store = TaskStore::open(&dir.path().join("tasknotes.db")).unwrap();
+    let trip = store
+        .create_task(CreateTask {
+            title: "Synthetic trip".into(),
+            description: String::new(),
+        })
+        .unwrap();
+    let add = |text: &str| {
+        store
+            .add_subtask(AddSubtask {
+                task_id: trip.id.clone(),
+                text: text.into(),
+            })
+            .unwrap()
+    };
+    let first = add("Book the train");
+    let gone = add("Synthetic dropped item");
+    add("Pack\nthe bag");
+    store
+        .update_subtask(tasknotes_core::subtasks::UpdateSubtask {
+            id: first.id.clone(),
+            expected_revision: first.revision,
+            text: None,
+            done: Some(true),
+        })
+        .unwrap();
+    store.remove_subtask(&gone.id, gone.revision).unwrap();
+
+    let json = dir.path().join("tasknotes.json");
+    store
+        .export_data(request(ExportFormat::Json, &json, false))
+        .unwrap();
+    let data = read_json(&json);
+    let items = &data["tasks"][0]["subtasks"];
+    let texts: Vec<(&str, bool, bool)> = items
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| {
+            (
+                item["text"].as_str().unwrap(),
+                item["done"].as_bool().unwrap(),
+                item["removed"].as_bool().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        texts,
+        [
+            ("Book the train", true, false),
+            ("Synthetic dropped item", false, true),
+            ("Pack\nthe bag", false, false)
+        ]
+    );
+
+    let root = dir.path().join("Tasknotes export");
+    store
+        .export_data(request(ExportFormat::Markdown, &root, false))
+        .unwrap();
+    let inbox = std::fs::read_to_string(root.join("Tasks/Inbox.md")).unwrap();
+    assert!(inbox.contains("### Subtasks\n\n- [x] Book the train\n- [ ] Pack\n  the bag\n"));
+    assert!(!inbox.contains("Synthetic dropped item"));
+}

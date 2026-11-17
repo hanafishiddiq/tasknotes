@@ -8,6 +8,7 @@ pub mod bulk;
 pub mod contract;
 mod data;
 mod notes;
+mod subtasks;
 
 use std::ffi::OsString;
 use std::path::Path;
@@ -135,6 +136,7 @@ fn dispatch(
             | "backup"
             | "export"
             | "pomodoro"
+            | "subtask"
     ) {
         return Err(CliError::invalid(USAGE));
     }
@@ -157,12 +159,14 @@ fn dispatch(
         "bulk" => bulk::bulk_command(&store, verb, words),
         "style" => style_command(verb, words),
         "pomodoro" => pomodoro_command(&store, verb, words),
+        "subtask" => subtasks::subtask_command(&store, verb, words),
         _ => audit_command(&store, verb, words),
     }
 }
 
 pub(crate) const USAGE: &str = "Usage: tasknotes [--data-dir DIR] \
-    <task|list|note|folder|link|removed|audit|bulk|style|pomodoro|backup|export|access> <command> [id] [--options]; \
+    <task|subtask|list|note|folder|link|removed|audit|bulk|style|pomodoro|backup|export|access> <command> [id] [--options]; \
+    subtask list TASK_ID | subtask add TASK_ID --text T | subtask update ID --revision N [--text T] [--done true|false] | subtask move ID --revision N --index I | subtask remove ID --revision N | subtask restore ID (a Task's checklist; its progress stays the person's); \
     task change ID --revision N [--status S] [--priority P] [--difficulty D|none] [--progress N] [--wont-do true|false] (a Completed Task reopens to its completed_from with --status); \
     task list [--status S] [--priority P] [--difficulty D|none] [--wont-do true|false] [--tag T] [--sort priority|newest|difficulty|custom (with --list ID or --inbox)]; \
     task reorder ID --revision N (--after ID | --first) (within its work-status group of its List's Custom Order; switches its List to Custom in the desktop); \

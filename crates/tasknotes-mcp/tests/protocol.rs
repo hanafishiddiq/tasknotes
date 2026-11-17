@@ -79,6 +79,12 @@ fn a_trusted_client_completes_the_handshake_and_lists_the_tools() {
             "pomodoro_history",
             "removed_list",
             "style_options",
+            "subtask_add",
+            "subtask_list",
+            "subtask_move",
+            "subtask_remove",
+            "subtask_restore",
+            "subtask_update",
             "task_change",
             "task_create",
             "task_details",
@@ -94,7 +100,7 @@ fn a_trusted_client_completes_the_handshake_and_lists_the_tools() {
             "task_update",
         ]
     );
-    assert_eq!(tools.len(), 48);
+    assert_eq!(tools.len(), 54);
     for tool in &tools {
         assert_eq!(tool["inputSchema"]["type"], "object", "{tool}");
         assert!(tool["inputSchema"].get("oneOf").is_none(), "{tool}");

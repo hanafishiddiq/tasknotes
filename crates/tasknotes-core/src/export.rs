@@ -118,6 +118,18 @@ struct TaskRecord {
     updated_at: i64,
     removed: bool,
     progress_entries: Vec<ProgressRecord>,
+    /// The checklist in its order, Removed items too (marked `removed`).
+    subtasks: Vec<SubtaskRecord>,
+}
+
+#[derive(Serialize)]
+struct SubtaskRecord {
+    id: String,
+    text: String,
+    done: bool,
+    removed: bool,
+    created_at: i64,
+    updated_at: i64,
 }
 
 #[derive(Serialize)]
@@ -305,11 +317,33 @@ impl TaskStore {
         )? {
             history.entry(task_id).or_default().push(entry);
         }
+        let mut checklists: HashMap<String, Vec<SubtaskRecord>> = HashMap::new();
+        for (task_id, item) in collect(
+            conn,
+            "SELECT task_id, id, text, done, removed_at IS NOT NULL, created_at, updated_at
+             FROM task_subtasks ORDER BY task_id, position, id",
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    SubtaskRecord {
+                        id: row.get(1)?,
+                        text: row.get(2)?,
+                        done: row.get(3)?,
+                        removed: row.get(4)?,
+                        created_at: row.get(5)?,
+                        updated_at: row.get(6)?,
+                    },
+                ))
+            },
+        )? {
+            checklists.entry(task_id).or_default().push(item);
+        }
         let tasks = tasks
             .into_iter()
             .zip(positions)
             .map(|(task, position)| TaskRecord {
                 progress_entries: history.remove(&task.id).unwrap_or_default(),
+                subtasks: checklists.remove(&task.id).unwrap_or_default(),
                 id: task.id,
                 title: task.title,
                 description: task.description,
@@ -546,6 +580,15 @@ fn task_markdown(task: &TaskRecord) -> String {
     ));
     if !task.description.is_empty() {
         text.push_str(&format!("\n{}\n", task.description.trim_end()));
+    }
+    let shown: Vec<&SubtaskRecord> = task.subtasks.iter().filter(|item| !item.removed).collect();
+    if !shown.is_empty() {
+        text.push_str("\n### Subtasks\n\n");
+        for item in shown {
+            // Later lines of a long item stay inside it.
+            let body = item.text.lines().collect::<Vec<_>>().join("\n  ");
+            text.push_str(&format!("- [{}] {body}\n", if item.done { "x" } else { " " }));
+        }
     }
     if !task.progress_entries.is_empty() {
         text.push_str("\n### Progress history\n\n");
