@@ -237,6 +237,13 @@ const TEXT: Record<string, Placement> = {
   ".linked-search": { on: ["bg"] },
   ".linked-empty": { on: ["field"] },
   ".linked-section .inline-error": { on: ["bg"] },
+  // A Task's checklist (batch 4)
+  ".subtask-text": { on: ["bg"] },
+  ".subtask--done .subtask-text": { on: ["bg"] },
+  ".subtask-add": { on: ["bg"] },
+  ".subtask-add::placeholder": { on: ["bg"] },
+  ".subtasks-error": { on: ["bg"] },
+  ".subtask-count--all": { on: TASK_ROW },
   // Notes
   ".note-list-item": { on: ROW },
   '.note-list-item[aria-current="true"]': { on: ["row-selected"] },
@@ -293,6 +300,11 @@ const INDICATORS: { selector: string; property: string; means: string; place: Pl
   { selector: ".folder-disclosure", property: "color", means: "folder disclosure arrow", place: { on: ["sidebar"] } },
   { selector: "button.folder-disclosure:hover:not(:disabled)", property: "color", means: "folder disclosure arrow", place: { on: ["sidebar"] } },
   { selector: ".linked-unlink", property: "color", means: "unlink button", place: { on: ["bg", "hover"] } },
+  { selector: ".subtask-remove", property: "color", means: "remove subtask button", place: { on: ["bg", "hover"] } },
+  { selector: ".subtask-remove:hover:not(:disabled)", property: "color", means: "remove subtask button", place: { on: ["hover"] } },
+  { selector: ".subtask-check", property: "border", means: "open subtask circle", place: { on: ["bg"] } },
+  { selector: ".subtask-check:checked", property: "border-color", means: "done subtask circle", place: { on: ["bg"] } },
+  { selector: ".subtask-check:checked::after", property: "border", means: "subtask tick", place: { on: ["accent"] } },
   { selector: ".settings-mute", property: "color", means: "mute button", place: { on: ["bg", "hover"] } },
   // The new Task toast's X (batch 3, Ticket 02), on the toast's hover-gray box.
   { selector: ".task-toast-close", property: "color", means: "toast dismiss button", place: { on: ["hover"] } },
@@ -385,6 +397,7 @@ const OUTLINED_LIKE_THE_RING = [
   ".settings-mute:focus-visible", ".settings-sound-row input:focus-visible", ".property:focus-within",
   ".progress-number:focus-within", ".progress-note-input:focus-visible", ".note-search:focus-within",
   ".pomodoro-start select:focus-visible",
+  ".subtask-check:focus-visible", ".subtask-text:focus-visible", ".subtask-add:focus-visible",
 ];
 
 /** Text colours as selected text, against the highlight over what they are written on. */

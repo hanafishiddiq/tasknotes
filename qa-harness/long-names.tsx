@@ -31,6 +31,12 @@ world.pomodoroView = { title: T, plannedSeconds: 1500, finishedInCycle: 0, focus
   limits: { focusMinutes: { min: 1, max: 180 }, shortBreakMinutes: { min: 1, max: 60 }, longBreakMinutes: { min: 1, max: 60 }, sessionsBeforeLongBreak: { min: 1, max: 12 } },
   phase: "focus", taskId: "a", remainingSeconds: 800, paused: true } as any;
 world.notificationPermission = new URLSearchParams(location.search).get("notifications") as any ?? "allowed";
+// A checklist on the first Task: one long item, one done (batch 4).
+world.subtasks = [
+  { id: "sub-a", taskId: "a", text: "Book the synthetic train", done: true, removed: false, revision: 1, createdAt: FIXTURE_NOW, updatedAt: FIXTURE_NOW },
+  { id: "sub-b", taskId: "a", text: `${LONG}, and then a second sentence that keeps going so the item wraps onto more lines`, done: false, removed: false, revision: 1, createdAt: FIXTURE_NOW, updatedAt: FIXTURE_NOW },
+  { id: "sub-c", taskId: "a", text: WORD, done: false, removed: false, revision: 1, createdAt: FIXTURE_NOW, updatedAt: FIXTURE_NOW },
+];
 (window as any).world = world;
 
 let next = 1;

@@ -2032,6 +2032,135 @@ button.task-check::before {
   margin-top: 22px;
 }
 
+/* A Task's checklist (batch 4): round checks like a Note's checklist, text
+   that grows with long items, a quiet add field at the end. */
+.subtasks {
+  margin-top: 14px;
+}
+.subtask-items {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.subtask {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 3px 0;
+}
+.subtask-check {
+  flex: none;
+  appearance: none;
+  position: relative;
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  border: 1.5px solid var(--text-3);
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+.subtask-check:checked {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.subtask-check:checked::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: 4px;
+  width: 3px;
+  height: 7px;
+  border: solid var(--accent-ink);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.subtask-check:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.subtask-text {
+  flex: 1;
+  min-width: 0;
+  min-height: 20px;
+  padding: 0;
+  border: 0;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+.subtask-text:focus-visible {
+  border-radius: 4px;
+  box-shadow: 0 0 0 2px var(--focus);
+}
+.subtask--done .subtask-text {
+  color: var(--text-3);
+  text-decoration: line-through;
+}
+.subtask-remove {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-3);
+  opacity: 0;
+  cursor: pointer;
+}
+.subtask:hover .subtask-remove,
+.subtask:focus-within .subtask-remove,
+.subtask-remove:focus-visible {
+  opacity: 1;
+}
+.subtask-remove:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--red);
+}
+.subtask-add {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 3px 0 3px 24px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+.subtask-add::placeholder {
+  color: var(--text-3);
+}
+.subtask-add:focus-visible {
+  border-radius: 4px;
+  box-shadow: 0 0 0 2px var(--focus);
+}
+.subtasks-error {
+  margin: 6px 0 0;
+  color: var(--red);
+  font-size: 12px;
+}
+/* The checklist's count on a Task's row; accent once every item is done. */
+.subtask-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.subtask-count--all {
+  color: var(--accent-text);
+}
+
 /* Task–Note links: a quiet list on the Task page and above an open Note */
 .linked-section {
   margin-top: 18px;

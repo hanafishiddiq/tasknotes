@@ -1096,6 +1096,14 @@ export default function App() {
     await saveEdits(task, () => taskApi.details({ id: task.id, expectedRevision, tags, dueDate }));
   }
 
+  /** The open Task's checklist changed: its row's count follows, nothing else does. */
+  function countSubtasks(taskId: string, done: number, total: number) {
+    setTasks((current) => current.some((item) => item.id === taskId
+      && ((item.subtasksDone ?? 0) !== done || (item.subtasksTotal ?? 0) !== total))
+      ? current.map((item) => (item.id === taskId ? { ...item, subtasksDone: done, subtasksTotal: total } : item))
+      : current);
+  }
+
   async function removeTask(task: Task) {
     const removed = await commitTaskMutation(task, () => removedApi.remove<Task>("task", task));
     if (removed) {
@@ -1683,6 +1691,7 @@ export default function App() {
                         onUpdateDetails={(tags, dueDate, base) => updateDetails(task, tags, dueDate, base)}
                         onOpenNote={openLinkedNote}
                         onRemove={() => removeTask(task)}
+                        onSubtasksCounted={(done, total) => countSubtasks(task.id, done, total)}
                         onCheck={() => checkTask(task)}
                         checkHeld={Boolean(savingId) || placingTask}
                         shown={workspace === "tasks"}

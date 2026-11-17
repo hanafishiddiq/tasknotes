@@ -3,6 +3,7 @@ import type { PendingBulkRequest } from "../lib/approval-api";
 import type { LinkedNote, LinkedTask } from "../lib/link-api";
 import type { RemovedItem } from "../lib/removed-api";
 import type { NotificationPermission, PomodoroDay, PomodoroView } from "../lib/pomodoro-api";
+import type { Subtask } from "../lib/subtask-api";
 import type { QuickCaptureStatus, ShellView } from "../lib/shell-api";
 import type { ProgressEntry, Task, TaskList } from "../lib/task-api";
 import { NoteBackend } from "./note-backend";
@@ -81,6 +82,8 @@ export class World {
   /** The shell's timer, in the scenes that show it; elsewhere there is none. */
   pomodoroView: PomodoroView | null = null;
   notificationPermission: NotificationPermission = "allowed";
+  /** Each Task's checklist (batch 4), in order; the core's rules are not repeated here. */
+  subtasks: Subtask[] = [];
   pending: PendingBulkRequest[] = [];
   backups: Backup[] = [fixtureBackup("daily", "daily"), fixtureBackup("manual", "manual", FIXTURE_NOW - DAY)];
   history: ProgressEntry[] = [];
@@ -99,13 +102,43 @@ export class World {
   refuse = new Map<string, string>();
   private clock = FIXTURE_NOW;
 
+  /** A Task as the core lists it, with its checklist counted. */
+  private counted(task: Task): Task {
+    const mine = this.subtasks.filter((item) => item.taskId === task.id && !item.removed);
+    return { ...task, subtasksDone: mine.filter((item) => item.done).length, subtasksTotal: mine.length };
+  }
+
   handle(command: string, args: Record<string, any>): unknown {
     const refusal = this.refuse.get(command);
     if (refusal) throw refusal;
     switch (command) {
       case "list_lists": return { items: this.lists.map((list) => ({ ...list })), nextCursor: null };
       case "unfinished_counts": return countUnfinished(this.tasks, this.lists);
-      case "list_tasks": return { items: this.matchingTasks(args), nextCursor: args.cursor ? null : this.taskNextCursor };
+      case "list_tasks": return { items: this.matchingTasks(args).map((task) => this.counted(task)), nextCursor: args.cursor ? null : this.taskNextCursor };
+      case "list_subtasks": return structuredClone(this.subtasks.filter((item) => item.taskId === args.taskId && !item.removed));
+      case "add_subtask": {
+        const added: Subtask = { id: `sub-${++this.clock}`, taskId: args.input.taskId, text: args.input.text.trim(), done: false,
+          removed: false, revision: 1, createdAt: FIXTURE_NOW, updatedAt: FIXTURE_NOW };
+        this.subtasks.push(added);
+        return structuredClone(added);
+      }
+      case "update_subtask": case "move_subtask": case "remove_subtask": case "restore_subtask": {
+        const id = args.input?.id ?? args.id;
+        const item = this.subtasks.find((each) => each.id === id)!;
+        if (args.input?.text !== undefined) item.text = args.input.text;
+        if (args.input?.done !== undefined) item.done = args.input.done;
+        if (command === "remove_subtask") item.removed = true;
+        if (command === "restore_subtask") item.removed = false;
+        if (command === "move_subtask") {
+          const rest = this.subtasks.filter((each) => each !== item);
+          const mine = rest.filter((each) => each.taskId === item.taskId && !each.removed);
+          const before = mine[args.input.index];
+          rest.splice(before ? rest.indexOf(before) : rest.length, 0, item);
+          this.subtasks = rest;
+        }
+        item.revision += 1;
+        return structuredClone(item);
+      }
       case "count_tasks": return this.matchingTasks(args).length;
       case "create_task": {
         const created = fixtureTask(`new-${++this.clock}`, { title: args.input.title, description: args.input.description });

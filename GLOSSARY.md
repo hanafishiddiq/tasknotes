@@ -12,7 +12,11 @@ An organizational collection of tasks. A task can be kept in the default Inbox w
 
 **Sub-List**:
 A List placed inside another List, used only to group Lists; it shares nothing with the List around it.
-_Avoid_: Child task, subtask.
+_Avoid_: Child task, Subtask (a Subtask is a checklist item inside a Task).
+
+**Subtask**:
+One item of a Task's checklist: a text of up to 10,000 characters that is done or not, never a Task of its own (no status, priority or progress). The Task shows how many are done ("2/5"); its Progress stays the person's own. Removing a Subtask is reversible (ADR 0011).
+_Avoid_: Child task, Checklist Task.
 
 **Inbox**:
 The default list for tasks that have not been organized into another list. Inbox always stays at the top level and never contains other Lists.
