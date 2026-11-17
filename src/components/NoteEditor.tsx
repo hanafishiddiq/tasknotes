@@ -1,6 +1,7 @@
 import { useEffect, useImperativeHandle, type Ref } from "react";
-import { $getNodeByKey, $getSelection, $isRangeSelection, $isTextNode } from "lexical";
+import { $getNodeByKey, $getRoot, $getSelection, $isParagraphNode, $isRangeSelection, $isTextNode } from "lexical";
 import { $createListNode, $isListItemNode, $isListNode } from "@lexical/list";
+import { $isHeadingNode } from "@lexical/rich-text";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
@@ -101,6 +102,37 @@ function ChecklistShortcutPlugin() {
   return null;
 }
 
+/** The class of the block the core names the Note by. */
+const TITLE_CLASS = "note-title";
+
+/**
+ * Marks the Note's title line so it looks like one: the first block with any
+ * text, as the core takes the Note's name from its first non-empty line
+ * (owner, 2026-11-18). Only a paragraph or heading takes the look; a first
+ * list, quote or code block keeps its own. The class is on the screen only,
+ * never in the Markdown.
+ */
+function TitleLinePlugin() {
+  const [editor] = useLexicalComposerContext();
+  useEffect(() => {
+    let marked: HTMLElement | null = null;
+    const mark = () => {
+      const key = editor.getEditorState().read(() => {
+        const first = $getRoot().getChildren().find((block) => block.getTextContent().trim() !== "");
+        return first && ($isParagraphNode(first) || $isHeadingNode(first)) ? first.getKey() : null;
+      });
+      const element = key ? editor.getElementByKey(key) : null;
+      if (element === marked) return;
+      marked?.classList.remove(TITLE_CLASS);
+      element?.classList.add(TITLE_CLASS);
+      marked = element;
+    };
+    mark();
+    return editor.registerUpdateListener(mark);
+  }, [editor]);
+  return null;
+}
+
 function MarkdownHandle({ editorRef }: { editorRef: Ref<NoteEditorHandle> }) {
   const [editor] = useLexicalComposerContext();
   useImperativeHandle(editorRef, () => ({
@@ -140,6 +172,7 @@ export default function NoteEditor({ initialMarkdown, onEdit, editorRef }: NoteE
       <MarkdownShortcutPlugin transformers={NOTE_TRANSFORMERS} />
       <ChecklistShortcutPlugin />
       <OnChangePlugin ignoreSelectionChange onChange={() => onEdit()} />
+      <TitleLinePlugin />
       <MarkdownHandle editorRef={editorRef} />
     </LexicalComposer>
   );

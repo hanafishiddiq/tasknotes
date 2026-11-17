@@ -54,6 +54,8 @@ Keputusan Han (2026-11-18), Han minta lanjut terus sampai selesai satu per satu:
 - [ ] Notes milik Task (catatan di dalam Task) bisa menyimpan gambar
 - [ ] Satu Task bisa muncul di beberapa List sekaligus, identik (selesai di satu = selesai di semua)
 - [ ] Kalimat pertama Note otomatis jadi judul bergaya heading (tebal dan lebih besar)
+  - [x] Han: baris pertama, seperti Apple Notes (2026-11-18)
+  - [x] Dikerjakan dengan TDD: baris pertama yang berisi teks tampil 24px tebal; isi Markdown tidak berubah; daftar, kutipan, kode di baris pertama tetap gayanya
 - [ ] Semua tiket di main dan satu build dipasang ke /Applications
 - [ ] App asli batch 4 dicek Han
 
