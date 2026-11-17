@@ -41,7 +41,8 @@ Keputusan Han (2026-11-18), Han minta lanjut terus sampai selesai satu per satu:
 - [ ] Pomodoro meminta izin notifikasi sebelum bisa dipakai
   - [x] Han: Pomodoro tetap jalan, hanya diingatkan (2026-11-18)
   - [x] Dikerjakan dengan TDD: pengingat "Notifications are off" di sidebar dan halaman Pomodoro, tombol Turn on notifications (macOS bertanya, atau System Settings terbuka), dibaca ulang saat jendela kembali ke depan
-  - [ ] Review dan Draft PR, CI hijau
+  - [x] Review: format kode, tombol tidak bisa diklik berulang saat macOS masih bertanya (menunggu di thread terpisah), komentar tes; diperbaiki
+  - [ ] Draft PR, CI hijau
 - [ ] Status In Progress ↔ Ready bisa diubah bebas
 - [ ] Subtask
 - [ ] Notes milik Task (catatan di dalam Task) bisa menyimpan gambar

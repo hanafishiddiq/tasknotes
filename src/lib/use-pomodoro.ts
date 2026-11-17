@@ -14,6 +14,8 @@ export interface PomodoroControl {
   tip: boolean;
   /** Notifications are off or never allowed: Pomodoro runs, but cannot say when a focus or break ends. */
   notificationsOff: boolean;
+  /** Waiting for macOS (its prompt may sit unanswered); the button waits too. */
+  turningOn: boolean;
   turnOnNotifications: () => Promise<void>;
   run: (command: PomodoroCommand) => Promise<void>;
   dismissTip: () => void;
@@ -45,6 +47,7 @@ export function usePomodoro({ onTaskChanged, onSessionStored }: Options): Pomodo
   const tipAsked = useRef(false);
   const [permission, setPermission] = useState<NotificationPermission>("unknown");
   const notificationsOff = permission === "off" || permission === "not_asked";
+  const [turningOn, setTurningOn] = useState(false);
   const offNow = useRef(notificationsOff);
   offNow.current = notificationsOff;
   const taskChanged = useRef(onTaskChanged);
@@ -89,10 +92,13 @@ export function usePomodoro({ onTaskChanged, onSessionStored }: Options): Pomodo
 
   const turnOnNotifications = useCallback(async () => {
     setError(null);
+    setTurningOn(true);
     try {
       setPermission(await pomodoroApi.turnOnNotifications());
     } catch (reason) {
       setError(errorMessage(reason));
+    } finally {
+      setTurningOn(false);
     }
   }, []);
 
@@ -130,7 +136,7 @@ export function usePomodoro({ onTaskChanged, onSessionStored }: Options): Pomodo
   }, []);
 
   return {
-    view, error, tip, run, openNotificationSettings, notificationsOff, turnOnNotifications,
+    view, error, tip, run, openNotificationSettings, notificationsOff, turningOn, turnOnNotifications,
     setDurations: (durations) => save(() => pomodoroApi.setDurations(durations)),
     setSilent: (silent) => save(() => pomodoroApi.setSilent(silent)),
     dismissTip: () => setTip(false),

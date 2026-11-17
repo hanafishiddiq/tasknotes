@@ -14,7 +14,7 @@ export default function NotificationsOffNote({ pomodoro }: { pomodoro: PomodoroC
         Notifications are off, so Pomodoro won't tell you when a focus or break ends.
       </p>
       <div className="pomodoro-actions">
-        <button type="button" className="button button-small"
+        <button type="button" className="button button-small" disabled={pomodoro.turningOn}
           onClick={() => void pomodoro.turnOnNotifications()}>Turn on notifications</button>
       </div>
     </div>

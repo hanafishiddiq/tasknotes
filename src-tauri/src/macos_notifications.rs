@@ -165,8 +165,8 @@ mod mac {
         NSString,
     };
     use objc2_user_notifications::{
-        UNAlertStyle, UNAuthorizationOptions, UNAuthorizationStatus, UNMutableNotificationContent, UNNotification,
-        UNNotificationAction, UNNotificationActionOptions, UNNotificationCategory,
+        UNAlertStyle, UNAuthorizationOptions, UNAuthorizationStatus, UNMutableNotificationContent,
+        UNNotification, UNNotificationAction, UNNotificationActionOptions, UNNotificationCategory,
         UNNotificationCategoryOptions, UNNotificationDefaultActionIdentifier,
         UNNotificationDismissActionIdentifier, UNNotificationPresentationOptions,
         UNNotificationRequest, UNNotificationResponse, UNNotificationSettings, UNNotificationSound,
@@ -436,7 +436,6 @@ mod mac {
         let _ = receiver.recv_timeout(Duration::from_secs(120));
         permission()
     }
-
 }
 
 /// Opens Tasknotes' page in the system's notification settings.

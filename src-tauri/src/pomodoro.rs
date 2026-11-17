@@ -498,34 +498,43 @@ impl From<Option<macos_notifications::Permission>> for NotificationPermission {
     }
 }
 
-/// `async`: macOS answers off the main thread.
-#[tauri::command(async)]
-pub fn notification_permission() -> NotificationPermission {
-    macos_notifications::permission().into()
+/// macOS answers on a queue of its own while a blocking thread waits, so no
+/// async worker or the main thread is held.
+#[tauri::command]
+pub async fn notification_permission() -> NotificationPermission {
+    tauri::async_runtime::spawn_blocking(macos_notifications::permission)
+        .await
+        .ok()
+        .flatten()
+        .into()
 }
 
 /// Turns notifications on as far as Tasknotes can: macOS asks the person when
 /// it never has; once they said no only System Settings can change it, so its
 /// page opens and the window reads again when it comes back to the front.
-#[tauri::command(async)]
-pub fn turn_on_notifications(app: AppHandle) -> Result<NotificationPermission, String> {
-    let now = NotificationPermission::from(macos_notifications::permission());
-    match now {
-        NotificationPermission::NotAsked => Ok(macos_notifications::ask_permission().into()),
-        NotificationPermission::Off => {
-            macos_notifications::open_settings(&app.config().identifier)?;
-            Ok(now)
+/// Waiting for the person's answer happens on a blocking thread.
+#[tauri::command]
+pub async fn turn_on_notifications(app: AppHandle) -> Result<NotificationPermission, String> {
+    let identifier = app.config().identifier.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let now = NotificationPermission::from(macos_notifications::permission());
+        match now {
+            NotificationPermission::NotAsked => Ok(macos_notifications::ask_permission().into()),
+            NotificationPermission::Off => {
+                macos_notifications::open_settings(&identifier)?;
+                Ok(now)
+            }
+            _ => Ok(now),
         }
-        _ => Ok(now),
-    }
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// The page reads the history again on `sessionStored` and on nothing
-    /// else the timer sends each second (`src/lib/pomodoro-api.ts`).
     /// The window reads these words (`src/lib/pomodoro-api.ts`).
     #[test]
     fn the_window_hears_the_permission_in_its_own_words() {
@@ -539,6 +548,8 @@ mod tests {
         assert_eq!(word(None), "\"unknown\"");
     }
 
+    /// The page reads the history again on `sessionStored` and on nothing
+    /// else the timer sends each second (`src/lib/pomodoro-api.ts`).
     #[test]
     fn the_page_hears_when_a_session_was_stored() {
         let view = Pomodoro::new(PomodoroDurations::default(), false).view(Moment {

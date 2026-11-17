@@ -350,8 +350,20 @@ describe("Pomodoro while notifications are off (batch 4)", () => {
     permission = "not_asked";
     const pomodoro = await renderApp();
     const note = await waitFor(() => reminder(pomodoro)!);
-    await user.click(within(note).getByRole("button", { name: "Turn on notifications" }));
+    let answer!: () => void;
+    const asked = new Promise<void>((resolve) => { answer = resolve; });
+    const shellAnswers = call.getMockImplementation()!;
+    call.mockImplementation(async (command, args) => {
+      if (command === "turn_on_notifications") await asked; // the macOS prompt is still open
+      return shellAnswers(command, args);
+    });
+    const button = within(note).getByRole("button", { name: "Turn on notifications" });
+    await user.click(button);
+    // One question at a time: the button waits for the answer.
+    expect(button).toBeDisabled();
+    answer();
     await waitFor(() => expect(reminder(pomodoro)).toBeNull());
+    expect(commands("turn_on_notifications")).toHaveLength(1);
   });
 
   it("says nothing when notifications are allowed, or when it cannot tell", async () => {
