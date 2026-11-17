@@ -4,6 +4,7 @@ import { clock, type PomodoroView } from "../lib/pomodoro-api";
 import { runningTime } from "../lib/pomodoro-format";
 import type { PomodoroControl as Control } from "../lib/use-pomodoro";
 import type { Task } from "../lib/task-api";
+import NotificationsOffNote from "./NotificationsOffNote";
 
 interface PomodoroControlProps {
   pomodoro: Control;
@@ -97,6 +98,7 @@ export default function PomodoroControl({ pomodoro, tasks, openTaskId }: Pomodor
         </div>
       )}
 
+      <NotificationsOffNote pomodoro={pomodoro} />
       {tip && (
         <div className="pomodoro-tip" role="note" aria-label="Notification tip">
           <p>To keep the Pomodoro buttons on screen until you answer, set Tasknotes notifications to Persistent in System Settings.</p>

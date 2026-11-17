@@ -641,7 +641,11 @@ pub fn run() {
             #[cfg(desktop)]
             shell::set_pomodoro_silent,
             #[cfg(desktop)]
-            pomodoro::open_notification_settings
+            pomodoro::open_notification_settings,
+            #[cfg(desktop)]
+            pomodoro::notification_permission,
+            #[cfg(desktop)]
+            pomodoro::turn_on_notifications
         ])
         .build(tauri::generate_context!())
         .expect("Unable to launch Tasknotes")

@@ -46,6 +46,9 @@ let tasks: Task[];
 let tipDue: boolean;
 let shellMissing: boolean;
 let failNextCommand: string | null;
+/** What macOS says about Tasknotes' notifications, and what it answers when asked. */
+let permission: string;
+let answerWhenAsked: string;
 
 const common = () => ({
   title: null, plannedSeconds: null, finishedInCycle: 0, focusStartedAt: null,
@@ -91,6 +94,12 @@ function shell(command: string, body: Record<string, any>) {
       return due;
     }
     case "open_notification_settings": return null;
+    case "notification_permission": return permission;
+    case "turn_on_notifications": {
+      // Never asked: macOS asks the person. Said no: System Settings opens, nothing changes yet.
+      if (permission === "not_asked") permission = answerWhenAsked;
+      return permission;
+    }
     case "set_pomodoro_durations": {
       const durations = body.durations as PomodoroDurations;
       if (durations.focusMinutes > view.limits.focusMinutes.max) {
@@ -110,6 +119,8 @@ beforeEach(() => {
   tipDue = false;
   shellMissing = false;
   failNextCommand = null;
+  permission = "allowed";
+  answerWhenAsked = "allowed";
   window.localStorage.clear();
   FakeAudioContext.reset();
   vi.stubGlobal("AudioContext", FakeAudioContext);
@@ -300,6 +311,78 @@ async function openPage(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole("button", { name: "Pomodoro" }));
   return screen.getByRole("main", { name: "Pomodoro" });
 }
+
+describe("Pomodoro while notifications are off (batch 4)", () => {
+  const reminder = (where: HTMLElement) => within(where).queryByRole("note", { name: "Notifications are off" });
+
+  it("still starts, and says the end will not be announced", async () => {
+    const user = userEvent.setup();
+    permission = "off";
+    const pomodoro = await renderApp();
+    const note = await waitFor(() => {
+      const found = reminder(pomodoro);
+      expect(found).not.toBeNull();
+      return found!;
+    });
+    expect(note).toHaveTextContent("won't tell you when a focus or break ends");
+    await user.click(within(pomodoro).getByRole("button", { name: "Start focus" }));
+    expect(last(commands("pomodoro_command"))).toEqual({ command: { action: "start_focus", taskId: null } });
+    // The reminder stays while the timer runs.
+    expect(reminder(pomodoro)).not.toBeNull();
+  });
+
+  it("opens System Settings when the person said no, and reads again when the window comes back", async () => {
+    const user = userEvent.setup();
+    permission = "off";
+    const pomodoro = await renderApp();
+    const note = await waitFor(() => reminder(pomodoro)!);
+    await user.click(within(note).getByRole("button", { name: "Turn on notifications" }));
+    expect(commands("turn_on_notifications")).toHaveLength(1);
+    expect(reminder(pomodoro)).not.toBeNull();
+
+    permission = "allowed"; // turned on in System Settings
+    fireEvent.focus(window);
+    await waitFor(() => expect(reminder(pomodoro)).toBeNull());
+  });
+
+  it("asks macOS when it never asked, and the reminder goes once allowed", async () => {
+    const user = userEvent.setup();
+    permission = "not_asked";
+    const pomodoro = await renderApp();
+    const note = await waitFor(() => reminder(pomodoro)!);
+    await user.click(within(note).getByRole("button", { name: "Turn on notifications" }));
+    await waitFor(() => expect(reminder(pomodoro)).toBeNull());
+  });
+
+  it("says nothing when notifications are allowed, or when it cannot tell", async () => {
+    const pomodoro = await renderApp();
+    await waitFor(() => expect(commands("notification_permission").length).toBeGreaterThan(0));
+    expect(reminder(pomodoro)).toBeNull();
+    cleanup();
+    permission = "unknown"; // a development build cannot read it
+    const again = await renderApp();
+    await waitFor(() => expect(commands("notification_permission").length).toBeGreaterThan(1));
+    expect(reminder(again)).toBeNull();
+  });
+
+  it("shows the reminder on the Pomodoro page too", async () => {
+    const user = userEvent.setup();
+    permission = "off";
+    const page = await openPage(user);
+    await waitFor(() => expect(reminder(page)).not.toBeNull());
+  });
+
+  it("keeps the one-time Persistent tip for when notifications are on", async () => {
+    const user = userEvent.setup();
+    permission = "off";
+    tipDue = true;
+    const pomodoro = await renderApp();
+    await waitFor(() => expect(reminder(pomodoro)).not.toBeNull());
+    await user.click(within(pomodoro).getByRole("button", { name: "Start focus" }));
+    expect(commands("take_pomodoro_tip")).toHaveLength(0);
+    expect(within(pomodoro).queryByRole("note", { name: "Notification tip" })).toBeNull();
+  });
+});
 
 describe("Pomodoro page timer (batch 3, Ticket 04)", () => {
   it("shows what the shell sends: the Task, the time, its state and the place in the cycle", async () => {

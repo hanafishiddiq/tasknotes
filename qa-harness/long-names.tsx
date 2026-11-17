@@ -28,6 +28,7 @@ world.pomodoroView = { title: T, plannedSeconds: 1500, finishedInCycle: 0, focus
   durations: { focusMinutes: 25, shortBreakMinutes: 5, longBreakMinutes: 15, sessionsBeforeLongBreak: 4 },
   limits: { focusMinutes: { min: 1, max: 180 }, shortBreakMinutes: { min: 1, max: 60 }, longBreakMinutes: { min: 1, max: 60 }, sessionsBeforeLongBreak: { min: 1, max: 12 } },
   phase: "focus", taskId: "a", remainingSeconds: 800, paused: true } as any;
+world.notificationPermission = new URLSearchParams(location.search).get("notifications") as any ?? "allowed";
 (window as any).world = world;
 
 let next = 1;
