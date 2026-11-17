@@ -2,8 +2,8 @@ import {
   Fragment, useEffect, useId, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type ReactNode,
 } from "react";
 import {
-  Check, ChevronDown, ChevronRight, ClipboardCheck, History, Inbox, ListChecks, ListPlus, Moon, NotebookText, Palette,
-  Pencil, Plus, Settings, Sun, Trash2, X,
+  Check, ChevronDown, ChevronRight, ClipboardCheck, Inbox, ListChecks, ListPlus, Moon, NotebookText, Palette,
+  Pencil, Plus, Settings, Sun, Timer, Trash2, X,
 } from "lucide-react";
 import StyleIcon from "./StyleIcon";
 import StylePicker from "./StylePicker";
@@ -466,7 +466,7 @@ export default function TaskSidebar({
       <button type="button" className="folder folder--quiet" disabled={busy}
         aria-label="Pomodoro" aria-current={pomodoroPageActive ? "page" : undefined}
         onClick={onOpenPomodoroPage}>
-        <History size={16} aria-hidden="true" /><span className="folder-name">Pomodoro</span>
+        <Timer size={16} aria-hidden="true" /><span className="folder-name">Pomodoro</span>
       </button>
       <button type="button" className="folder folder--quiet" disabled={busy}
         aria-label="Settings" aria-current={settingsActive ? "page" : undefined} onClick={onOpenSettings}>

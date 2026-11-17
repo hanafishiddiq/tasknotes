@@ -22,6 +22,9 @@ Keputusan Han (2026-11-17): 10 item kecil, ditambah 2 fitur baru (Task di bebera
   - [x] Diperbaiki dengan TDD (token --caret), seluruh tes lulus
   - [ ] Draft PR dibuka dan CI hijau
 - [ ] Ikon Pomodoro di kiri bawah diganti
+  - [x] Han memilih Timer (stopwatch), sama dengan ikon blok Pomodoro (2026-11-17)
+  - [x] Diganti dengan TDD, seluruh tes lulus
+  - [ ] Draft PR dibuka dan CI hijau
 - [ ] Tanda kuning Task baru tetap terlihat 20 detik
 - [ ] Tombol Hide/Show Completed
 - [ ] Pomodoro meminta izin notifikasi sebelum bisa dipakai
