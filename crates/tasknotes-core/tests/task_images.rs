@@ -126,3 +126,51 @@ fn adding_an_image_is_audited() {
         .items;
     assert_eq!(entries[0].action.as_str(), "task.image.add");
 }
+
+#[test]
+fn exports_carry_the_images_and_markdown_points_at_their_files() {
+    use tasknotes_core::export::{ExportFormat, ExportRequest};
+    use tasknotes_core::tasks::UpdateTask;
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("t.db"));
+    let shelf = task(&store);
+    let image = add(&store, &shelf, "image/png", PNG).unwrap();
+    store
+        .update_task(UpdateTask {
+            id: shelf.id.clone(),
+            title: shelf.title.clone(),
+            description: format!("Before\n\n{}\n\nAfter", image_reference(&image.id)),
+            expected_revision: shelf.revision,
+        })
+        .unwrap();
+
+    let json = dir.path().join("out.json");
+    store
+        .export_data(ExportRequest {
+            format: ExportFormat::Json,
+            destination: json.clone(),
+            include_private_notes: false,
+        })
+        .unwrap();
+    let data: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&json).unwrap()).unwrap();
+    assert_eq!(data["task_images"][0]["id"], image.id.as_str());
+    // 12 bytes of PNG in Base64.
+    assert_eq!(data["task_images"][0]["data_base64"], "iVBORw0KGgoAAAAN");
+
+    let root = dir.path().join("md");
+    store
+        .export_data(ExportRequest {
+            format: ExportFormat::Markdown,
+            destination: root.clone(),
+            include_private_notes: false,
+        })
+        .unwrap();
+    let file = root.join(format!("Tasks/images/{}.png", image.id));
+    assert_eq!(std::fs::read(&file).unwrap(), PNG);
+    let inbox = std::fs::read_to_string(root.join("Tasks/Inbox.md")).unwrap();
+    assert!(
+        inbox.contains(&format!("![image](images/{}.png)", image.id)),
+        "{inbox}"
+    );
+}

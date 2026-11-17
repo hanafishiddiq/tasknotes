@@ -76,6 +76,42 @@ struct Document {
     note_folders: Vec<FolderRecord>,
     notes: Vec<NoteRecord>,
     note_links: Vec<LinkRecord>,
+    /// Images in Tasks' notes, each with its bytes in Base64; a Task's notes
+    /// refer to one as `tasknotes-image:<id>`.
+    task_images: Vec<ImageRecord>,
+}
+
+#[derive(Serialize)]
+struct ImageRecord {
+    id: String,
+    task_id: String,
+    media_type: String,
+    created_at: i64,
+    data_base64: String,
+    #[serde(skip)]
+    bytes: Vec<u8>,
+}
+
+/// Standard Base64 with padding (RFC 4648), for images in a JSON export.
+fn base64(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let b = [
+            chunk[0],
+            *chunk.get(1).unwrap_or(&0),
+            *chunk.get(2).unwrap_or(&0),
+        ];
+        let n = (u32::from(b[0]) << 16) | (u32::from(b[1]) << 8) | u32::from(b[2]);
+        for (i, shift) in [18, 12, 6, 0].into_iter().enumerate() {
+            if i <= chunk.len() {
+                out.push(ALPHABET[((n >> shift) & 63) as usize] as char);
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
 }
 
 #[derive(Serialize)]
@@ -422,6 +458,22 @@ impl TaskStore {
                 })
             },
         )?;
+        let task_images = collect(
+            conn,
+            "SELECT id, task_id, media_type, created_at, bytes FROM task_images
+             ORDER BY created_at, id",
+            |row| {
+                let bytes: Vec<u8> = row.get(4)?;
+                Ok(ImageRecord {
+                    id: row.get(0)?,
+                    task_id: row.get(1)?,
+                    media_type: row.get(2)?,
+                    created_at: row.get(3)?,
+                    data_base64: base64(&bytes),
+                    bytes,
+                })
+            },
+        )?;
         Ok(Document {
             format: "tasknotes-export",
             format_version: EXPORT_FORMAT_VERSION,
@@ -433,6 +485,7 @@ impl TaskStore {
             note_folders,
             notes,
             note_links,
+            task_images,
         })
     }
 }
@@ -484,13 +537,43 @@ fn write_markdown(doc: &Document, root: &Path) -> std::io::Result<()> {
             .filter(|t| t.list_id.as_deref() == list_id)
             .collect();
         let mut text = format!("# {heading}\n");
+        // Images sit in `Tasks/images/`; a nested List's file climbs to it.
+        let depth = file
+            .parent()
+            .and_then(|dir| dir.strip_prefix(&tasks_dir).ok())
+            .map_or(0, |inside| inside.components().count());
+        let images_dir = format!("{}images/", "../".repeat(depth));
         for task in tasks {
-            text.push_str(&task_markdown(task));
+            let mut markdown = task_markdown(task);
+            for image in doc.task_images.iter().filter(|i| i.task_id == task.id) {
+                markdown = markdown.replace(
+                    &format!("({}{})", crate::task_images::IMAGE_SCHEME, image.id),
+                    &format!(
+                        "({images_dir}{}.{})",
+                        image.id,
+                        crate::task_images::extension_of(&image.media_type)
+                    ),
+                );
+            }
+            text.push_str(&markdown);
         }
         if let Some(dir) = file.parent() {
             fs::create_dir_all(dir)?;
         }
         write_private(&file, text.as_bytes())?;
+    }
+
+    if !doc.task_images.is_empty() {
+        let images = tasks_dir.join("images");
+        private_dir(&images)?;
+        for image in &doc.task_images {
+            let name = format!(
+                "{}.{}",
+                image.id,
+                crate::task_images::extension_of(&image.media_type)
+            );
+            write_private(&images.join(name), &image.bytes)?;
+        }
     }
 
     let notes_dir = root.join("Notes");

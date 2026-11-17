@@ -13,6 +13,7 @@ use tasknotes_core::privacy::SetNoteExcludeFromAi;
 use tasknotes_core::removed::{RemovedPage, SetRemoved};
 use tasknotes_core::style::SetStyle;
 use tasknotes_core::subtasks::{AddSubtask, MoveSubtask, Subtask, UpdateSubtask};
+use tasknotes_core::task_images::{AddTaskImage, TaskImage};
 use tasknotes_core::tasks::{
     ChangeTask, CreateList, CreateSubList, CreateTask, DifficultyFilter, List, ListPage, MoveList,
     MoveTask, PlaceList, Priority, ProgressSequencePage, RecordProgress, RenameList, ReorderList,
@@ -422,6 +423,46 @@ fn restore_subtask(
         .map_err(|error| error.to_string())
 }
 
+/// Keeps an image pasted or dropped into a Task's notes (batch 4). The bytes
+/// come as the raw request body, never as JSON numbers; the Task and the
+/// image's type come in the `task-id` and `media-type` headers.
+#[tauri::command]
+fn add_task_image(
+    store: State<'_, TaskStore>,
+    request: tauri::ipc::Request<'_>,
+) -> Result<TaskImage, String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err("The image must be sent as raw bytes".into());
+    };
+    let header = |name: &str| {
+        request
+            .headers()
+            .get(name)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_owned)
+            .ok_or_else(|| format!("Missing {name}"))
+    };
+    store
+        .add_task_image(AddTaskImage {
+            task_id: header("task-id")?,
+            media_type: header("media-type")?,
+            bytes: bytes.clone(),
+        })
+        .map_err(|error| error.to_string())
+}
+
+/// An image's bytes, raw, for the window to draw.
+#[tauri::command]
+fn read_task_image(
+    store: State<'_, TaskStore>,
+    id: String,
+) -> Result<tauri::ipc::Response, String> {
+    let (_, bytes) = store
+        .read_task_image(&id)
+        .map_err(|error| error.to_string())?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
 #[tauri::command]
 fn unlink_note(store: State<'_, TaskStore>, link_id: String) -> Result<NoteLink, String> {
     store
@@ -648,6 +689,8 @@ pub fn run() {
             move_subtask,
             remove_subtask,
             restore_subtask,
+            add_task_image,
+            read_task_image,
             restore_link,
             list_task_notes,
             list_note_tasks,

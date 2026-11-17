@@ -35,7 +35,7 @@ pub fn tools() -> Vec<ToolDef> {
         tool(
             "task_update",
             Kind::Write,
-            "Change a Task's title and/or description; fields left out keep their value. Names the revision you last read.",
+            "Change a Task's title and/or description; fields left out keep their value. Names the revision you last read. The description is Markdown; keep any ![image](tasknotes-image:ID) reference as it is: it is an image the person added, which this interface cannot see.",
             task_update,
         ),
         tool(
