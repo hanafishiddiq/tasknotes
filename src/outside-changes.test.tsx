@@ -246,7 +246,7 @@ describe("Changes made outside the window", () => {
 
     expect(await screen.findByRole("article", { name: "Added through MCP" })).toBeVisible();
     const edited = screen.getByRole("textbox", { name: "Edit description" });
-    expect(edited).toHaveValue("Half a thought");
+    expect(edited).toHaveTextContent("Half a thought");
     expect(edited).toBe(field);
     expect(edited).toHaveFocus();
     // What was not typed follows the newer version, and the save names the older one.
@@ -286,7 +286,7 @@ describe("Changes made outside the window", () => {
     await focusWindow();
 
     await screen.findByRole("article", { name: "Added through MCP" });
-    expect(screen.getByRole("textbox", { name: "Edit description" })).toHaveValue("Half a thought");
+    expect(screen.getByRole("textbox", { name: "Edit description" })).toHaveTextContent("Half a thought");
 
     // Closing is not discarding: the text is still reachable from its row.
     await user.click(screen.getByRole("button", { name: "Close Synthetic task 1" }));
@@ -294,7 +294,7 @@ describe("Changes made outside the window", () => {
     expect(within(kept).getByText("Unsaved edits")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Open Synthetic task 1" }));
     const field = screen.getByRole("textbox", { name: "Edit description" });
-    expect(field).toHaveValue("Half a thought");
+    expect(field).toHaveTextContent("Half a thought");
 
     // With nothing left unsaved, the list is what the core says again.
     await user.clear(field);
@@ -332,7 +332,7 @@ describe("Changes made outside the window", () => {
     outside();
     await focusWindow();
 
-    expect(screen.getByRole("textbox", { name: "Edit description" })).toHaveValue("Half a thought");
+    expect(screen.getByRole("textbox", { name: "Edit description" })).toHaveTextContent("Half a thought");
     // Its newer revision is what lets "Keep my edits" save over the change.
     expect(await screen.findByRole("alert", { name: "Changed elsewhere" })).toBeVisible();
   });
@@ -428,7 +428,7 @@ describe("Changes made outside the window", () => {
     await focusWindow();
 
     const field = screen.getByRole("textbox", { name: "Edit description" });
-    expect(field).toHaveValue("Half a thought");
+    expect(field).toHaveTextContent("Half a thought");
 
     await user.clear(field);
     expect(await screen.findByRole("heading", { name: "All tasks" })).toBeVisible();
@@ -554,7 +554,7 @@ describe("The Task list's scroll position", () => {
     outside();
     await focusWindow();
 
-    expect(screen.getByRole("textbox", { name: "Edit description" })).toHaveValue("Half a thought");
+    expect(screen.getByRole("textbox", { name: "Edit description" })).toHaveTextContent("Half a thought");
     // Two rows of 50 went in above it.
     await waitFor(() => expect(area.scrollTop).toBe(900));
   });
