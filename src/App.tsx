@@ -6,7 +6,8 @@ import {
   Tag,
 } from "lucide-react";
 import {
-  taskApi, NO_FILTERS, TASK_PAGE_SIZE, checkActionArgs, checkActionOf, placeLocally, sortOf, statusChoiceArgs, viewKey,
+  taskApi, NO_FILTERS, TASK_PAGE_SIZE, checkActionArgs, checkActionOf, hidesCompleted, placeLocally, sortOf,
+  statusChoiceArgs, viewKey,
   type Task, type TaskList,
   type TaskView, type SortMode, type TaskChange, type ProgressDraft, type TaskFilters,
   type Priority, type StatusChoice, type TaskListPage, type TaskPlace,
@@ -36,6 +37,7 @@ import { useUndo } from "./lib/use-undo";
 import { useCompletionUndo } from "./lib/use-completion-undo";
 import { useNewTaskToast } from "./lib/use-new-task-toast";
 import { useNewTaskMarks } from "./lib/use-new-task-marks";
+import { useCompletedShown } from "./lib/use-completed-shown";
 import { useBriefNotice } from "./lib/use-brief-notice";
 import { errorMessage, isListRemoved } from "./lib/error-message";
 import { listenForQuit } from "./lib/quit";
@@ -178,7 +180,24 @@ export default function App() {
   // re-runs the page effect, which must not ask for that page again.
   const firstPageRead = useRef<unknown[] | null>(null);
   const sort = sortOf(viewSorts, view);
-  const [filters, setFilters] = useState<TaskFilters>(NO_FILTERS);
+  const [chosenFilters, setFilters] = useState<TaskFilters>(NO_FILTERS);
+  // Each view hides its Completed Tasks unless the person showed them there (batch 4).
+  const [completedShownIn, setCompletedShown] = useCompletedShown();
+  const filters = useMemo<TaskFilters>(
+    () => ({ ...chosenFilters, hideCompleted: !completedShownIn(view) }),
+    [chosenFilters, view, completedShownIn],
+  );
+  // How many Completed Tasks the view hides now, counted by the core with its filters.
+  const [completedHidden, setCompletedHidden] = useState(0);
+  useEffect(() => {
+    if (!hidesCompleted(filters)) return;
+    let active = true;
+    taskApi.completedCount(view, filters)
+      .then((count) => { if (active) setCompletedHidden(count); })
+      // Without a count the row stays as it was; the list itself is right either way.
+      .catch(() => {});
+    return () => { active = false; };
+  }, [tasks, view, filters]);
   const [searchDraft, setSearchDraft] = useState("");
   const [tagDraft, setTagDraft] = useState("");
   // A Task just created outside the active search or filters.
@@ -1334,6 +1353,14 @@ export default function App() {
   const today = useLocalCalendarDay();
 
   const filtering = !sameFilters(filters, NO_FILTERS);
+  // While the view hides Completed, a Task completed here leaves the list at once.
+  const hidingCompleted = hidesCompleted(filters);
+  const shownTasks = hidingCompleted ? tasks.filter((task) => task.status !== "completed") : tasks;
+  // What the row under the list offers: show the hidden ones, or hide them again.
+  const completedRow = loading || loadError || nextCursor ? null
+    : hidingCompleted ? (completedHidden > 0 ? "show" : null)
+    : !completedShownIn(view) || !hidesCompleted({ ...filters, hideCompleted: true }) ? null
+    : tasks.some((task) => task.status === "completed") ? "hide" : null;
   // Tasks move only in one List or Inbox with nothing filtered: there the
   // whole group is what the person sees (ADR 0010). Elsewhere a try says why (Q36).
   const moveBlocked = view.kind === "all" ? "Open one List to reorder Tasks"
@@ -1417,7 +1444,7 @@ export default function App() {
           <div className="content-wrap">
             <div className="page-title">
               <h1 title={pageTitle}>{pageTitle}</h1>
-              {countKnown && <span>{tasks.length}{nextCursor ? "+" : ""}</span>}
+              {countKnown && <span>{shownTasks.length}{nextCursor ? "+" : ""}</span>}
             </div>
 
             <div className="filter-chips" role="group" aria-label="Filters">
@@ -1607,7 +1634,7 @@ export default function App() {
                   <p>The local database couldn't be opened. Nothing has been changed; check the message above and try again.</p>
                   <button className="button button-small" type="button" onClick={retryFirstLoad}>Try again</button>
                 </div>
-              ) : tasks.length === 0 && previousPageCursors.length === 0 && filtering ? (
+              ) : shownTasks.length === 0 && previousPageCursors.length === 0 && filtering ? (
                 <div className="empty-state">
                   <SearchX size={26} strokeWidth={1.5} aria-hidden="true" />
                   <h2>No matching tasks</h2>
@@ -1616,7 +1643,7 @@ export default function App() {
                     Clear search and filters
                   </button>
                 </div>
-              ) : tasks.length === 0 && previousPageCursors.length === 0 ? (
+              ) : shownTasks.length === 0 && previousPageCursors.length === 0 ? (
                 <div className="empty-state">
                   <CheckCircle2 size={26} strokeWidth={1.5} aria-hidden="true" />
                   <h2>Your list is clear</h2>
@@ -1625,7 +1652,7 @@ export default function App() {
               ) : (
                 <>
                   <VirtualTaskList
-                    tasks={tasks}
+                    tasks={shownTasks}
                     hasMore={Boolean(nextCursor)}
                     scrollRef={taskScroll}
                     keepMounted={keepMounted}
@@ -1684,6 +1711,12 @@ export default function App() {
                     </nav>
                   )}
                 </>
+              )}
+              {completedRow && (
+                <button className="completed-toggle" type="button"
+                  onClick={() => setCompletedShown(view, completedRow === "show")}>
+                  {completedRow === "show" ? `Show Completed (${completedHidden})` : "Hide Completed"}
+                </button>
               )}
               {/* Always here, so a move, a completion or a reopen is said even when the list empties. */}
               <span className="sr-only" aria-live="polite">{listSaid}</span>

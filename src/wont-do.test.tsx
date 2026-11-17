@@ -5,6 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import App from "./App";
 import { statusChoiceArgs, statusChoiceOf, type ProgressEntry, type Task, type WorkStatus } from "./lib/task-api";
 import { STATUS_CHOICES, statusChoiceLabel } from "./lib/task-visuals";
+import { showCompletedIn } from "./test/completed-shown";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 const invokeMock = vi.mocked(invoke);
@@ -37,6 +38,7 @@ function applyChange(item: Task, input: ChangeInput): Task {
 
 beforeEach(() => {
   window.localStorage.clear();
+  showCompletedIn();
   saved = [
     task({ id: "a", title: "Synthetic draft", status: "in_progress", progress: 40, createdAt: 300 }),
     task({ id: "b", title: "Synthetic idea", createdAt: 200 }),

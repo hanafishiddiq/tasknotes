@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
 import App from "./App";
 import type { Task, TaskPage } from "./lib/task-api";
+import { showCompletedIn } from "./test/completed-shown";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 const invokeMock = vi.mocked(invoke);
@@ -38,6 +39,7 @@ function lastListCall() {
 
 beforeEach(() => {
   window.localStorage.clear();
+  showCompletedIn();
   listCalls = [];
   respond = (args) => ({
     items: [budget, lease].filter((item) =>

@@ -1,9 +1,10 @@
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import type { Task, TaskPage } from "./lib/task-api";
 import App from "./App";
+import { showCompletedIn } from "./test/completed-shown";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 const nativeInvoke = vi.mocked(invoke);
@@ -20,6 +21,9 @@ function deferred<T>() {
   const promise = new Promise<T>((callback) => { resolve = callback; });
   return { promise, resolve };
 }
+
+// These regressions predate Hide Completed and look at Completed rows.
+beforeEach(() => showCompletedIn());
 
 afterEach(() => {
   cleanup();

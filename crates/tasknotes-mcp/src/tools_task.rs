@@ -296,6 +296,7 @@ fn task_list(c: &Context, a: TaskListArgs) -> Result<Value, CliError> {
         },
         sort: a.sort.unwrap_or_default(),
         task_id: None,
+        hide_completed: false,
     };
     let page = c
         .store

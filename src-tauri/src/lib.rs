@@ -58,6 +58,8 @@ fn list_tasks(
     wont_do: Option<bool>,
     tag: Option<String>,
     task_id: Option<String>,
+    // true: leave Completed Tasks out (the view's Hide Completed).
+    hide_completed: Option<bool>,
 ) -> Result<TaskPage, String> {
     let query = TaskQuery {
         text: text.unwrap_or_default(),
@@ -69,11 +71,38 @@ fn list_tasks(
         view: view.unwrap_or_default(),
         sort: sort.unwrap_or_default(),
         task_id,
+        hide_completed: hide_completed.unwrap_or(false),
         ..TaskQuery::default()
     };
     store
         .query_tasks(&query, limit, cursor.as_deref())
         .map_err(|error| error.to_string())
+}
+
+/// How many Tasks match a view and its filters: what "Show Completed (N)" says.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+fn count_tasks(
+    store: State<'_, TaskStore>,
+    view: Option<TaskView>,
+    text: Option<String>,
+    status: Option<WorkStatus>,
+    priority: Option<Priority>,
+    difficulty: Option<DifficultyFilter>,
+    wont_do: Option<bool>,
+    tag: Option<String>,
+) -> Result<i64, String> {
+    let query = TaskQuery {
+        text: text.unwrap_or_default(),
+        status,
+        priority,
+        difficulty,
+        wont_do,
+        tag,
+        view: view.unwrap_or_default(),
+        ..TaskQuery::default()
+    };
+    store.count_tasks(&query).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -569,6 +598,7 @@ pub fn run() {
             pomodoro_history,
             pomodoro_totals,
             unfinished_counts,
+            count_tasks,
             list_pending_bulk_requests,
             count_pending_bulk_requests,
             outside_changes,

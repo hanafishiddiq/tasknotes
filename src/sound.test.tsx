@@ -8,6 +8,7 @@ import { QUIT_REQUESTED } from "./lib/quit";
 import { QUICK_CAPTURE_REQUESTED } from "./lib/shell-api";
 import { FakeAudioContext } from "./test/fake-audio";
 import { tauriEvents } from "./test/tauri-events";
+import { showCompletedIn } from "./test/completed-shown";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 const call = vi.mocked(invoke);
@@ -28,6 +29,7 @@ beforeEach(() => {
   saved = [{ ...base }];
   reducedMotion = false;
   window.localStorage.clear();
+  showCompletedIn();
   FakeAudioContext.reset();
   vi.stubGlobal("AudioContext", FakeAudioContext);
   window.matchMedia = ((query: string) => ({

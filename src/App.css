@@ -1996,6 +1996,19 @@ button.task-check::before {
   margin-top: 6px;
 }
 
+/* Hide Completed (batch 4): one quiet row under the list, where the Completed group sits when shown. */
+.completed-toggle {
+  display: block;
+  margin: 14px 0 0;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--accent-text);
+  text-align: left;
+}
+.completed-toggle:hover {
+  background: var(--hover);
+}
 .task-page-navigation {
   display: flex;
   justify-content: center;

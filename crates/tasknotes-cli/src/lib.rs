@@ -600,6 +600,7 @@ fn task_page(store: &TaskStore, words: &[String]) -> Result<Value, CliError> {
         },
         sort: p.choice("sort", &SortMode::ALL)?.unwrap_or_default(),
         task_id: None,
+        hide_completed: false,
     };
     let page = store.query_tasks(&query, p.limit()?, p.value("cursor"))?;
     Ok(contract::success_page(

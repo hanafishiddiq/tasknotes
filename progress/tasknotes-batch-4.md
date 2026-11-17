@@ -31,6 +31,10 @@ Keputusan Han (2026-11-17): 10 item kecil, ditambah 2 fitur baru (Task di bebera
   - [x] Review: dua risiko kecil (dua aksi di saat yang sama) dan garis pemisah saat memudar diperbaiki; keputusan dicatat di issue batch 3
   - [ ] Draft PR dibuka dan CI hijau
 - [ ] Tombol Hide/Show Completed
+  - [x] Han: baris "Show Completed (N)" di bawah daftar, tersembunyi bawaan, diingat per List, pencarian dan filter Completed selalu menampilkan (2026-11-17)
+  - [x] Inti (Rust): query bisa menyembunyikan Completed dan menghitungnya dengan filter yang sama
+  - [x] Tampilan dengan TDD; dicek di halaman uji (tampil, sembunyi, angka benar, tanpa tumpang tindih)
+  - [ ] Review dan Draft PR
 - [ ] Pomodoro meminta izin notifikasi sebelum bisa dipakai
 - [ ] Status In Progress ↔ Ready bisa diubah bebas
 - [ ] Subtask

@@ -187,6 +187,18 @@ export interface TaskFilters {
   tag: string;
   /** Show only this Task, as when it is opened from a Note it is linked to. */
   taskId?: string;
+  /** The view's Hide Completed is on; `hidesCompleted` says whether it applies now. */
+  hideCompleted?: boolean;
+}
+
+/**
+ * Whether a query leaves Completed Tasks out: the view hides them, and nothing
+ * is looking for them. A search, the Completed or Won't Do filter, or one Task
+ * asked for by id always shows them (owner, 2026-11-17).
+ */
+export function hidesCompleted(filters: TaskFilters): boolean {
+  return Boolean(filters.hideCompleted) && filters.text.trim() === "" &&
+    filters.status !== "completed" && filters.status !== "wont_do" && !filters.taskId;
 }
 
 export const NO_FILTERS: TaskFilters = {
@@ -248,6 +260,7 @@ function queryArgs(view: TaskView, filters: TaskFilters) {
     ...(filters.difficulty ? { difficulty: filters.difficulty } : {}),
     ...(tag ? { tag } : {}),
     ...(filters.taskId ? { taskId: filters.taskId } : {}),
+    ...(hidesCompleted(filters) ? { hideCompleted: true } : {}),
   };
 }
 
@@ -279,6 +292,12 @@ export const taskApi = {
       taskId,
     });
     return page.items.length > 0;
+  },
+
+  /** How many Completed Tasks (Won't Do included) a view hides under its filters. */
+  completedCount(view: TaskView, filters: TaskFilters): Promise<number> {
+    const { taskId: _one, ...args } = queryArgs(view, { ...filters, hideCompleted: false, status: "completed" });
+    return invoke("count_tasks", args);
   },
 
   /** One Task as the All tasks view holds it; null when it is gone or in Removed. */
