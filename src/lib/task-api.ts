@@ -193,12 +193,12 @@ export interface TaskFilters {
 
 /**
  * Whether a query leaves Completed Tasks out: the view hides them, and nothing
- * is looking for them. A search, the Completed or Won't Do filter, or one Task
- * asked for by id always shows them (owner, 2026-11-17).
+ * decides it instead. A search, the Completed or Won't Do filter, or one Task
+ * asked for by id always shows them (owner, 2026-11-17); a Ready or In Progress
+ * filter already leaves them out, so hiding has nothing to do there.
  */
 export function hidesCompleted(filters: TaskFilters): boolean {
-  return Boolean(filters.hideCompleted) && filters.text.trim() === "" &&
-    filters.status !== "completed" && filters.status !== "wont_do" && !filters.taskId;
+  return Boolean(filters.hideCompleted) && filters.text.trim() === "" && filters.status === "" && !filters.taskId;
 }
 
 export const NO_FILTERS: TaskFilters = {

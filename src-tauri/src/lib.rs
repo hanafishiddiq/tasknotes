@@ -62,17 +62,10 @@ fn list_tasks(
     hide_completed: Option<bool>,
 ) -> Result<TaskPage, String> {
     let query = TaskQuery {
-        text: text.unwrap_or_default(),
-        status,
-        priority,
-        difficulty,
-        wont_do,
-        tag,
-        view: view.unwrap_or_default(),
         sort: sort.unwrap_or_default(),
         task_id,
         hide_completed: hide_completed.unwrap_or(false),
-        ..TaskQuery::default()
+        ..filtered_query(view, text, status, priority, difficulty, wont_do, tag)
     };
     store
         .query_tasks(&query, limit, cursor.as_deref())
@@ -92,7 +85,21 @@ fn count_tasks(
     wont_do: Option<bool>,
     tag: Option<String>,
 ) -> Result<i64, String> {
-    let query = TaskQuery {
+    let query = filtered_query(view, text, status, priority, difficulty, wont_do, tag);
+    store.count_tasks(&query).map_err(|error| error.to_string())
+}
+
+/// The view and filters a Task list and its count share, so the two cannot drift apart.
+fn filtered_query(
+    view: Option<TaskView>,
+    text: Option<String>,
+    status: Option<WorkStatus>,
+    priority: Option<Priority>,
+    difficulty: Option<DifficultyFilter>,
+    wont_do: Option<bool>,
+    tag: Option<String>,
+) -> TaskQuery {
+    TaskQuery {
         text: text.unwrap_or_default(),
         status,
         priority,
@@ -101,8 +108,7 @@ fn count_tasks(
         tag,
         view: view.unwrap_or_default(),
         ..TaskQuery::default()
-    };
-    store.count_tasks(&query).map_err(|error| error.to_string())
+    }
 }
 
 #[tauri::command]

@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { viewKey, type TaskView } from "./task-api";
 
-const KEY = "tasknotes.completedShown";
+/** Where the views that show Completed are remembered. */
+export const COMPLETED_SHOWN_KEY = "tasknotes.completedShown";
 
 function read(): Record<string, true> {
   try {
-    const parsed: unknown = JSON.parse(window.localStorage.getItem(KEY) ?? "{}");
+    const parsed: unknown = JSON.parse(window.localStorage.getItem(COMPLETED_SHOWN_KEY) ?? "{}");
     if (!parsed || typeof parsed !== "object") return {};
     return Object.fromEntries(Object.entries(parsed).filter(([, shown]) => shown === true)) as Record<string, true>;
   } catch {
@@ -22,7 +23,7 @@ export function useCompletedShown(): [(view: TaskView) => boolean, (view: TaskVi
   const [shownViews, setShownViews] = useState<Record<string, true>>(read);
   useEffect(() => {
     try {
-      window.localStorage.setItem(KEY, JSON.stringify(shownViews));
+      window.localStorage.setItem(COMPLETED_SHOWN_KEY, JSON.stringify(shownViews));
     } catch {
       // Keep the choice for this session.
     }

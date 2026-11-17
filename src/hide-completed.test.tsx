@@ -136,6 +136,34 @@ describe("Hide Completed", () => {
     await waitFor(() => expect(rows()).toEqual(["Synthetic done", "Synthetic shelved"]));
   });
 
+  it("offers nothing to show under a Ready or In Progress filter, where Completed cannot appear", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openList(user, "Synthetic one");
+    await screen.findByRole("button", { name: "Show Completed (2)" });
+    await user.selectOptions(screen.getByRole("combobox", { name: "Filter by status" }), "ready");
+    await waitFor(() => expect(rows()).toEqual(["Synthetic waiting"]));
+    expect(screen.queryByRole("button", { name: /Completed/ })).toBeNull();
+  });
+
+  it("never shows another view's count while the new view's is on its way", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openList(user, "Synthetic one");
+    await screen.findByRole("button", { name: "Show Completed (2)" });
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const answer = call.getMockImplementation()!;
+    call.mockImplementation(async (command, args) => {
+      if (command === "count_tasks") await held;
+      return answer(command, args);
+    });
+    await openList(user, "Synthetic two");
+    expect(screen.queryByRole("button", { name: "Show Completed (2)" })).toBeNull();
+    release();
+    expect(await screen.findByRole("button", { name: "Show Completed (1)" })).toBeInTheDocument();
+  });
+
   it("takes a Task just completed out of the list and counts it", async () => {
     const user = userEvent.setup();
     render(<App />);

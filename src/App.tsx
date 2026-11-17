@@ -38,6 +38,7 @@ import { useCompletionUndo } from "./lib/use-completion-undo";
 import { useNewTaskToast } from "./lib/use-new-task-toast";
 import { useNewTaskMarks } from "./lib/use-new-task-marks";
 import { useCompletedShown } from "./lib/use-completed-shown";
+import { completedRowFor, visibleTasks } from "./lib/completed-row";
 import { useBriefNotice } from "./lib/use-brief-notice";
 import { errorMessage, isListRemoved } from "./lib/error-message";
 import { listenForQuit } from "./lib/quit";
@@ -187,17 +188,11 @@ export default function App() {
     () => ({ ...chosenFilters, hideCompleted: !completedShownIn(view) }),
     [chosenFilters, view, completedShownIn],
   );
-  // How many Completed Tasks the view hides now, counted by the core with its filters.
-  const [completedHidden, setCompletedHidden] = useState(0);
-  useEffect(() => {
-    if (!hidesCompleted(filters)) return;
-    let active = true;
-    taskApi.completedCount(view, filters)
-      .then((count) => { if (active) setCompletedHidden(count); })
-      // Without a count the row stays as it was; the list itself is right either way.
-      .catch(() => {});
-    return () => { active = false; };
-  }, [tasks, view, filters]);
+  // How many Completed Tasks the view hides, counted by the core for one query: a
+  // count only stands for the query it was asked for, so another view never shows it.
+  const countQuery = JSON.stringify([viewKey(view), filters]);
+  const [hiddenCompleted, setHiddenCompleted] = useState<{ query: string; count: number } | null>(null);
+  const hiddenCompletedCount = hiddenCompleted?.query === countQuery ? hiddenCompleted.count : null;
   const [searchDraft, setSearchDraft] = useState("");
   const [tagDraft, setTagDraft] = useState("");
   // A Task just created outside the active search or filters.
@@ -1355,12 +1350,20 @@ export default function App() {
   const filtering = !sameFilters(filters, NO_FILTERS);
   // While the view hides Completed, a Task completed here leaves the list at once.
   const hidingCompleted = hidesCompleted(filters);
-  const shownTasks = hidingCompleted ? tasks.filter((task) => task.status !== "completed") : tasks;
-  // What the row under the list offers: show the hidden ones, or hide them again.
-  const completedRow = loading || loadError || nextCursor ? null
-    : hidingCompleted ? (completedHidden > 0 ? "show" : null)
-    : !completedShownIn(view) || !hidesCompleted({ ...filters, hideCompleted: true }) ? null
-    : tasks.some((task) => task.status === "completed") ? "hide" : null;
+  const shownTasks = visibleTasks(tasks, hidingCompleted, (taskId) => drafts.get(taskId) !== undefined);
+  const completedRow = loadError ? null : completedRowFor({
+    filters, shownHere: completedShownIn(view), count: hiddenCompletedCount, tasks, loading, lastPage: !nextCursor,
+  });
+  // Count once the last page is here; each change to the Tasks may change the number.
+  useEffect(() => {
+    if (!hidingCompleted || loading || nextCursor) return;
+    let active = true;
+    taskApi.completedCount(view, filters)
+      .then((count) => { if (active) setHiddenCompleted({ query: countQuery, count }); })
+      // Without a count the row is not offered; the list itself is right either way.
+      .catch(() => {});
+    return () => { active = false; };
+  }, [tasks, view, filters, countQuery, hidingCompleted, loading, nextCursor]);
   // Tasks move only in one List or Inbox with nothing filtered: there the
   // whole group is what the person sees (ADR 0010). Elsewhere a try says why (Q36).
   const moveBlocked = view.kind === "all" ? "Open one List to reorder Tasks"
@@ -1715,7 +1718,7 @@ export default function App() {
               {completedRow && (
                 <button className="completed-toggle" type="button"
                   onClick={() => setCompletedShown(view, completedRow === "show")}>
-                  {completedRow === "show" ? `Show Completed (${completedHidden})` : "Hide Completed"}
+                  {completedRow === "show" ? `Show Completed (${hiddenCompletedCount})` : "Hide Completed"}
                 </button>
               )}
               {/* Always here, so a move, a completion or a reopen is said even when the list empties. */}
