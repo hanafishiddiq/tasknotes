@@ -18,6 +18,9 @@ Keputusan Han (2026-11-17): 10 item kecil, ditambah 2 fitur baru (Task di bebera
   - [x] Diperbaiki dengan TDD: grid memberi ruang 12px di kanan; ikon kini 17px dari tepi, tetap 8 kolom
   - [ ] Draft PR dibuka dan CI hijau
 - [ ] Kursor kuning saat mengetik di Notes lebih redup
+  - [x] Han: "digelapkan sedikit saja" (2026-11-17); tema gelap #ffd60a → #d2b10e, tema terang tetap
+  - [x] Diperbaiki dengan TDD (token --caret), seluruh tes lulus
+  - [ ] Draft PR dibuka dan CI hijau
 - [ ] Ikon Pomodoro di kiri bawah diganti
 - [ ] Tanda kuning Task baru tetap terlihat 20 detik
 - [ ] Tombol Hide/Show Completed
