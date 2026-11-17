@@ -38,17 +38,18 @@ Keputusan Han (2026-11-18), Han minta lanjut terus sampai selesai satu per satu:
   - [x] Tampilan dengan TDD; dicek di halaman uji (tampil, sembunyi, angka benar, tanpa tumpang tindih)
   - [x] Review dua sumbu; diperbaiki: filter Ready/In Progress, Task yang sedang diedit tidak hilang, angka List lain tidak terbawa, kode dirapikan
   - [x] Draft PR dibuka dan CI hijau
-- [ ] Pomodoro meminta izin notifikasi sebelum bisa dipakai
+- [x] Pomodoro meminta izin notifikasi sebelum bisa dipakai
   - [x] Han: Pomodoro tetap jalan, hanya diingatkan (2026-11-18)
   - [x] Dikerjakan dengan TDD: pengingat "Notifications are off" di sidebar dan halaman Pomodoro, tombol Turn on notifications (macOS bertanya, atau System Settings terbuka), dibaca ulang saat jendela kembali ke depan
   - [x] Review: format kode, tombol tidak bisa diklik berulang saat macOS masih bertanya (menunggu di thread terpisah), komentar tes; diperbaiki
-  - [ ] Draft PR, CI hijau
+  - [x] Draft PR #58, CI hijau
 - [ ] Status In Progress ↔ Ready bisa diubah bebas
   - [x] Han: pindah ke Ready mempertahankan angka progress (2026-11-18)
   - [x] Aturan inti diubah dengan TDD (berlaku sama di app, CLI, MCP, perubahan massal); Ready tidak pernah 100%; tidak ada yang pindah ke Ready dengan sendirinya
   - [x] Tampilan: pilihan Ready tidak lagi diredupkan; baris Task Ready yang punya progress menampilkan persennya
   - [x] ADR 0006, GLOSSARY, AGENTS.md dan DECISIONS diperbarui
-  - [ ] Review dan Draft PR, CI hijau
+  - [x] Review: kode benar di semua jalur; dokumen yang masih memuat aturan lama (DESIGN.md, ADR 0006, ADR 0008) diperbarui
+  - [ ] Draft PR #59, CI hijau
 - [ ] Subtask
 - [ ] Notes milik Task (catatan di dalam Task) bisa menyimpan gambar
 - [ ] Satu Task bisa muncul di beberapa List sekaligus, identik (selesai di satu = selesai di semua)

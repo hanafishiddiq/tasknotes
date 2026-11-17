@@ -1,6 +1,6 @@
 # Started Tasks remain In Progress while idle
 
-Status: accepted (2026-10-11)
+Status: accepted (2026-10-11); amended 2026-11-18, see the last addendum, which replaces "Ready means work has not begun" and the Q48 addendum's "Ready is still only for work that has not started" and "offers Ready only when it is Ready".
 
 Ready means work has not begun; In Progress means work has begun but has not been completed, whether or not work is actively happening at this moment. We deliberately do not add a Paused status or automatically move inactive Tasks back to Ready, because those interpretations confuse task lifecycle with momentary activity and would break the user's always-on-top ordering of started work. Progress, Next Step, and dated history stay intact through idle periods. A future explicit reset/start-over workflow must be deliberate and cannot silently erase history.
 
@@ -14,4 +14,4 @@ It is one core rule for every interface (ADR 0001), the one Won't Do already fol
 
 Owner decision (batch 4): "Bebas pindah status". The person may choose Ready for any Task, from In Progress, Completed or Won't Do, through the status control, the Task menu, bulk changes, the CLI or MCP, and the Task keeps its progress: an In Progress or Won't Do Task the percentage it has, a finished Task the incomplete progress it had before it was completed (as when it is reopened In Progress). Ready never holds 100%. The move is a status change like any other, so it writes a Progress Entry and its history stays intact.
 
-What stays: nothing moves a Task to Ready on its own. Idle time, lowering a started Task's progress to 0% and clearing Won't Do still leave started work In Progress, as above. A new percentage on a Ready Task starts it again (In Progress), and a Task completed from Ready reopens to Ready. Ready therefore now means "not being worked on": either not started, or set aside to start later by the person's choice, and a Ready Task with progress shows its percentage in the list.
+What stays: nothing moves a Task to Ready on its own. Idle time and lowering a started Task's progress to 0% still leave started work In Progress, as above, and clearing Won't Do returns a Task to the status it had just before it was set aside: In Progress for started work, Ready for one the person had set back to Ready (with the progress it kept). A new percentage on a Ready Task starts it again (In Progress), and a Task completed from Ready reopens to Ready. Ready therefore now means "not being worked on": either not started, or set aside to start later by the person's choice, and a Ready Task with progress shows its percentage in the list.
