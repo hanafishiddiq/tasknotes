@@ -1416,7 +1416,7 @@ export default function App() {
         <div className="main-scroll" ref={taskScroll}>
           <div className="content-wrap">
             <div className="page-title">
-              <h1>{pageTitle}</h1>
+              <h1 title={pageTitle}>{pageTitle}</h1>
               {countKnown && <span>{tasks.length}{nextCursor ? "+" : ""}</span>}
             </div>
 

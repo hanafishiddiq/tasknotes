@@ -81,6 +81,8 @@
 body {
   margin: 0;
   min-width: 320px;
+  /* A name with no spaces breaks where text wraps instead of spilling out of its box. */
+  overflow-wrap: break-word;
   background: var(--bg);
 }
 ::selection {
@@ -93,6 +95,10 @@ textarea,
 select {
   font: inherit;
   color: inherit;
+}
+/* A long List, folder or Task name ends in "…" on a closed menu instead of being cut mid-letter. */
+select {
+  text-overflow: ellipsis;
 }
 button {
   cursor: pointer;
@@ -192,6 +198,9 @@ body.sidebar-resizing * {
   border-top: 1px solid var(--sep);
   color: var(--text-2);
   background: var(--hover);
+}
+.undo-bar > span {
+  min-width: 0;
 }
 .undo-bar--error {
   color: var(--red);
@@ -849,12 +858,17 @@ button.folder-disclosure:hover:not(:disabled) {
   cursor: text;
 }
 .page-title h1 {
+  min-width: 0;
   margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   font-size: 22px;
   font-weight: 700;
   letter-spacing: -0.01em;
 }
 .page-title span {
+  flex: none;
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
 }
@@ -2140,11 +2154,19 @@ button.task-check::before {
   flex: none;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   height: 52px;
   padding: 0 10px 0 18px;
 }
+.note-list-header .icon-button {
+  flex: none;
+}
 .note-list-header h1 {
+  min-width: 0;
   margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   font-size: 22px;
   font-weight: 700;
   letter-spacing: -0.01em;
@@ -2534,7 +2556,13 @@ button.task-check::before {
     width: auto;
     flex: none;
   }
+  /* The sidebar is a sideways row here; a long name ends in "…" instead of filling it. */
+  .folder-row {
+    max-width: 200px;
+  }
   .folder-row .folder {
+    flex: 0 1 auto;
+    min-width: 0;
     padding-right: 8px;
   }
   .toolbar {
