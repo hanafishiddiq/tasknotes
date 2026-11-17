@@ -364,6 +364,8 @@ body.sidebar-resizing * {
 }
 .style-icons {
   max-height: 156px;
+  /* The overlay scrollbar sits in this room instead of over the last column's icons. */
+  padding-right: 12px;
   overflow-y: auto;
   scrollbar-color: var(--side-selected) transparent;
 }
