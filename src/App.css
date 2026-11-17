@@ -2421,8 +2421,10 @@ button.task-check::before {
   font-size: 15px;
   font-weight: 700;
 }
-/* The first line names the Note, so it reads as its title (batch 4). */
-.note-content .note-title {
+/* The first line names the Note, so it reads as its title (batch 4); when
+   more lines share its paragraph, only the text before the first break. */
+.note-content .note-title,
+.note-content .note-title-text {
   margin: 0 0 10px;
   font-size: 24px;
   font-weight: 700;

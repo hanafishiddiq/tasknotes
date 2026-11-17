@@ -1,5 +1,7 @@
 import { useEffect, useImperativeHandle, type Ref } from "react";
-import { $getNodeByKey, $getRoot, $getSelection, $isParagraphNode, $isRangeSelection, $isTextNode } from "lexical";
+import {
+  $getNodeByKey, $getRoot, $getSelection, $isLineBreakNode, $isParagraphNode, $isRangeSelection, $isTextNode,
+} from "lexical";
 import { $createListNode, $isListItemNode, $isListNode } from "@lexical/list";
 import { $isHeadingNode } from "@lexical/rich-text";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
@@ -104,28 +106,38 @@ function ChecklistShortcutPlugin() {
 
 /** The class of the block the core names the Note by. */
 const TITLE_CLASS = "note-title";
+/** The class of the text before a line break, when the title shares its block with more lines. */
+const TITLE_TEXT_CLASS = "note-title-text";
 
 /**
- * Marks the Note's title line so it looks like one: the first block with any
+ * Marks the Note's title line so it looks like one: the first line with any
  * text, as the core takes the Note's name from its first non-empty line
  * (owner, 2026-11-18). Only a paragraph or heading takes the look; a first
- * list, quote or code block keeps its own. The class is on the screen only,
- * never in the Markdown.
+ * list, quote or code block keeps its own. When that block holds more lines
+ * (a single line break, Shift+Return), only the text before the first break
+ * is the title. The classes are on the screen only, never in the Markdown.
  */
 function TitleLinePlugin() {
   const [editor] = useLexicalComposerContext();
   useEffect(() => {
-    let marked: HTMLElement | null = null;
+    let marked: HTMLElement[] = [];
     const mark = () => {
-      const key = editor.getEditorState().read(() => {
+      const marks = editor.getEditorState().read(() => {
         const first = $getRoot().getChildren().find((block) => block.getTextContent().trim() !== "");
-        return first && ($isParagraphNode(first) || $isHeadingNode(first)) ? first.getKey() : null;
+        if (!first || !($isParagraphNode(first) || $isHeadingNode(first))) return [];
+        const children = first.getChildren();
+        const lineBreak = children.findIndex($isLineBreakNode);
+        if (lineBreak < 0) return [{ key: first.getKey(), className: TITLE_CLASS }];
+        return children.slice(0, lineBreak).map((child) => ({ key: child.getKey(), className: TITLE_TEXT_CLASS }));
       });
-      const element = key ? editor.getElementByKey(key) : null;
-      if (element === marked) return;
-      marked?.classList.remove(TITLE_CLASS);
-      element?.classList.add(TITLE_CLASS);
-      marked = element;
+      for (const element of marked) element.classList.remove(TITLE_CLASS, TITLE_TEXT_CLASS);
+      marked = [];
+      for (const { key, className } of marks) {
+        const element = editor.getElementByKey(key);
+        if (!element) continue;
+        element.classList.add(className);
+        marked.push(element);
+      }
     };
     mark();
     return editor.registerUpdateListener(mark);

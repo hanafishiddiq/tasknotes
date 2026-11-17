@@ -18,7 +18,12 @@ function open(markdown: string) {
   render(<NoteEditor initialMarkdown={markdown} onEdit={() => {}} editorRef={handle} />);
   return { text: screen.getByRole("textbox", { name: "Note text" }), handle };
 }
-const titles = (text: HTMLElement) => [...text.querySelectorAll(".note-title")].map((each) => each.textContent);
+/** The text shown as the title: a whole block, or the text before its first line break. */
+const titles = (text: HTMLElement) => {
+  const block = [...text.querySelectorAll(".note-title")].map((each) => each.textContent);
+  const parts = [...text.querySelectorAll(".note-title-text")].map((each) => each.textContent).join("");
+  return parts ? [...block, parts] : block;
+};
 
 describe("the first line of a Note", () => {
   it("shows as the title, and only that line", async () => {
@@ -26,6 +31,13 @@ describe("the first line of a Note", () => {
     await waitFor(() => expect(titles(text)).toEqual(["Meeting with supplier. Discuss price"]));
     // The Markdown is what was written: no heading marker is added.
     expect(handle.current!.markdown()).toBe("Meeting with supplier. Discuss price\n\nBring the samples");
+  });
+
+  it("is only the first line when more lines share its paragraph", async () => {
+    const { text, handle } = open("Title **here**\nmore details on the next line");
+    await waitFor(() => expect(titles(text)).toEqual(["Title here"]));
+    expect(text.querySelector(".note-title")).toBeNull();
+    expect(handle.current!.markdown()).toBe("Title **here**\nmore details on the next line");
   });
 
   it("skips empty lines, as the Note's name does", async () => {
@@ -58,6 +70,7 @@ describe("the first line of a Note", () => {
   it("is bold and as large as a Note's own heading", () => {
     const rule = rules.find((each) => each.media === null && selectorsOf(each).includes(".note-content .note-title"));
     const h1 = rules.find((each) => each.media === null && selectorsOf(each).includes(".note-h1") && declared(each, "font-size") !== null);
+    expect(rule && selectorsOf(rule)).toContain(".note-content .note-title-text");
     expect(rule && declared(rule, "font-weight")).toBe("700");
     expect(rule && declared(rule, "font-size")).toBe(h1 && declared(h1, "font-size"));
   });
