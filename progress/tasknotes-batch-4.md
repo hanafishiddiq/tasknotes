@@ -82,11 +82,10 @@ Keputusan Han (2026-11-18), Han minta lanjut terus sampai selesai satu per satu:
 - [x] Semua tiket di main dan satu build dipasang ke /Applications
   - [x] PR #52–#63 di main (b3db423); backup data asli di `store.adamaja.tasknotes.pre-batch4-20261118` (2026-11-18)
   - [x] App, CLI, MCP dipasang; database naik ke v27, 191 Task / 6 Note / 11 List / 9 Pomodoro utuh, integrity ok
-- [ ] App asli batch 4 dicek Han
+- [x] App asli batch 4 dicek Han (2026-11-18); worktree dan cache build batch 4 dibersihkan
 
 ## Perlu Han lakukan
 
-- Cek app asli: izin notifikasi Pomodoro, ⌥-seret ke List, gambar di catatan Task, Subtask, Hide Completed
 - Tutup lalu buka lagi sesi Claude lain yang memakai MCP Tasknotes (proses MCP lama menolak database v27)
 
 ## Riwayat sesi
