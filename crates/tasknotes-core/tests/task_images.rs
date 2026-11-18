@@ -174,3 +174,33 @@ fn exports_carry_the_images_and_markdown_points_at_their_files() {
         "{inbox}"
     );
 }
+
+#[test]
+fn an_image_copied_into_another_tasks_notes_exports_as_its_file_too() {
+    use tasknotes_core::export::{ExportFormat, ExportRequest};
+    use tasknotes_core::tasks::UpdateTask;
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("t.db"));
+    let first = task(&store);
+    let image = add(&store, &first, "image/png", PNG).unwrap();
+    let second = task(&store);
+    store
+        .update_task(UpdateTask {
+            id: second.id.clone(),
+            title: "Synthetic copy".into(),
+            description: image_reference(&image.id),
+            expected_revision: second.revision,
+        })
+        .unwrap();
+    let root = dir.path().join("md");
+    store
+        .export_data(ExportRequest {
+            format: ExportFormat::Markdown,
+            destination: root.clone(),
+            include_private_notes: false,
+        })
+        .unwrap();
+    let inbox = std::fs::read_to_string(root.join("Tasks/Inbox.md")).unwrap();
+    assert!(!inbox.contains("tasknotes-image:"), "{inbox}");
+    assert!(inbox.contains(&format!("![image](images/{}.png)", image.id)));
+}

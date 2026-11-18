@@ -63,6 +63,8 @@ Keputusan Han (2026-11-18), Han minta lanjut terus sampai selesai satu per satu:
   - [x] Inti (Rust) dengan TDD: gambar disimpan di database (ikut backup), PNG/JPEG/GIF/WebP sampai 10 MB, tidak pernah dihapus; ikut ekspor JSON dan Markdown
   - [x] Tampilan dengan TDD: catatan Task memakai editor Notes; gambar bisa ditempel, diseret, atau dipilih lewat "Add image"; dicek di halaman uji
   - [x] ADR 0012, DESIGN.md, GLOSSARY
+  - [x] Review; diperbaiki: catatan lama berupa teks biasa tidak dianggap berubah dan baris tidak menampilkan garis miring Markdown, Save menunggu gambar yang masih diunggah, ekspor menangani gambar yang disalin antar Task, file yang dijatuhkan di luar catatan tidak membuka apa pun
+  - [ ] Draft PR #62, CI hijau
 - [ ] Satu Task bisa muncul di beberapa List sekaligus, identik (selesai di satu = selesai di semua)
 - [ ] Kalimat pertama Note otomatis jadi judul bergaya heading (tebal dan lebih besar)
   - [x] Han: baris pertama, seperti Apple Notes (2026-11-18)

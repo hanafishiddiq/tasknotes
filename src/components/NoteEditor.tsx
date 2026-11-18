@@ -19,9 +19,8 @@ import { MarkdownShortcutPlugin } from "@lexical/react/LexicalMarkdownShortcutPl
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { $convertFromMarkdownString, $convertToMarkdownString, type Transformer } from "@lexical/markdown";
 import { NOTE_NODES, NOTE_TRANSFORMERS } from "../lib/note-markdown";
-import {
-  $createTaskImageNode, ImageSourceContext, TASK_IMAGE, TaskImageNode, type ImageSource,
-} from "../lib/task-image-node";
+import { $createTaskImageNode, ImageSourceContext, type ImageSource } from "../lib/task-image-node";
+import { TASK_NODES, TASK_TRANSFORMERS } from "../lib/task-notes-markdown";
 import { IMAGE_TYPES } from "../lib/task-image-api";
 
 export interface NoteEditorHandle {
@@ -45,6 +44,8 @@ interface NoteEditorProps {
   images?: ImageSource;
   /** False while the text may not change (a save on its way). */
   editable?: boolean;
+  /** How many images are still on their way to the core: saving waits for them. */
+  onImagesPending?: (count: number) => void;
 }
 
 const THEME = {
@@ -172,9 +173,6 @@ function MarkdownHandle({ editorRef, transformers }: {
   return null;
 }
 
-/** What a Task's notes read and write: a Note's Markdown, and images. */
-const TASK_TRANSFORMERS = [TASK_IMAGE, ...NOTE_TRANSFORMERS];
-const TASK_NODES = [...NOTE_NODES, TaskImageNode];
 
 /**
  * ⌘↵ (Ctrl+Return) saves where the editor sits in a form: it must not also
@@ -222,11 +220,18 @@ function imageFiles(data: DataTransfer | null): File[] {
  * where the cursor is, on a line of its own. A refusal (too large, not an
  * image) is said under the text.
  */
-function ImagePlugin({ source, onError }: { source: ImageSource; onError: (message: string | null) => void }) {
+function ImagePlugin({ source, onError, onPending }: {
+  source: ImageSource;
+  onError: (message: string | null) => void;
+  onPending?: (count: number) => void;
+}) {
   const [editor] = useLexicalComposerContext();
+  const pending = useRef(0);
   useEffect(() => {
     const insert = async (files: File[]) => {
       onError(null);
+      pending.current += files.length;
+      onPending?.(pending.current);
       for (const file of files) {
         try {
           const id = await source.add(file);
@@ -238,6 +243,9 @@ function ImagePlugin({ source, onError }: { source: ImageSource; onError: (messa
           });
         } catch (reason) {
           onError("Couldn't add the image: " + (reason instanceof Error ? reason.message : String(reason)));
+        } finally {
+          pending.current -= 1;
+          onPending?.(pending.current);
         }
       }
     };
@@ -262,7 +270,7 @@ function ImagePlugin({ source, onError }: { source: ImageSource; onError: (messa
       return true;
     }, COMMAND_PRIORITY_HIGH);
     return () => { stopPaste(); stopDrop(); stopOver(); stopInsert(); };
-  }, [editor, source, onError]);
+  }, [editor, source, onError, onPending]);
   return null;
 }
 
@@ -275,7 +283,7 @@ function EditablePlugin({ editable }: { editable: boolean }) {
 /** Rich-text editing over canonical Markdown (ADR-0003). Remount with a new key per Note. */
 export default function NoteEditor({
   initialMarkdown, onEdit, editorRef, label = "Note text", placeholder = "Start writing", variant = "note", images,
-  editable = true,
+  editable = true, onImagesPending,
 }: NoteEditorProps) {
   const transformers = images ? TASK_TRANSFORMERS : NOTE_TRANSFORMERS;
   const [imageError, setImageError] = useState<string | null>(null);
@@ -315,7 +323,7 @@ export default function NoteEditor({
       {variant === "note" && <TitleLinePlugin />}
       <SaveShortcutPlugin />
       <EditablePlugin editable={editable} />
-      {images && <ImagePlugin source={images} onError={setImageError} />}
+      {images && <ImagePlugin source={images} onError={setImageError} onPending={onImagesPending} />}
       <MarkdownHandle editorRef={editorRef} transformers={transformers} />
     </LexicalComposer>
   );

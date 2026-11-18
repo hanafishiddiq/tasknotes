@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { $getRoot, type LexicalEditor, type TextNode } from "lexical";
 import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
 import type { Task } from "./lib/task-api";
 import App from "./App";
 import { withoutImages } from "./lib/task-image-node";
+import { notesPreview } from "./lib/task-notes-markdown";
 
 /**
  * Images in a Task's notes (owner, batch 4, 2026-11-18): the notes are rich
@@ -19,10 +21,13 @@ const ID = "11111111-2222-4333-8444-555555555555";
 
 let task: Task;
 let kept: { taskId: string; mediaType: string; bytes: number[] }[];
+/** While set, adding an image waits for the test to let it finish. */
+let holdUpload: Promise<void> | null;
 
 beforeEach(() => {
   window.localStorage.clear();
   kept = [];
+  holdUpload = null;
   task = {
     id: "shelf", title: "Synthetic shelf", description: `Measure first\n\n![image](tasknotes-image:${ID})\n\nThen cut`,
     status: "ready", priority: "medium", difficulty: null, wontDo: false, progress: 0, nextStep: "", listId: null,
@@ -40,6 +45,7 @@ beforeEach(() => {
       case "list_subtasks": return [];
       case "read_task_image": return PNG.buffer;
       case "add_task_image": {
+        if (holdUpload) await holdUpload;
         const headers = (options as { headers: Record<string, string> }).headers;
         kept.push({ taskId: headers["task-id"], mediaType: headers["media-type"], bytes: [...(args as Uint8Array)] });
         return { id: "22222222-3333-4444-8555-666666666666", taskId: headers["task-id"], mediaType: headers["media-type"], size: 12, createdAt: 1 };
@@ -74,6 +80,36 @@ const open = async (user: ReturnType<typeof userEvent.setup>) => {
   return screen.findByRole("textbox", { name: "Edit description" });
 };
 
+/** The caret after the last word of a rich-text field, as a click at its end puts it. */
+function caretAtEnd(field: HTMLElement) {
+  const range = document.createRange();
+  range.selectNodeContents(field);
+  range.collapse(false);
+  window.getSelection()!.removeAllRanges();
+  window.getSelection()!.addRange(range);
+}
+
+describe("notes written as plain text, before they were rich text", () => {
+  it("are no edit when typing is taken back, though Markdown would escape them", async () => {
+    task = { ...task, description: "Rename snake_case_name and pay $5 * 2" };
+    const user = userEvent.setup();
+    const notes = await open(user);
+    // jsdom cannot delete inside the editor: write through the editor itself, then take it back.
+    const editor = (notes as unknown as { __lexicalEditor: LexicalEditor }).__lexicalEditor;
+    const write = (text: string) => act(() => {
+      editor.update(() => $getRoot().getFirstDescendant<TextNode>()!.setTextContent(text), { discrete: true });
+    });
+    await write("Rename snake_case_name and pay $5 * 2x");
+    expect(await screen.findByRole("button", { name: /Save changes/ })).toBeInTheDocument();
+    await write("Rename snake_case_name and pay $5 * 2");
+    await waitFor(() => expect(screen.queryByRole("button", { name: /Save changes/ })).toBeNull());
+  });
+
+  it("show on the collapsed row without Markdown's escapes", () => {
+    expect(notesPreview("Rename snake\\_case\\_name, pay \\$5 \\* 2")).toBe("Rename snake_case_name, pay \\$5 * 2");
+  });
+});
+
 describe("images in a Task's notes", () => {
   it("shows an image where the notes refer to it, read from the core", async () => {
     const user = userEvent.setup();
@@ -105,6 +141,31 @@ describe("images in a Task's notes", () => {
     await user.upload(screen.getByLabelText("Choose images"), new File([PNG], "photo.png", { type: "image/png" }));
     await waitFor(() => expect(kept).toHaveLength(1));
     expect(screen.getByRole("button", { name: "Add image" })).toBeInTheDocument();
+  });
+
+  it("waits for an image still on its way before the notes can be saved", async () => {
+    let finish!: () => void;
+    holdUpload = new Promise<void>((done) => { finish = done; });
+    const user = userEvent.setup();
+    const notes = await open(user);
+    notes.focus();
+    caretAtEnd(notes);
+    await user.type(notes, " edited", { skipClick: true });
+    paste(notes, [new File([PNG], "photo.png", { type: "image/png" })]);
+    await waitFor(() => expect(screen.getByRole("button", { name: /Save changes/ })).toBeDisabled());
+    finish();
+    await waitFor(() => expect(screen.getByRole("button", { name: /Save changes/ })).toBeEnabled());
+  });
+
+  it("leaves a file dropped outside the notes unopened", async () => {
+    render(<App />);
+    await screen.findByRole("article", { name: "Synthetic shelf" });
+    for (const type of ["dragover", "drop"]) {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, "dataTransfer", { value: { types: ["Files"], files: [] } });
+      document.body.dispatchEvent(event);
+      expect(event.defaultPrevented, type).toBe(true);
+    }
   });
 
   it("takes only image files and says so for anything else", async () => {

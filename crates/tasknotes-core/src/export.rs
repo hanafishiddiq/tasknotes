@@ -545,7 +545,8 @@ fn write_markdown(doc: &Document, root: &Path) -> std::io::Result<()> {
         let images_dir = format!("{}images/", "../".repeat(depth));
         for task in tasks {
             let mut markdown = task_markdown(task);
-            for image in doc.task_images.iter().filter(|i| i.task_id == task.id) {
+            // Every image the notes name, also one copied from another Task's notes.
+            for image in &doc.task_images {
                 markdown = markdown.replace(
                     &format!("({}{})", crate::task_images::IMAGE_SCHEME, image.id),
                     &format!(

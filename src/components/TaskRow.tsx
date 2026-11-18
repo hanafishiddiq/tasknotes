@@ -1,5 +1,5 @@
 import {
-  useId, useLayoutEffect, useMemo, useRef, type ButtonHTMLAttributes, type FormEvent, type KeyboardEvent,
+  useId, useLayoutEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type FormEvent, type KeyboardEvent,
 } from "react";
 import { CalendarDays, Check, Folder, ListChecks, LoaderCircle, Tag, Trash2 } from "lucide-react";
 import {
@@ -18,7 +18,7 @@ import TaskLinkedNotes from "./TaskLinkedNotes";
 import TaskSubtasks from "./TaskSubtasks";
 import NoteEditor, { type NoteEditorHandle } from "./NoteEditor";
 import { taskImageSource } from "../lib/task-image-api";
-import { withoutImages } from "../lib/task-image-node";
+import { notesPreview, roundTripTaskNotes } from "../lib/task-notes-markdown";
 import { useSeenOnScreen } from "../lib/use-seen-on-screen";
 import type { MenuPoint } from "./TaskContextMenu";
 
@@ -214,11 +214,16 @@ export default function TaskRow({
   // What the notes editor shows; it starts again (a new version) only when the
   // saved notes change under it with nothing typed: after a save elsewhere, or
   // when typed notes are dropped. Typing never restarts it.
-  const descriptionShown = useRef({ markdown: task.description, version: 0 }).current;
-  if (typed.description === undefined && descriptionShown.markdown !== saved.description) {
+  const descriptionShown = useRef({ source: task.description, markdown: task.description, version: 0 }).current;
+  if (typed.description === undefined && descriptionShown.source !== saved.description) {
+    // Saved from here, the editor already shows it; changed elsewhere, it starts again.
+    if (descriptionShown.markdown !== saved.description) descriptionShown.version += 1;
+    descriptionShown.source = saved.description;
     descriptionShown.markdown = saved.description;
-    descriptionShown.version += 1;
   }
+  // The saved notes as the editor writes them: plain text comes back escaped, which is no edit.
+  const savedNotes = useMemo(() => roundTripTaskNotes(saved.description), [saved.description]);
+  const [imagesPending, setImagesPending] = useState(0);
   const due = deadlineStatus(task.dueDate, today, task.status);
   const hasUnsavedText = typed.title !== undefined || typed.description !== undefined;
   const hasUnsavedProgress = typed.progress !== undefined;
@@ -276,7 +281,8 @@ export default function TaskRow({
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!draftTitle.trim() || saving || hasUnsavedProgressUpdate || hasUnsavedDetails) return;
+    // An image still on its way would be left out of the notes saved now.
+    if (!draftTitle.trim() || saving || hasUnsavedProgressUpdate || hasUnsavedDetails || imagesPending > 0) return;
     await onSave(draftTitle, draftDescription, baseRevision);
   }
 
@@ -314,7 +320,7 @@ export default function TaskRow({
     : "Inbox";
   const preview = task.nextStep
     ? `Next: ${task.nextStep}`
-    : withoutImages(task.description) || `Created ${dateFormatter.format(new Date(task.createdAt))}`;
+    : notesPreview(task.description) || `Created ${dateFormatter.format(new Date(task.createdAt))}`;
 
   return (
     <article
@@ -470,10 +476,12 @@ export default function TaskRow({
             <NoteEditor key={`${task.id}:${descriptionShown.version}`} variant="task" label="Edit description"
               placeholder="Add notes..." initialMarkdown={descriptionShown.markdown} editorRef={descriptionEditor}
               images={images} editable={!(saving || hasUnsavedProgressUpdate || hasUnsavedDetails)}
+              onImagesPending={setImagesPending}
               onEdit={() => {
                 const markdown = descriptionEditor.current?.markdown() ?? "";
                 descriptionShown.markdown = markdown;
-                edit("description", markdown);
+                if (markdown === savedNotes) forget(["description"]);
+                else edit("description", markdown);
               }} />
             {(hasUnsavedText || saving) && (
               <div className="editor-actions">
@@ -483,6 +491,7 @@ export default function TaskRow({
                   busy={saving}
                   disabled={
                     !draftTitle.trim() || saving || hasUnsavedProgressUpdate || hasUnsavedDetails
+                    || imagesPending > 0
                   }
                 >
                   {saving && (
