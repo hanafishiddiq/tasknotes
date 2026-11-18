@@ -26,7 +26,16 @@ Keputusan Han (2026-11-17): 10 item kecil, ditambah 2 fitur baru (Task di bebera
   - [x] Diganti dengan TDD, seluruh tes lulus
   - [ ] Draft PR dibuka dan CI hijau
 - [ ] Tanda kuning Task baru tetap terlihat 20 detik
+  - [x] Han: berlaku untuk Task buatan sendiri dan dari AI; membuka Task tetap menghapus lebih cepat (2026-11-17)
+  - [x] Dikerjakan dengan TDD: 20 detik sejak terlihat, lalu memudar 0,8 detik; DESIGN.md diperbarui
+  - [x] Review: dua risiko kecil (dua aksi di saat yang sama) dan garis pemisah saat memudar diperbaiki; keputusan dicatat di issue batch 3
+  - [ ] Draft PR dibuka dan CI hijau
 - [ ] Tombol Hide/Show Completed
+  - [x] Han: baris "Show Completed (N)" di bawah daftar, tersembunyi bawaan, diingat per List, pencarian dan filter Completed selalu menampilkan (2026-11-17)
+  - [x] Inti (Rust): query bisa menyembunyikan Completed dan menghitungnya dengan filter yang sama
+  - [x] Tampilan dengan TDD; dicek di halaman uji (tampil, sembunyi, angka benar, tanpa tumpang tindih)
+  - [x] Review dua sumbu; diperbaiki: filter Ready/In Progress, Task yang sedang diedit tidak hilang, angka List lain tidak terbawa, kode dirapikan
+  - [ ] Draft PR dibuka dan CI hijau
 - [ ] Pomodoro meminta izin notifikasi sebelum bisa dipakai
 - [ ] Status In Progress ↔ Ready bisa diubah bebas
 - [ ] Subtask

@@ -241,6 +241,8 @@ const TEXT: Record<string, Placement> = {
   ".note-list-item": { on: ROW },
   '.note-list-item[aria-current="true"]': { on: ["row-selected"] },
   ".note-list-more": { on: ["bg"] },
+  // Hide Completed's row under the Task list, at rest and under the pointer.
+  ".completed-toggle": { on: ["bg", "hover"] },
   ".note-list-date": { on: ROW },
   '.note-list-item[aria-current="true"] .note-list-date': SELECTED,
   ".note-folder-picker": { on: ["field"] },

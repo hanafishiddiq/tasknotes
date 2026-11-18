@@ -12,6 +12,7 @@ import App from "./App";
 import type { Task, WorkStatus } from "./lib/task-api";
 import { FakeAudioContext } from "./test/fake-audio";
 import { rules } from "./test/stylesheet";
+import { showCompletedIn } from "./test/completed-shown";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 const invokeMock = vi.mocked(invoke);
@@ -49,6 +50,7 @@ function applyChange(item: Task, input: ChangeInput): Task {
 
 beforeEach(() => {
   window.localStorage.clear();
+  showCompletedIn();
   FakeAudioContext.reset();
   vi.stubGlobal("AudioContext", FakeAudioContext);
   saved = [

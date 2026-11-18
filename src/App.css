@@ -1532,7 +1532,9 @@ kbd {
 }
 /* Like a hovered row, it hides the hairlines on either side. */
 .task-card--new::before,
-.task-slot:has(.task-card--new) + .task-slot .task-card::before {
+.task-slot:has(.task-card--new) + .task-slot .task-card::before,
+.task-card--fading::before,
+.task-slot:has(.task-card--fading) + .task-slot .task-card::before {
   border-color: transparent;
 }
 .task-check {
@@ -1994,6 +1996,19 @@ button.task-check::before {
   margin-top: 6px;
 }
 
+/* Hide Completed (batch 4): one quiet row under the list, where the Completed group sits when shown. */
+.completed-toggle {
+  display: block;
+  margin: 14px 0 0;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--accent-text);
+  text-align: left;
+}
+.completed-toggle:hover {
+  background: var(--hover);
+}
 .task-page-navigation {
   display: flex;
   justify-content: center;
@@ -2624,6 +2639,10 @@ button.task-check::before {
   }
   .pomo-pill {
     transition: filter 120ms ease-out;
+  }
+  /* A new Task's 20 seconds are up: its yellow eases back to the row's own colour (MARK_FADE_MS). */
+  .task-card--fading .task-row {
+    transition: background-color 800ms ease-out;
   }
 }
 /* No fainter than 3:1 for the large time in either appearance. */

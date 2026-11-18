@@ -58,8 +58,48 @@ fn list_tasks(
     wont_do: Option<bool>,
     tag: Option<String>,
     task_id: Option<String>,
+    // true: leave Completed Tasks out (the view's Hide Completed).
+    hide_completed: Option<bool>,
 ) -> Result<TaskPage, String> {
     let query = TaskQuery {
+        sort: sort.unwrap_or_default(),
+        task_id,
+        hide_completed: hide_completed.unwrap_or(false),
+        ..filtered_query(view, text, status, priority, difficulty, wont_do, tag)
+    };
+    store
+        .query_tasks(&query, limit, cursor.as_deref())
+        .map_err(|error| error.to_string())
+}
+
+/// How many Tasks match a view and its filters: what "Show Completed (N)" says.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+fn count_tasks(
+    store: State<'_, TaskStore>,
+    view: Option<TaskView>,
+    text: Option<String>,
+    status: Option<WorkStatus>,
+    priority: Option<Priority>,
+    difficulty: Option<DifficultyFilter>,
+    wont_do: Option<bool>,
+    tag: Option<String>,
+) -> Result<i64, String> {
+    let query = filtered_query(view, text, status, priority, difficulty, wont_do, tag);
+    store.count_tasks(&query).map_err(|error| error.to_string())
+}
+
+/// The view and filters a Task list and its count share, so the two cannot drift apart.
+fn filtered_query(
+    view: Option<TaskView>,
+    text: Option<String>,
+    status: Option<WorkStatus>,
+    priority: Option<Priority>,
+    difficulty: Option<DifficultyFilter>,
+    wont_do: Option<bool>,
+    tag: Option<String>,
+) -> TaskQuery {
+    TaskQuery {
         text: text.unwrap_or_default(),
         status,
         priority,
@@ -67,13 +107,8 @@ fn list_tasks(
         wont_do,
         tag,
         view: view.unwrap_or_default(),
-        sort: sort.unwrap_or_default(),
-        task_id,
         ..TaskQuery::default()
-    };
-    store
-        .query_tasks(&query, limit, cursor.as_deref())
-        .map_err(|error| error.to_string())
+    }
 }
 
 #[tauri::command]
@@ -569,6 +604,7 @@ pub fn run() {
             pomodoro_history,
             pomodoro_totals,
             unfinished_counts,
+            count_tasks,
             list_pending_bulk_requests,
             count_pending_bulk_requests,
             outside_changes,

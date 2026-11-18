@@ -37,6 +37,8 @@ pub struct TaskQuery {
     pub sort: SortMode,
     /// Narrow the query to one Task, to ask whether it matches the rest.
     pub task_id: Option<String>,
+    /// Leave Completed Tasks (Won't Do included) out: a view's Hide Completed.
+    pub hide_completed: bool,
 }
 
 const MAX_SEARCH_WORDS: usize = 16;
@@ -241,6 +243,24 @@ impl TaskStore {
         Ok(counts)
     }
 
+    /// How many Tasks match `query` (its sort and cursor aside): what a
+    /// view's "Show Completed (N)" says, counted by SQLite.
+    pub fn count_tasks(&self, query: &TaskQuery) -> Result<i64, TaskError> {
+        let terms = search_terms(&query.text)?;
+        let tag_fold = query
+            .tag
+            .as_deref()
+            .map(|tag| crate::organization::tag_fold(tag.trim()));
+        let mut values = Vec::new();
+        let filters = where_filters(query, terms, tag_fold, &mut values);
+        let conn = self.connect()?;
+        if let (TaskScope::Active, TaskView::List(id)) = (query.scope, &query.view) {
+            crate::organization::require_active_list(&conn, id)?;
+        }
+        let sql = format!("SELECT COUNT(*) FROM tasks WHERE {}", filters.join(" AND "));
+        Ok(conn.query_row(&sql, params_from_iter(values), |row| row.get(0))?)
+    }
+
     /// Bounded keyset page over one query. A cursor is valid only for the
     /// query that produced it, so pages never repeat or skip across queries.
     pub fn query_tasks(
@@ -279,6 +299,11 @@ impl TaskStore {
             tag_fold.as_deref().unwrap_or(""),
             &terms.join(" "),
             query.task_id.as_deref().unwrap_or(""),
+            if query.hide_completed {
+                "hide_completed"
+            } else {
+                ""
+            },
         ]);
         let after = cursor
             .map(|value| parse_cursor(value, &key, sort))
@@ -327,21 +352,19 @@ impl TaskStore {
     }
 }
 
-/// The SQL of one page of a query, and its bound values.
-fn page_sql(
+/// The filters every Task query applies (scope, view, fields, words), each
+/// binding its values into `values`: a page and a count share them, so the
+/// two cannot drift apart.
+fn where_filters(
     query: &TaskQuery,
     terms: Vec<String>,
     tag_fold: Option<String>,
-    after: Option<&After>,
-    limit: u32,
-) -> (String, Vec<Value>) {
-    let sort = query.sort;
-    let mut values: Vec<Value> = Vec::new();
+    values: &mut Vec<Value>,
+) -> Vec<String> {
     let mut bind = |value: Value| {
         values.push(value);
         format!("?{}", values.len())
     };
-
     let mut filters = vec![match query.scope {
         TaskScope::Active => task_visible!("tasks").to_owned(),
         TaskScope::Removed => "tasks.removed_at IS NOT NULL".to_owned(),
@@ -394,6 +417,27 @@ fn page_sql(
               OR tasks.rowid IN (SELECT task_rowid FROM progress_fts WHERE progress_fts MATCH {term}))"
         ));
     }
+    if query.hide_completed {
+        filters.push("tasks.status <> 'completed'".to_owned());
+    }
+    filters
+}
+
+/// The SQL of one page of a query, and its bound values.
+fn page_sql(
+    query: &TaskQuery,
+    terms: Vec<String>,
+    tag_fold: Option<String>,
+    after: Option<&After>,
+    limit: u32,
+) -> (String, Vec<Value>) {
+    let sort = query.sort;
+    let mut values: Vec<Value> = Vec::new();
+    let filters = where_filters(query, terms, tag_fold, &mut values);
+    let mut bind = |value: Value| {
+        values.push(value);
+        format!("?{}", values.len())
+    };
 
     let cursor_filter = match after {
         None => "1".to_owned(),

@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
 import App from "./App";
 import type { Task } from "./lib/task-api";
+import { showCompletedIn } from "./test/completed-shown";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 const invokeMock = vi.mocked(invoke);
@@ -25,6 +26,7 @@ let changes: ChangeInput[];
 
 beforeEach(() => {
   window.localStorage.clear();
+  showCompletedIn();
   saved = [
     task({ id: "a", title: "Synthetic essay", difficulty: "hard" }),
     task({ id: "b", title: "Synthetic errand" }),

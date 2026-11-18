@@ -105,6 +105,7 @@ export class World {
       case "list_lists": return { items: this.lists.map((list) => ({ ...list })), nextCursor: null };
       case "unfinished_counts": return countUnfinished(this.tasks, this.lists);
       case "list_tasks": return { items: this.matchingTasks(args), nextCursor: args.cursor ? null : this.taskNextCursor };
+      case "count_tasks": return this.matchingTasks(args).length;
       case "create_task": {
         const created = fixtureTask(`new-${++this.clock}`, { title: args.input.title, description: args.input.description });
         this.tasks.push(created);
@@ -210,6 +211,7 @@ export class World {
       .filter((task) => !args.priority || task.priority === args.priority)
       .filter((task) => !args.tag || task.tags.includes(String(args.tag)))
       .filter((task) => !args.text || task.title.toLowerCase().includes(String(args.text).toLowerCase()))
+      .filter((task) => !args.hideCompleted || task.status !== "completed")
       .map((task) => ({ ...task }));
   }
 }

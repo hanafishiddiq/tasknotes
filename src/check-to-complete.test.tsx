@@ -14,6 +14,7 @@ import type { Task, WorkStatus } from "./lib/task-api";
 import { CHECK_PAUSE_MS } from "./lib/task-visuals";
 import { COMPLETION_UNDO_MS, useCompletionUndo } from "./lib/use-completion-undo";
 import { FakeAudioContext } from "./test/fake-audio";
+import { showCompletedIn } from "./test/completed-shown";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 const invokeMock = vi.mocked(invoke);
@@ -63,6 +64,7 @@ function applyChange(item: Stored, input: ChangeInput): Stored {
 
 beforeEach(() => {
   window.localStorage.clear();
+  showCompletedIn();
   FakeAudioContext.reset();
   vi.stubGlobal("AudioContext", FakeAudioContext);
   saved = [

@@ -3,6 +3,7 @@ import { cleanup, render, screen, waitFor, within } from "@testing-library/react
 import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
 import App from "./App";
+import { showCompletedIn } from "./test/completed-shown";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
@@ -27,6 +28,7 @@ type SavedTask = {
 let saved: SavedTask[];
 
 beforeEach(() => {
+  showCompletedIn();
   saved = [];
   invokeMock.mockReset();
   invokeMock.mockImplementation(async (command, args) => {
