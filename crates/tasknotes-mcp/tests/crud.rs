@@ -980,3 +980,32 @@ fn a_tasks_checklist_round_trips_through_mcp() {
         "invalid_input",
     );
 }
+
+#[test]
+fn one_task_is_shown_in_several_lists_through_mcp() {
+    let data = Data::trusted();
+    let mut s = data.server();
+    let personal = s.ok("list_create", json!({"name": "Synthetic Personal"}));
+    let big = s.ok("list_create", json!({"name": "Synthetic Big Task"}));
+    let task = s.ok(
+        "task_create",
+        json!({"title": "Synthetic trip", "list_id": id(&personal)}),
+    );
+    let shown = s.ok(
+        "task_show_in",
+        json!({"id": id(&task), "revision": rev(&task), "list_id": id(&big)}),
+    );
+    assert_eq!(shown["item"]["also_in"], json!([id(&big)]));
+    let listed = s.ok("task_list", json!({"list_id": id(&big)}));
+    assert_eq!(listed["items"][0]["id"], json!(id(&task)));
+    let hidden = s.ok(
+        "task_hide_from",
+        json!({"id": id(&task), "revision": rev(&shown), "list_id": id(&personal)}),
+    );
+    assert_eq!(hidden["item"]["list_id"], json!(id(&big)));
+    s.refused(
+        "task_hide_from",
+        json!({"id": id(&task), "revision": rev(&hidden), "list_id": id(&big)}),
+        "invalid_input",
+    );
+}

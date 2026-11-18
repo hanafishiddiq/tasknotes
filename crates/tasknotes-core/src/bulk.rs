@@ -157,6 +157,9 @@ impl BulkAction {
 }
 
 /// One item before and after the change. A List or folder removal has none.
+/// Few of these exist at once (at most 100 per request), so the Task variant
+/// is not boxed.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BulkItem {
     Task { before: Task, after: Task },

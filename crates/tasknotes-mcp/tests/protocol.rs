@@ -89,6 +89,7 @@ fn a_trusted_client_completes_the_handshake_and_lists_the_tools() {
             "task_create",
             "task_details",
             "task_get",
+            "task_hide_from",
             "task_history",
             "task_list",
             "task_move",
@@ -97,10 +98,11 @@ fn a_trusted_client_completes_the_handshake_and_lists_the_tools() {
             "task_remove",
             "task_reorder",
             "task_restore",
+            "task_show_in",
             "task_update",
         ]
     );
-    assert_eq!(tools.len(), 54);
+    assert_eq!(tools.len(), 56);
     for tool in &tools {
         assert_eq!(tool["inputSchema"]["type"], "object", "{tool}");
         assert!(tool["inputSchema"].get("oneOf").is_none(), "{tool}");

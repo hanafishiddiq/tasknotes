@@ -37,6 +37,11 @@ pub struct ReorderTask {
     /// Either way the List then shows Custom.
     #[serde(default)]
     pub shown_sort: Option<SortMode>,
+    /// The List the move is made in, when the Task is also shown there
+    /// (batch 4): that List's Custom Order changes, not its own. Left out,
+    /// its own List.
+    #[serde(default)]
+    pub list_id: Option<String>,
 }
 
 /// The sort one view remembers.
@@ -75,11 +80,15 @@ pub(crate) fn migrate_v20(migration: &Transaction) -> Result<(), TaskError> {
 /// The position that puts a new Task at the top of its group: above every
 /// Task of the List.
 pub(crate) fn top(tx: &Transaction, list_id: Option<&str>) -> Result<i64, TaskError> {
-    Ok(tx.query_row(
-        "SELECT coalesce(min(position), 1) - 1 FROM tasks WHERE list_id IS ?1",
-        params![list_id],
-        |row| row.get(0),
-    )?)
+    match list_id {
+        // Also above the Tasks only shown in the List (batch 4).
+        Some(list_id) => crate::also_in::top_of(tx, list_id),
+        None => Ok(tx.query_row(
+            "SELECT coalesce(min(position), 1) - 1 FROM tasks WHERE list_id IS NULL",
+            [],
+            |row| row.get(0),
+        )?),
+    }
 }
 
 fn view_of(list_id: Option<&str>) -> TaskView {
@@ -137,17 +146,51 @@ fn seed(tx: &Transaction, list_id: Option<&str>, sort: SortMode) -> Result<(), T
     if sort == SortMode::Custom {
         return Ok(());
     }
-    tx.execute(
-        &format!(
-            "UPDATE tasks SET position = ordered.place FROM (
-                 SELECT id, row_number() OVER (ORDER BY {}) AS place
-                 FROM ({})
-             ) AS ordered WHERE tasks.id = ordered.id AND tasks.position <> ordered.place",
+    let Some(list_id) = list_id else {
+        tx.execute(
+            &format!(
+                "UPDATE tasks SET position = ordered.place FROM (
+                     SELECT id, row_number() OVER (ORDER BY {}) AS place
+                     FROM ({})
+                 ) AS ordered WHERE tasks.id = ordered.id AND tasks.position <> ordered.place",
+                search::order_by(sort),
+                search::ranked(sort, "id, created_at", "list_id IS NULL"),
+            ),
+            [],
+        )?;
+        return Ok(());
+    };
+    // A List orders its own Tasks and those also shown in it (batch 4) as
+    // one sequence; each place is written where that Task keeps it there.
+    let places: Vec<(String, bool, i64)> = tx
+        .prepare(&format!(
+            "SELECT id, own, row_number() OVER (ORDER BY {}) AS place FROM (
+                 SELECT *, list_id = ?1 AS own FROM ({}))",
             search::order_by(sort),
-            search::ranked(sort, "id, created_at", "list_id IS ?1"),
-        ),
-        params![list_id],
-    )?;
+            search::ranked(
+                sort,
+                "id, created_at, list_id",
+                &crate::also_in::in_list_sql("tasks", "?1")
+            ),
+        ))?
+        .query_map(params![list_id], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })?
+        .collect::<Result<_, _>>()?;
+    for (id, own, place) in places {
+        if own {
+            tx.execute(
+                "UPDATE tasks SET position = ?2 WHERE id = ?1 AND position <> ?2",
+                params![id, place],
+            )?;
+        } else {
+            tx.execute(
+                "UPDATE task_list_links SET position = ?3
+                 WHERE task_id = ?1 AND list_id = ?2 AND position <> ?3",
+                params![id, list_id, place],
+            )?;
+        }
+    }
     Ok(())
 }
 
@@ -182,7 +225,16 @@ impl TaskStore {
         if task.revision != input.expected_revision {
             return Err(TaskError::RevisionConflict);
         }
-        let list_id = task.list_id.as_deref();
+        // The List the move is made in: its own, or one it is also shown in.
+        let mut task = task;
+        crate::also_in::hydrate_also_in(&tx, std::slice::from_mut(&mut task))?;
+        let list_id = match input.list_id.as_deref() {
+            Some(list) if task.also_in.iter().any(|also| also == list) => Some(list),
+            Some(list) if task.list_id.as_deref() != Some(list) => {
+                return Err(TaskError::TaskOrderAnchorChanged);
+            }
+            _ => task.list_id.as_deref(),
+        };
         if let Some(sort) = input.shown_sort {
             seed(&tx, list_id, sort)?;
         }

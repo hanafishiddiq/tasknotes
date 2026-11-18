@@ -23,8 +23,8 @@ use tasknotes_core::style::{self, SetStyle};
 use tasknotes_core::tasks::{
     ChangeTask, CreateList, CreateSubList, CreateTask, Difficulty, DifficultyFilter, List,
     MoveList, MoveTask, PatchTask, PatchTaskDetails, Priority, RecordProgress, RenameList,
-    ReorderList, ReorderTask, SetListRemoved, SortMode, Task, TaskError, TaskQuery, TaskScope,
-    TaskStore, TaskView, WorkStatus,
+    ReorderList, ReorderTask, SetListRemoved, ShowTaskIn, SortMode, Task, TaskError, TaskQuery,
+    TaskScope, TaskStore, TaskView, WorkStatus,
 };
 
 use access::Environment;
@@ -169,7 +169,8 @@ pub(crate) const USAGE: &str = "Usage: tasknotes [--data-dir DIR] \
     subtask list TASK_ID | subtask add TASK_ID --text T | subtask update ID --revision N [--text T] [--done true|false] | subtask move ID --revision N --index I | subtask remove ID --revision N | subtask restore ID --revision N (a Task's checklist; its progress stays the person's); \
     task change ID --revision N [--status S] [--priority P] [--difficulty D|none] [--progress N] [--wont-do true|false] (a Completed Task reopens to its completed_from with --status); \
     task list [--status S] [--priority P] [--difficulty D|none] [--wont-do true|false] [--tag T] [--sort priority|newest|difficulty|custom (with --list ID or --inbox)]; \
-    task reorder ID --revision N (--after ID | --first) (within its work-status group of its List's Custom Order; switches its List to Custom in the desktop); \
+    task reorder ID --revision N (--after ID | --first) [--list L] (within its work-status group of its List's Custom Order, or of List L it is also shown in; switches its List to Custom in the desktop); \
+    task show-in ID --revision N --list L | task hide-from ID --revision N --list L (one Task in several Lists: the same Task in each; hide-from its own List makes the next List its own); \
     list create --name N [--parent ID]; list move ID --revision N (--parent ID | --top); \
     list reorder ID --revision N (--after ID | --first) [--parent ID | --top]; \
     list|folder style ID --revision N [--icon NAME|none] [--color NAME|none]; style options; \
@@ -204,6 +205,8 @@ fn task_command(store: &TaskStore, verb: &str, words: &[String]) -> Result<Value
         "details" => task_details(store, words)?,
         "move" => task_move(store, words)?,
         "reorder" => task_reorder(store, words)?,
+        "show-in" => task_also_in(store, words, true)?,
+        "hide-from" => task_also_in(store, words, false)?,
         "remove" | "restore" => {
             let p = parse(words, &flags(&["revision"], 1))?;
             store.set_task_removed(SetRemoved {
@@ -365,7 +368,7 @@ fn task_reorder(store: &TaskStore, words: &[String]) -> Result<Task, CliError> {
     let p = parse(
         words,
         &Spec {
-            values: &["revision", "after"],
+            values: &["revision", "after", "list"],
             repeated: &[],
             switches: &["first"],
             positionals: 1,
@@ -381,7 +384,25 @@ fn task_reorder(store: &TaskStore, words: &[String]) -> Result<Task, CliError> {
         )?,
         before_id: None,
         shown_sort: None,
+        // In a List it is also shown in, that List's Custom Order (batch 4).
+        list_id: p.value("list").map(str::to_owned),
     })?)
+}
+
+/// `task show-in ID --revision N --list L` shows the Task in one more List;
+/// `task hide-from` takes it out of one and leaves it in the others (batch 4).
+fn task_also_in(store: &TaskStore, words: &[String], show: bool) -> Result<Task, CliError> {
+    let p = parse(words, &flags(&["revision", "list"], 1))?;
+    let input = ShowTaskIn {
+        id: p.id().to_owned(),
+        expected_revision: p.revision()?,
+        list_id: p.required("list")?.to_owned(),
+    };
+    Ok(if show {
+        store.show_task_in(input)?
+    } else {
+        store.hide_task_from(input)?
+    })
 }
 
 fn task_history(store: &TaskStore, words: &[String]) -> Result<Value, CliError> {

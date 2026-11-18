@@ -83,6 +83,7 @@ macro_rules! note_visible {
 }
 
 pub mod ai_access;
+pub mod also_in;
 pub mod audit;
 pub mod backup;
 pub mod bulk;

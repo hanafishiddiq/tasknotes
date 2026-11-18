@@ -187,6 +187,8 @@ pub fn task(task: &Task) -> Value {
         // The checklist: how many items are done, of how many (batch 4).
         "subtasks_done": task.subtasks_done,
         "subtasks_total": task.subtasks_total,
+        // The Lists it is also shown in besides list_id (batch 4).
+        "also_in": task.also_in,
     })
 }
 

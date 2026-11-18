@@ -757,6 +757,7 @@ fn upgrading_keeps_each_lists_custom_order_and_remembered_sort() {
             after_id: Some(one.id.clone()),
             before_id: None,
             shown_sort: None,
+            list_id: None,
         })
         .unwrap();
     store

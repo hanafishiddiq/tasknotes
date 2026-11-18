@@ -607,8 +607,27 @@ impl TaskStore {
             require_active_list(tx, id)?;
         }
         let now = current_millis()?;
-        // It lands at the top of its group in the new List's Custom Order.
-        let position = crate::custom_order::top(tx, input.list_id.as_deref())?;
+        // Moved into a List it was also shown in: that List is now its own,
+        // and keeps the place it had there (batch 4).
+        let kept: Option<i64> = match input.list_id.as_deref() {
+            Some(list) => tx
+                .query_row(
+                    "SELECT position FROM task_list_links
+                     WHERE task_id = ?1 AND list_id = ?2 AND unlinked_at IS NULL",
+                    params![old.id, list],
+                    |row| row.get(0),
+                )
+                .optional()?,
+            None => None,
+        };
+        if let Some(list) = input.list_id.as_deref() {
+            crate::also_in::forget_link(tx, &old.id, list)?;
+        }
+        // Otherwise it lands at the top of its group in the new List's Custom Order.
+        let position = match kept {
+            Some(position) => position,
+            None => crate::custom_order::top(tx, input.list_id.as_deref())?,
+        };
         let updated = tx.query_row(
             &format!(
                 "UPDATE tasks SET list_id=?1,revision=revision+1,

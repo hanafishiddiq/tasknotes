@@ -14,6 +14,7 @@ use tasknotes_core::removed::{RemovedPage, SetRemoved};
 use tasknotes_core::style::SetStyle;
 use tasknotes_core::subtasks::{AddSubtask, MoveSubtask, Subtask, UpdateSubtask};
 use tasknotes_core::task_images::{AddTaskImage, TaskImage};
+use tasknotes_core::tasks::ShowTaskIn;
 use tasknotes_core::tasks::{
     ChangeTask, CreateList, CreateSubList, CreateTask, DifficultyFilter, List, ListPage, MoveList,
     MoveTask, PlaceList, Priority, ProgressSequencePage, RecordProgress, RenameList, ReorderList,
@@ -246,6 +247,20 @@ fn set_view_sort(store: State<'_, TaskStore>, input: ViewSort) -> Result<(), Str
 #[tauri::command]
 fn move_task(store: State<'_, TaskStore>, input: MoveTask) -> Result<Task, String> {
     store.move_task(input).map_err(|error| error.to_string())
+}
+
+/// Shows a Task in one more List (batch 4): the same Task in each.
+#[tauri::command]
+fn show_task_in(store: State<'_, TaskStore>, input: ShowTaskIn) -> Result<Task, String> {
+    store.show_task_in(input).map_err(|error| error.to_string())
+}
+
+/// Takes a Task out of one List and leaves it in the others.
+#[tauri::command]
+fn hide_task_from(store: State<'_, TaskStore>, input: ShowTaskIn) -> Result<Task, String> {
+    store
+        .hide_task_from(input)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -689,6 +704,8 @@ pub fn run() {
             move_subtask,
             remove_subtask,
             restore_subtask,
+            show_task_in,
+            hide_task_from,
             add_task_image,
             read_task_image,
             restore_link,

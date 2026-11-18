@@ -83,6 +83,7 @@ fn reorder(
         after_id: after.map(|t| t.id.clone()),
         before_id: before.map(|t| t.id.clone()),
         shown_sort: shown,
+        list_id: None,
     })
 }
 
@@ -204,6 +205,7 @@ fn a_stale_revision_is_refused_and_recorded_and_an_applied_move_is_audited() {
             after_id: Some(one.id.clone()),
             before_id: None,
             shown_sort: None,
+            list_id: None,
         })
         .unwrap_err();
     assert_eq!(stale.code(), "revision_conflict");
@@ -215,6 +217,7 @@ fn a_stale_revision_is_refused_and_recorded_and_an_applied_move_is_audited() {
             after_id: Some(one.id.clone()),
             before_id: None,
             shown_sort: None,
+            list_id: None,
         })
         .unwrap();
     let entries = desktop.list_audit_entries(Some(&two.id), 10, None).unwrap();

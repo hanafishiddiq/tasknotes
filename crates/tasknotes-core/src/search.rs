@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use rusqlite::{Transaction, params_from_iter, types::Value};
+use rusqlite::{Transaction, params, params_from_iter, types::Value};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -68,9 +68,14 @@ const fn rank_expr(sort: SortMode) -> &'static str {
 /// and the start of a Custom Order from the order on screen both read this,
 /// so the two cannot drift apart.
 pub(crate) fn ranked(sort: SortMode, columns: &str, filter: &str) -> String {
+    ranked_by(rank_expr(sort), columns, filter)
+}
+
+/// `ranked` with the sort's rank given as SQL: in one List's Custom Order a
+/// Task also shown there ranks by its place in that List (batch 4).
+pub(crate) fn ranked_by(rank: &str, columns: &str, filter: &str) -> String {
     format!(
-        "SELECT {columns}, {STATUS_RANK} AS status_rank, {} AS sort_rank FROM tasks WHERE {filter}",
-        rank_expr(sort)
+        "SELECT {columns}, {STATUS_RANK} AS status_rank, {rank} AS sort_rank FROM tasks WHERE {filter}"
     )
 }
 
@@ -229,6 +234,16 @@ impl TaskStore {
             " AND tasks.status IN ('ready', 'in_progress') GROUP BY tasks.list_id"
         ))?;
         let mut counts = UnfinishedCounts::default();
+        // A Task also shown in a List counts there too, and once in All tasks.
+        let mut also = conn.prepare(concat!(
+            "SELECT k.list_id, COUNT(*) FROM task_list_links k JOIN tasks ON tasks.id = k.task_id
+             WHERE k.unlinked_at IS NULL AND tasks.list_id IS NOT k.list_id AND ",
+            task_visible!("tasks"),
+            " AND tasks.status IN ('ready', 'in_progress') GROUP BY k.list_id"
+        ))?;
+        let also: Vec<(String, i64)> = also
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .collect::<Result<_, _>>()?;
         let mut rows = stmt.query([])?;
         while let Some(row) = rows.next()? {
             let count: i64 = row.get(1)?;
@@ -239,6 +254,9 @@ impl TaskStore {
                     counts.lists.insert(list_id, count);
                 }
             }
+        }
+        for (list_id, count) in also {
+            *counts.lists.entry(list_id).or_default() += count;
         }
         Ok(counts)
     }
@@ -252,8 +270,9 @@ impl TaskStore {
             .as_deref()
             .map(|tag| crate::organization::tag_fold(tag.trim()));
         let mut values = Vec::new();
-        let filters = where_filters(query, terms, tag_fold, &mut values);
         let conn = self.connect()?;
+        let also = shows_others(&conn, &query.view)?;
+        let filters = where_filters(query, terms, tag_fold, also, &mut values);
         if let (TaskScope::Active, TaskView::List(id)) = (query.scope, &query.view) {
             crate::organization::require_active_list(&conn, id)?;
         }
@@ -309,9 +328,10 @@ impl TaskStore {
             .map(|value| parse_cursor(value, &key, sort))
             .transpose()?;
 
-        let (sql, values) = page_sql(query, terms, tag_fold, after.as_ref(), limit);
-
         let conn = self.connect()?;
+        let also = shows_others(&conn, &query.view)?;
+        let (sql, values) = page_sql(query, terms, tag_fold, also, after.as_ref(), limit);
+
         if let (TaskScope::Active, TaskView::List(id)) = (query.scope, &query.view) {
             crate::organization::require_active_list(&conn, id)?;
         }
@@ -355,10 +375,23 @@ impl TaskStore {
 /// The filters every Task query applies (scope, view, fields, words), each
 /// binding its values into `values`: a page and a count share them, so the
 /// two cannot drift apart.
+/// Whether the List `view` names shows a Task of another List (batch 4).
+fn shows_others(conn: &rusqlite::Connection, view: &TaskView) -> Result<bool, TaskError> {
+    let TaskView::List(id) = view else {
+        return Ok(false);
+    };
+    Ok(conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM task_list_links WHERE list_id = ?1 AND unlinked_at IS NULL)",
+        params![id],
+        |row| row.get(0),
+    )?)
+}
+
 fn where_filters(
     query: &TaskQuery,
     terms: Vec<String>,
     tag_fold: Option<String>,
+    also: bool,
     values: &mut Vec<Value>,
 ) -> Vec<String> {
     let mut bind = |value: Value| {
@@ -372,8 +405,15 @@ fn where_filters(
     match &query.view {
         TaskView::All => {}
         TaskView::Inbox => filters.push("tasks.list_id IS NULL".to_owned()),
+        // Its own List, or one it is also shown in (batch 4). A List that
+        // shows no other List's Task keeps the plain filter its index serves.
         TaskView::List(id) => {
-            filters.push(format!("tasks.list_id = {}", bind(Value::Text(id.clone()))))
+            let list = bind(Value::Text(id.clone()));
+            filters.push(if also {
+                crate::also_in::in_list_sql("tasks", &list)
+            } else {
+                format!("tasks.list_id = {list}")
+            });
         }
     }
     if let Some(id) = &query.task_id {
@@ -428,12 +468,13 @@ fn page_sql(
     query: &TaskQuery,
     terms: Vec<String>,
     tag_fold: Option<String>,
+    also: bool,
     after: Option<&After>,
     limit: u32,
 ) -> (String, Vec<Value>) {
     let sort = query.sort;
     let mut values: Vec<Value> = Vec::new();
-    let filters = where_filters(query, terms, tag_fold, &mut values);
+    let filters = where_filters(query, terms, tag_fold, also, &mut values);
     let mut bind = |value: Value| {
         values.push(value);
         format!("?{}", values.len())
@@ -470,6 +511,13 @@ fn page_sql(
             }
         }
     };
+    let rank = match (&query.view, sort) {
+        (TaskView::List(id), SortMode::Custom) if also => {
+            let list = bind(Value::Text(id.clone()));
+            crate::also_in::position_in_sql("tasks", &list)
+        }
+        _ => rank_expr(sort).to_owned(),
+    };
     let page_size = bind(Value::Integer(i64::from(limit) + 1));
     let sql = format!(
         "WITH ranked AS ({})
@@ -477,7 +525,7 @@ fn page_sql(
          WHERE {cursor_filter}
          ORDER BY {}
          LIMIT {page_size}",
-        ranked(sort, COLUMNS, &filters.join(" AND ")),
+        ranked_by(&rank, COLUMNS, &filters.join(" AND ")),
         order_by(sort)
     );
     (sql, values)
@@ -537,7 +585,7 @@ mod difficulty_rank_tests {
                 sort: SortMode::Difficulty,
                 ..TaskQuery::default()
             };
-            let (sql, values) = page_sql(&query, Vec::new(), None, after.as_ref(), 50);
+            let (sql, values) = page_sql(&query, Vec::new(), None, false, after.as_ref(), 50);
             let mut statement = conn.prepare(&format!("EXPLAIN QUERY PLAN {sql}")).unwrap();
             let plan: Vec<String> = statement
                 .query_map(params_from_iter(values), |row| row.get::<_, String>(3))
@@ -571,7 +619,7 @@ mod difficulty_rank_tests {
                     view: view.clone(),
                     ..TaskQuery::default()
                 };
-                let (sql, values) = page_sql(&query, Vec::new(), None, after.as_ref(), 50);
+                let (sql, values) = page_sql(&query, Vec::new(), None, false, after.as_ref(), 50);
                 let mut statement = conn.prepare(&format!("EXPLAIN QUERY PLAN {sql}")).unwrap();
                 let plan: Vec<String> = statement
                     .query_map(params_from_iter(values), |row| row.get::<_, String>(3))

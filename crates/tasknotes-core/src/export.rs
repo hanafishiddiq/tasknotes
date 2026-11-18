@@ -153,6 +153,8 @@ struct TaskRecord {
     created_at: i64,
     updated_at: i64,
     removed: bool,
+    /// The Lists it is also shown in besides `list_id` (batch 4).
+    also_in: Vec<String>,
     progress_entries: Vec<ProgressRecord>,
     /// The checklist in its order, Removed items too (marked `removed`).
     subtasks: Vec<SubtaskRecord>,
@@ -327,6 +329,7 @@ impl TaskStore {
         // Bounded statements, well below SQLite's variable limit.
         for chunk in tasks.chunks_mut(500) {
             crate::organization::hydrate_tags(conn, chunk)?;
+            crate::also_in::hydrate_also_in(conn, chunk)?;
         }
         let mut history: HashMap<String, Vec<ProgressRecord>> = HashMap::new();
         for (task_id, entry) in collect(
@@ -380,6 +383,7 @@ impl TaskStore {
             .map(|(task, position)| TaskRecord {
                 progress_entries: history.remove(&task.id).unwrap_or_default(),
                 subtasks: checklists.remove(&task.id).unwrap_or_default(),
+                also_in: task.also_in.clone(),
                 id: task.id,
                 title: task.title,
                 description: task.description,

@@ -752,3 +752,57 @@ fn custom_order_lists_one_list_and_moves_a_task_after_another_with_a_revision() 
     let usage = usage.json["error"]["message"].as_str().unwrap().to_owned();
     assert!(usage.contains("switches its List to Custom"), "{usage}");
 }
+
+#[test]
+fn one_task_is_shown_in_several_lists_through_the_cli() {
+    let cli = Cli::trusted();
+    let personal = cli.ok(&["list", "create", "--name", "Synthetic Personal"])["item"].clone();
+    let big = cli.ok(&["list", "create", "--name", "Synthetic Big Task"])["item"].clone();
+    let task = create(&cli, "Synthetic trip");
+    let moved = change_with(
+        &cli,
+        &task,
+        &["move"],
+        &["--list", personal["id"].as_str().unwrap()],
+    );
+    let shown = change_with(
+        &cli,
+        &moved,
+        &["show-in"],
+        &["--list", big["id"].as_str().unwrap()],
+    );
+    assert_eq!(shown["also_in"], serde_json::json!([big["id"]]));
+    let in_big = cli.ok(&["task", "list", "--list", big["id"].as_str().unwrap()]);
+    assert_eq!(in_big["items"][0]["id"], task["id"]);
+    let hidden = change_with(
+        &cli,
+        &shown,
+        &["hide-from"],
+        &["--list", big["id"].as_str().unwrap()],
+    );
+    assert_eq!(hidden["also_in"], serde_json::json!([]));
+    let only = cli.run(&[
+        "task",
+        "hide-from",
+        hidden["id"].as_str().unwrap(),
+        "--revision",
+        &hidden["revision"].to_string(),
+        "--list",
+        personal["id"].as_str().unwrap(),
+    ]);
+    assert_eq!(error_code(&only, 2), "invalid_input");
+}
+
+fn change_with(cli: &Cli, task: &Value, verb: &[&str], extra: &[&str]) -> Value {
+    let id = task["id"].as_str().unwrap().to_owned();
+    let revision = task["revision"].to_string();
+    let mut args = vec![
+        "task",
+        verb[0],
+        id.as_str(),
+        "--revision",
+        revision.as_str(),
+    ];
+    args.extend_from_slice(extra);
+    cli.ok(&args)["item"].clone()
+}
