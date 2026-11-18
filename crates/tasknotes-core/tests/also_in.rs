@@ -304,3 +304,37 @@ fn a_removed_list_takes_no_task_and_changes_are_audited() {
         "{actions:?}"
     );
 }
+
+#[test]
+fn a_list_in_removed_is_never_where_it_goes_nor_a_list_it_is_shown_in() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store_at(&dir.path().join("t.db"));
+    let personal = list(&store, "Synthetic Personal");
+    let big = list(&store, "Synthetic Big Task");
+    let trip = task_in(&store, "Synthetic trip", &personal);
+    show(&store, &trip, &big).unwrap();
+    let removed = store
+        .set_list_removed(tasknotes_core::tasks::SetListRemoved {
+            id: big.id.clone(),
+            expected_revision: big.revision,
+            removed: true,
+        })
+        .unwrap();
+    let trip = store.get_task(&trip.id).unwrap().unwrap();
+    assert!(trip.also_in.is_empty());
+    // Out of its own List it would vanish everywhere: refused.
+    assert_eq!(
+        hide(&store, &trip, &personal).unwrap_err().code(),
+        "invalid_input"
+    );
+    // Restored, the List shows it again.
+    store
+        .set_list_removed(tasknotes_core::tasks::SetListRemoved {
+            id: big.id.clone(),
+            expected_revision: removed.revision,
+            removed: false,
+        })
+        .unwrap();
+    let trip = store.get_task(&trip.id).unwrap().unwrap();
+    assert_eq!(trip.also_in, std::slice::from_ref(&big.id));
+}

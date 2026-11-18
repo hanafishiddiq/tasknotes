@@ -71,14 +71,18 @@ pub(crate) fn top_of(conn: &Connection, list_id: &str) -> Result<i64, TaskError>
     )?)
 }
 
-/// Fills each Task's `also_in`: the Lists it is also shown in, oldest first.
+/// Fills each Task's `also_in`: the shown Lists it is also in, oldest first.
 pub(crate) fn hydrate_also_in(conn: &Connection, tasks: &mut [Task]) -> Result<(), TaskError> {
     for chunk in tasks.chunks_mut(500) {
         let marks = vec!["?"; chunk.len()].join(", ");
+        // A List in Removed (or inside one) shows nothing, so it is left out
+        // until it is restored: never a chip, never the List it moves to.
         let mut stmt = conn.prepare(&format!(
             "SELECT task_id, list_id FROM task_list_links
              WHERE unlinked_at IS NULL AND task_id IN ({marks})
-             ORDER BY linked_at, list_id"
+               AND list_id NOT IN ({})
+             ORDER BY linked_at, list_id",
+            hidden_lists!()
         ))?;
         let ids: Vec<String> = chunk.iter().map(|task| task.id.clone()).collect();
         let rows = stmt
