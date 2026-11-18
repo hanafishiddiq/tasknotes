@@ -1,7 +1,7 @@
 import {
   useId, useLayoutEffect, useRef, type ButtonHTMLAttributes, type FormEvent, type KeyboardEvent,
 } from "react";
-import { CalendarDays, Check, Folder, LoaderCircle, Tag, Trash2 } from "lucide-react";
+import { CalendarDays, Check, Folder, ListChecks, LoaderCircle, Tag, Trash2 } from "lucide-react";
 import {
   checkActionOf,
   statusChoiceArgs,
@@ -15,6 +15,7 @@ import {
 } from "../lib/task-api";
 import TaskProgressHistory from "./TaskProgressHistory";
 import TaskLinkedNotes from "./TaskLinkedNotes";
+import TaskSubtasks from "./TaskSubtasks";
 import { useSeenOnScreen } from "../lib/use-seen-on-screen";
 import type { MenuPoint } from "./TaskContextMenu";
 
@@ -71,6 +72,8 @@ interface TaskRowProps {
   onOpenNote: (noteId: string) => void;
   /** Moves the Task to Removed; restoring it later brings back everything. */
   onRemove: () => Promise<void>;
+  /** The checklist changed on the open page: how many items are done, of how many. */
+  onSubtasksCounted?: (done: number, total: number) => void;
   /** The round check: completes, reopens or clears Won't Do, as `checkActionOf` says. */
   onCheck: () => Promise<void>;
   /** Another Task's save or a move is on its way: the check waits, rather than drop a click. */
@@ -168,6 +171,7 @@ export default function TaskRow({
   onUpdateDetails,
   onOpenNote,
   onRemove,
+  onSubtasksCounted,
   onCheck,
   checkHeld = false,
   shown,
@@ -360,6 +364,14 @@ export default function TaskRow({
           </span>
           {/* Won't Do keeps its progress, so the row shows it. */}
           {wontDo && <span className="wont-do-label">{WONT_DO_LABEL} · {task.progress}%</span>}
+          {/* The checklist's count; the Task's progress stays the person's own. */}
+          {(task.subtasksTotal ?? 0) > 0 && (
+            <span className={`subtask-count${task.subtasksDone === task.subtasksTotal ? " subtask-count--all" : ""}`}
+              role="img" aria-label={`${task.subtasksDone ?? 0} of ${task.subtasksTotal} subtasks done`}>
+              <ListChecks size={13} strokeWidth={2} aria-hidden="true" />
+              {task.subtasksDone ?? 0}/{task.subtasksTotal}
+            </span>
+          )}
           <span className={`priority-pill priority-pill--${task.priority}`}>
             <PriorityIcon size={13} strokeWidth={2} aria-hidden="true" />
             {PRIORITY_VIEW[task.priority].label}
@@ -471,6 +483,9 @@ export default function TaskRow({
               </div>
             )}
           </form>
+
+          <TaskSubtasks taskId={task.id} disabled={!canChangeSelectors}
+            onCounts={(done, total) => onSubtasksCounted?.(done, total)} />
 
           <div className="task-properties" role="group" aria-label="Task status and priority">
             <label className="property" htmlFor={`status-${task.id}`}>

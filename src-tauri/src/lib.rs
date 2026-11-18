@@ -12,6 +12,7 @@ use tasknotes_core::pomodoro::{HistoryRange, PomodoroHistoryPage, PomodoroTotals
 use tasknotes_core::privacy::SetNoteExcludeFromAi;
 use tasknotes_core::removed::{RemovedPage, SetRemoved};
 use tasknotes_core::style::SetStyle;
+use tasknotes_core::subtasks::{AddSubtask, MoveSubtask, Subtask, UpdateSubtask};
 use tasknotes_core::tasks::{
     ChangeTask, CreateList, CreateSubList, CreateTask, DifficultyFilter, List, ListPage, MoveList,
     MoveTask, PlaceList, Priority, ProgressSequencePage, RecordProgress, RenameList, ReorderList,
@@ -374,6 +375,53 @@ fn link_note(
         .map_err(|error| error.to_string())
 }
 
+/// A Task's checklist (batch 4), in its order.
+#[tauri::command]
+fn list_subtasks(store: State<'_, TaskStore>, task_id: String) -> Result<Vec<Subtask>, String> {
+    store
+        .list_subtasks(&task_id)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn add_subtask(store: State<'_, TaskStore>, input: AddSubtask) -> Result<Subtask, String> {
+    store.add_subtask(input).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn update_subtask(store: State<'_, TaskStore>, input: UpdateSubtask) -> Result<Subtask, String> {
+    store
+        .update_subtask(input)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn move_subtask(store: State<'_, TaskStore>, input: MoveSubtask) -> Result<Subtask, String> {
+    store.move_subtask(input).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn remove_subtask(
+    store: State<'_, TaskStore>,
+    id: String,
+    expected_revision: i64,
+) -> Result<Subtask, String> {
+    store
+        .remove_subtask(&id, expected_revision)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn restore_subtask(
+    store: State<'_, TaskStore>,
+    id: String,
+    expected_revision: i64,
+) -> Result<Subtask, String> {
+    store
+        .restore_subtask(&id, expected_revision)
+        .map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 fn unlink_note(store: State<'_, TaskStore>, link_id: String) -> Result<NoteLink, String> {
     store
@@ -594,6 +642,12 @@ pub fn run() {
             move_note_folder,
             link_note,
             unlink_note,
+            list_subtasks,
+            add_subtask,
+            update_subtask,
+            move_subtask,
+            remove_subtask,
+            restore_subtask,
             restore_link,
             list_task_notes,
             list_note_tasks,

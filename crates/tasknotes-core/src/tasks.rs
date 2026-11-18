@@ -129,6 +129,16 @@ pub enum TaskError {
     InvalidNoteFolderCursor,
     #[error("This link was not found or is already unlinked")]
     LinkNotFound,
+    #[error("Subtask not found")]
+    SubtaskNotFound,
+    #[error("A subtask needs some text")]
+    EmptySubtask,
+    #[error("A subtask must be 10,000 characters or fewer")]
+    SubtaskTooLong,
+    #[error("A Task holds at most 500 subtasks")]
+    TooManySubtasks,
+    #[error("This subtask already reads so")]
+    SubtaskUnchanged,
     #[error("Invalid Note Link page cursor")]
     InvalidLinkCursor,
     #[error("Invalid Audit Entry page cursor")]
@@ -262,7 +272,10 @@ impl TaskError {
             | InvalidBulkSelection
             | InvalidPomodoroDurations
             | InvalidPomodoroSession
-            | InvalidPomodoroRange => "invalid_input",
+            | InvalidPomodoroRange
+            | EmptySubtask
+            | SubtaskTooLong
+            | TooManySubtasks => "invalid_input",
             InvalidCursor
             | InvalidHistoryCursor
             | InvalidRemovedCursor
@@ -272,7 +285,7 @@ impl TaskError {
             | InvalidAuditCursor
             | InvalidListCursor => "invalid_cursor",
             NotFound | ListNotFound | NoteNotFound | NoteFolderNotFound | LinkNotFound
-            | BulkRequestNotFound => "not_found",
+            | SubtaskNotFound | BulkRequestNotFound => "not_found",
             RevisionConflict
             | NoteRevisionConflict
             | NoteFolderRevisionConflict
@@ -284,7 +297,7 @@ impl TaskError {
             ListNameConflict | NoteFolderNameConflict => "name_conflict",
             InvalidTransition(_) => "invalid_transition",
             TaskUnchanged | ListUnchanged | RemovedUnchanged | NoteFolderUnchanged
-            | BulkRequestDecided => "unchanged",
+            | SubtaskUnchanged | BulkRequestDecided => "unchanged",
             AuditUnrecorded(refusal) => refusal.code(),
             BulkItemRefused { error, .. } => error.code(),
             StalePreview | PreviewExpired => "stale_preview",
@@ -543,6 +556,12 @@ pub struct Task {
     pub updated_at: i64,
     /// In Removed (ADR-0002): a disposition beside the work status, never a deletion.
     pub removed: bool,
+    /// How many of the Task's checklist items are done, of how many
+    /// (batch 4): shown as "2/5". Read by `hydrate`, never stored.
+    #[serde(default)]
+    pub subtasks_done: u32,
+    #[serde(default)]
+    pub subtasks_total: u32,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -690,6 +709,7 @@ fn read_task_with_tags(conn: &Connection, id: &str) -> Result<Option<Task>, Task
 /// Completed, the work status it was completed from.
 pub(crate) fn hydrate(conn: &Connection, tasks: &mut [Task]) -> Result<(), TaskError> {
     crate::organization::hydrate_tags(conn, tasks)?;
+    crate::subtasks::hydrate_counts(conn, tasks)?;
     for task in tasks.iter_mut() {
         task.completed_from = completed_from(conn, task)?;
     }
@@ -947,6 +967,9 @@ pub(crate) fn read_task(row: &Row<'_>) -> rusqlite::Result<Task> {
         created_at: row.get(7)?,
         updated_at: row.get(8)?,
         removed: row.get::<_, Option<i64>>(12)?.is_some(),
+        // Not columns: `hydrate` counts them.
+        subtasks_done: 0,
+        subtasks_total: 0,
     })
 }
 
@@ -962,7 +985,7 @@ const WONT_DO_FROM_COLUMN: usize = 15;
 pub(crate) const COLUMN_COUNT: usize = 16;
 
 /// The database schema this core reads and writes.
-pub const SCHEMA_VERSION: i64 = 24;
+pub const SCHEMA_VERSION: i64 = 25;
 
 /// How long a write waits for another process (the CLI, MCP) holding the database lock.
 pub const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -1213,6 +1236,11 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), TaskError> {
         crate::pomodoro::migrate_v24(&migration)?;
         migration.commit()?;
     }
+    if version < 25 {
+        let migration = connection.transaction()?;
+        crate::subtasks::migrate_v25(&migration)?;
+        migration.commit()?;
+    }
     Ok(())
 }
 
@@ -1416,6 +1444,8 @@ impl TaskStore {
             created_at: now,
             updated_at: now,
             removed: false,
+            subtasks_done: 0,
+            subtasks_total: 0,
         };
         tx.execute(
             "INSERT INTO tasks

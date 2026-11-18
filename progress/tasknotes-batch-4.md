@@ -51,6 +51,13 @@ Keputusan Han (2026-11-18), Han minta lanjut terus sampai selesai satu per satu:
   - [x] Review: kode benar di semua jalur; dokumen yang masih memuat aturan lama (DESIGN.md, ADR 0006, ADR 0008) diperbarui
   - [ ] Draft PR #59, CI hijau
 - [ ] Subtask
+  - [x] Han: checklist sederhana, batas karakter sangat panjang; baris Task menampilkan 2/5, persen tetap manual (2026-11-18)
+  - [x] Inti (Rust) dengan TDD: tabel baru (skema v25), tambah/ubah/centang/pindah/hapus/kembalikan, audit dan cek revisi, maks 500 per Task, 10.000 karakter; ikut ekspor JSON dan Markdown
+  - [x] CLI `subtask …` dan alat MCP `subtask_*`, dengan tes
+  - [x] Tampilan dengan TDD: checklist di Task yang dibuka, angka 2/5 di baris; dicek di halaman uji
+  - [x] GLOSSARY, ADR 0011, DESIGN.md
+  - [x] Review dua sumbu; diperbaiki: edit lalu centang/pindah tidak lagi bentrok revisi (aksi berurutan), item terhapus tidak bisa diedit, restore wajib menyebut revisi, kolom tambah bisa banyak baris, teks panjang menyesuaikan lebar jendela
+  - [ ] Draft PR #61, CI hijau
 - [ ] Notes milik Task (catatan di dalam Task) bisa menyimpan gambar
 - [ ] Satu Task bisa muncul di beberapa List sekaligus, identik (selesai di satu = selesai di semua)
 - [ ] Kalimat pertama Note otomatis jadi judul bergaya heading (tebal dan lebih besar)

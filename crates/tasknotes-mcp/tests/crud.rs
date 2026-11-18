@@ -928,3 +928,55 @@ fn tasks_read_and_move_in_custom_order_with_a_revision_check() {
             .any(|entry| entry["action"] == "task.reorder" && entry["outcome"] == "applied")
     );
 }
+
+#[test]
+fn a_tasks_checklist_round_trips_through_mcp() {
+    let data = Data::trusted();
+    let mut s = data.server();
+    let task = s.ok("task_create", json!({"title": "Synthetic launch"}));
+    let t = id(&task);
+    let first = s.ok(
+        "subtask_add",
+        json!({"task_id": t, "text": "Write the notes"}),
+    );
+    let second = s.ok(
+        "subtask_add",
+        json!({"task_id": t, "text": "Send the invites"}),
+    );
+    let done = s.ok(
+        "subtask_update",
+        json!({"id": id(&first), "revision": rev(&first), "done": true}),
+    );
+    assert_eq!(done["item"]["done"], true);
+    let read = s.ok("task_get", json!({"id": t}));
+    assert_eq!(read["item"]["subtasks_done"], 1);
+    assert_eq!(read["item"]["subtasks_total"], 2);
+
+    s.ok(
+        "subtask_move",
+        json!({"id": id(&second), "revision": rev(&second), "index": 0}),
+    );
+    let list = s.ok("subtask_list", json!({"task_id": t}));
+    assert_eq!(list["items"][0]["text"], "Send the invites");
+
+    let gone = s.ok(
+        "subtask_remove",
+        json!({"id": id(&done), "revision": rev(&done)}),
+    );
+    assert_eq!(gone["item"]["removed"], true);
+    let back = s.ok(
+        "subtask_restore",
+        json!({"id": id(&gone), "revision": rev(&gone)}),
+    );
+    assert_eq!(back["item"]["removed"], false);
+    s.refused(
+        "subtask_update",
+        json!({"id": id(&back), "revision": 1, "text": "Stale"}),
+        "revision_conflict",
+    );
+    s.refused(
+        "subtask_add",
+        json!({"task_id": t, "text": " "}),
+        "invalid_input",
+    );
+}

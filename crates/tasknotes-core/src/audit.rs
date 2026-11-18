@@ -103,6 +103,11 @@ actions! {
     LinkCreate => "link.create",
     LinkRemove => "link.remove",
     LinkRestore => "link.restore",
+    SubtaskCreate => "subtask.create",
+    SubtaskUpdate => "subtask.update",
+    SubtaskMove => "subtask.move",
+    SubtaskRemove => "subtask.remove",
+    SubtaskRestore => "subtask.restore",
     BulkRequest => "bulk.request",
     BulkApprove => "bulk.approve",
     BulkDecline => "bulk.decline",
@@ -126,6 +131,9 @@ impl AuditAction {
             FolderCreate | FolderRename | FolderMove | FolderReorder | FolderStyle
             | FolderRemove | FolderRestore => "note_folders",
             LinkCreate | LinkRemove | LinkRestore => "task_note_links",
+            SubtaskCreate | SubtaskUpdate | SubtaskMove | SubtaskRemove | SubtaskRestore => {
+                "task_subtasks"
+            }
             BulkRequest | BulkApprove | BulkDecline => "bulk_requests",
             PomodoroRecord => "pomodoro_sessions",
             BackupRestore => return None,
@@ -343,6 +351,9 @@ revisioned!(
     crate::note_folders::MoveNoteFolder,
     crate::note_folders::ReorderNoteFolder,
     crate::style::SetStyle,
+    crate::subtasks::UpdateSubtask,
+    crate::subtasks::MoveSubtask,
+    crate::subtasks::SetSubtaskRemoved,
 );
 
 impl Revisioned for crate::notes::MoveNote {

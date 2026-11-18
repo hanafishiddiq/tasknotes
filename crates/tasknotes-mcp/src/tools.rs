@@ -74,6 +74,7 @@ pub fn all() -> Vec<ToolDef> {
     tools.extend(crate::tools_note::tools());
     tools.extend(crate::tools_bulk::tools());
     tools.extend(crate::tools_pomodoro::tools());
+    tools.extend(crate::tools_subtask::tools());
     tools
 }
 

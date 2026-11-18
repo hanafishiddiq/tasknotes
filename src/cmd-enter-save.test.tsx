@@ -41,7 +41,8 @@ const commandReturn = "{Meta>}{Enter}{/Meta}";
 
 beforeEach(() => {
   call.mockReset();
-  call.mockResolvedValue({ items: [], nextCursor: null });
+  // Every page reads empty; the open Task's checklist is a plain list.
+  call.mockImplementation(async (command) => (command === "list_subtasks" ? [] : { items: [], nextCursor: null }));
   for (const save of [onSave, onChange, onRecordProgress, onUpdateDetails]) save.mockClear();
 });
 afterEach(cleanup);

@@ -112,6 +112,9 @@ export interface Task {
   revision: number;
   createdAt: number;
   updatedAt: number;
+  /** How many checklist items are done, of how many (batch 4); the core counts them. */
+  subtasksDone?: number;
+  subtasksTotal?: number;
 }
 
 export interface TaskPage {
