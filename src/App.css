@@ -12,6 +12,8 @@
   --text-2: #b2b2b7;
   --text-3: #98989d;
   --accent: #ffd60a;
+  /* The typing caret in a Note: the accent a little darker, so it does not glare. */
+  --caret: #d2b10e;
   --accent-text: #ffd60a;
   --accent-ink: #1e1e1e;
   --red: #ff6b61;
@@ -55,6 +57,7 @@
   --text-2: #55555a;
   --text-3: #68686d;
   --accent: #b58500;
+  --caret: #b58500;
   --accent-text: #7f5b00;
   --accent-ink: #1d1d1f;
   --red: #d1281c;
@@ -2351,7 +2354,7 @@ button.task-check::before {
   color: var(--text);
   font-size: 15px;
   line-height: 1.55;
-  caret-color: var(--accent);
+  caret-color: var(--caret);
   outline: none;
 }
 .note-placeholder {
