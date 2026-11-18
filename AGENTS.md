@@ -29,7 +29,7 @@ Apply `/codebase-design`: concentrate behavior behind deep modules with small, e
 ## Invariants
 
 - Keep Task Work Status (In Progress / Ready / Completed) distinct from reversible Removed disposition.
-- For active items, maintain In Progress → Ready → Completed as the fixed display group order. A started Task remains In Progress while idle; Ready is for not-yet-started work.
+- For active items, maintain In Progress → Ready → Completed as the fixed display group order. A started Task remains In Progress while idle; only the person's explicit choice sets it back to Ready, keeping its progress (ADR 0006 addendum, 2026-11-18).
 - Desktop UI, CLI, and MCP must share the same application-level invariants and write operations.
 - AI-facing interfaces must never disclose notes marked Exclude from AI.
 - Use revision checks and transactions to protect against concurrent edits.

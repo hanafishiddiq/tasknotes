@@ -55,9 +55,10 @@ function applyChange(item: Stored, input: ChangeInput): Stored {
     return { ...next, ...open, status: "in_progress", progress, previousIncomplete: progress };
   }
   if (input.status === "ready") {
-    const notStarted = item.status === "ready" || item.completedFrom === "ready";
-    if (!notStarted || (input.progress ?? 0) !== 0) throw "Ready is only available for work that has not started";
-    return { ...next, ...open, status: "ready", progress: 0 };
+    // Any Task may be set back to Ready, keeping its progress (2026-11-18).
+    const finished = item.status === "completed" && !item.wontDo;
+    const progress = input.progress ?? (finished ? item.previousIncomplete : item.progress);
+    return { ...next, ...open, status: "ready", progress };
   }
   throw "Unexpected change: " + JSON.stringify(input);
 }
@@ -483,13 +484,16 @@ describe("reopening returns a Task to the work status it was completed from (Q48
     expect(changes).toEqual([{ id: "old", expectedRevision: 1, status: "in_progress" }]);
   });
 
-  it("opens Ready in the status control to a Task completed from Ready only", async () => {
+  it("opens Ready in the status control to any Completed Task, at the progress it had", async () => {
     const user = userEvent.setup();
     render(<App />);
     await user.click(await screen.findByRole("button", { name: "Open Synthetic finished" }));
     const readyOption = () => within(screen.getByRole("combobox", { name: "Work status" }))
       .getByRole("option", { name: "Ready" }) as HTMLOptionElement;
-    expect(readyOption().disabled).toBe(true);
+    // Completed from In Progress: Ready is offered too (2026-11-18), at its 70%.
+    expect(readyOption().disabled).toBe(false);
+    await user.selectOptions(screen.getByRole("combobox", { name: "Work status" }), "ready");
+    await waitFor(() => expect(saved[2]).toMatchObject({ status: "ready", progress: 70 }));
     await user.click(screen.getByRole("button", { name: "Close Synthetic finished" }));
 
     await user.click(within(row("Synthetic idea")).getByRole("button", { name: "Complete “Synthetic idea”" }));

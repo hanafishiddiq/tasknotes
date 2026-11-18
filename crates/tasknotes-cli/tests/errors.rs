@@ -132,6 +132,8 @@ fn rule_refusals_use_their_own_codes() {
         "2",
         "--status",
         "ready",
+        "--progress",
+        "100",
     ]);
     assert_eq!(error_code(&run, 5), "invalid_transition");
 }

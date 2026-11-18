@@ -342,7 +342,8 @@ export default function TaskRow({
         >
           <span className="task-row-title">{task.title}</span>
           <span className="task-row-subtitle">
-            {task.status === "in_progress" && (
+            {/* A Task set back to Ready keeps its progress, so the row shows it too. */}
+            {(task.status === "in_progress" || (task.status === "ready" && task.progress > 0)) && (
               <span className="progress-readout" aria-label={`Progress ${task.progress}%`}>
                 {task.progress}%
               </span>

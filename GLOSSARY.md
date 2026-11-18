@@ -18,11 +18,11 @@ _Avoid_: Child task, subtask.
 The default list for tasks that have not been organized into another list. Inbox always stays at the top level and never contains other Lists.
 
 **Ready**:
-A Task that has not started in its present work cycle.
+A Task that is not being worked on: not yet started, or set back by the person to start later, when it keeps the progress it had (ADR 0006). Nothing moves a Task to Ready on its own.
 _Avoid_: Paused, Pending.
 
 **In Progress**:
-A Task that has been started but is not yet Completed, including when temporarily inactive.
+A Task that has been started but is not yet Completed, including when temporarily inactive, until the person sets it back to Ready.
 
 **Completed**:
 A task marked finished; its progress is 100%, unless it is Won't Do.

@@ -81,6 +81,7 @@ Stage: planning approved, specification and tickets published; implementation no
 - **Q48 accepted:** Test at the shared Rust application-core interface, CLI/MCP process contracts, and real macOS Tauri end-to-end level. Include privacy, optimistic concurrency, backup/recovery, performance, and accessibility.
 - **Q49 accepted:** Proposed 18 vertical tickets and the dependency graph in `docs/planning/TICKETS-PROPOSAL.md` are approved in principle. Publishing final issue files waits until the remaining task-state semantics are settled.
 - **Q46 accepted:** Ready means a Task that has not started; once work begins, the Task remains In Progress with its saved progress even during inactivity or a temporary pause. Neither inactivity nor closing/reopening Tasknotes automatically moves it to Ready. Do not add a Paused work status. Any explicit future "start over" operation must be deliberate and preserve historical Progress Entries; no implicit reset or data loss is authorized.
+  - **Amended 2026-11-18 (batch 4, owner):** the person may now set any Task back to Ready explicitly, keeping its progress; nothing does so automatically. See ADR 0006, addendum 2026-11-18.
 
 ## Planning completion and implementation constraints
 

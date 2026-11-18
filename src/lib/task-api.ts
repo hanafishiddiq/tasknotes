@@ -240,8 +240,8 @@ export function checkActionOf(task: Pick<Task, "status" | "wontDo">): CheckActio
 
 /**
  * What the core is sent for a check action. Reopening returns the Task to the
- * work status it was completed from, as the core names it (Q48): Ready at 0%, or
- * In Progress at the progress it had. Without that history, In Progress.
+ * work status it was completed from, as the core names it (Q48), at the progress
+ * it had before. Without that history, In Progress.
  */
 export function checkActionArgs(action: CheckAction, task: Pick<Task, "completedFrom">): TaskChange {
   return action === "clear_wont_do" ? { wontDo: false }

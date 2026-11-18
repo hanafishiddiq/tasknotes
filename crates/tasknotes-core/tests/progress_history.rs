@@ -246,8 +246,9 @@ fn invalid_progress_or_stale_revision_cannot_write_task_or_history() {
         RecordProgress {
             id: original.id.clone(),
             expected_revision: saved.revision,
+            // Ready keeps progress (2026-11-18) but never 100%.
             status: Some(WorkStatus::Ready),
-            progress: None,
+            progress: Some(100),
             next_step: None,
             note: Some("Reset".into()),
         },

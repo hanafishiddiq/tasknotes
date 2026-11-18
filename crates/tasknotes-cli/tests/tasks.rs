@@ -630,22 +630,18 @@ fn reopening_returns_a_task_to_the_status_it_was_completed_from_through_the_cli(
     let started = change(&create(&cli, "Synthetic draft"), &["--progress", "40"]);
     let done = change(&started, &["--status", "completed"]);
     assert_eq!(done["completed_from"], "in_progress");
-    let refused = cli.run(&[
-        "task",
-        "change",
-        &id(&done),
-        "--revision",
-        &done["revision"].to_string(),
-        "--status",
-        "ready",
-    ]);
-    assert_eq!(error_code(&refused, 5), "invalid_transition");
     let reopened = change(&done, &["--status", "in_progress"]);
     assert_eq!(
         (&reopened["status"], &reopened["progress"]),
         (&Value::from("in_progress"), &Value::from(40))
     );
     assert!(reopened["completed_from"].is_null());
+    // Set back to Ready, it keeps its 40% (2026-11-18).
+    let ready = change(&reopened, &["--status", "ready"]);
+    assert_eq!(
+        (&ready["status"], &ready["progress"]),
+        (&Value::from("ready"), &Value::from(40))
+    );
 }
 
 fn titles(page: &Value) -> Vec<String> {

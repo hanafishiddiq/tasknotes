@@ -790,12 +790,12 @@ struct WorkState {
 
 /// The work a change leads to, under the transition rules every interface
 /// shares. Won't Do (ADR 0008) is a resolution of a Completed Task that keeps
-/// its progress. Reopening it, by status, progress or clearing it, treats the
-/// Task as the one it was before it was set aside (`wont_do_from`): a
-/// started Task stays In Progress even at 0% (ADR 0006), and only one that
-/// never started may go back to Ready. A normal Complete (100%) clears it.
-/// A finished Task is reopened the same way, as the one it was before it was
-/// completed (`completed_from`, Q48): Ready at 0% again if it never started.
+/// its progress. Reopening it, by progress or clearing it, treats the Task as
+/// the one it was before it was set aside (`wont_do_from`): a started Task
+/// stays In Progress even at 0% (ADR 0006). A normal Complete (100%) clears
+/// it. A finished Task is reopened the same way, as the one it was before it
+/// was completed (`completed_from`, Q48). Choosing Ready outright is always
+/// allowed and keeps the progress (ADR 0006 addendum, 2026-11-18).
 fn next_work_state(
     before: &Task,
     input: &ChangeTask,
@@ -855,16 +855,19 @@ fn next_work_state(
     if let Some(status) = input.status {
         match status {
             WorkStatus::Ready => {
-                let not_started = lifecycle == WorkStatus::Ready;
-                // Reopened to Ready: the work it never started is at 0% again.
-                if not_started && before.status == WorkStatus::Completed && input.progress.is_none()
-                {
-                    next_progress = 0;
-                }
-                if !not_started || next_progress != 0 {
+                // The person may set any Task back to Ready (2026-11-18), and
+                // it keeps its progress: a finished Task the incomplete
+                // progress it had, as when it is reopened In Progress.
+                if next_progress == 100 && input.progress.is_some() {
                     return Err(TaskError::InvalidTransition(
-                        "Ready is only available for work that has not started",
+                        "Ready cannot have 100% completion",
                     ));
+                }
+                if before.status == WorkStatus::Completed
+                    && !before.wont_do
+                    && input.progress.is_none()
+                {
+                    next_progress = previous_incomplete;
                 }
                 next_status = WorkStatus::Ready;
             }
@@ -1498,8 +1501,8 @@ impl TaskStore {
     /// Applies a status, priority, Difficulty or percentage change atomically under the same
     /// optimistic revision rules used by ordinary Task editing.
     ///
-    /// Ready means not yet started. An in-progress Task does not become Ready when
-    /// its percentage drops to zero; resetting previously started work is not implicit.
+    /// An in-progress Task does not become Ready when its percentage drops to
+    /// zero; only choosing Ready moves it there, keeping its progress.
     pub fn change_task(&self, input: ChangeTask) -> Result<Task, TaskError> {
         self.audited(AuditAction::TaskChange, input, |input| {
             self.apply_task_change(AuditAction::TaskChange, input, None, None)
