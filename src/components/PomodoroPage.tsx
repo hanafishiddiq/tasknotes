@@ -4,6 +4,7 @@ import { clock, type PomodoroCommand, type PomodoroView } from "../lib/pomodoro-
 import { runningTime } from "../lib/pomodoro-format";
 import { taskApi, type TaskList } from "../lib/task-api";
 import type { PomodoroControl } from "../lib/use-pomodoro";
+import NotificationsOffNote from "./NotificationsOffNote";
 import { useLocalCalendarDay } from "../lib/use-local-calendar-day";
 import { usePomodoroHistory } from "../lib/use-pomodoro-history";
 import PomodoroDayRail from "./PomodoroDayRail";
@@ -267,6 +268,7 @@ export default function PomodoroPage({ hidden, refreshKey, pomodoro, lists, know
                 onClick={() => void run(offer.second!.command)}>{offer.second.label}</button>
             )}
           </div>
+          <NotificationsOffNote pomodoro={pomodoro} />
           {view.saveError && (
             <div className="pomo-unsaved" role="alert">
               <p className="pomo-error">{view.saveError}</p>

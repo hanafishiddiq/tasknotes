@@ -2,7 +2,7 @@ import type { Backup } from "../lib/data-api";
 import type { PendingBulkRequest } from "../lib/approval-api";
 import type { LinkedNote, LinkedTask } from "../lib/link-api";
 import type { RemovedItem } from "../lib/removed-api";
-import type { PomodoroDay, PomodoroView } from "../lib/pomodoro-api";
+import type { NotificationPermission, PomodoroDay, PomodoroView } from "../lib/pomodoro-api";
 import type { QuickCaptureStatus, ShellView } from "../lib/shell-api";
 import type { ProgressEntry, Task, TaskList } from "../lib/task-api";
 import { NoteBackend } from "./note-backend";
@@ -80,6 +80,7 @@ export class World {
   pomodoroDays: PomodoroDay[] = [];
   /** The shell's timer, in the scenes that show it; elsewhere there is none. */
   pomodoroView: PomodoroView | null = null;
+  notificationPermission: NotificationPermission = "allowed";
   pending: PendingBulkRequest[] = [];
   backups: Backup[] = [fixtureBackup("daily", "daily"), fixtureBackup("manual", "manual", FIXTURE_NOW - DAY)];
   history: ProgressEntry[] = [];
@@ -157,6 +158,8 @@ export class World {
         finishedSessions: this.pomodoroDays.reduce((sum, day) => sum + day.finishedSessions, 0),
         focusMinutes: this.pomodoroDays.reduce((sum, day) => sum + day.focusMinutes, 0),
       };
+      case "notification_permission":
+      case "turn_on_notifications": return this.notificationPermission;
       case "pomodoro_state":
         if (!this.pomodoroView) throw new Error("Command pomodoro_state not found");
         return structuredClone(this.pomodoroView);

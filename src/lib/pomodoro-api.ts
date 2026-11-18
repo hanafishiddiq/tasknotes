@@ -132,6 +132,13 @@ export type PomodoroCommand =
   | { action: "retry_save" }
   | { action: "discard_unsaved" };
 
+/**
+ * Whether macOS lets Tasknotes show notifications. Without them Pomodoro
+ * still runs, but cannot say when a focus or break ends. "unknown" where it
+ * cannot be read (a development build, or macOS did not answer).
+ */
+export type NotificationPermission = "allowed" | "off" | "not_asked" | "unknown";
+
 export const pomodoroApi = {
   state: () => invoke<PomodoroView>("pomodoro_state"),
   /** The daily history, newest day first; `cursor` continues after an earlier page. */
@@ -148,6 +155,9 @@ export const pomodoroApi = {
   /** Whether the one-time notification-style tip is due now; given out once. */
   takeTip: () => invoke<boolean>("take_pomodoro_tip"),
   openNotificationSettings: () => invoke<void>("open_notification_settings"),
+  notificationPermission: () => invoke<NotificationPermission>("notification_permission"),
+  /** Asks macOS when it never asked, or opens System Settings once the person said no; answers what it is now. */
+  turnOnNotifications: () => invoke<NotificationPermission>("turn_on_notifications"),
 };
 
 export function listenForPomodoro(onChange: (changed: PomodoroChanged) => void): Promise<UnlistenFn> {

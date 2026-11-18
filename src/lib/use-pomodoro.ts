@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { errorMessage } from "./error-message";
 import {
-  listenForPomodoro, pomodoroApi, type PomodoroCommand, type PomodoroDurations, type PomodoroView,
+  listenForPomodoro, pomodoroApi, type NotificationPermission, type PomodoroCommand, type PomodoroDurations,
+  type PomodoroView,
 } from "./pomodoro-api";
 
 export interface PomodoroControl {
@@ -11,6 +12,11 @@ export interface PomodoroControl {
   error: string | null;
   /** The one-time notification-style tip is showing. */
   tip: boolean;
+  /** Notifications are off or never allowed: Pomodoro runs, but cannot say when a focus or break ends. */
+  notificationsOff: boolean;
+  /** Waiting for macOS (its prompt may sit unanswered); the button waits too. */
+  turningOn: boolean;
+  turnOnNotifications: () => Promise<void>;
   run: (command: PomodoroCommand) => Promise<void>;
   dismissTip: () => void;
   openNotificationSettings: () => Promise<void>;
@@ -39,6 +45,11 @@ export function usePomodoro({ onTaskChanged, onSessionStored }: Options): Pomodo
   const [error, setError] = useState<string | null>(null);
   const [tip, setTip] = useState(false);
   const tipAsked = useRef(false);
+  const [permission, setPermission] = useState<NotificationPermission>("unknown");
+  const notificationsOff = permission === "off" || permission === "not_asked";
+  const [turningOn, setTurningOn] = useState(false);
+  const offNow = useRef(notificationsOff);
+  offNow.current = notificationsOff;
   const taskChanged = useRef(onTaskChanged);
   taskChanged.current = onTaskChanged;
   const sessionStored = useRef(onSessionStored);
@@ -62,6 +73,35 @@ export function usePomodoro({ onTaskChanged, onSessionStored }: Options): Pomodo
     };
   }, []);
 
+  // Read on opening, and again whenever the window comes back to the front:
+  // the person may have just turned them on in System Settings.
+  useEffect(() => {
+    let active = true;
+    const read = () => {
+      pomodoroApi.notificationPermission()
+        .then((now) => { if (active) setPermission(now); })
+        .catch(() => {});
+    };
+    read();
+    window.addEventListener("focus", read);
+    return () => {
+      active = false;
+      window.removeEventListener("focus", read);
+    };
+  }, []);
+
+  const turnOnNotifications = useCallback(async () => {
+    setError(null);
+    setTurningOn(true);
+    try {
+      setPermission(await pomodoroApi.turnOnNotifications());
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setTurningOn(false);
+    }
+  }, []);
+
   const run = useCallback(async (command: PomodoroCommand) => {
     setError(null);
     try {
@@ -69,7 +109,9 @@ export function usePomodoro({ onTaskChanged, onSessionStored }: Options): Pomodo
     } catch (reason) {
       setError(errorMessage(reason));
     }
-    if ((command.action === "start_focus" || command.action === "start_next_focus") && !tipAsked.current) {
+    // The tip about the Persistent style waits until notifications are on at all.
+    if ((command.action === "start_focus" || command.action === "start_next_focus") && !tipAsked.current
+      && !offNow.current) {
       tipAsked.current = true;
       pomodoroApi.takeTip().then((due) => { if (due) setTip(true); }).catch(() => {});
     }
@@ -94,7 +136,7 @@ export function usePomodoro({ onTaskChanged, onSessionStored }: Options): Pomodo
   }, []);
 
   return {
-    view, error, tip, run, openNotificationSettings,
+    view, error, tip, run, openNotificationSettings, notificationsOff, turningOn, turnOnNotifications,
     setDurations: (durations) => save(() => pomodoroApi.setDurations(durations)),
     setSilent: (silent) => save(() => pomodoroApi.setSilent(silent)),
     dismissTip: () => setTip(false),

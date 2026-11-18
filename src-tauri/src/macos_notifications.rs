@@ -99,6 +99,42 @@ pub fn withdraw(kinds: &[Kind]) {
 #[cfg(not(target_os = "macos"))]
 pub fn withdraw(_kinds: &[Kind]) {}
 
+/// Whether macOS lets Tasknotes show notifications.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Permission {
+    Allowed,
+    /// The person said no, or turned them off in System Settings.
+    Off,
+    /// macOS has not asked the person yet.
+    NotAsked,
+}
+
+/// Whether Tasknotes may show notifications. `None` when it cannot be read:
+/// outside a bundled app (a development build) or when macOS does not answer
+/// in time. Waits for macOS, so call it off the main thread.
+#[cfg(target_os = "macos")]
+pub fn permission() -> Option<Permission> {
+    mac::permission()
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn permission() -> Option<Permission> {
+    None
+}
+
+/// Asks macOS to ask the person, when it never has, and waits for the answer
+/// (a person reading the prompt may take a while). Afterwards it reads the
+/// permission again, so a prompt left open still answers.
+#[cfg(target_os = "macos")]
+pub fn ask_permission() -> Option<Permission> {
+    mac::ask_permission()
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn ask_permission() -> Option<Permission> {
+    None
+}
+
 /// Whether notifications stay on screen until the person acts on them
 /// ("Persistent", the Alerts style). `None` when it cannot be read: outside a
 /// bundled app (a development build) or when macOS does not answer in time.
@@ -129,15 +165,15 @@ mod mac {
         NSString,
     };
     use objc2_user_notifications::{
-        UNAlertStyle, UNAuthorizationOptions, UNMutableNotificationContent, UNNotification,
-        UNNotificationAction, UNNotificationActionOptions, UNNotificationCategory,
+        UNAlertStyle, UNAuthorizationOptions, UNAuthorizationStatus, UNMutableNotificationContent,
+        UNNotification, UNNotificationAction, UNNotificationActionOptions, UNNotificationCategory,
         UNNotificationCategoryOptions, UNNotificationDefaultActionIdentifier,
         UNNotificationDismissActionIdentifier, UNNotificationPresentationOptions,
         UNNotificationRequest, UNNotificationResponse, UNNotificationSettings, UNNotificationSound,
         UNUserNotificationCenter, UNUserNotificationCenterDelegate,
     };
 
-    use super::{Click, Clicked, Kind, Post};
+    use super::{Click, Clicked, Kind, Permission, Post};
 
     /// The key of [`Post::tag`] in a notification's user info.
     const TAG_KEY: &str = "tasknotes.tag";
@@ -360,19 +396,45 @@ mod mac {
         center.removePendingNotificationRequestsWithIdentifiers(&identifiers);
     }
 
-    pub fn persistent() -> Option<bool> {
+    /// What macOS says about Tasknotes' notifications, read through `read`.
+    fn settings<T: Send + 'static>(read: fn(&UNNotificationSettings) -> T) -> Option<T> {
         let center = center()?;
         let (sender, receiver) = mpsc::channel();
         let handler = RcBlock::new(move |settings: NonNull<UNNotificationSettings>| {
             // SAFETY: macOS hands the handler a valid settings object for the call.
-            let style = unsafe { settings.as_ref() }.alertStyle();
-            let _ = sender.send(style);
+            let _ = sender.send(read(unsafe { settings.as_ref() }));
         });
         center.getNotificationSettingsWithCompletionHandler(&handler);
         // The handler runs on a queue of macOS's own, so waiting here is safe
-        // off the main thread (the command that calls this is async).
-        let style = receiver.recv_timeout(Duration::from_secs(2)).ok()?;
-        Some(style == UNAlertStyle::Alert)
+        // off the main thread (the commands that call this are async).
+        receiver.recv_timeout(Duration::from_secs(2)).ok()
+    }
+
+    pub fn persistent() -> Option<bool> {
+        settings(|settings| settings.alertStyle() == UNAlertStyle::Alert)
+    }
+
+    pub fn permission() -> Option<Permission> {
+        settings(|settings| match settings.authorizationStatus() {
+            UNAuthorizationStatus::NotDetermined => Permission::NotAsked,
+            UNAuthorizationStatus::Denied => Permission::Off,
+            _ => Permission::Allowed,
+        })
+    }
+
+    pub fn ask_permission() -> Option<Permission> {
+        let center = center()?;
+        let (sender, receiver) = mpsc::channel();
+        let asked = RcBlock::new(move |granted: Bool, _error: *mut NSError| {
+            ALLOWED.store(granted.as_bool(), Ordering::Relaxed);
+            let _ = sender.send(());
+        });
+        center.requestAuthorizationWithOptions_completionHandler(
+            UNAuthorizationOptions::Alert | UNAuthorizationOptions::Sound,
+            &asked,
+        );
+        let _ = receiver.recv_timeout(Duration::from_secs(120));
+        permission()
     }
 }
 
