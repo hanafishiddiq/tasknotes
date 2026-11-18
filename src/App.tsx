@@ -1092,6 +1092,21 @@ export default function App() {
     }));
   }
 
+  /** Shows a Task in one more List: the same Task there too (batch 4). */
+  async function showTaskIn(task: Task, listId: string) {
+    await commitTaskMutation(task, () => taskApi.showIn({ id: task.id, expectedRevision: task.revision, listId }));
+  }
+
+  /** Takes a Task out of one List; it stays in the others. */
+  async function hideTaskFrom(task: Task, listId: string) {
+    const hidden = await commitTaskMutation(task, () => taskApi.hideFrom({ id: task.id, expectedRevision: task.revision, listId }));
+    if (hidden && view.kind === "list" && view.listId === listId) setExpandedId(null);
+  }
+
+  /** The Lists a Task may also be shown in: not its own, nor one it is in already. */
+  const showInChoicesFor = (task: Task) => taskListOptions.filter((list) =>
+    list.id !== task.listId && !(task.alsoIn ?? []).includes(list.id));
+
   async function updateDetails(task: Task, tags: string[], dueDate: string | null, expectedRevision: number) {
     await saveEdits(task, () => taskApi.details({ id: task.id, expectedRevision, tags, dueDate }));
   }
@@ -1205,7 +1220,11 @@ export default function App() {
     setError(null);
     setTasks(placed);
     try {
-      const updated = await taskApi.reorder({ id: task.id, expectedRevision: task.revision, ...place, shownSort });
+      // In a List it is only also shown in, that List's own order (batch 4).
+      const alsoHere = shownView.kind === "list" && task.listId !== shownView.listId ? shownView.listId : undefined;
+      const updated = await taskApi.reorder({
+        id: task.id, expectedRevision: task.revision, ...place, shownSort, ...(alsoHere ? { listId: alsoHere } : {}),
+      });
       // Committed before this resolves, so the next key press reads the new revision.
       flushSync(() => setTasks((current) => current.map((item) => item.id === updated.id ? updated : item)));
       if (shownSort !== "custom") {
@@ -1690,6 +1709,9 @@ export default function App() {
                     checked={checked}
                     onCheckSettled={settleChecked}
                     onMoveBlocked={moveBlocked === null ? undefined : () => reorderNotice.show(moveBlocked)}
+                    onShowIn={(task, listId) => {
+                      if (listId !== task.listId && !(task.alsoIn ?? []).includes(listId)) void showTaskIn(task, listId);
+                    }}
                     renderTask={(task) => (
                       <TaskRow
                         task={task}
@@ -1705,6 +1727,9 @@ export default function App() {
                         onUpdateDetails={(tags, dueDate, base) => updateDetails(task, tags, dueDate, base)}
                         onOpenNote={openLinkedNote}
                         onRemove={() => removeTask(task)}
+                        viewListId={view.kind === "list" ? view.listId : null}
+                        onShowIn={(listId) => showTaskIn(task, listId)}
+                        onHideFrom={(listId) => hideTaskFrom(task, listId)}
                         onSubtasksCounted={(done, total) => countSubtasks(task.id, done, total)}
                         onCheck={() => checkTask(task)}
                         checkHeld={Boolean(savingId) || placingTask}
@@ -1771,6 +1796,8 @@ export default function App() {
             onOpenToggle={() => toggleTask(menuTask.id)}
             onStatus={(choice) => chooseStatusFromMenu(menuTask, choice)}
             onPriority={(priority) => void changeTask(menuTask, { priority }, menuTask.revision)}
+            showInChoices={showInChoicesFor(menuTask)}
+            onShowIn={(listId) => void showTaskIn(menuTask, listId)}
             onRemove={() => void removeTask(menuTask)}
             onClose={closeTaskMenu}
           />

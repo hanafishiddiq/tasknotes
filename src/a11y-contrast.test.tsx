@@ -57,6 +57,7 @@ const TEXT: Record<string, Placement> = {
   // Batch 3, Ticket 05: a count on every row, so also under the pointer and on a drop target.
   ".folder:hover:not(:disabled) .folder-count": { on: ["side-hover"] },
   '.folder-row[data-drop-edge="into"] .folder-count': { on: ["side-selected"] },
+  ".folder-row.drop-also-here .folder-count": { on: ["side-selected"] },
   ".folder--quiet": { on: ["sidebar", "side-hover", "side-selected"] },
   ".folder-form input": { on: ["sidebar", "hover"] },
   ".folder-form input::placeholder": { on: ["sidebar", "hover"] },
@@ -304,6 +305,8 @@ const INDICATORS: { selector: string; property: string; means: string; place: Pl
   { selector: ".folder-disclosure", property: "color", means: "folder disclosure arrow", place: { on: ["sidebar"] } },
   { selector: "button.folder-disclosure:hover:not(:disabled)", property: "color", means: "folder disclosure arrow", place: { on: ["sidebar"] } },
   { selector: ".linked-unlink", property: "color", means: "unlink button", place: { on: ["bg", "hover"] } },
+  { selector: ".also-in-remove", property: "color", means: "stop showing in a List", place: { on: ["field"] } },
+  { selector: ".also-in-remove:hover:not(:disabled)", property: "color", means: "stop showing in a List", place: { on: ["hover"] } },
   { selector: ".subtask-remove", property: "color", means: "remove subtask button", place: { on: ["bg", "hover"] } },
   { selector: ".subtask-remove:hover:not(:disabled)", property: "color", means: "remove subtask button", place: { on: ["hover"] } },
   { selector: ".subtask-check", property: "border", means: "open subtask circle", place: { on: ["bg"] } },

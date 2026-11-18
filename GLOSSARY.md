@@ -10,6 +10,10 @@ A unit of work with a title, optional description (its notes: Markdown that may 
 **List**:
 An organizational collection of tasks. A task can be kept in the default Inbox when no other list is chosen. A List can contain other Lists, at most five levels deep; a List shows only its own Tasks, never those of the Lists inside it. Like Note Folders, sibling names are unique ignoring case (the top-level Lists are siblings of each other), so two Lists in different parents may share a name and are told apart by their path, "Work › Reports".
 
+**Also In**:
+A List a Task is also shown in besides its own (ADR 0013). It is the same Task there: one change shows in every List, and each List keeps its own Custom Order for it. Taking it out of a List it is also in leaves it in the others.
+_Avoid_: Copy, duplicate, shortcut.
+
 **Sub-List**:
 A List placed inside another List, used only to group Lists; it shares nothing with the List around it.
 _Avoid_: Child task, Subtask (a Subtask is a checklist item inside a Task).

@@ -66,6 +66,11 @@ Keputusan Han (2026-11-18), Han minta lanjut terus sampai selesai satu per satu:
   - [x] Review; diperbaiki: catatan lama berupa teks biasa tidak dianggap berubah dan baris tidak menampilkan garis miring Markdown, Save menunggu gambar yang masih diunggah, ekspor menangani gambar yang disalin antar Task, file yang dijatuhkan di luar catatan tidak membuka apa pun
   - [ ] Draft PR #62, CI hijau
 - [ ] Satu Task bisa muncul di beberapa List sekaligus, identik (selesai di satu = selesai di semua)
+  - [x] Han: Remove menawarkan "dari List ini saja" atau "dari semua"; bisa diseret di tiap List (urutan Custom sendiri-sendiri); ditambah lewat klik kanan, Task yang dibuka, dan ⌥-seret ke List (2026-11-18)
+  - [x] Inti (Rust) dengan TDD: tabel baru (skema v27), tampil/keluar dari List, urutan Custom per List, hitungan sidebar, pindah ke List yang sudah memuatnya; tetap cepat untuk List tanpa Task bersama
+  - [x] CLI `task show-in/hide-from`, `reorder --list`; MCP `task_show_in/task_hide_from`; shell
+  - [x] Tampilan dengan TDD: chip "Also in", "Also show in…", menu klik kanan, ⌥-seret, dua tombol Remove; dicek di halaman uji
+  - [x] ADR 0013, GLOSSARY, DESIGN.md
 - [ ] Kalimat pertama Note otomatis jadi judul bergaya heading (tebal dan lebih besar)
   - [x] Han: baris pertama, seperti Apple Notes (2026-11-18)
   - [x] Dikerjakan dengan TDD: baris pertama yang berisi teks tampil 24px tebal; isi Markdown tidak berubah; daftar, kutipan, kode di baris pertama tetap gayanya
