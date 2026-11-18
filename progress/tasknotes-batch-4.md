@@ -14,6 +14,9 @@ Keputusan Han (2026-11-17): 10 item kecil, ditambah 2 fitur baru (Task di bebera
   - [x] Review dua sumbu; temuan diperbaiki (nama sintetis di halaman uji, kata panjang tanpa spasi di bar Undo dan teks lain, sidebar di jendela sempit)
   - [ ] Draft PR dibuka dan CI hijau
 - [ ] Scrollbar tidak menutupi ikon kolom paling kanan di pemilih ikon List
+  - [x] Penyebab dibuktikan di WebKit macOS: scrollbar melayang di atas grid, ikon terakhir sampai 5px dari tepi
+  - [x] Diperbaiki dengan TDD: grid memberi ruang 12px di kanan; ikon kini 17px dari tepi, tetap 8 kolom
+  - [ ] Draft PR dibuka dan CI hijau
 - [ ] Kursor kuning saat mengetik di Notes lebih redup
 - [ ] Ikon Pomodoro di kiri bawah diganti
 - [ ] Tanda kuning Task baru tetap terlihat 20 detik

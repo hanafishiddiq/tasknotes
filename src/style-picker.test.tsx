@@ -272,6 +272,13 @@ describe("the picker at a narrow sidebar and a deep folder", () => {
     expect(7 * 22 + 6 * 2).toBeLessThanOrEqual(210 - 20 - 1 - 18);
   });
 
+  it("keeps the right-hand icons clear of the scrollbar", () => {
+    // macOS WebKit draws an overlay scrollbar over the grid's right edge without taking
+    // any width, so the grid leaves room for it (up to ~15px when hovered, less the
+    // 4px between an icon and its cell's edge).
+    expect(value(".style-icons", "padding-right")).toBe("12px");
+  });
+
   it("opens at the sidebar's full width under a folder five levels deep", async () => {
     let parent = backend.folder("Level 1");
     for (let level = 2; level <= 5; level++) parent = backend.folder(`Level ${level}`, parent);
