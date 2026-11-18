@@ -54,16 +54,28 @@ function noSaves() {
   expect(onUpdateDetails).not.toHaveBeenCalled();
 }
 
+/** The caret after the last word of a rich-text field, as a click at its end puts it. */
+function caretAtEnd(field: HTMLElement) {
+  const range = document.createRange();
+  range.selectNodeContents(field);
+  range.collapse(false);
+  const selection = window.getSelection()!;
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
 describe("⌘↵ saves the open edit group", () => {
   it("saves title and description edits from the description, without a newline", async () => {
     const user = userEvent.setup();
     render(<Row />);
     const description = screen.getByRole("textbox", { name: "Edit description" });
-    await user.type(description, " more");
+    description.focus();
+    caretAtEnd(description);
+    await user.type(description, " more", { skipClick: true });
     await user.type(description, commandReturn);
     expect(onSave).toHaveBeenCalledTimes(1);
     expect(onSave).toHaveBeenCalledWith("Synthetic task", "Plain words more", 3);
-    expect(description).toHaveValue("Plain words more");
+    expect(description).toHaveTextContent("Plain words more");
   });
 
   it("saves title edits from the title field once, not twice", async () => {
@@ -142,8 +154,11 @@ describe("⌘↵ saves the open edit group", () => {
     const user = userEvent.setup();
     render(<Row />);
     const description = screen.getByRole("textbox", { name: "Edit description" });
-    await user.type(description, "{Enter}line");
-    expect(description).toHaveValue("Plain words\nline");
+    description.focus();
+    caretAtEnd(description);
+    await user.type(description, "{Enter}line", { skipClick: true });
+    // The notes are rich text (batch 4): Return starts a new paragraph.
+    expect([...description.querySelectorAll("p")].map((line) => line.textContent)).toEqual(["Plain words", "line"]);
     noSaves();
   });
 

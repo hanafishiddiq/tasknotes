@@ -2554,6 +2554,76 @@ button.task-check::before {
   font-size: 15px;
   font-weight: 700;
 }
+/* A Task's notes use the Note editor in the Task page (batch 4): no sheet
+   margins or tall minimum, the Task page's own reading size, and images on
+   their own line, as wide as the notes. */
+.note-editor--task {
+  flex: none;
+  overflow: visible;
+}
+.note-editor--task .note-sheet {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+.note-editor--task .note-content {
+  min-height: 44px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.note-editor--task .note-placeholder {
+  top: 0;
+  left: 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.task-image-frame {
+  display: block;
+  margin: 6px 0;
+}
+.task-image {
+  display: block;
+  max-width: 100%;
+  max-height: 480px;
+  border-radius: 8px;
+  object-fit: contain;
+}
+.task-image-loading {
+  display: block;
+  width: 160px;
+  height: 90px;
+  border-radius: 8px;
+  background: var(--field);
+}
+.task-image-missing {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--field);
+  color: var(--text-2);
+  font-size: 12px;
+}
+.note-image-actions {
+  margin-top: 4px;
+}
+.note-add-image {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent-text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.note-image-error {
+  margin: 4px 0 0;
+  color: var(--red);
+  font-size: 12px;
+}
+
 /* The first line names the Note, so it reads as its title (batch 4); when
    more lines share its paragraph, only the text before the first break. */
 .note-content .note-title,

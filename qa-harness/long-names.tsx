@@ -37,6 +37,24 @@ world.subtasks = [
   { id: "sub-b", taskId: "a", text: `${LONG}, and then a second sentence that keeps going so the item wraps onto more lines`, done: false, removed: false, revision: 1, createdAt: FIXTURE_NOW, updatedAt: FIXTURE_NOW },
   { id: "sub-c", taskId: "a", text: WORD, done: false, removed: false, revision: 1, createdAt: FIXTURE_NOW, updatedAt: FIXTURE_NOW },
 ];
+// An image in the first Task's notes (batch 4), drawn here so no file is needed.
+{
+  const canvas = document.createElement("canvas");
+  canvas.width = 640;
+  canvas.height = 300;
+  const pen = canvas.getContext("2d")!;
+  const fill = pen.createLinearGradient(0, 0, 640, 300);
+  fill.addColorStop(0, "#3a7bd5");
+  fill.addColorStop(1, "#ffd60a");
+  pen.fillStyle = fill;
+  pen.fillRect(0, 0, 640, 300);
+  pen.fillStyle = "#000";
+  pen.font = "bold 36px -apple-system, sans-serif";
+  pen.fillText("Synthetic image", 40, 160);
+  const blob = await new Promise<Blob>((done) => canvas.toBlob((made) => done(made!), "image/png"));
+  world.taskImages.set("image-seed", await blob.arrayBuffer());
+  world.tasks[0].description = "Measure the synthetic shelf first.\n\n![image](tasknotes-image:image-seed)\n\nThen cut along the line.";
+}
 (window as any).world = world;
 
 let next = 1;

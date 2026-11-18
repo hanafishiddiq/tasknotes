@@ -84,6 +84,8 @@ export class World {
   notificationPermission: NotificationPermission = "allowed";
   /** Each Task's checklist (batch 4), in order; the core's rules are not repeated here. */
   subtasks: Subtask[] = [];
+  /** Images in Tasks' notes, by id: their bytes. */
+  taskImages = new Map<string, ArrayBuffer>();
   pending: PendingBulkRequest[] = [];
   backups: Backup[] = [fixtureBackup("daily", "daily"), fixtureBackup("manual", "manual", FIXTURE_NOW - DAY)];
   history: ProgressEntry[] = [];
@@ -115,6 +117,17 @@ export class World {
       case "list_lists": return { items: this.lists.map((list) => ({ ...list })), nextCursor: null };
       case "unfinished_counts": return countUnfinished(this.tasks, this.lists);
       case "list_tasks": return { items: this.matchingTasks(args).map((task) => this.counted(task)), nextCursor: args.cursor ? null : this.taskNextCursor };
+      case "read_task_image": {
+        const bytes = this.taskImages.get(args.id);
+        if (!bytes) throw new Error("Image not found");
+        return bytes;
+      }
+      case "add_task_image": {
+        const id = `image-${++this.clock}`;
+        const bytes = args as unknown as Uint8Array;
+        this.taskImages.set(id, bytes.slice().buffer);
+        return { id, taskId: "", mediaType: "image/png", size: bytes.length, createdAt: FIXTURE_NOW };
+      }
       case "list_subtasks": return structuredClone(this.subtasks.filter((item) => item.taskId === args.taskId && !item.removed));
       case "add_subtask": {
         const added: Subtask = { id: `sub-${++this.clock}`, taskId: args.input.taskId, text: args.input.text.trim(), done: false,

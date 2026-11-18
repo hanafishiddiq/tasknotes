@@ -243,6 +243,10 @@ const TEXT: Record<string, Placement> = {
   ".subtask-add": { on: ["bg"] },
   ".subtask-add::placeholder": { on: ["bg"] },
   ".subtasks-error": { on: ["bg"] },
+  // Images in a Task's notes (batch 4)
+  ".task-image-missing": { on: ["field"] },
+  ".note-add-image": { on: ["bg"] },
+  ".note-image-error": { on: ["bg"] },
   ".subtask-count--all": { on: TASK_ROW },
   // Notes
   ".note-list-item": { on: ROW },

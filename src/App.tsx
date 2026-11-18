@@ -1096,6 +1096,20 @@ export default function App() {
     await saveEdits(task, () => taskApi.details({ id: task.id, expectedRevision, tags, dueDate }));
   }
 
+  // A file dropped anywhere but a Task's notes does nothing: the webview
+  // would otherwise open it in place of the app (ADR 0012).
+  useEffect(() => {
+    const stray = (event: DragEvent) => {
+      if (event.dataTransfer?.types.includes("Files") && !event.defaultPrevented) event.preventDefault();
+    };
+    window.addEventListener("dragover", stray);
+    window.addEventListener("drop", stray);
+    return () => {
+      window.removeEventListener("dragover", stray);
+      window.removeEventListener("drop", stray);
+    };
+  }, []);
+
   /** The open Task's checklist changed: its row's count follows, nothing else does. */
   function countSubtasks(taskId: string, done: number, total: number) {
     setTasks((current) => current.some((item) => item.id === taskId

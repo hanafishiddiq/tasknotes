@@ -1,5 +1,5 @@
 import {
-  useId, useLayoutEffect, useRef, type ButtonHTMLAttributes, type FormEvent, type KeyboardEvent,
+  useId, useLayoutEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type FormEvent, type KeyboardEvent,
 } from "react";
 import { CalendarDays, Check, Folder, ListChecks, LoaderCircle, Tag, Trash2 } from "lucide-react";
 import {
@@ -16,6 +16,9 @@ import {
 import TaskProgressHistory from "./TaskProgressHistory";
 import TaskLinkedNotes from "./TaskLinkedNotes";
 import TaskSubtasks from "./TaskSubtasks";
+import NoteEditor, { type NoteEditorHandle } from "./NoteEditor";
+import { taskImageSource } from "../lib/task-image-api";
+import { notesPreview, roundTripTaskNotes } from "../lib/task-notes-markdown";
 import { useSeenOnScreen } from "../lib/use-seen-on-screen";
 import type { MenuPoint } from "./TaskContextMenu";
 
@@ -206,6 +209,21 @@ export default function TaskRow({
   const checkKind = wontDo ? "wont-do" : task.status;
   const hiddenTags = (task.tags ?? []).slice(2);
   const titleField = useRef<HTMLTextAreaElement>(null);
+  const descriptionEditor = useRef<NoteEditorHandle>(null);
+  const images = useMemo(() => taskImageSource(task.id), [task.id]);
+  // What the notes editor shows; it starts again (a new version) only when the
+  // saved notes change under it with nothing typed: after a save elsewhere, or
+  // when typed notes are dropped. Typing never restarts it.
+  const descriptionShown = useRef({ source: task.description, markdown: task.description, version: 0 }).current;
+  if (typed.description === undefined && descriptionShown.source !== saved.description) {
+    // Saved from here, the editor already shows it; changed elsewhere, it starts again.
+    if (descriptionShown.markdown !== saved.description) descriptionShown.version += 1;
+    descriptionShown.source = saved.description;
+    descriptionShown.markdown = saved.description;
+  }
+  // The saved notes as the editor writes them: plain text comes back escaped, which is no edit.
+  const savedNotes = useMemo(() => roundTripTaskNotes(saved.description), [saved.description]);
+  const [imagesPending, setImagesPending] = useState(0);
   const due = deadlineStatus(task.dueDate, today, task.status);
   const hasUnsavedText = typed.title !== undefined || typed.description !== undefined;
   const hasUnsavedProgress = typed.progress !== undefined;
@@ -263,7 +281,8 @@ export default function TaskRow({
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!draftTitle.trim() || saving || hasUnsavedProgressUpdate || hasUnsavedDetails) return;
+    // An image still on its way would be left out of the notes saved now.
+    if (!draftTitle.trim() || saving || hasUnsavedProgressUpdate || hasUnsavedDetails || imagesPending > 0) return;
     await onSave(draftTitle, draftDescription, baseRevision);
   }
 
@@ -301,7 +320,7 @@ export default function TaskRow({
     : "Inbox";
   const preview = task.nextStep
     ? `Next: ${task.nextStep}`
-    : task.description || `Created ${dateFormatter.format(new Date(task.createdAt))}`;
+    : notesPreview(task.description) || `Created ${dateFormatter.format(new Date(task.createdAt))}`;
 
   return (
     <article
@@ -453,18 +472,17 @@ export default function TaskRow({
               required
               disabled={saving || hasUnsavedProgressUpdate || hasUnsavedDetails}
             />
-            <label className="sr-only" htmlFor={`description-${task.id}`}>Description</label>
-            <textarea
-              id={`description-${task.id}`}
-              className="task-page-body"
-              aria-label="Edit description"
-              value={draftDescription}
-              onChange={(event) => edit("description", event.target.value)}
-              rows={3}
-              maxLength={20000}
-              placeholder="Add notes..."
-              disabled={saving || hasUnsavedProgressUpdate || hasUnsavedDetails}
-            />
+            {/* The notes are a Note's kind of text, with images (batch 4); the core keeps Markdown. */}
+            <NoteEditor key={`${task.id}:${descriptionShown.version}`} variant="task" label="Edit description"
+              placeholder="Add notes..." initialMarkdown={descriptionShown.markdown} editorRef={descriptionEditor}
+              images={images} editable={!(saving || hasUnsavedProgressUpdate || hasUnsavedDetails)}
+              onImagesPending={setImagesPending}
+              onEdit={() => {
+                const markdown = descriptionEditor.current?.markdown() ?? "";
+                descriptionShown.markdown = markdown;
+                if (markdown === savedNotes) forget(["description"]);
+                else edit("description", markdown);
+              }} />
             {(hasUnsavedText || saving) && (
               <div className="editor-actions">
                 <SaveButton
@@ -473,6 +491,7 @@ export default function TaskRow({
                   busy={saving}
                   disabled={
                     !draftTitle.trim() || saving || hasUnsavedProgressUpdate || hasUnsavedDetails
+                    || imagesPending > 0
                   }
                 >
                   {saving && (
