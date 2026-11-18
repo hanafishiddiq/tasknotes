@@ -117,10 +117,12 @@ describe("Stylesheet accessibility", () => {
     }
     expect(all.some((rule) => rule.media?.includes("prefers-reduced-motion: reduce") &&
       rule.selector === ".spin" && /animation:\s*none/.test(rule.body))).toBe(true);
-    // DESIGN.md: 120ms fades and a 240ms progress fill; nothing slow.
+    // DESIGN.md: 120ms fades and a 240ms progress fill; nothing slow, except the spinner's
+    // 900ms turn and a new Task's mark easing away over 800ms (owner, 2026-11-17).
     for (const duration of css.matchAll(/(\d+)ms/g)) {
-      if (Number(duration[1]) !== 900) expect(Number(duration[1])).toBeLessThanOrEqual(240);
+      if (![900, 800].includes(Number(duration[1]))) expect(Number(duration[1])).toBeLessThanOrEqual(240);
     }
+    expect([...css.matchAll(/800ms/g)]).toHaveLength(1);
   });
 
   it("keeps text readable on its background in both appearances", () => {

@@ -1,44 +1,50 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /**
- * How long a Task another process added stays marked once the person has seen
- * it: on screen while the window is in front (owner decision 2026-11-11, Q11/Q14).
+ * How long a Task just added stays marked once the person has seen it: on screen
+ * while the window is in front (batch 3 Q11/Q14; 20 seconds for every new Task,
+ * owner 2026-11-17).
  */
-export const OUTSIDE_MARK_MS = 10_000;
+export const NEW_TASK_MARK_MS = 20_000;
+/** How long the yellow takes to ease away once those seconds are up. */
+export const MARK_FADE_MS = 800;
+
+/** Who added the Task: the person in this window, or the CLI or an MCP client. */
+type AddedBy = "here" | "outside";
+/** A mark waits to be seen, counts down, then fades. */
+type MarkState = "waiting" | "counting" | "fading";
 
 export interface NewTaskMarks {
-  /** Every Task marked now. */
+  /** Every Task marked now (not counting one that is fading). */
   marked: ReadonlySet<string>;
-  /** Marked Tasks another process added whose 10 seconds have not started: their rows report when seen. */
+  /** Marked Tasks whose 20 seconds have not started: their rows report when seen. */
   waitingToBeSeen: ReadonlySet<string>;
   /** The person created this Task in the window. */
   addedHere(taskId: string): void;
   /** The CLI or an MCP client created these Tasks while the window was open. */
   addedOutside(taskIds: readonly string[]): void;
-  /** A Task was opened: the person's own marks all go, and this Task's outside mark. */
+  /** A Task was opened: the person's own marks all go at once, and this Task's mark. */
   opened(taskId: string): void;
-  /** This Task's row is on screen while the window is in front: its 10 seconds start, once. */
+  /** This Task's row is on screen while the window is in front: its 20 seconds start, once. */
   seen(taskId: string): void;
   /** This Task was moved to Removed. */
   forget(taskId: string): void;
-  /** What a Task's row shows: the mark, and while its 10 seconds wait, how it reports being seen. */
-  rowProps(taskId: string): { justAdded: boolean; onSeen?: () => void };
+  /** What a Task's row shows: the mark or its fade, and while the mark waits, how it reports being seen. */
+  rowProps(taskId: string): { justAdded: boolean; fading: boolean; onSeen?: () => void };
 }
 
 /**
- * The pale-yellow mark on Tasks just added (batch 3, Ticket 02). A Task the
- * person adds in the window keeps it until any Task is opened (Q6); one the CLI
- * or an MCP client adds keeps it until 10 seconds after it is seen, or until it
- * is opened (Q11, Q14). View state only: nothing here is stored, so quitting
- * clears every mark and a Task added while the window was closed gets none (Q15).
- * Every function is stable across renders.
+ * The pale-yellow mark on Tasks just added (batch 3, Ticket 02; batch 4). Every
+ * new Task, added here or by the CLI or an MCP client, keeps it until 20 seconds
+ * after it is seen, then fades. Opening a Task ends marks sooner: any Task ends
+ * the person's own (Q6), and a Task ends its own mark. View state only: nothing
+ * here is stored, so quitting clears every mark and a Task added while the window
+ * was closed gets none (Q15). Every function is stable across renders.
  */
 export function useNewTaskMarks(): NewTaskMarks {
-  const [own, setOwn] = useState<ReadonlySet<string>>(() => new Set());
-  // An outside Task waits to be seen, then counts down.
-  const [outside, setOutside] = useState<ReadonlyMap<string, "waiting" | "counting">>(() => new Map());
-  const outsideNow = useRef(outside);
-  outsideNow.current = outside;
+  const [marks, setMarks] = useState<ReadonlyMap<string, { by: AddedBy; state: MarkState }>>(() => new Map());
+  // The marks as of the last change, not the last render: two calls in one moment must see each other.
+  const latest = useRef(marks);
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
   useEffect(() => {
@@ -49,63 +55,71 @@ export function useNewTaskMarks(): NewTaskMarks {
     };
   }, []);
 
-  const dropOutside = useCallback((taskId: string) => {
-    clearTimeout(timers.current.get(taskId));
-    timers.current.delete(taskId);
-    setOutside((now) => {
-      if (!now.has(taskId)) return now;
-      const next = new Map(now);
-      next.delete(taskId);
-      return next;
-    });
+  const change = useCallback((next: ReadonlyMap<string, { by: AddedBy; state: MarkState }>) => {
+    if (next === latest.current) return;
+    latest.current = next;
+    setMarks(next);
   }, []);
 
-  const addedHere = useCallback((taskId: string) => {
-    setOwn((now) => new Set(now).add(taskId));
-  }, []);
+  const drop = useCallback((taskIds: readonly string[]) => {
+    for (const taskId of taskIds) {
+      clearTimeout(timers.current.get(taskId));
+      timers.current.delete(taskId);
+    }
+    const now = latest.current;
+    if (!taskIds.some((taskId) => now.has(taskId))) return;
+    const next = new Map(now);
+    for (const taskId of taskIds) next.delete(taskId);
+    change(next);
+  }, [change]);
 
-  const addedOutside = useCallback((taskIds: readonly string[]) => {
-    setOutside((now) => {
-      const fresh = taskIds.filter((taskId) => !now.has(taskId));
-      if (fresh.length === 0) return now;
-      const next = new Map(now);
-      for (const taskId of fresh) next.set(taskId, "waiting");
-      return next;
-    });
-  }, []);
+  const add = useCallback((taskIds: readonly string[], by: AddedBy) => {
+    const now = latest.current;
+    const fresh = taskIds.filter((taskId) => !now.has(taskId));
+    if (fresh.length === 0) return;
+    const next = new Map(now);
+    for (const taskId of fresh) next.set(taskId, { by, state: "waiting" });
+    change(next);
+  }, [change]);
+
+  const addedHere = useCallback((taskId: string) => add([taskId], "here"), [add]);
+  const addedOutside = useCallback((taskIds: readonly string[]) => add(taskIds, "outside"), [add]);
 
   const opened = useCallback((taskId: string) => {
-    setOwn((now) => now.size === 0 ? now : new Set());
-    dropOutside(taskId);
-  }, [dropOutside]);
+    const own = [...latest.current].filter(([, mark]) => mark.by === "here").map(([id]) => id);
+    drop([...own, taskId]);
+  }, [drop]);
+
+  const setState = useCallback((taskId: string, state: MarkState) => {
+    const mark = latest.current.get(taskId);
+    if (mark) change(new Map(latest.current).set(taskId, { ...mark, state }));
+  }, [change]);
 
   const seen = useCallback((taskId: string) => {
-    // The state says what renders; the timer guards a second report in the same tick, before it renders.
-    if (outsideNow.current.get(taskId) !== "waiting" || timers.current.has(taskId)) return;
-    timers.current.set(taskId, setTimeout(() => dropOutside(taskId), OUTSIDE_MARK_MS));
-    setOutside((now) => now.get(taskId) === "waiting" ? new Map(now).set(taskId, "counting") : now);
-  }, [dropOutside]);
+    if (latest.current.get(taskId)?.state !== "waiting" || timers.current.has(taskId)) return;
+    timers.current.set(taskId, setTimeout(() => {
+      setState(taskId, "fading");
+      timers.current.set(taskId, setTimeout(() => drop([taskId]), MARK_FADE_MS));
+    }, NEW_TASK_MARK_MS));
+    setState(taskId, "counting");
+  }, [drop, setState]);
 
-  const forget = useCallback((taskId: string) => {
-    setOwn((now) => {
-      if (!now.has(taskId)) return now;
-      const next = new Set(now);
-      next.delete(taskId);
-      return next;
-    });
-    dropOutside(taskId);
-  }, [dropOutside]);
+  const forget = useCallback((taskId: string) => drop([taskId]), [drop]);
 
-  const marked = useMemo(() => new Set([...own, ...outside.keys()]), [own, outside]);
+  const marked = useMemo(
+    () => new Set([...marks].filter(([, mark]) => mark.state !== "fading").map(([taskId]) => taskId)),
+    [marks],
+  );
   const waitingToBeSeen = useMemo(
-    () => new Set([...outside].filter(([, state]) => state === "waiting").map(([taskId]) => taskId)),
-    [outside],
+    () => new Set([...marks].filter(([, mark]) => mark.state === "waiting").map(([taskId]) => taskId)),
+    [marks],
   );
 
   const rowProps = useCallback((taskId: string) => ({
     justAdded: marked.has(taskId),
+    fading: marks.get(taskId)?.state === "fading",
     onSeen: waitingToBeSeen.has(taskId) ? () => seen(taskId) : undefined,
-  }), [marked, waitingToBeSeen, seen]);
+  }), [marks, marked, waitingToBeSeen, seen]);
 
   return { marked, waitingToBeSeen, addedHere, addedOutside, opened, seen, forget, rowProps };
 }
