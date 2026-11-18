@@ -53,6 +53,8 @@ world.subtasks = [
   pen.fillText("Synthetic image", 40, 160);
   const blob = await new Promise<Blob>((done) => canvas.toBlob((made) => done(made!), "image/png"));
   world.taskImages.set("image-seed", await blob.arrayBuffer());
+  // The first Task is also shown in the second List (batch 4).
+  world.tasks[0].alsoIn = ["l2"];
   world.tasks[0].description = "Measure the synthetic shelf first.\n\n![image](tasknotes-image:image-seed)\n\nThen cut along the line.";
 }
 (window as any).world = world;

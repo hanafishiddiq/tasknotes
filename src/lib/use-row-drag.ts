@@ -16,7 +16,16 @@ interface RowDragOptions {
   onDrop: (dragged: string, drop: RowDrop) => void;
   /** What scrolls while the mouse is held near its edge; the sidebar when left out. */
   scrollArea?: RefObject<HTMLElement | null>;
+  /**
+   * Places outside the rows a dragged row may be dropped on while Option is
+   * held (batch 4: a Task onto a List in the sidebar, to show it there too).
+   * Each is marked `data-<attribute>="<id>"`.
+   */
+  outside?: { attribute: string; onDrop: (dragged: string, targetId: string) => void };
 }
+
+/** The class a place outside the rows takes while a drop there is aimed at. */
+export const OUTSIDE_DROP_CLASS = "drop-also-here";
 
 /** How far the mouse travels before a press on a row becomes a drag, not a click. */
 const DRAG_DISTANCE = 4;
@@ -45,6 +54,9 @@ function dropAt(
   }
   return rows.length > 0 ? { id: null, edge: "end" } : null;
 }
+
+/** `list-target` → `listTarget`: how a `data-` attribute reads in `dataset`. */
+const camel = (attribute: string) => attribute.replace(/-(\w)/g, (_, letter: string) => letter.toUpperCase());
 
 /** The release after a drag would also click the row that was pressed. */
 function swallowClick() {
@@ -99,11 +111,25 @@ export function useRowDrag(options: RowDragOptions) {
     let active = false;
     let current: RowDrop | null = null;
     let scroller: number | undefined;
+    let optionHeld = event.altKey;
+    let outsideTarget: HTMLElement | null = null;
+
+    const aimOutside = (target: HTMLElement | null) => {
+      if (target === outsideTarget) return;
+      outsideTarget?.classList.remove(OUTSIDE_DROP_CLASS);
+      target?.classList.add(OUTSIDE_DROP_CLASS);
+      outsideTarget = target;
+    };
 
     const aim = () => {
-      const { container } = latest.current;
+      const { container, outside } = latest.current;
       if (!container.current) return;
-      const next = dropAt(container.current, lastX, lastY, id, latest.current);
+      // Option held over a place outside the rows: a drop there, none among the rows.
+      const there = outside && optionHeld
+        ? document.elementFromPoint(lastX, lastY)?.closest<HTMLElement>(`[data-${outside.attribute}]`) ?? null
+        : null;
+      aimOutside(there);
+      const next = there ? null : dropAt(container.current, lastX, lastY, id, latest.current);
       if (JSON.stringify(next) !== JSON.stringify(current)) {
         current = next;
         setDrop(next);
@@ -130,6 +156,7 @@ export function useRowDrag(options: RowDragOptions) {
     const onMove = (move: globalThis.MouseEvent) => {
       lastX = move.clientX;
       lastY = move.clientY;
+      optionHeld = move.altKey;
       if (!active) {
         if (Math.hypot(move.clientX - startX, move.clientY - startY) < DRAG_DISTANCE) return;
         begin();
@@ -143,6 +170,7 @@ export function useRowDrag(options: RowDragOptions) {
       window.removeEventListener("keydown", onKey, true);
       window.clearInterval(scroller);
       document.body.classList.remove("row-dragging");
+      aimOutside(null);
       setDragging(null);
       setDrop(null);
       stop.current = null;
@@ -150,9 +178,13 @@ export function useRowDrag(options: RowDragOptions) {
 
     function onUp() {
       const dropped = active ? current : null;
+      const outsideId = active && outsideTarget
+        ? outsideTarget.dataset[camel(latest.current.outside!.attribute)] ?? null
+        : null;
       if (active) swallowClick();
       finish();
-      if (dropped) latest.current.onDrop(id, dropped);
+      if (outsideId) latest.current.outside!.onDrop(id, outsideId);
+      else if (dropped) latest.current.onDrop(id, dropped);
     }
 
     function onKey(key: KeyboardEvent) {

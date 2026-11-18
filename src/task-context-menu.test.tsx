@@ -124,7 +124,7 @@ describe("opening the Task menu", () => {
 
     expect(menu()).toHaveAccessibleName("Actions for “Synthetic idea”");
     const names = [...menu().querySelectorAll("[role^='menuitem']")].map((element) => element.textContent?.trim());
-    expect(names).toEqual(["Open", "Ready", "In Progress", "Completed", "Won't do", "Priority", "Move to Removed"]);
+    expect(names).toEqual(["Open", "Ready", "In Progress", "Completed", "Won't do", "Priority", "Also show in", "Move to Removed"]);
     expect(within(menu()).getByRole("menuitemradio", { name: "Ready" })).toHaveAttribute("aria-checked", "true");
     expect(within(menu()).getByRole("menuitemradio", { name: "Completed" })).toHaveAttribute("aria-checked", "false");
     expect(item("Priority")).toHaveAttribute("aria-haspopup", "menu");

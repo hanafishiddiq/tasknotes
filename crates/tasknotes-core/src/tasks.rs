@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
+pub use crate::also_in::ShowTaskIn;
 use crate::audit::{AuditAction, Interface};
 pub use crate::custom_order::{ReorderTask, ViewSort};
 pub use crate::organization::{
@@ -143,6 +144,8 @@ pub enum TaskError {
     InvalidTaskImage,
     #[error("Image not found")]
     TaskImageNotFound,
+    #[error("This Task is in this List only; move it to Removed instead")]
+    TaskInOneListOnly,
     #[error("Invalid Note Link page cursor")]
     InvalidLinkCursor,
     #[error("Invalid Audit Entry page cursor")]
@@ -280,7 +283,8 @@ impl TaskError {
             | EmptySubtask
             | SubtaskTooLong
             | TooManySubtasks
-            | InvalidTaskImage => "invalid_input",
+            | InvalidTaskImage
+            | TaskInOneListOnly => "invalid_input",
             InvalidCursor
             | InvalidHistoryCursor
             | InvalidRemovedCursor
@@ -567,6 +571,10 @@ pub struct Task {
     pub subtasks_done: u32,
     #[serde(default)]
     pub subtasks_total: u32,
+    /// The Lists it is also shown in besides its own (batch 4), oldest
+    /// first; the same Task in each. Read by `hydrate`.
+    #[serde(default)]
+    pub also_in: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -715,6 +723,7 @@ fn read_task_with_tags(conn: &Connection, id: &str) -> Result<Option<Task>, Task
 pub(crate) fn hydrate(conn: &Connection, tasks: &mut [Task]) -> Result<(), TaskError> {
     crate::organization::hydrate_tags(conn, tasks)?;
     crate::subtasks::hydrate_counts(conn, tasks)?;
+    crate::also_in::hydrate_also_in(conn, tasks)?;
     for task in tasks.iter_mut() {
         task.completed_from = completed_from(conn, task)?;
     }
@@ -975,6 +984,7 @@ pub(crate) fn read_task(row: &Row<'_>) -> rusqlite::Result<Task> {
         // Not columns: `hydrate` counts them.
         subtasks_done: 0,
         subtasks_total: 0,
+        also_in: Vec::new(),
     })
 }
 
@@ -990,7 +1000,7 @@ const WONT_DO_FROM_COLUMN: usize = 15;
 pub(crate) const COLUMN_COUNT: usize = 16;
 
 /// The database schema this core reads and writes.
-pub const SCHEMA_VERSION: i64 = 26;
+pub const SCHEMA_VERSION: i64 = 27;
 
 /// How long a write waits for another process (the CLI, MCP) holding the database lock.
 pub const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -1251,6 +1261,11 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), TaskError> {
         crate::task_images::migrate_v26(&migration)?;
         migration.commit()?;
     }
+    if version < 27 {
+        let migration = connection.transaction()?;
+        crate::also_in::migrate_v27(&migration)?;
+        migration.commit()?;
+    }
     Ok(())
 }
 
@@ -1456,6 +1471,7 @@ impl TaskStore {
             removed: false,
             subtasks_done: 0,
             subtasks_total: 0,
+            also_in: Vec::new(),
         };
         tx.execute(
             "INSERT INTO tasks

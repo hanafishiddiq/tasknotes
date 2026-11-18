@@ -79,6 +79,8 @@ actions! {
     TaskReorder => "task.reorder",
     TaskRemove => "task.remove",
     TaskRestore => "task.restore",
+    TaskShowIn => "task.show_in",
+    TaskHideFrom => "task.hide_from",
     ListCreate => "list.create",
     ListRename => "list.rename",
     ListReorder => "list.reorder",
@@ -124,7 +126,7 @@ impl AuditAction {
         use AuditAction::*;
         Some(match self {
             TaskCreate | TaskUpdate | TaskChange | TaskProgress | TaskDetails | TaskMove
-            | TaskReorder | TaskRemove | TaskRestore => "tasks",
+            | TaskReorder | TaskRemove | TaskRestore | TaskShowIn | TaskHideFrom => "tasks",
             ListCreate | ListRename | ListReorder | ListMove | ListStyle | ListRemove
             | ListRestore => "lists",
             NoteCreate | NoteUpdate | NoteMove | NotePin | NoteRemove | NoteRestore
@@ -356,6 +358,7 @@ revisioned!(
     crate::subtasks::UpdateSubtask,
     crate::subtasks::MoveSubtask,
     crate::subtasks::SetSubtaskRemoved,
+    crate::also_in::ShowTaskIn,
 );
 
 impl Revisioned for crate::notes::MoveNote {

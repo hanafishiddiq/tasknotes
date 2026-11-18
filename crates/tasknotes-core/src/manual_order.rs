@@ -36,6 +36,9 @@ struct Sibling {
     /// group. Only these can be an anchor, and only their order changing
     /// counts as a move.
     anchorable: bool,
+    /// A Task only shown in this List (batch 4): its place here is kept on
+    /// its link, not on the Task.
+    linked: bool,
 }
 
 impl<'a> Siblings<'a> {
@@ -85,12 +88,13 @@ impl<'a> Siblings<'a> {
                 id: row.get(0)?,
                 position: row.get(1)?,
                 anchorable: row.get(2)?,
+                linked: row.get(3)?,
             })
         };
         let rows = match self {
             Self::Tree { tree, parent_id } => conn
                 .prepare(&format!(
-                    "SELECT id, position, removed_at IS NULL FROM {}
+                    "SELECT id, position, removed_at IS NULL, 0 FROM {}
                      WHERE coalesce(parent_id, '') = coalesce(?1, '') ORDER BY position, id",
                     tree.table()
                 ))?
@@ -98,8 +102,13 @@ impl<'a> Siblings<'a> {
                 .collect::<rusqlite::Result<_>>()?,
             Self::Tasks { list_id, status } => conn
                 .prepare(
-                    "SELECT id, position, removed_at IS NULL AND status = ?2 FROM tasks
-                     WHERE list_id IS ?1 ORDER BY position, id",
+                    "SELECT id, position, removed_at IS NULL AND status = ?2, 0 FROM tasks
+                     WHERE list_id IS ?1
+                     UNION ALL
+                     SELECT t.id, k.position, t.removed_at IS NULL AND t.status = ?2, 1
+                     FROM task_list_links k JOIN tasks t ON t.id = k.task_id
+                     WHERE k.list_id = ?1 AND k.unlinked_at IS NULL
+                     ORDER BY 2, 1",
                 )?
                 .query_map(params![list_id, status.as_sql()], read)?
                 .collect::<rusqlite::Result<_>>()?,
@@ -205,6 +214,18 @@ pub(crate) fn place(
         "UPDATE {} SET position = ?1 WHERE id = ?2",
         siblings.table()
     ))?;
+    // A Task only shown in this List keeps its place here on its link.
+    let mut update_link = tx
+        .prepare("UPDATE task_list_links SET position = ?1 WHERE task_id = ?2 AND list_id IS ?3")?;
+    let list_id = match siblings {
+        Siblings::Tasks { list_id, .. } => list_id,
+        Siblings::Tree { .. } => None,
+    };
+    let linked: std::collections::HashSet<&str> = rows
+        .iter()
+        .filter(|row| row.linked)
+        .map(|row| row.id.as_str())
+        .collect();
     // Positions count up in the new order; the moved row has no stored
     // position among these siblings worth keeping.
     let stored = |row: &&Sibling| (row.id.clone(), Some(row.position));
@@ -215,7 +236,11 @@ pub(crate) fn place(
         .chain(order[at..].iter().map(stored));
     for (wanted, (row_id, position)) in (siblings.first_position(&rows)..).zip(new_order) {
         if position != Some(wanted) {
-            update.execute(params![wanted, row_id])?;
+            if linked.contains(row_id.as_str()) {
+                update_link.execute(params![wanted, row_id, list_id])?;
+            } else {
+                update.execute(params![wanted, row_id])?;
+            }
         }
     }
     Ok(true)

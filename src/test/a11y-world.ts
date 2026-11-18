@@ -128,6 +128,13 @@ export class World {
         this.taskImages.set(id, bytes.slice().buffer);
         return { id, taskId: "", mediaType: "image/png", size: bytes.length, createdAt: FIXTURE_NOW };
       }
+      case "show_task_in": case "hide_task_from": {
+        const task = this.tasks.find((each) => each.id === args.input.id)!;
+        const others = (task.alsoIn ?? []).filter((id) => id !== args.input.listId);
+        task.alsoIn = command === "show_task_in" ? [...others, args.input.listId] : others;
+        task.revision += 1;
+        return this.counted(task);
+      }
       case "list_subtasks": return structuredClone(this.subtasks.filter((item) => item.taskId === args.taskId && !item.removed));
       case "add_subtask": {
         const added: Subtask = { id: `sub-${++this.clock}`, taskId: args.input.taskId, text: args.input.text.trim(), done: false,
@@ -254,7 +261,8 @@ export class World {
   private matchingTasks(args: Record<string, any>): Task[] {
     return this.tasks
       .filter((task) => !args.taskId || task.id === args.taskId)
-      .filter((task) => args.view?.kind !== "list" || task.listId === args.view.listId)
+      .filter((task) => args.view?.kind !== "list" || task.listId === args.view.listId
+        || (task.alsoIn ?? []).includes(args.view.listId))
       .filter((task) => args.view?.kind !== "inbox" || task.listId === null)
       .filter((task) => !args.status || task.status === args.status)
       .filter((task) => !args.priority || task.priority === args.priority)

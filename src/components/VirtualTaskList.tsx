@@ -51,6 +51,8 @@ interface VirtualTaskListProps {
    * by a drag or Alt+Up/Down, calls this instead, and nothing moves.
    */
   onMoveBlocked?: () => void;
+  /** A Task dragged with Option onto a List in the sidebar is shown there too (batch 4). */
+  onShowIn?: (task: Task, listId: string) => void;
   /** Says a move to screen readers, through the Task view's polite live region. */
   onAnnounce: (text: string) => void;
   /**
@@ -107,7 +109,7 @@ const TaskSlotContent = memo(function TaskSlotContent({ task, renderTask }: {
  */
 export default function VirtualTaskList({
   tasks, hasMore, scrollRef, keepMounted, renderTask, expandedId, onCollapse,
-  reveal = null, onRevealed, onPlace, onMoveBlocked, onAnnounce, checked = null, onCheckSettled,
+  reveal = null, onRevealed, onPlace, onMoveBlocked, onShowIn, onAnnounce, checked = null, onCheckSettled,
 }: VirtualTaskListProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const [scrollMargin, setScrollMargin] = useState(0);
@@ -148,7 +150,14 @@ export default function VirtualTaskList({
     scrollArea: scrollRef,
     canNest: false,
     // Within its own group only: a drop elsewhere never changes a status.
-    canTarget: (dragged, id) => dragged !== id && byId.get(dragged)?.status === byId.get(id)?.status,
+    canTarget: (dragged, id) => Boolean(onPlace) && dragged !== id && byId.get(dragged)?.status === byId.get(id)?.status,
+    outside: onShowIn && {
+      attribute: "list-target",
+      onDrop: (dragged, listId) => {
+        const task = byId.get(dragged);
+        if (task) onShowIn(task, listId);
+      },
+    },
     onDrop(dragged: string, drop: RowDrop) {
       const task = byId.get(dragged);
       if (!task || drop.edge === "into") return;
@@ -375,12 +384,13 @@ export default function VirtualTaskList({
 
   return (
     <div className="task-list" ref={listRef} onKeyDown={onKeyDown}
-      onMouseDown={(onPlace || onMoveBlocked) && ((event) => {
+      onMouseDown={(onPlace || onMoveBlocked || onShowIn) && ((event) => {
         // A drag starts on the row's title area, never on a control inside an open Task.
         const id = (event.target as HTMLElement).closest(".task-open")
           ?.closest<HTMLElement>("[data-task-id]")?.dataset.taskId;
         if (!id) return;
-        if (onPlace) drag.start(event, id);
+        // With Option, onto a List in the sidebar, whatever the sort (batch 4).
+        if (onPlace || (onShowIn && event.altKey)) drag.start(event, id);
         else if (onMoveBlocked) watchRefusedDrag(event, onMoveBlocked);
       })}
       onFocus={(event) => setFocusedId(

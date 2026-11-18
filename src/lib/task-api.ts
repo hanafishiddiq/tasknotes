@@ -115,6 +115,8 @@ export interface Task {
   /** How many checklist items are done, of how many (batch 4); the core counts them. */
   subtasksDone?: number;
   subtasksTotal?: number;
+  /** The Lists it is also shown in besides its own (batch 4): the same Task in each. */
+  alsoIn?: string[];
 }
 
 export interface TaskPage {
@@ -364,7 +366,7 @@ export const taskApi = {
    * sort on screen: another than Custom starts the Custom Order from it and
    * switches the List to Custom.
    */
-  reorder(input: ListMutation & TaskPlace & { shownSort: SortMode }): Promise<Task> {
+  reorder(input: ListMutation & TaskPlace & { shownSort: SortMode; listId?: string }): Promise<Task> {
     return invoke("reorder_task", { input });
   },
 
@@ -381,6 +383,16 @@ export const taskApi = {
 
   move(input: ListMutation & { listId: string | null }): Promise<Task> {
     return invoke("move_task", { input });
+  },
+
+  /** Shows the Task in one more List (batch 4). */
+  showIn(input: ListMutation & { listId: string }): Promise<Task> {
+    return invoke("show_task_in", { input });
+  },
+
+  /** Takes the Task out of one List and leaves it in the others; out of its own, the next becomes its own. */
+  hideFrom(input: ListMutation & { listId: string }): Promise<Task> {
+    return invoke("hide_task_from", { input });
   },
 
   details(input: ListMutation & { tags: string[]; dueDate: string | null }): Promise<Task> {

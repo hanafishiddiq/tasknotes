@@ -355,7 +355,7 @@ export default function TaskSidebar({
           const dropDepth = edge === "after" && open ? depth + 1 : depth;
           return (
           <Fragment key={list.id}>
-          <div className="folder-row" data-drag-row={list.id}
+          <div className="folder-row" data-drag-row={list.id} data-list-target={list.id}
             data-dragging={drag.dragging === list.id || undefined} data-drop-edge={edge}
             style={depth > 0 || edge ? { paddingLeft: depth * 14, "--drop-indent": `${dropDepth * 14}px` } as CSSProperties : undefined}>
             {hasChildren && (

@@ -276,7 +276,8 @@ body.sidebar-resizing * {
    the count steps up to secondary gray: tertiary falls under 4.5:1 there. */
 .folder[aria-current="page"] .folder-count,
 .folder:hover:not(:disabled) .folder-count,
-.folder-row[data-drop-edge="into"] .folder-count {
+.folder-row[data-drop-edge="into"] .folder-count,
+.folder-row.drop-also-here .folder-count {
   color: var(--text-2);
 }
 .folder--quiet {
@@ -509,7 +510,11 @@ body.sidebar-resizing * {
 }
 .folder-row[data-drop-edge="into"] .folder,
 .folder-row[data-drop-edge="into"]:hover .folder:not(:disabled):not([aria-current="page"]),
-.folder-row[data-drop-edge="into"] .folder-actions {
+.folder-row[data-drop-edge="into"] .folder-actions,
+/* A Task dragged here with Option (batch 4): shown in this List too. */
+.folder-row.drop-also-here .folder,
+.folder-row.drop-also-here:hover .folder:not(:disabled):not([aria-current="page"]),
+.folder-row.drop-also-here .folder-actions {
   background: var(--side-selected);
 }
 .folder-tree[data-drop-end] {
@@ -1799,6 +1804,37 @@ button.task-check::before {
 .property:focus-within {
   outline: 2px solid var(--focus);
   outline-offset: 1px;
+}
+/* The other Lists a Task is also shown in (batch 4), each with an X. */
+.also-in-chip {
+  max-width: 260px;
+  padding-right: 4px;
+}
+.also-in-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.also-in-remove {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.also-in-remove:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--text);
+}
+.also-in-add select {
+  max-width: 200px;
 }
 .property select,
 .property input {

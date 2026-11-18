@@ -30,6 +30,9 @@ interface TaskContextMenuProps {
   onOpenToggle: () => void;
   onStatus: (choice: StatusChoice) => void;
   onPriority: (priority: Priority) => void;
+  /** Lists the Task may also be shown in (batch 4): not its own, nor one it is in already. */
+  showInChoices: { id: string; label: string }[];
+  onShowIn: (listId: string) => void;
   onRemove: () => void;
   /** Closes it; `refocus` puts focus back where it was when the menu opened. */
   onClose: (refocus: boolean) => void;
@@ -48,11 +51,13 @@ type Entry =
     reason?: string;
     icon?: ReactNode;
     className?: string;
-    /** The Priority item: it opens the second sheet instead of choosing. */
-    submenu?: boolean;
+    /** Priority or Also show in: it opens a second sheet instead of choosing. */
+    submenu?: Submenu;
     run: () => void;
   };
 type Choice = Extract<Entry, { kind: "choice" }>;
+type Submenu = "priority" | "lists";
+const SUBMENU_LABEL: Record<Submenu, string> = { priority: "Priority", lists: "Also show in" };
 
 /** Where a sheet of this size fits in the window, as near the asked point as it can. */
 const fitted = (x: number, y: number, width: number, height: number) => fitInWindow(x, y, width, height, EDGE);
@@ -83,16 +88,16 @@ function moveFocus(sheet: HTMLElement | null, event: KeyboardEvent<HTMLElement>)
  * any ⌘ shortcut, which then goes on to do its own work.
  */
 export default function TaskContextMenu({
-  task, at, expanded, changesHeld, onOpenToggle, onStatus, onPriority, onRemove, onClose,
+  task, at, expanded, changesHeld, onOpenToggle, onStatus, onPriority, showInChoices, onShowIn, onRemove, onClose,
 }: TaskContextMenuProps) {
   const sheet = useRef<HTMLDivElement>(null);
   const levelsSheet = useRef<HTMLDivElement>(null);
-  const priorityItem = useRef<HTMLButtonElement | null>(null);
+  const submenuItems = useRef(new Map<Submenu, HTMLButtonElement>());
   const closeLevelsTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const reasonId = useId();
   const [place, setPlace] = useState({ left: at.x, top: at.y });
   // The Priority sheet: open or not, whether it takes focus, and where it fits once on screen.
-  const [levels, setLevels] = useState<{ focus: boolean } | null>(null);
+  const [levels, setLevels] = useState<{ which: Submenu; focus: boolean } | null>(null);
   const [levelsPlace, setLevelsPlace] = useState<{ left: number; top: number } | null>(null);
   const latestClose = useRef(onClose);
   latestClose.current = onClose;
@@ -114,7 +119,11 @@ export default function TaskContextMenu({
       };
     }),
     { kind: "separator" },
-    { kind: "choice", key: "priority", label: "Priority", role: "menuitem", disabled: changesHeld, submenu: true, run: () => openLevels(true) },
+    { kind: "choice", key: "priority", label: "Priority", role: "menuitem", disabled: changesHeld, submenu: "priority", run: () => openLevels("priority", true) },
+    {
+      kind: "choice", key: "lists", label: "Also show in", role: "menuitem",
+      disabled: changesHeld || showInChoices.length === 0, submenu: "lists", run: () => openLevels("lists", true),
+    },
     { kind: "separator" },
     {
       kind: "choice", key: "remove", label: "Move to Removed", role: "menuitem", disabled: changesHeld,
@@ -122,11 +131,16 @@ export default function TaskContextMenu({
     },
   ];
   // The same order as the open Task's Priority control.
-  const levelEntries: Choice[] = PRIORITY_ORDER.map((priority) => ({
-    kind: "choice", key: `priority-${priority}`, label: PRIORITY_VIEW[priority].label, role: "menuitemradio",
-    checked: priority === task.priority, disabled: false,
-    run: choose(() => { if (priority !== task.priority) onPriority(priority); }),
-  }));
+  const levelEntries: Choice[] = levels?.which === "lists"
+    ? showInChoices.map((list) => ({
+      kind: "choice", key: `list-${list.id}`, label: list.label, role: "menuitem", disabled: false,
+      run: choose(() => onShowIn(list.id)),
+    }))
+    : PRIORITY_ORDER.map((priority) => ({
+      kind: "choice", key: `priority-${priority}`, label: PRIORITY_VIEW[priority].label, role: "menuitemradio",
+      checked: priority === task.priority, disabled: false,
+      run: choose(() => { if (priority !== task.priority) onPriority(priority); }),
+    }));
 
   useLayoutEffect(() => {
     const element = sheet.current;
@@ -157,7 +171,7 @@ export default function TaskContextMenu({
   // when there is no room on the right, and never past the window's bottom.
   useLayoutEffect(() => {
     const element = levelsSheet.current;
-    const item = priorityItem.current;
+    const item = levels ? submenuItems.current.get(levels.which) : undefined;
     if (!levels || !element || !item) {
       setLevelsPlace(null);
       return;
@@ -169,19 +183,20 @@ export default function TaskContextMenu({
     setLevelsPlace(fitted(x, box.top - SUBMENU_LIFT, width, element.offsetHeight));
     if (levels.focus) {
       (element.querySelector<HTMLElement>("[aria-checked='true']")
-        ?? element.querySelector<HTMLElement>("[role='menuitemradio']"))?.focus();
+        ?? element.querySelector<HTMLElement>("[role^='menuitem']"))?.focus();
     }
   }, [levels]);
 
-  function openLevels(focus: boolean) {
+  function openLevels(which: Submenu, focus: boolean) {
     clearTimeout(closeLevelsTimer.current);
-    if (!changesHeld) setLevels({ focus });
+    if (!changesHeld) setLevels({ which, focus });
   }
 
   function closeLevels() {
     clearTimeout(closeLevelsTimer.current);
+    const which = levels?.which;
     setLevels(null);
-    priorityItem.current?.focus();
+    if (which) submenuItems.current.get(which)?.focus();
   }
 
   /** Any ⌘ or Ctrl shortcut closes the menu and then does its own work. */
@@ -193,9 +208,10 @@ export default function TaskContextMenu({
 
   function onKey(event: KeyboardEvent<HTMLDivElement>) {
     if (shortcutCloses(event) || moveFocus(sheet.current, event)) return;
-    if (event.key === "ArrowRight" && document.activeElement === priorityItem.current) {
+    const opener = [...submenuItems.current].find(([, element]) => element === document.activeElement);
+    if (event.key === "ArrowRight" && opener) {
       event.preventDefault();
-      openLevels(true);
+      openLevels(opener[0], true);
     } else if (event.key === "Escape" || event.key === "Tab") {
       event.preventDefault();
       onClose(true);
@@ -218,7 +234,10 @@ export default function TaskContextMenu({
   const item = (choice: Choice, inLevels: boolean) => (
     <button
       key={choice.key}
-      ref={choice.submenu ? priorityItem : undefined}
+      ref={choice.submenu ? (element) => {
+        if (element) submenuItems.current.set(choice.submenu!, element);
+        else submenuItems.current.delete(choice.submenu!);
+      } : undefined}
       type="button"
       role={choice.role}
       tabIndex={-1}
@@ -226,13 +245,13 @@ export default function TaskContextMenu({
       aria-checked={choice.role === "menuitemradio" ? Boolean(choice.checked) : undefined}
       aria-disabled={choice.disabled || undefined}
       aria-haspopup={choice.submenu ? "menu" : undefined}
-      aria-expanded={choice.submenu ? levels !== null : undefined}
+      aria-expanded={choice.submenu ? levels?.which === choice.submenu : undefined}
       aria-describedby={choice.reason ? `${reasonId}-${choice.key}` : undefined}
       title={choice.reason}
       onMouseEnter={(event) => {
         if (choice.disabled) return;
         event.currentTarget.focus();
-        if (choice.submenu) openLevels(false);
+        if (choice.submenu) openLevels(choice.submenu, false);
         else if (!inLevels && levels) {
           clearTimeout(closeLevelsTimer.current);
           closeLevelsTimer.current = setTimeout(() => setLevels(null), SUBMENU_CLOSE_MS);
@@ -259,7 +278,7 @@ export default function TaskContextMenu({
           : item(entry, false))}
       </div>
       {levels && (
-        <div ref={levelsSheet} className="task-menu" role="menu" aria-label="Priority"
+        <div ref={levelsSheet} className="task-menu" role="menu" aria-label={SUBMENU_LABEL[levels.which]}
           // Off screen until placed with its real size.
           style={levelsPlace ?? { left: -9999, top: -9999 }} onKeyDown={onLevelsKey}
           onMouseEnter={() => clearTimeout(closeLevelsTimer.current)}

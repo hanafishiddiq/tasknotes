@@ -43,34 +43,42 @@ Keputusan Han (2026-11-18), Han minta lanjut terus sampai selesai satu per satu:
   - [x] Dikerjakan dengan TDD: pengingat "Notifications are off" di sidebar dan halaman Pomodoro, tombol Turn on notifications (macOS bertanya, atau System Settings terbuka), dibaca ulang saat jendela kembali ke depan
   - [x] Review: format kode, tombol tidak bisa diklik berulang saat macOS masih bertanya (menunggu di thread terpisah), komentar tes; diperbaiki
   - [x] Draft PR #58, CI hijau
-- [ ] Status In Progress ↔ Ready bisa diubah bebas
+- [x] Status In Progress ↔ Ready bisa diubah bebas
   - [x] Han: pindah ke Ready mempertahankan angka progress (2026-11-18)
   - [x] Aturan inti diubah dengan TDD (berlaku sama di app, CLI, MCP, perubahan massal); Ready tidak pernah 100%; tidak ada yang pindah ke Ready dengan sendirinya
   - [x] Tampilan: pilihan Ready tidak lagi diredupkan; baris Task Ready yang punya progress menampilkan persennya
   - [x] ADR 0006, GLOSSARY, AGENTS.md dan DECISIONS diperbarui
   - [x] Review: kode benar di semua jalur; dokumen yang masih memuat aturan lama (DESIGN.md, ADR 0006, ADR 0008) diperbarui
-  - [ ] Draft PR #59, CI hijau
-- [ ] Subtask
+  - [x] Draft PR #59, CI hijau
+- [x] Subtask
   - [x] Han: checklist sederhana, batas karakter sangat panjang; baris Task menampilkan 2/5, persen tetap manual (2026-11-18)
   - [x] Inti (Rust) dengan TDD: tabel baru (skema v25), tambah/ubah/centang/pindah/hapus/kembalikan, audit dan cek revisi, maks 500 per Task, 10.000 karakter; ikut ekspor JSON dan Markdown
   - [x] CLI `subtask …` dan alat MCP `subtask_*`, dengan tes
   - [x] Tampilan dengan TDD: checklist di Task yang dibuka, angka 2/5 di baris; dicek di halaman uji
   - [x] GLOSSARY, ADR 0011, DESIGN.md
   - [x] Review dua sumbu; diperbaiki: edit lalu centang/pindah tidak lagi bentrok revisi (aksi berurutan), item terhapus tidak bisa diedit, restore wajib menyebut revisi, kolom tambah bisa banyak baris, teks panjang menyesuaikan lebar jendela
-  - [ ] Draft PR #61, CI hijau
-- [ ] Notes milik Task (catatan di dalam Task) bisa menyimpan gambar
+  - [x] Draft PR #61, CI hijau
+- [x] Notes milik Task (catatan di dalam Task) bisa menyimpan gambar
   - [x] Han: gambar di sela teks (catatan Task jadi editor seperti Notes), tanpa pratinjau di baris yang tertutup (2026-11-18)
   - [x] Inti (Rust) dengan TDD: gambar disimpan di database (ikut backup), PNG/JPEG/GIF/WebP sampai 10 MB, tidak pernah dihapus; ikut ekspor JSON dan Markdown
   - [x] Tampilan dengan TDD: catatan Task memakai editor Notes; gambar bisa ditempel, diseret, atau dipilih lewat "Add image"; dicek di halaman uji
   - [x] ADR 0012, DESIGN.md, GLOSSARY
   - [x] Review; diperbaiki: catatan lama berupa teks biasa tidak dianggap berubah dan baris tidak menampilkan garis miring Markdown, Save menunggu gambar yang masih diunggah, ekspor menangani gambar yang disalin antar Task, file yang dijatuhkan di luar catatan tidak membuka apa pun
-  - [ ] Draft PR #62, CI hijau
+  - [x] Draft PR #62, CI hijau
 - [ ] Satu Task bisa muncul di beberapa List sekaligus, identik (selesai di satu = selesai di semua)
-- [ ] Kalimat pertama Note otomatis jadi judul bergaya heading (tebal dan lebih besar)
+  - [x] Han: Remove menawarkan "dari List ini saja" atau "dari semua"; bisa diseret di tiap List (urutan Custom sendiri-sendiri); ditambah lewat klik kanan, Task yang dibuka, dan ⌥-seret ke List (2026-11-18)
+  - [x] Inti (Rust) dengan TDD: tabel baru (skema v27), tampil/keluar dari List, urutan Custom per List, hitungan sidebar, pindah ke List yang sudah memuatnya; tetap cepat untuk List tanpa Task bersama
+  - [x] CLI `task show-in/hide-from`, `reorder --list`; MCP `task_show_in/task_hide_from`; shell
+  - [x] Tampilan dengan TDD: chip "Also in", "Also show in…", menu klik kanan, ⌥-seret, dua tombol Remove; dicek di halaman uji
+  - [x] ADR 0013, GLOSSARY, DESIGN.md
+  - [x] Review; diperbaiki: List yang sudah di-Remove tidak lagi muncul sebagai chip dan tidak pernah jadi List tujuan (sebelumnya Task bisa hilang dari semua List)
+  - [ ] Draft PR #63, CI hijau
+- [x] Kalimat pertama Note otomatis jadi judul bergaya heading (tebal dan lebih besar)
   - [x] Han: baris pertama, seperti Apple Notes (2026-11-18)
   - [x] Dikerjakan dengan TDD: baris pertama yang berisi teks tampil 24px tebal; isi Markdown tidak berubah; daftar, kutipan, kode di baris pertama tetap gayanya
   - [x] Dicek di halaman uji: judul 24px tebal, isi di bawahnya biasa
   - [x] Review: baris kedua di paragraf yang sama ikut jadi judul; diperbaiki (hanya teks sebelum Enter pertama)
+  - [x] Draft PR #60, CI hijau
 - [ ] Semua tiket di main dan satu build dipasang ke /Applications
 - [ ] App asli batch 4 dicek Han
 

@@ -7,7 +7,8 @@ use tasknotes_cli::contract::{self, CliError};
 use tasknotes_core::tasks::{
     ChangeTask, CreateList, CreateSubList, CreateTask, Difficulty, DifficultyFilter, MoveList,
     MoveTask, PatchTask, PatchTaskDetails, Priority, RecordProgress, RenameList, ReorderList,
-    ReorderTask, SetListRemoved, SortMode, TaskError, TaskQuery, TaskScope, TaskView, WorkStatus,
+    ReorderTask, SetListRemoved, ShowTaskIn, SortMode, TaskError, TaskQuery, TaskScope, TaskView,
+    WorkStatus,
 };
 
 use crate::tools::*;
@@ -75,6 +76,31 @@ pub fn tools() -> Vec<ToolDef> {
                     after_id,
                     before_id: None,
                     shown_sort: None,
+                    list_id: a.list_id,
+                })?))
+            },
+        ),
+        tool(
+            "task_show_in",
+            Kind::Write,
+            "Show a Task in one more List besides its own (list_id stays its own; the others are in also_in). It is the same Task in each: a change in one shows in all.",
+            |c, a: AlsoInArgs| {
+                item(task(c.store.show_task_in(ShowTaskIn {
+                    expected_revision: revision(a.revision)?,
+                    id: a.id,
+                    list_id: a.list_id,
+                })?))
+            },
+        ),
+        tool(
+            "task_hide_from",
+            Kind::Write,
+            "Take a Task out of one List and leave it in the others. Out of its own List, the first List in also_in becomes its own. A Task in one List only is refused: task_remove is for that.",
+            |c, a: AlsoInArgs| {
+                item(task(c.store.hide_task_from(ShowTaskIn {
+                    expected_revision: revision(a.revision)?,
+                    id: a.id,
+                    list_id: a.list_id,
                 })?))
             },
         ),
@@ -466,6 +492,19 @@ struct TaskReorderArgs {
     /// Put it first among its siblings; give this or after_id.
     #[serde(default)]
     first: bool,
+    /// A List the Task is also shown in (also_in): reorder it there instead
+    /// of in its own List. Leave out for its own List.
+    #[serde(default)]
+    list_id: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct AlsoInArgs {
+    id: String,
+    /// The revision you last read.
+    revision: i64,
+    list_id: String,
 }
 
 #[derive(Deserialize, JsonSchema)]

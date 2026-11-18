@@ -1,7 +1,7 @@
 import {
   useId, useLayoutEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type FormEvent, type KeyboardEvent,
 } from "react";
-import { CalendarDays, Check, Folder, ListChecks, LoaderCircle, Tag, Trash2 } from "lucide-react";
+import { CalendarDays, Check, Folder, ListChecks, LoaderCircle, Plus, Tag, Trash2, X } from "lucide-react";
 import {
   checkActionOf,
   statusChoiceArgs,
@@ -75,6 +75,11 @@ interface TaskRowProps {
   onOpenNote: (noteId: string) => void;
   /** Moves the Task to Removed; restoring it later brings back everything. */
   onRemove: () => Promise<void>;
+  /** The List on screen, when the view is one List: where "Remove from this List" applies (batch 4). */
+  viewListId?: string | null;
+  /** Shows the Task in one more List, or takes it out of one (batch 4). */
+  onShowIn?: (listId: string) => Promise<void>;
+  onHideFrom?: (listId: string) => Promise<void>;
   /** The checklist changed on the open page: how many items are done, of how many. */
   onSubtasksCounted?: (done: number, total: number) => void;
   /** The round check: completes, reopens or clears Won't Do, as `checkActionOf` says. */
@@ -174,6 +179,9 @@ export default function TaskRow({
   onUpdateDetails,
   onOpenNote,
   onRemove,
+  viewListId = null,
+  onShowIn,
+  onHideFrom,
   onSubtasksCounted,
   onCheck,
   checkHeld = false,
@@ -209,6 +217,11 @@ export default function TaskRow({
   const checkKind = wontDo ? "wont-do" : task.status;
   const hiddenTags = (task.tags ?? []).slice(2);
   const titleField = useRef<HTMLTextAreaElement>(null);
+  const alsoIn = task.alsoIn ?? [];
+  const showInChoices = lists.filter((list) => list.id !== task.listId && !alsoIn.includes(list.id));
+  // On screen in a List it shares with another: that List alone can let it go.
+  const inThisListToo = Boolean(onHideFrom) && viewListId !== null && alsoIn.length > 0
+    && (task.listId === viewListId || alsoIn.includes(viewListId));
   const descriptionEditor = useRef<NoteEditorHandle>(null);
   const images = useMemo(() => taskImageSource(task.id), [task.id]);
   // What the notes editor shows; it starts again (a new version) only when the
@@ -593,6 +606,31 @@ export default function TaskRow({
                 ))}
               </select>
             </label>
+            {/* The same Task in more Lists (batch 4): each one a chip, and a way to add another. */}
+            {alsoIn.map((listId) => {
+              const label = lists.find((list) => list.id === listId)?.label ?? "List not loaded";
+              return (
+                <span key={listId} className="property also-in-chip">
+                  <Folder size={13} aria-hidden="true" />
+                  <span className="also-in-label">Also in {label}</span>
+                  <button type="button" className="also-in-remove" aria-label={`Stop showing in ${label}`}
+                    title={`Stop showing in ${label}`} disabled={!canChangeSelectors}
+                    onClick={() => void onHideFrom?.(listId)}>
+                    <X size={12} aria-hidden="true" />
+                  </button>
+                </span>
+              );
+            })}
+            {onShowIn && showInChoices.length > 0 && (
+              <label className="property also-in-add" htmlFor={`also-in-${task.id}`}>
+                <Plus size={13} aria-hidden="true" />
+                <select id={`also-in-${task.id}`} aria-label="Also show in" value="" disabled={!canChangeSelectors}
+                  onChange={(event) => { if (event.target.value) void onShowIn(event.target.value); }}>
+                  <option value="">Also show in…</option>
+                  {showInChoices.map((list) => <option value={list.id} key={list.id}>{list.label}</option>)}
+                </select>
+              </label>
+            )}
           </div>
 
           <div className="task-properties" role="group" aria-label="Task organization"
@@ -720,9 +758,16 @@ export default function TaskRow({
           <TaskLinkedNotes taskId={task.id} shown={shown} onOpenNote={onOpenNote} />
           <TaskProgressHistory taskId={task.id} revision={task.revision} />
           <div className="task-remove-row">
+            {/* In more than one List (batch 4): out of this List only, or Removed from all of them. */}
+            {inThisListToo && (
+              <button type="button" className="button button-small" disabled={!canChangeSelectors}
+                onClick={() => void onHideFrom?.(viewListId!)}>
+                Remove from this List
+              </button>
+            )}
             <button type="button" className="button button-small button-remove" disabled={!canChangeSelectors}
               onClick={() => void onRemove()}>
-              <Trash2 size={13} aria-hidden="true" /> Move to Removed
+              <Trash2 size={13} aria-hidden="true" /> {alsoIn.length > 0 ? "Move to Removed from all Lists" : "Move to Removed"}
             </button>
           </div>
         </section>
