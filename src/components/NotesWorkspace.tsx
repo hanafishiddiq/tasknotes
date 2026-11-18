@@ -474,7 +474,7 @@ export default function NotesWorkspace({
     <main className="notes-workspace" hidden={hidden}>
       <section className="note-list-pane" aria-label="Notes list">
         <header className="note-list-header">
-          <h1>{scopeName}</h1>
+          <h1 title={scopeName}>{scopeName}</h1>
           <button className="icon-button" type="button" aria-label="New note" onClick={() => void newNote()}>
             <SquarePen size={18} aria-hidden="true" />
           </button>
